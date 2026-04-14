@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import { registerHL7Language } from './HL7MonarchLanguage';
 
 	type MonacoModule = typeof import('monaco-editor');
-	type MonacoEditor = import('monaco-editor').editor.IStandaloneCodeEditor;
+	type IStandaloneCodeEditor = import('monaco-editor').editor.IStandaloneCodeEditor;
 
 	interface Props {
 		content?: string;
@@ -24,106 +24,102 @@
 	}: Props = $props();
 
 	let containerEl: HTMLDivElement;
-	let editor: MonacoEditor | undefined;
+	let editor: IStandaloneCodeEditor | undefined;
 	let monaco: MonacoModule | undefined;
 	let isUpdatingFromProp = false;
-	let alive = true;
-
-	onMount(async () => {
-		monaco = await import('monaco-editor');
-
-		if (!alive) return;
-
-		self.MonacoEnvironment = {
-			getWorker(_: string, _label: string) {
-				return new Worker(
-					new URL('monaco-editor/esm/vs/editor/editor.worker.js', import.meta.url),
-					{ type: 'module' }
-				);
-			}
-		};
-
-		registerHL7Language(monaco);
-
-		editor = monaco.editor.create(containerEl, {
-			value: content || '',
-			language,
-			theme,
-			readOnly: readonly,
-			minimap: { enabled: true },
-			fontSize: 13,
-			fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-			lineNumbers: 'on',
-			wordWrap: 'on',
-			scrollBeyondLastLine: false,
-			automaticLayout: true,
-			renderLineHighlight: 'line',
-			bracketPairColorization: { enabled: false },
-			tabSize: 4,
-			smoothScrolling: true,
-			cursorBlinking: 'smooth',
-			padding: { top: 8 },
-		});
-
-		editor.onDidChangeModelContent(() => {
-			if (!alive || isUpdatingFromProp || !editor) return;
-			const value = editor.getValue();
-			onContentChange?.(value);
-		});
-
-		editor.onDidChangeCursorPosition((e) => {
-			if (!alive) return;
-			onCursorChange?.(e.position.lineNumber, e.position.column);
-		});
-
-		// Focus the editor so paste works immediately
-		editor.focus();
-	});
-
-	onDestroy(() => {
-		alive = false;
-		if (editor) {
-			editor.dispose();
-			editor = undefined;
-		}
-	});
-
-	// Sync content prop -> editor using a polling approach instead of $effect
-	// This avoids Svelte 5 signal-null crashes during component teardown
 	let syncInterval: ReturnType<typeof setInterval> | undefined;
 	let lastSyncedContent = '';
 
 	onMount(() => {
-		lastSyncedContent = content || '';
-		syncInterval = setInterval(() => {
-			if (!alive || !editor) return;
-			try {
-				const propContent = content || '';
-				if (propContent !== lastSyncedContent && propContent !== editor.getValue()) {
-					isUpdatingFromProp = true;
-					editor.setValue(propContent);
-					isUpdatingFromProp = false;
-					lastSyncedContent = propContent;
+		let alive = true;
+
+		async function init() {
+			monaco = await import('monaco-editor');
+			if (!alive) return;
+
+			self.MonacoEnvironment = {
+				getWorker(_: string, _label: string) {
+					return new Worker(
+						new URL('monaco-editor/esm/vs/editor/editor.worker.js', import.meta.url),
+						{ type: 'module' }
+					);
 				}
-			} catch {
-				// Ignore errors during teardown
+			};
+
+			registerHL7Language(monaco);
+
+			editor = monaco.editor.create(containerEl, {
+				value: content || '',
+				language,
+				theme,
+				readOnly: readonly,
+				minimap: { enabled: true },
+				fontSize: 13,
+				fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+				lineNumbers: 'on',
+				wordWrap: 'on',
+				scrollBeyondLastLine: false,
+				automaticLayout: true,
+				renderLineHighlight: 'line',
+				bracketPairColorization: { enabled: false },
+				tabSize: 4,
+				smoothScrolling: true,
+				cursorBlinking: 'smooth',
+				padding: { top: 8 },
+			});
+
+			editor.onDidChangeModelContent(() => {
+				if (!alive || isUpdatingFromProp || !editor) return;
+				onContentChange?.(editor.getValue());
+			});
+
+			editor.onDidChangeCursorPosition((e) => {
+				if (!alive) return;
+				onCursorChange?.(e.position.lineNumber, e.position.column);
+			});
+
+			editor.focus();
+			lastSyncedContent = content || '';
+
+			// Poll for content changes from props (avoids Svelte 5 $effect crash)
+			syncInterval = setInterval(() => {
+				if (!alive || !editor) return;
+				try {
+					const propContent = content || '';
+					if (propContent !== lastSyncedContent && propContent !== editor.getValue()) {
+						isUpdatingFromProp = true;
+						editor.setValue(propContent);
+						isUpdatingFromProp = false;
+						lastSyncedContent = propContent;
+					}
+				} catch {
+					// ignore
+				}
+			}, 100);
+		}
+
+		init();
+
+		// Cleanup via onMount return (avoids onDestroy SSR crash)
+		return () => {
+			alive = false;
+			if (syncInterval) clearInterval(syncInterval);
+			if (editor) {
+				editor.dispose();
+				editor = undefined;
 			}
-		}, 100);
+		};
 	});
 
-	onDestroy(() => {
-		if (syncInterval) clearInterval(syncInterval);
-	});
-
-	// Theme sync - safe because theme is a simple string, not bound to component lifecycle
+	// Theme sync
 	$effect(() => {
-		if (alive && monaco) {
+		if (monaco && editor) {
 			try { monaco.editor.setTheme(theme); } catch { /* ignore */ }
 		}
 	});
 
 	export function setValue(value: string) {
-		if (editor && alive) {
+		if (editor) {
 			isUpdatingFromProp = true;
 			editor.setValue(value);
 			isUpdatingFromProp = false;
@@ -136,11 +132,11 @@
 	}
 
 	export function focus() {
-		if (editor && alive) editor.focus();
+		editor?.focus();
 	}
 
 	export function revealLine(line: number) {
-		if (editor && alive) editor.revealLineInCenter(line);
+		editor?.revealLineInCenter(line);
 	}
 </script>
 
