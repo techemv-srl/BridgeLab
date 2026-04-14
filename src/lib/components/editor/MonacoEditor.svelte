@@ -27,8 +27,6 @@
 	let editor: IStandaloneCodeEditor | undefined;
 	let monaco: MonacoModule | undefined;
 	let isUpdatingFromProp = false;
-	let syncInterval: ReturnType<typeof setInterval> | undefined;
-	let lastSyncedContent = '';
 
 	onMount(() => {
 		let alive = true;
@@ -79,36 +77,29 @@
 			});
 
 			editor.focus();
-			lastSyncedContent = content || '';
-
-			// Poll for content changes from props (avoids Svelte 5 $effect crash)
-			syncInterval = setInterval(() => {
-				if (!alive || !editor) return;
-				try {
-					const propContent = content || '';
-					if (propContent !== lastSyncedContent && propContent !== editor.getValue()) {
-						isUpdatingFromProp = true;
-						editor.setValue(propContent);
-						isUpdatingFromProp = false;
-						lastSyncedContent = propContent;
-					}
-				} catch {
-					// ignore
-				}
-			}, 100);
 		}
 
 		init();
 
-		// Cleanup via onMount return (avoids onDestroy SSR crash)
 		return () => {
 			alive = false;
-			if (syncInterval) clearInterval(syncInterval);
 			if (editor) {
 				editor.dispose();
 				editor = undefined;
 			}
 		};
+	});
+
+	// Sync content prop -> editor reactively
+	$effect(() => {
+		const val = content ?? '';
+		if (editor && !isUpdatingFromProp) {
+			if (val !== editor.getValue()) {
+				isUpdatingFromProp = true;
+				editor.setValue(val);
+				isUpdatingFromProp = false;
+			}
+		}
 	});
 
 	// Theme sync
