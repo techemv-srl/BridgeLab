@@ -94,9 +94,6 @@
 			// Add custom context menu actions
 			addContextMenuActions(ed, mod);
 
-			// Make truncation markers clickable
-			addTruncationClickHandler(ed);
-
 			editor = ed;
 			ed.focus();
 		} catch (err) {
@@ -132,12 +129,30 @@
 			contextMenuOrder: 2,
 			precondition: undefined,
 			run: (editor) => {
-				const line = editor.getPosition()?.lineNumber;
-				if (!line) return;
-				const lineContent = editor.getModel()?.getLineContent(line) ?? '';
-				const match = lineContent.match(/\{\.\.\.(\d+) bytes\}/);
-				if (match) {
-					onExpandTruncated?.(line, match[0]);
+				const pos = editor.getPosition();
+				if (!pos) return;
+				const lineContent = editor.getModel()?.getLineContent(pos.lineNumber) ?? '';
+
+				// Find all truncation markers on this line
+				const markerRegex = /\{\.\.\.(\d+) bytes\}/g;
+				let closestMatch: string | null = null;
+				let closestDist = Infinity;
+				let matchResult;
+				while ((matchResult = markerRegex.exec(lineContent)) !== null) {
+					const markerCenter = matchResult.index + matchResult[0].length / 2;
+					const dist = Math.abs(pos.column - markerCenter);
+					if (dist < closestDist) {
+						closestDist = dist;
+						// Pass the occurrence index: how many markers before this one
+						const beforeText = lineContent.substring(0, matchResult.index);
+						const markersBefore = (beforeText.match(/\{\.\.\.(\d+) bytes\}/g) || []).length;
+						closestMatch = String(markersBefore);
+					}
+				}
+
+				if (closestMatch !== null) {
+					// Pass line number and the marker occurrence index (0-based)
+					onExpandTruncated?.(pos.lineNumber, closestMatch);
 				}
 			}
 		});
@@ -169,30 +184,7 @@
 		});
 	}
 
-	function addTruncationClickHandler(ed: IStandaloneCodeEditor) {
-		// Detect clicks on truncation markers via mouse down
-		ed.onMouseDown((e) => {
-			if (e.target.type !== 6) return; // 6 = CONTENT_TEXT
-			const pos = e.target.position;
-			if (!pos) return;
-
-			const model = ed.getModel();
-			if (!model) return;
-
-			const lineContent = model.getLineContent(pos.lineNumber);
-			// Check if click is near a truncation marker
-			const markerRegex = /\{\.\.\.(\d+) bytes\}/g;
-			let match;
-			while ((match = markerRegex.exec(lineContent)) !== null) {
-				const markerStart = match.index + 1; // 1-based column
-				const markerEnd = markerStart + match[0].length;
-				if (pos.column >= markerStart && pos.column <= markerEnd) {
-					onExpandTruncated?.(pos.lineNumber, match[0]);
-					return;
-				}
-			}
-		});
-	}
+	// No click handler - expand only via context menu to avoid accidental triggers
 
 	// Sync content prop -> editor
 	$effect(() => {
