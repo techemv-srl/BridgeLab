@@ -78,22 +78,35 @@
 				],
 			});
 			if (selected) {
-				const path = typeof selected === 'string' ? selected : selected.path;
+				const path = typeof selected === 'string' ? selected : (selected as any).path ?? String(selected);
+				console.log('[BridgeLab] Opening file:', path);
 				const result = await openFile(path);
+				console.log('[BridgeLab] Parse result:', result.message_type, result.format, result.segment_count, 'segments');
+				skipNextAutoParse = true;
 				messageStore.openMessage(result, path, result.truncated_text);
 				// Track recent file
 				const filename = path.split('/').pop()?.split('\\').pop() ?? '';
-				await addRecentFile(path, filename, result.message_type, result.version, result.file_size_bytes);
-				recentFiles = await getRecentFiles(20);
+				try {
+					await addRecentFile(path, filename, result.message_type, result.version, result.file_size_bytes);
+					recentFiles = await getRecentFiles(20);
+				} catch {
+					// DB might not be available
+				}
 			}
 		} catch (e) {
-			console.error('Failed to open file:', e);
+			console.error('[BridgeLab] Failed to open file:', e);
+			// Show error in a new tab so user sees something
+			const errMsg = String(e);
+			if (messageStore.activeTabId) {
+				messageStore.updateContent(messageStore.activeTabId, `Error opening file:\n${errMsg}`);
+			}
 		}
 	}
 
 	async function handleOpenRecentFile(path: string) {
 		try {
 			const result = await openFile(path);
+			skipNextAutoParse = true;
 			messageStore.openMessage(result, path, result.truncated_text);
 			const filename = path.split('/').pop()?.split('\\').pop() ?? '';
 			await addRecentFile(path, filename, result.message_type, result.version, result.file_size_bytes);
@@ -161,28 +174,18 @@
 
 	// --- Editor operations ---
 
+	let skipNextAutoParse = false;
+
 	async function handleContentChange(value: string) {
 		if (!messageStore.activeTabId) return;
+
+		// Skip auto-parse if content was just set by file open / parse action
+		if (skipNextAutoParse) {
+			skipNextAutoParse = false;
+			return;
+		}
+
 		messageStore.updateContent(messageStore.activeTabId, value);
-		// Auto-parse if content looks like HL7
-		if (value.startsWith('MSH|') && value.length > 10) {
-			try {
-				const result = await parseMessage(value);
-				messageStore.updateParseResult(messageStore.activeTabId, result, result.truncated_text);
-			} catch {
-				// Not a valid HL7 message yet
-			}
-		}
-		// Auto-detect FHIR JSON
-		const trimmed = value.trim();
-		if (trimmed.startsWith('{') && trimmed.includes('"resourceType"')) {
-			try {
-				const result = await parseFhirMessage(value);
-				messageStore.updateParseResult(messageStore.activeTabId, result, result.truncated_text);
-			} catch {
-				// Not valid FHIR
-			}
-		}
 	}
 
 	async function handleParse() {
@@ -196,6 +199,7 @@
 			} else {
 				result = await parseMessage(content);
 			}
+			skipNextAutoParse = true;
 			messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
 		} catch (e) {
 			console.error('Parse error:', e);
