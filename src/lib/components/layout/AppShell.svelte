@@ -20,7 +20,8 @@
 
 	// UI state
 	let treeWidth = $state(350);
-	let isDragging = $state(false);
+	let draggingTarget = $state<'tree' | 'bottom' | null>(null);
+	let isDragging = $derived(draggingTarget !== null);
 	let showTree = $state(true);
 	let showValidation = $state(false);
 	let showCommunication = $state(false);
@@ -443,20 +444,30 @@
 	// --- Splitter ---
 
 	function startDrag(e: MouseEvent) {
-		isDragging = true;
+		draggingTarget = 'tree';
+		e.preventDefault();
+	}
+
+	function startBottomDrag(e: MouseEvent) {
+		draggingTarget = 'bottom';
 		e.preventDefault();
 	}
 
 	function handleMouseMove(e: MouseEvent) {
-		if (!isDragging) return;
-		treeWidth = Math.max(200, Math.min(600, e.clientX));
+		if (draggingTarget === 'tree') {
+			treeWidth = Math.max(200, Math.min(600, e.clientX));
+		} else if (draggingTarget === 'bottom') {
+			const windowHeight = window.innerHeight;
+			const newHeight = windowHeight - e.clientY - 24; // 24 = status bar height
+			bottomPanelHeight = Math.max(100, Math.min(windowHeight * 0.7, newHeight));
+		}
 	}
 
 	async function stopDrag() {
-		if (isDragging) {
-			isDragging = false;
+		if (draggingTarget === 'tree') {
 			try { await setPreference('tree_width', String(treeWidth)); } catch { /* web mode */ }
 		}
+		draggingTarget = null;
 	}
 
 	// --- Paste handler (fallback for when Monaco doesn't have focus) ---
@@ -603,6 +614,17 @@
 			</div>
 
 			<!-- Bottom Panels (Validation / Communication) -->
+			{#if (showValidation && validationReport) || showCommunication}
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<div
+					class="bottom-splitter"
+					onmousedown={startBottomDrag}
+					role="separator"
+					tabindex={0}
+				></div>
+			{/if}
+
 			{#if showValidation && validationReport}
 				<div class="bottom-panel" style="height: {bottomPanelHeight}px">
 					<div class="panel-header">
@@ -627,6 +649,7 @@
 					</div>
 					<CommunicationPanel
 						currentMessage={activeTab?.content ?? ''}
+						activeTabLabel={activeTab?.label ?? ''}
 						onMessageReceived={(content) => {
 							if (messageStore.activeTabId) {
 								messageStore.updateContent(messageStore.activeTabId, content);
@@ -743,6 +766,17 @@
 	.editor-area {
 		flex: 1;
 		overflow: hidden;
+	}
+
+	.bottom-splitter {
+		height: 4px;
+		cursor: ns-resize;
+		background-color: var(--color-border);
+		flex-shrink: 0;
+	}
+
+	.bottom-splitter:hover {
+		background-color: var(--color-accent);
 	}
 
 	.bottom-panel {
