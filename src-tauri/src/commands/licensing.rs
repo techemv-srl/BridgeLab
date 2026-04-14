@@ -1,25 +1,26 @@
-use serde::Serialize;
-
 use crate::licensing::{self, LicenseStatus};
 
-/// Check current license status (trial, active, expired).
+/// Check current license status.
 #[tauri::command]
 pub fn check_license() -> Result<LicenseStatus, String> {
     Ok(licensing::check_license_status())
 }
 
-/// Activate a license key.
+/// Activate a license key. Tries Base64 signed key first, then simple format.
 #[tauri::command]
 pub fn activate_license(
     key: String,
     licensee: String,
     email: String,
 ) -> Result<LicenseStatus, String> {
-    let hardware_id = licensing::get_hardware_id();
-    let mut license = licensing::validate_key(&key, &hardware_id)?;
-    license.licensee = licensee;
-    license.email = email;
-    licensing::save_license(&license)?;
+    // Try Base64-encoded signed license first
+    match licensing::activate_from_key(&key) {
+        Ok(_) => return Ok(licensing::check_license_status()),
+        Err(_) => {}
+    }
+
+    // Fallback to simple BL-TYPE-CODE format
+    licensing::activate_simple_key(&key, &licensee, &email)?;
     Ok(licensing::check_license_status())
 }
 
