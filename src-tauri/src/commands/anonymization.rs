@@ -1,0 +1,126 @@
+use serde::Serialize;
+use tauri::State;
+
+use crate::anonymization::{self, PhiLocation};
+use crate::message_store::MessageStore;
+use crate::parser::hl7::lexer::Hl7Lexer;
+use crate::parser::hl7::message::TreeNode;
+use crate::parser::truncation;
+
+/// Detect PHI fields in an HL7 message.
+#[tauri::command]
+pub fn detect_phi(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<Vec<PhiLocation>, String> {
+    let msg = store.get(&message_id)
+        .ok_or_else(|| format!("Message not found: {}", message_id))?;
+    Ok(anonymization::detect_phi(&msg))
+}
+
+/// Anonymize an HL7 message and return the anonymized text.
+#[tauri::command]
+pub fn anonymize_message(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<AnonymizeResult, String> {
+    let msg = store.get(&message_id)
+        .ok_or_else(|| format!("Message not found: {}", message_id))?;
+
+    let phi_count = anonymization::detect_phi(&msg).len();
+    let anonymized_text = anonymization::anonymize_message(&msg);
+
+    Ok(AnonymizeResult {
+        anonymized_text,
+        phi_fields_masked: phi_count,
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct AnonymizeResult {
+    pub anonymized_text: String,
+    pub phi_fields_masked: usize,
+}
+
+/// Copy the full message content to a string (frontend handles clipboard).
+#[tauri::command]
+pub fn get_message_full_text(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<String, String> {
+    let msg = store.get(&message_id)
+        .ok_or_else(|| format!("Message not found: {}", message_id))?;
+    Ok(truncation::build_full_text(&msg))
+}
+
+/// Get a truncated copy of the message for email sharing.
+#[tauri::command]
+pub fn get_message_truncated_text(
+    message_id: String,
+    threshold: Option<usize>,
+    store: State<'_, MessageStore>,
+) -> Result<String, String> {
+    let msg = store.get(&message_id)
+        .ok_or_else(|| format!("Message not found: {}", message_id))?;
+    let thresh = threshold.unwrap_or(100);
+    Ok(anonymization::build_truncated_copy(&msg, thresh))
+}
+
+/// Export message as JSON representation.
+#[tauri::command]
+pub fn export_as_json(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<String, String> {
+    let msg = store.get(&message_id)
+        .ok_or_else(|| format!("Message not found: {}", message_id))?;
+
+    let mut segments = Vec::new();
+    for seg in &msg.segments {
+        let mut fields_json = serde_json::Map::new();
+        for field in &seg.fields {
+            let value = field.span.as_str(&msg.raw);
+            fields_json.insert(
+                format!("{}-{}", seg.segment_type, field.position),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
+        let mut seg_obj = serde_json::Map::new();
+        seg_obj.insert("segment_type".into(), serde_json::Value::String(seg.segment_type.clone()));
+        seg_obj.insert("position".into(), serde_json::Value::Number(seg.position.into()));
+        seg_obj.insert("fields".into(), serde_json::Value::Object(fields_json));
+        segments.push(serde_json::Value::Object(seg_obj));
+    }
+
+    let root = serde_json::json!({
+        "message_type": msg.message_type,
+        "version": msg.version,
+        "segments": segments,
+    });
+
+    serde_json::to_string_pretty(&root)
+        .map_err(|e| format!("JSON serialization failed: {}", e))
+}
+
+/// Export message as CSV (one row per field).
+#[tauri::command]
+pub fn export_as_csv(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<String, String> {
+    let msg = store.get(&message_id)
+        .ok_or_else(|| format!("Message not found: {}", message_id))?;
+
+    let mut csv = String::from("Segment,Position,Field,Value\n");
+    for seg in &msg.segments {
+        for field in &seg.fields {
+            let value = field.span.as_str(&msg.raw).replace('"', "\"\"");
+            csv.push_str(&format!(
+                "{},{},{}-{},\"{}\"\n",
+                seg.segment_type, seg.position, seg.segment_type, field.position, value
+            ));
+        }
+    }
+
+    Ok(csv)
+}

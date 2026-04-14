@@ -1,0 +1,76 @@
+{
+	"app.title": "BridgeLab",
+	"app.subtitle": "HL7 made simple",
+
+	"menu.file": "File",
+	"menu.file.open": "Open File",
+	"menu.file.save": "Save",
+	"menu.file.saveAs": "Save As...",
+	"menu.file.close": "Close Tab",
+	"menu.file.closeAll": "Close All Tabs",
+	"menu.file.recent": "Recent Files",
+	"menu.file.clearRecent": "Clear Recent",
+	"menu.file.exit": "Exit",
+
+	"menu.edit": "Edit",
+	"menu.edit.undo": "Undo",
+	"menu.edit.redo": "Redo",
+	"menu.edit.cut": "Cut",
+	"menu.edit.copy": "Copy",
+	"menu.edit.paste": "Paste",
+	"menu.edit.find": "Find",
+	"menu.edit.replace": "Find & Replace",
+	"menu.edit.selectAll": "Select All",
+
+	"menu.view": "View",
+	"menu.view.tree": "Message Tree",
+	"menu.view.statusbar": "Status Bar",
+	"menu.view.theme": "Theme",
+	"menu.view.theme.dark": "Dark",
+	"menu.view.theme.light": "Light",
+	"menu.view.language": "Language",
+
+	"menu.tools": "Tools",
+	"menu.tools.parse": "Parse Message",
+	"menu.tools.validate": "Validate",
+	"menu.tools.anonymize": "Anonymize",
+	"menu.tools.copyFull": "Copy Full Message",
+	"menu.tools.copyTruncated": "Copy Truncated Message",
+
+	"menu.help": "Help",
+	"menu.help.about": "About BridgeLab",
+	"menu.help.shortcuts": "Keyboard Shortcuts",
+
+	"tree.header": "Message Structure",
+	"tree.empty": "Open an HL7 file or paste a message to begin.",
+	"tree.shortcutHint": "Ctrl+O to open a file",
+	"tree.noMessage": "No message loaded",
+
+	"editor.header": "Editor",
+	"editor.untitled": "Untitled",
+	"editor.modified": "Modified",
+
+	"tabs.newTab": "New Tab",
+	"tabs.closeTab": "Close",
+	"tabs.closeOthers": "Close Others",
+
+	"status.segments": "{count} segments",
+	"status.truncated": "{count} truncated",
+	"status.line": "Ln {line}",
+	"status.column": "Col {col}",
+
+	"modal.fullContent": "Full Field Content",
+	"modal.copy": "Copy to Clipboard",
+	"modal.characters": "{count} characters",
+	"modal.close": "Close",
+
+	"dialog.unsavedChanges": "You have unsaved changes. Do you want to save before closing?",
+	"dialog.save": "Save",
+	"dialog.dontSave": "Don't Save",
+	"dialog.cancel": "Cancel",
+
+	"about.title": "About BridgeLab",
+	"about.version": "Version {version}",
+	"about.description": "A modern HL7/FHIR message editor for healthcare integration professionals.",
+	"about.license": "Open Core - Free for non-commercial use"
+}
