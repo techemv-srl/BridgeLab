@@ -33,6 +33,7 @@
 		onExportCsv: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
+		onShowSettings: () => void;
 		onShowAbout: () => void;
 	}
 
@@ -58,6 +59,7 @@
 		onExportCsv,
 		onSetTheme,
 		onSetLanguage,
+		onShowSettings,
 		onShowAbout,
 	}: Props = $props();
 
@@ -165,6 +167,11 @@
 				<button class="menu-item" onclick={() => { document.execCommand('paste'); closeMenu(); }}>
 					<span>{tr('menu.edit.paste')}</span>
 					<span class="shortcut">Ctrl+V</span>
+				</button>
+				<div class="menu-separator"></div>
+				<button class="menu-item" onclick={() => menuAction(onShowSettings)}>
+					<span>Settings</span>
+					<span class="shortcut">Ctrl+,</span>
 				</button>
 			</div>
 		{/if}
