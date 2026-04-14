@@ -29,3 +29,17 @@ export async function openFile(path: string): Promise<ParseResult> {
 export async function saveFile(messageId: string, path: string): Promise<{ path: string; bytes_written: number }> {
 	return invoke('save_file', { messageId, path });
 }
+
+/** Expand a truncated field inline - returns full text with that field expanded */
+export async function expandFieldInline(
+	messageId: string,
+	segmentIdx: number,
+	fieldIdx: number,
+): Promise<string> {
+	return invoke<string>('expand_field_inline', { messageId, segmentIdx, fieldIdx });
+}
+
+/** Re-truncate all fields - returns text with all fields truncated */
+export async function collapseAllFields(messageId: string): Promise<string> {
+	return invoke<string>('collapse_all_fields', { messageId });
+}

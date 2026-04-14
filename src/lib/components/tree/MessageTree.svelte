@@ -8,9 +8,11 @@
 		roots: TreeNode[];
 		onNodeSelect?: (node: TreeNode) => void;
 		onFieldExpand?: (content: string) => void;
+		/** Navigate to and expand a specific segment by index */
+		navigateToSegmentIdx?: number | null;
 	}
 
-	let { messageId, roots, onNodeSelect, onFieldExpand }: Props = $props();
+	let { messageId, roots, onNodeSelect, onFieldExpand, navigateToSegmentIdx = null }: Props = $props();
 
 	// Flat list of visible nodes for virtual scrolling
 	let visibleNodes = $state<(TreeNode & { _children?: TreeNode[]; _expanded?: boolean })[]>([]);
@@ -19,6 +21,23 @@
 	// Initialize with root nodes
 	$effect(() => {
 		visibleNodes = roots.map((r) => ({ ...r, _expanded: false }));
+	});
+
+	// Navigate to a specific segment when requested
+	$effect(() => {
+		if (navigateToSegmentIdx !== null && navigateToSegmentIdx !== undefined) {
+			const segId = `seg${navigateToSegmentIdx}`;
+			const node = visibleNodes.find(n => n.id === segId);
+			if (node) {
+				selectedNodeId = segId;
+				if (!node._expanded) {
+					toggleNode(node);
+				}
+				// Scroll to the node
+				const el = document.querySelector(`[data-node-id="${segId}"]`);
+				el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			}
+		}
 	});
 
 	async function toggleNode(node: TreeNode & { _children?: TreeNode[]; _expanded?: boolean }) {
