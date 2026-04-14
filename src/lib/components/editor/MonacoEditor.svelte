@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { registerHL7Language } from './HL7MonarchLanguage';
 
 	type MonacoModule = typeof import('monaco-editor');
@@ -23,96 +22,85 @@
 		onCursorChange,
 	}: Props = $props();
 
-	let containerEl: HTMLDivElement;
+	let containerEl = $state<HTMLDivElement | undefined>(undefined);
 	let editor = $state<IStandaloneCodeEditor | undefined>(undefined);
-	let monaco = $state<MonacoModule | undefined>(undefined);
+	let monacoMod = $state<MonacoModule | undefined>(undefined);
 	let isUpdatingFromProp = false;
+	let initializing = false;
 
-	onMount(() => {
-		let alive = true;
-		console.log('[Monaco] onMount, container:', containerEl, 'size:', containerEl?.offsetWidth, 'x', containerEl?.offsetHeight);
-
-		async function init() {
-			try {
-				console.log('[Monaco] Loading monaco-editor module...');
-				monaco = await import('monaco-editor');
-				console.log('[Monaco] Module loaded, alive:', alive);
-				if (!alive) return;
-
-				self.MonacoEnvironment = {
-					getWorker(_: string, _label: string) {
-						return new Worker(
-							new URL('monaco-editor/esm/vs/editor/editor.worker.js', import.meta.url),
-							{ type: 'module' }
-						);
-					}
-				};
-
-				registerHL7Language(monaco);
-
-				console.log('[Monaco] Creating editor, container size:', containerEl?.offsetWidth, 'x', containerEl?.offsetHeight);
-				console.log('[Monaco] Initial content length:', (content || '').length, 'first 50 chars:', (content || '').substring(0, 50));
-
-				editor = monaco.editor.create(containerEl, {
-					value: content || '',
-					language,
-					theme,
-					readOnly: readonly,
-					minimap: { enabled: true },
-					fontSize: 13,
-					fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-					lineNumbers: 'on',
-					wordWrap: 'on',
-					scrollBeyondLastLine: false,
-					automaticLayout: true,
-					renderLineHighlight: 'line',
-					bracketPairColorization: { enabled: false },
-					tabSize: 4,
-					smoothScrolling: true,
-					cursorBlinking: 'smooth',
-					padding: { top: 8 },
-				});
-
-				console.log('[Monaco] Editor created:', !!editor, 'value length:', editor?.getValue().length);
-
-				editor.onDidChangeModelContent(() => {
-					if (!alive || isUpdatingFromProp || !editor) return;
-					onContentChange?.(editor.getValue());
-				});
-
-				editor.onDidChangeCursorPosition((e) => {
-					if (!alive) return;
-					onCursorChange?.(e.position.lineNumber, e.position.column);
-				});
-
-				editor.focus();
-				console.log('[Monaco] Editor focused, ready');
-			} catch (err) {
-				console.error('[Monaco] Init failed:', err);
-			}
+	// Initialize Monaco when container element becomes available
+	$effect(() => {
+		if (containerEl && !editor && !initializing && typeof window !== 'undefined') {
+			initializing = true;
+			initMonaco();
 		}
-
-		init();
-
-		return () => {
-			console.log('[Monaco] Cleanup/destroy');
-			alive = false;
-			if (editor) {
-				editor.dispose();
-				editor = undefined;
-			}
-		};
 	});
 
-	// Sync content prop -> editor reactively
+	async function initMonaco() {
+		try {
+			console.log('[Monaco] Loading module...');
+			const mod = await import('monaco-editor');
+			monacoMod = mod;
+
+			console.log('[Monaco] Container size:', containerEl?.offsetWidth, 'x', containerEl?.offsetHeight);
+
+			self.MonacoEnvironment = {
+				getWorker(_: string, _label: string) {
+					return new Worker(
+						new URL('monaco-editor/esm/vs/editor/editor.worker.js', import.meta.url),
+						{ type: 'module' }
+					);
+				}
+			};
+
+			registerHL7Language(mod);
+
+			console.log('[Monaco] Creating editor with content length:', (content || '').length);
+
+			const ed = mod.editor.create(containerEl!, {
+				value: content || '',
+				language,
+				theme,
+				readOnly: readonly,
+				minimap: { enabled: true },
+				fontSize: 13,
+				fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+				lineNumbers: 'on',
+				wordWrap: 'on',
+				scrollBeyondLastLine: false,
+				automaticLayout: true,
+				renderLineHighlight: 'line',
+				bracketPairColorization: { enabled: false },
+				tabSize: 4,
+				smoothScrolling: true,
+				cursorBlinking: 'smooth',
+				padding: { top: 8 },
+			});
+
+			ed.onDidChangeModelContent(() => {
+				if (isUpdatingFromProp) return;
+				onContentChange?.(ed.getValue());
+			});
+
+			ed.onDidChangeCursorPosition((e) => {
+				onCursorChange?.(e.position.lineNumber, e.position.column);
+			});
+
+			editor = ed;
+			ed.focus();
+			console.log('[Monaco] Editor ready, value length:', ed.getValue().length);
+		} catch (err) {
+			console.error('[Monaco] Init failed:', err);
+			initializing = false;
+		}
+	}
+
+	// Sync content prop -> editor
 	$effect(() => {
 		const val = content ?? '';
-		const hasEditor = !!editor;
-		console.log('[Monaco] $effect content sync: editor=', hasEditor, 'content length=', val.length, 'first 30:', val.substring(0, 30));
 		if (editor && !isUpdatingFromProp) {
-			const current = editor.getValue();
-			if (val !== current) {
-				console.log('[Monaco] Updating editor value, old length:', current.length, 'new length:', val.length);
+			if (val !== editor.getValue()) {
+				console.log('[Monaco] Syncing content, length:', val.length);
 				isUpdatingFromProp = true;
 				editor.setValue(val);
 				isUpdatingFromProp = false;
@@ -122,8 +110,8 @@
 
 	// Theme sync
 	$effect(() => {
-		if (monaco && editor) {
-			try { monaco.editor.setTheme(theme); } catch { /* ignore */ }
+		if (monacoMod && editor) {
+			try { monacoMod.editor.setTheme(theme); } catch { /* ignore */ }
 		}
 	});
 
