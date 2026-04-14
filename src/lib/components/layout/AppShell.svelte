@@ -14,13 +14,15 @@
 	import MenuBar from '$lib/components/layout/MenuBar.svelte';
 	import StatusBar from '$lib/components/layout/StatusBar.svelte';
 	import ValidationPanel from '$lib/components/validation/ValidationPanel.svelte';
+	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
 
 	// UI state
 	let treeWidth = $state(350);
 	let isDragging = $state(false);
 	let showTree = $state(true);
 	let showValidation = $state(false);
-	let validationHeight = $state(180);
+	let showCommunication = $state(false);
+	let bottomPanelHeight = $state(220);
 	let expandedFieldContent = $state<string | null>(null);
 	let showAbout = $state(false);
 	let recentFiles = $state<RecentFile[]>([]);
@@ -326,6 +328,7 @@
 		else if (e.key === 'F5') { e.preventDefault(); handleParse(); }
 		else if (e.key === 'F6') { e.preventDefault(); handleValidate(); }
 		else if (ctrl && e.key === 'j') { e.preventDefault(); showValidation = !showValidation; }
+		else if (ctrl && e.key === 'k') { e.preventDefault(); showCommunication = !showCommunication; }
 	}
 </script>
 
@@ -355,6 +358,7 @@
 		onParse={handleParse}
 		onValidate={handleValidate}
 		onToggleValidation={() => { showValidation = !showValidation; }}
+		onToggleCommunication={() => { showCommunication = !showCommunication; }}
 		onToggleTree={handleToggleTree}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
@@ -428,9 +432,9 @@
 				{/if}
 			</div>
 
-			<!-- Validation Panel -->
+			<!-- Bottom Panels (Validation / Communication) -->
 			{#if showValidation && validationReport}
-				<div class="validation-area" style="height: {validationHeight}px">
+				<div class="bottom-panel" style="height: {bottomPanelHeight}px">
 					<div class="panel-header">
 						<span>Validation</span>
 						<button class="panel-close" onclick={() => { showValidation = false; }}>&times;</button>
@@ -441,6 +445,23 @@
 						warningCount={validationReport.warning_count}
 						infoCount={validationReport.info_count}
 						onIssueClick={handleValidationIssueClick}
+					/>
+				</div>
+			{/if}
+
+			{#if showCommunication}
+				<div class="bottom-panel" style="height: {bottomPanelHeight}px">
+					<div class="panel-header">
+						<span>Communication</span>
+						<button class="panel-close" onclick={() => { showCommunication = false; }}>&times;</button>
+					</div>
+					<CommunicationPanel
+						currentMessage={activeTab?.content ?? ''}
+						onMessageReceived={(content) => {
+							if (messageStore.activeTabId) {
+								messageStore.updateContent(messageStore.activeTabId, content);
+							}
+						}}
 					/>
 				</div>
 			{/if}
@@ -538,7 +559,7 @@
 		overflow: hidden;
 	}
 
-	.validation-area {
+	.bottom-panel {
 		display: flex;
 		flex-direction: column;
 		flex-shrink: 0;

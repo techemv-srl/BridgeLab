@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod communication;
 pub mod database;
 pub mod message_store;
 pub mod parser;
@@ -36,6 +37,15 @@ pub fn run() {
             commands::validation::validate_fhir,
             commands::parser::parse_fhir_message,
             commands::parser::get_fhir_tree_children,
+            commands::communication::mllp_send,
+            commands::communication::mllp_receive,
+            commands::communication::http_request,
+            commands::communication::generate_ack,
+            commands::communication::save_connection_profile,
+            commands::communication::get_connection_profiles,
+            commands::communication::delete_connection_profile,
+            commands::communication::get_request_history,
+            commands::communication::clear_request_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");
