@@ -40,6 +40,7 @@
 	class:segment={node.node_type === 'segment'}
 	class:field={node.node_type === 'field'}
 	class:component={node.node_type === 'component'}
+	data-node-id={node.id}
 	role="treeitem"
 	tabindex={0}
 	aria-expanded={node.has_children ? isExpanded : undefined}
