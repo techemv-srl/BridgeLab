@@ -8,3 +8,4 @@ export * from './licensing';
 export * from './templates';
 export * from './bundle';
 export * from './fhirpath';
+export * from './testcases';

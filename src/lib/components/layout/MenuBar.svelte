@@ -22,6 +22,7 @@
 		onClearRecent: () => void;
 		onOpenRecentFile: (path: string) => void;
 		onNewFromTemplate: () => void;
+		onShowTestCases: () => void;
 		onParse: () => void;
 		onValidate: () => void;
 		onToggleTree: () => void;
@@ -52,6 +53,7 @@
 		onClearRecent,
 		onOpenRecentFile,
 		onNewFromTemplate,
+		onShowTestCases,
 		onParse,
 		onValidate,
 		onToggleTree,
@@ -104,6 +106,10 @@
 				<button class="menu-item" onclick={() => menuAction(onNewFromTemplate)}>
 					<span>New from Template...</span>
 					<span class="shortcut">Ctrl+N</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onShowTestCases)}>
+					<span>Test Case Library...</span>
+					<span class="shortcut">Ctrl+L</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onOpenFile)}>
