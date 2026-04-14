@@ -38,6 +38,8 @@ pub fn run() {
             commands::validation::validate_fhir,
             commands::parser::parse_fhir_message,
             commands::parser::get_fhir_tree_children,
+            commands::parser::expand_field_inline,
+            commands::parser::collapse_all_fields,
             commands::communication::mllp_send,
             commands::communication::mllp_receive,
             commands::communication::http_request,

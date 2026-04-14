@@ -302,35 +302,59 @@
 		expandedFieldContent = null;
 	}
 
-	/** Handle expand truncated from editor context menu or click on {...} marker */
+	/** Handle expand truncated: replace truncated text inline with full content */
 	async function handleEditorExpandTruncated(lineNumber: number, _fieldMarker: string) {
 		if (!activeTab?.parseResult) return;
-		// Line number in editor corresponds to segment index (0-based: line 1 = seg 0)
 		const segIdx = lineNumber - 1;
 		const msgId = activeTab.parseResult.message_id;
 
 		try {
-			// Find which field in this segment is truncated
+			const { expandFieldInline } = await import('$lib/ipc/parser');
+			// Find which field is truncated
 			const children = await getTreeChildren(msgId, `seg${segIdx}`);
 			const truncatedField = children.find(c => c.is_truncated);
 			if (truncatedField) {
 				const parts = truncatedField.id.split('.');
 				const fieldIdx = parseInt(parts[1]?.replace('f', '') ?? '0');
-				const fieldContent = await getFieldContent(msgId, segIdx, fieldIdx);
-				expandedFieldContent = fieldContent.full_text;
+				// Get the full text with this field expanded inline
+				const expandedText = await expandFieldInline(msgId, segIdx, fieldIdx);
+				// Update the editor content directly
+				if (messageStore.activeTabId) {
+					skipNextAutoParse = true;
+					messageStore.updateContent(messageStore.activeTabId, expandedText);
+				}
 			}
 		} catch (e) {
-			console.error('Failed to expand truncated field:', e);
+			console.error('Failed to expand field:', e);
 		}
 	}
 
-	/** Handle "Show in Tree" from editor context menu */
-	function handleEditorNavigateSegment(lineNumber: number, _segmentType: string) {
-		// Expand the tree panel if hidden
-		showTree = true;
-		// The tree should highlight/scroll to the segment at this line
-		// Line number corresponds to segment index (line 1 = segment 0)
+	/** Re-truncate all expanded fields */
+	async function handleCollapseAll() {
+		if (!activeTab?.parseResult) return;
+		try {
+			const { collapseAllFields } = await import('$lib/ipc/parser');
+			const truncatedText = await collapseAllFields(activeTab.parseResult.message_id);
+			if (messageStore.activeTabId) {
+				skipNextAutoParse = true;
+				messageStore.updateContent(messageStore.activeTabId, truncatedText);
+			}
+		} catch (e) {
+			console.error('Failed to collapse fields:', e);
+		}
 	}
+
+	/** Handle "Show in Tree" - expand tree panel and select the segment */
+	function handleEditorNavigateSegment(lineNumber: number, _segmentType: string) {
+		showTree = true;
+		// Trigger tree to expand/select segment at this index
+		const segIdx = lineNumber - 1;
+		if (activeTab?.parseResult) {
+			selectedTreeSegmentIdx = segIdx;
+		}
+	}
+
+	let selectedTreeSegmentIdx = $state<number | null>(null);
 
 	// --- View operations ---
 
@@ -565,6 +589,7 @@
 						roots={activeTab.parseResult.tree_roots}
 						onNodeSelect={handleNodeSelect}
 						onFieldExpand={handleFieldExpand}
+						navigateToSegmentIdx={selectedTreeSegmentIdx}
 					/>
 				{:else}
 					<div class="panel-header">
@@ -609,6 +634,7 @@
 						onCursorChange={handleCursorChange}
 						onExpandTruncated={handleEditorExpandTruncated}
 						onNavigateToSegment={handleEditorNavigateSegment}
+						onCollapseAll={handleCollapseAll}
 					/>
 				{:else}
 					<div class="editor-empty">

@@ -243,6 +243,119 @@ fn build_segment_tree_nodes(
         .collect()
 }
 
+/// Expand a truncated field inline: returns the full message text with that field expanded.
+#[tauri::command]
+pub fn expand_field_inline(
+    message_id: String,
+    segment_idx: usize,
+    field_idx: usize,
+    store: State<'_, MessageStore>,
+) -> Result<String, BridgeLabError> {
+    let msg = store
+        .get(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
+
+    let sep = msg.delimiters.field as char;
+    let mut result_segments: Vec<String> = Vec::new();
+
+    for (si, seg) in msg.segments.iter().enumerate() {
+        let seg_text = seg.span.as_str(&msg.raw);
+        if si == segment_idx {
+            // Rebuild this segment with the target field expanded
+            let mut fields: Vec<String> = Vec::new();
+            let is_msh = seg.segment_type == "MSH";
+
+            // For MSH, fields[0] = "MSH", and MSH-1 is the field separator
+            if is_msh {
+                fields.push(seg.segment_type.clone());
+            }
+
+            for field in &seg.fields {
+                let content = field.span.as_str(&msg.raw);
+                if is_msh && field.position <= 2 {
+                    // MSH-1 and MSH-2 are handled specially
+                    fields.push(content.to_string());
+                    continue;
+                }
+
+                if field.position == field_idx {
+                    // This is the field to expand - use full content
+                    fields.push(content.to_string());
+                } else if field.is_truncated {
+                    // Keep other truncated fields truncated
+                    let preview: String = content.chars().take(50).collect();
+                    fields.push(format!("{}{{...{} bytes}}", preview, field.span.len()));
+                } else {
+                    fields.push(content.to_string());
+                }
+            }
+
+            if is_msh {
+                // MSH: first item is "MSH", MSH-1 is separator, then join rest with separator
+                let mut line = String::new();
+                for (i, f) in fields.iter().enumerate() {
+                    if i == 0 {
+                        line.push_str(f); // "MSH"
+                    } else if i == 1 {
+                        line.push_str(f); // field separator "|"
+                    } else if i == 2 {
+                        line.push_str(f); // encoding chars "^~\&"
+                        line.push(sep);
+                    } else {
+                        if i > 3 { line.push(sep); }
+                        line.push_str(f);
+                    }
+                }
+                result_segments.push(line);
+            } else {
+                result_segments.push(format!("{}{}{}", seg.segment_type, sep, fields.join(&sep.to_string())));
+            }
+        } else {
+            // Not the target segment - use truncated version
+            let mut fields_out = Vec::new();
+            for field in &seg.fields {
+                let content = field.span.as_str(&msg.raw);
+                if seg.segment_type == "MSH" && field.position <= 2 {
+                    fields_out.push(content.to_string());
+                    continue;
+                }
+                if field.is_truncated {
+                    let preview: String = content.chars().take(50).collect();
+                    fields_out.push(format!("{}{{...{} bytes}}", preview, field.span.len()));
+                } else {
+                    fields_out.push(content.to_string());
+                }
+            }
+            if seg.segment_type == "MSH" {
+                let mut line = seg.segment_type.clone();
+                for (i, f) in fields_out.iter().enumerate() {
+                    if i == 0 { line.push_str(f); }
+                    else if i == 1 { line.push_str(f); line.push(sep); }
+                    else { if i > 2 { line.push(sep); } line.push_str(f); }
+                }
+                result_segments.push(line);
+            } else {
+                result_segments.push(format!("{}{}{}", seg.segment_type, sep, fields_out.join(&sep.to_string())));
+            }
+        }
+    }
+
+    Ok(result_segments.join("\r"))
+}
+
+/// Re-truncate a message: returns text with all fields truncated again.
+#[tauri::command]
+pub fn collapse_all_fields(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<String, BridgeLabError> {
+    let msg = store
+        .get(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
+
+    Ok(truncation::build_truncated_text(&msg, 50))
+}
+
 /// Parse a FHIR resource from raw text content.
 #[tauri::command]
 pub fn parse_fhir_message(

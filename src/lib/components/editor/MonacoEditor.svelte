@@ -15,6 +15,8 @@
 		onExpandTruncated?: (lineNumber: number, fieldMarker: string) => void;
 		/** Called when user right-clicks a segment line and wants to navigate the tree */
 		onNavigateToSegment?: (lineNumber: number, segmentType: string) => void;
+		/** Called when user wants to re-truncate all expanded fields */
+		onCollapseAll?: () => void;
 	}
 
 	let {
@@ -26,6 +28,7 @@
 		onCursorChange,
 		onExpandTruncated,
 		onNavigateToSegment,
+		onCollapseAll,
 	}: Props = $props();
 
 	let containerEl = $state<HTMLDivElement | undefined>(undefined);
@@ -136,6 +139,17 @@
 				if (match) {
 					onExpandTruncated?.(line, match[0]);
 				}
+			}
+		});
+
+		// "Collapse All" action - re-truncate expanded fields
+		ed.addAction({
+			id: 'bridgelab.collapseAll',
+			label: 'Collapse All Expanded Fields',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 3,
+			run: () => {
+				onCollapseAll?.();
 			}
 		});
 
