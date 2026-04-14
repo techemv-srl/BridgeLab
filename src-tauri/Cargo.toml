@@ -23,6 +23,8 @@ memchr = "2"
 uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
 base64 = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
+dirs = "6"
 
 [profile.release]
 panic = "abort"
