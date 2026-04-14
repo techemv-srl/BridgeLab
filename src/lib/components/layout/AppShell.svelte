@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { /* onMount not used - resolves to server no-op */ } from 'svelte';
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
 	import { parseMessage, openFile, getFieldContent } from '$lib/ipc/parser';
 	import { getRecentFiles, addRecentFile, clearRecentFiles, getPreference, setPreference } from '$lib/ipc/database';
@@ -37,27 +37,34 @@
 	// Reactive references to the active tab
 	let activeTab = $derived(messageStore.activeTab);
 
-	onMount(async () => {
-		// Load preferences (wrapped in try/catch for web-only dev mode)
-		try {
-			const savedTheme = await getPreference('theme');
-			if (savedTheme) {
-				theme = savedTheme;
-				applyTheme(savedTheme);
-			}
-			const savedLang = await getPreference('language');
-			if (savedLang) setLocale(savedLang as Locale);
-			const savedTreeWidth = await getPreference('tree_width');
-			if (savedTreeWidth) treeWidth = parseInt(savedTreeWidth) || 350;
-			recentFiles = await getRecentFiles(20);
-		} catch {
-			// Running in web-only mode without Tauri backend
-		}
+	// Initialize app (using $effect instead of onMount which is a server no-op)
+	let appInitialized = false;
+	$effect(() => {
+		if (appInitialized || typeof window === 'undefined') return;
+		appInitialized = true;
 
-		// Start with one empty tab
+		// Start with one empty tab immediately
 		if (messageStore.tabs.length === 0) {
 			messageStore.newTab();
 		}
+
+		// Load preferences async
+		(async () => {
+			try {
+				const savedTheme = await getPreference('theme');
+				if (savedTheme) {
+					theme = savedTheme;
+					applyTheme(savedTheme);
+				}
+				const savedLang = await getPreference('language');
+				if (savedLang) setLocale(savedLang as Locale);
+				const savedTreeWidth = await getPreference('tree_width');
+				if (savedTreeWidth) treeWidth = parseInt(savedTreeWidth) || 350;
+				recentFiles = await getRecentFiles(20);
+			} catch {
+				// Running in web-only mode without Tauri backend
+			}
+		})();
 	});
 
 	function applyTheme(t: string) {
