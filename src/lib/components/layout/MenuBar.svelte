@@ -17,6 +17,11 @@
 		onToggleTree: () => void;
 		onToggleValidation: () => void;
 		onToggleCommunication: () => void;
+		onAnonymize: () => void;
+		onCopyFull: () => void;
+		onCopyTruncated: () => void;
+		onExportJson: () => void;
+		onExportCsv: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowAbout: () => void;
@@ -37,6 +42,11 @@
 		onToggleTree,
 		onToggleValidation,
 		onToggleCommunication,
+		onAnonymize,
+		onCopyFull,
+		onCopyTruncated,
+		onExportJson,
+		onExportCsv,
 		onSetTheme,
 		onSetLanguage,
 		onShowAbout,
@@ -213,6 +223,23 @@
 				<button class="menu-item" onclick={() => menuAction(onToggleCommunication)}>
 					<span>Communication Panel</span>
 					<span class="shortcut">Ctrl+K</span>
+				</button>
+				<div class="menu-separator"></div>
+				<button class="menu-item" onclick={() => menuAction(onAnonymize)}>
+					<span>{t('menu.tools.anonymize')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onCopyFull)}>
+					<span>{t('menu.tools.copyFull')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onCopyTruncated)}>
+					<span>{t('menu.tools.copyTruncated')}</span>
+				</button>
+				<div class="menu-separator"></div>
+				<button class="menu-item" onclick={() => menuAction(onExportJson)}>
+					<span>Export JSON</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onExportCsv)}>
+					<span>Export CSV</span>
 				</button>
 			</div>
 		{/if}

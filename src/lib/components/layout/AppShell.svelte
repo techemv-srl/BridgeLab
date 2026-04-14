@@ -4,6 +4,7 @@
 	import { parseMessage, openFile, getFieldContent } from '$lib/ipc/parser';
 	import { getRecentFiles, addRecentFile, clearRecentFiles, getPreference, setPreference } from '$lib/ipc/database';
 	import { validateMessage, parseFhirMessage } from '$lib/ipc/validation';
+	import { getMessageFullText, getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
 	import type { RecentFile } from '$lib/ipc/database';
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
 	import { t, setLocale, type Locale } from '$lib/i18n';
@@ -15,6 +16,7 @@
 	import StatusBar from '$lib/components/layout/StatusBar.svelte';
 	import ValidationPanel from '$lib/components/validation/ValidationPanel.svelte';
 	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
+	import AnonymizeDialog from '$lib/components/anonymization/AnonymizeDialog.svelte';
 
 	// UI state
 	let treeWidth = $state(350);
@@ -25,6 +27,7 @@
 	let bottomPanelHeight = $state(220);
 	let expandedFieldContent = $state<string | null>(null);
 	let showAbout = $state(false);
+	let showAnonymize = $state(false);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
 
@@ -255,6 +258,69 @@
 		showTree = !showTree;
 	}
 
+	// --- Anonymization / Copy / Export ---
+
+	function handleShowAnonymize() {
+		if (activeTab?.parseResult) showAnonymize = true;
+	}
+
+	function handleAnonymized(text: string) {
+		showAnonymize = false;
+		// Open anonymized text in a new tab
+		messageStore.newTab();
+		const newTab = messageStore.activeTab;
+		if (newTab) {
+			messageStore.updateContent(newTab.id, text);
+			newTab.label = 'Anonymized';
+		}
+	}
+
+	async function handleCopyFull() {
+		if (!activeTab?.parseResult) return;
+		try {
+			const text = await getMessageFullText(activeTab.parseResult.message_id);
+			await navigator.clipboard.writeText(text);
+		} catch { /* fallback: copy editor content */
+			if (activeTab?.content) await navigator.clipboard.writeText(activeTab.content);
+		}
+	}
+
+	async function handleCopyTruncated() {
+		if (!activeTab?.parseResult) return;
+		try {
+			const text = await getMessageTruncatedText(activeTab.parseResult.message_id, 100);
+			await navigator.clipboard.writeText(text);
+		} catch {
+			// web mode fallback
+		}
+	}
+
+	async function handleExportJson() {
+		if (!activeTab?.parseResult) return;
+		try {
+			const json = await exportAsJson(activeTab.parseResult.message_id);
+			downloadFile(json, `${activeTab.label || 'message'}.json`, 'application/json');
+		} catch (e) { console.error('Export JSON failed:', e); }
+	}
+
+	async function handleExportCsv() {
+		if (!activeTab?.parseResult) return;
+		try {
+			const csv = await exportAsCsv(activeTab.parseResult.message_id);
+			downloadFile(csv, `${activeTab.label || 'message'}.csv`, 'text/csv');
+		} catch (e) { console.error('Export CSV failed:', e); }
+	}
+
+	function downloadFile(content: string, filename: string, mimeType: string) {
+		const blob = new Blob([content], { type: mimeType });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
 	async function handleSetTheme(newTheme: string) {
 		theme = newTheme;
 		applyTheme(newTheme);
@@ -359,6 +425,11 @@
 		onValidate={handleValidate}
 		onToggleValidation={() => { showValidation = !showValidation; }}
 		onToggleCommunication={() => { showCommunication = !showCommunication; }}
+		onAnonymize={handleShowAnonymize}
+		onCopyFull={handleCopyFull}
+		onCopyTruncated={handleCopyTruncated}
+		onExportJson={handleExportJson}
+		onExportCsv={handleExportCsv}
 		onToggleTree={handleToggleTree}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
@@ -487,6 +558,21 @@
 					</button>
 					<span class="modal-info">{t('modal.characters', { count: expandedFieldContent.length.toLocaleString() })}</span>
 				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Anonymize dialog -->
+	{#if showAnonymize && activeTab?.parseResult}
+		<div class="modal-overlay" onclick={() => { showAnonymize = false; }} role="presentation">
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+				<AnonymizeDialog
+					messageId={activeTab.parseResult.message_id}
+					onAnonymized={handleAnonymized}
+					onClose={() => { showAnonymize = false; }}
+				/>
 			</div>
 		</div>
 	{/if}
