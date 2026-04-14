@@ -11,12 +11,12 @@
 		readonly?: boolean;
 		onContentChange?: (value: string) => void;
 		onCursorChange?: (line: number, column: number) => void;
-		/** Called when user wants to expand a truncated field at a specific line */
-		onExpandTruncated?: (lineNumber: number, fieldMarker: string) => void;
-		/** Called when user right-clicks a segment line and wants to navigate the tree */
+		onExpandTruncated?: (lineNumber: number, fieldPosition: string) => void;
+		onExpandAll?: () => void;
 		onNavigateToSegment?: (lineNumber: number, segmentType: string) => void;
-		/** Called when user wants to re-truncate all expanded fields */
 		onCollapseAll?: () => void;
+		onCopyFullMessage?: () => void;
+		onCopyTruncatedMessage?: () => void;
 	}
 
 	let {
@@ -27,8 +27,11 @@
 		onContentChange,
 		onCursorChange,
 		onExpandTruncated,
+		onExpandAll,
 		onNavigateToSegment,
 		onCollapseAll,
+		onCopyFullMessage,
+		onCopyTruncatedMessage,
 	}: Props = $props();
 
 	let containerEl = $state<HTMLDivElement | undefined>(undefined);
@@ -161,14 +164,47 @@
 			}
 		});
 
+		// "Expand All Truncated Fields" action
+		ed.addAction({
+			id: 'bridgelab.expandAll',
+			label: 'Expand All Truncated Fields',
+			contextMenuGroupId: 'navigation',
+			contextMenuOrder: 3,
+			run: () => {
+				onExpandAll?.();
+			}
+		});
+
 		// "Collapse All" action - re-truncate expanded fields
 		ed.addAction({
 			id: 'bridgelab.collapseAll',
 			label: 'Collapse All Expanded Fields',
 			contextMenuGroupId: 'navigation',
-			contextMenuOrder: 3,
+			contextMenuOrder: 4,
 			run: () => {
 				onCollapseAll?.();
+			}
+		});
+
+		// "Copy Full Message" action
+		ed.addAction({
+			id: 'bridgelab.copyFullMessage',
+			label: 'Copy Full Message (with expanded fields)',
+			contextMenuGroupId: '9_cutcopypaste',
+			contextMenuOrder: 8,
+			run: () => {
+				onCopyFullMessage?.();
+			}
+		});
+
+		// "Copy Truncated Message" action
+		ed.addAction({
+			id: 'bridgelab.copyTruncatedMessage',
+			label: 'Copy Truncated Message (for email)',
+			contextMenuGroupId: '9_cutcopypaste',
+			contextMenuOrder: 9,
+			run: () => {
+				onCopyTruncatedMessage?.();
 			}
 		});
 
