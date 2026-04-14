@@ -537,14 +537,12 @@
 			<!-- Editor -->
 			<div class="editor-area">
 				{#if activeTab}
-					{#key activeTab.id}
-						<MonacoEditor
-							content={activeTab.content}
-							theme={theme === 'light' ? 'bridgelab-light' : 'bridgelab-dark'}
-							onContentChange={handleContentChange}
-							onCursorChange={handleCursorChange}
-						/>
-					{/key}
+					<MonacoEditor
+						content={activeTab.content}
+						theme={theme === 'light' ? 'bridgelab-light' : 'bridgelab-dark'}
+						onContentChange={handleContentChange}
+						onCursorChange={handleCursorChange}
+					/>
 				{:else}
 					<div class="editor-empty">
 						<p>{t('tree.empty')}</p>
