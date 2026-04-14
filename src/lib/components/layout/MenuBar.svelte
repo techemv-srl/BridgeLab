@@ -206,12 +206,11 @@
 				</button>
 				<div class="menu-separator"></div>
 				<div class="menu-label">{tr('menu.view.language')}</div>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('en'))}>
-					<span>English</span>
-				</button>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('it'))}>
-					<span>Italiano</span>
-				</button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('en'))}><span>English</span></button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('it'))}><span>Italiano</span></button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('fr'))}><span>Français</span></button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('es'))}><span>Español</span></button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('de'))}><span>Deutsch</span></button>
 			</div>
 		{/if}
 	</div>
