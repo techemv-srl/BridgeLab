@@ -4,3 +4,4 @@ export * from './tables';
 export * from './validation';
 export * from './communication';
 export * from './anonymization';
+export * from './licensing';

@@ -1,9 +1,12 @@
 import en from './en.json';
 import it from './it.json';
+import fr from './fr.json';
+import es from './es.json';
+import de from './de.json';
 
-export type Locale = 'en' | 'it';
+export type Locale = 'en' | 'it' | 'fr' | 'es' | 'de';
 
-const translations: Record<Locale, Record<string, string>> = { en, it };
+const translations: Record<Locale, Record<string, string>> = { en, it, fr, es, de };
 
 // Reactive locale using a simple pub/sub pattern
 let _locale: Locale = 'en';
@@ -27,6 +30,9 @@ export function getLocales(): { code: Locale; name: string }[] {
 	return [
 		{ code: 'en', name: 'English' },
 		{ code: 'it', name: 'Italiano' },
+		{ code: 'fr', name: 'Français' },
+		{ code: 'es', name: 'Español' },
+		{ code: 'de', name: 'Deutsch' },
 	];
 }
 
