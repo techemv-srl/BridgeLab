@@ -18,6 +18,9 @@
 	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
 	import AnonymizeDialog from '$lib/components/anonymization/AnonymizeDialog.svelte';
 	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
+	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
+	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
+	import { checkLicense, type LicenseStatus } from '$lib/ipc/licensing';
 
 	// UI state
 	let treeWidth = $state(350);
@@ -31,6 +34,8 @@
 	let showAbout = $state(false);
 	let showAnonymize = $state(false);
 	let showSettings = $state(false);
+	let showActivation = $state(false);
+	let licenseStatus = $state<LicenseStatus | null>(null);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
 	let localeVersion = $state(0);
@@ -64,7 +69,7 @@
 			messageStore.newTab();
 		}
 
-		// Load preferences async
+		// Load preferences and check license async
 		(async () => {
 			try {
 				const savedTheme = await getPreference('theme');
@@ -80,8 +85,31 @@
 			} catch {
 				// Running in web-only mode without Tauri backend
 			}
+			try {
+				licenseStatus = await checkLicense();
+			} catch {
+				// License check failed - treat as trial
+			}
 		})();
 	});
+
+	async function handleCheckUpdates() {
+		try {
+			const { checkForUpdates, installUpdate } = await import('$lib/ipc/updater');
+			const info = await checkForUpdates();
+			if (info && info.available) {
+				const ok = confirm(`Update available: v${info.version}\n\nCurrent: v${info.currentVersion}\n\n${info.notes}\n\nInstall now? The app will restart.`);
+				if (ok) {
+					await installUpdate(info.update);
+				}
+			} else {
+				alert('You are running the latest version.');
+			}
+		} catch (e) {
+			console.error('Update check failed:', e);
+			alert('Could not check for updates. Please check your internet connection.');
+		}
+	}
 
 	function applyTheme(t: string) {
 		document.documentElement.setAttribute('data-theme', t);
@@ -555,6 +583,11 @@
 	ondrop={handleDrop}
 	role="application"
 >
+	<!-- Trial/License Banner -->
+	{#if licenseStatus}
+		<TrialBanner status={licenseStatus} onActivate={() => { showActivation = true; }} />
+	{/if}
+
 	<!-- Menu Bar -->
 	<MenuBar
 		{recentFiles}
@@ -579,6 +612,7 @@
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
 		onShowSettings={() => { showSettings = true; }}
+		onCheckUpdates={handleCheckUpdates}
 		onShowAbout={() => { showAbout = true; }}
 	/>
 
@@ -758,6 +792,21 @@
 					<p class="about-license">{tr('about.license')}</p>
 					<p class="about-copyright">{tr('about.copyright', { year: new Date().getFullYear().toString() })}</p>
 				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- License Activation modal -->
+	{#if showActivation && licenseStatus}
+		<div class="modal-overlay" onclick={() => { showActivation = false; }} role="presentation">
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
+				<ActivationDialog
+					currentStatus={licenseStatus}
+					onClose={() => { showActivation = false; }}
+					onStatusChange={(s) => { licenseStatus = s; }}
+				/>
 			</div>
 		</div>
 	{/if}

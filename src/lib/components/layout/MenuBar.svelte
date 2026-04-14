@@ -34,6 +34,7 @@
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowSettings: () => void;
+		onCheckUpdates: () => void;
 		onShowAbout: () => void;
 	}
 
@@ -60,6 +61,7 @@
 		onSetTheme,
 		onSetLanguage,
 		onShowSettings,
+		onCheckUpdates,
 		onShowAbout,
 	}: Props = $props();
 
@@ -206,12 +208,11 @@
 				</button>
 				<div class="menu-separator"></div>
 				<div class="menu-label">{tr('menu.view.language')}</div>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('en'))}>
-					<span>English</span>
-				</button>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('it'))}>
-					<span>Italiano</span>
-				</button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('en'))}><span>English</span></button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('it'))}><span>Italiano</span></button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('fr'))}><span>Français</span></button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('es'))}><span>Español</span></button>
+				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('de'))}><span>Deutsch</span></button>
 			</div>
 		{/if}
 	</div>
@@ -272,6 +273,10 @@
 		</button>
 		{#if openMenu === 'help'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
+				<button class="menu-item" onclick={() => menuAction(onCheckUpdates)}>
+					<span>Check for Updates</span>
+				</button>
+				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowAbout)}>
 					<span>{tr('menu.help.about')}</span>
 				</button>
