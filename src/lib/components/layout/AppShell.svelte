@@ -17,6 +17,7 @@
 	import ValidationPanel from '$lib/components/validation/ValidationPanel.svelte';
 	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
 	import AnonymizeDialog from '$lib/components/anonymization/AnonymizeDialog.svelte';
+	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
 
 	// UI state
 	let treeWidth = $state(350);
@@ -29,6 +30,7 @@
 	let expandedFieldContent = $state<string | null>(null);
 	let showAbout = $state(false);
 	let showAnonymize = $state(false);
+	let showSettings = $state(false);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
 	let localeVersion = $state(0);
@@ -504,6 +506,7 @@
 		else if (e.key === 'F6') { e.preventDefault(); handleValidate(); }
 		else if (ctrl && e.key === 'j') { e.preventDefault(); showValidation = !showValidation; }
 		else if (ctrl && e.key === 'k') { e.preventDefault(); showCommunication = !showCommunication; }
+		else if (ctrl && e.key === ',') { e.preventDefault(); showSettings = true; }
 	}
 </script>
 
@@ -543,6 +546,7 @@
 		onToggleTree={handleToggleTree}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
+		onShowSettings={() => { showSettings = true; }}
 		onShowAbout={() => { showAbout = true; }}
 	/>
 
@@ -717,6 +721,21 @@
 					<p class="about-license">{tr('about.license')}</p>
 					<p class="about-copyright">{tr('about.copyright', { year: new Date().getFullYear().toString() })}</p>
 				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Settings modal -->
+	{#if showSettings}
+		<div class="modal-overlay" onclick={() => { showSettings = false; }} role="presentation">
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
+				<SettingsModal
+					{theme}
+					onClose={() => { showSettings = false; }}
+					onThemeChange={handleSetTheme}
+				/>
 			</div>
 		</div>
 	{/if}
@@ -904,6 +923,11 @@
 
 	.modal-small {
 		width: 400px;
+		max-width: 90%;
+	}
+
+	.modal-lg {
+		width: 700px;
 		max-width: 90%;
 	}
 

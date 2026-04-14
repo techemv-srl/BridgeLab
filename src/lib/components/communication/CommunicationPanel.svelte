@@ -27,6 +27,16 @@
 	let mllpSending = $state(false);
 	let mllpListening = $state(false);
 	let mllpListenPort = $state(2576);
+	let mllpShowAdvanced = $state(false);
+	// MLLP advanced options
+	let mllpResponseTimeout = $state(30);
+	let mllpAutoAck = $state(true);
+	let mllpEncoding = $state('UTF-8');
+	let mllpStartChar = $state('0x0B');
+	let mllpEndChar1 = $state('0x1C');
+	let mllpEndChar2 = $state('0x0D');
+	let mllpRetries = $state(0);
+	let mllpRetryDelay = $state(2);
 
 	// HTTP state
 	let httpUrl = $state('http://localhost:8080/fhir');
@@ -35,6 +45,13 @@
 	let httpBody = $state('');
 	let httpResult = $state<HttpResult | null>(null);
 	let httpSending = $state(false);
+	let httpShowAdvanced = $state(false);
+	// HTTP advanced options
+	let httpTimeout = $state(30);
+	let httpFollowRedirects = $state(true);
+	let httpAuth = $state('none');
+	let httpAuthUser = $state('');
+	let httpAuthPass = $state('');
 
 	// History state
 	let history = $state<HistoryEntry[]>([]);
@@ -145,9 +162,45 @@
 					<input id="mllp-host" bind:value={mllpHost} placeholder="localhost" class="input-grow" />
 					<label for="mllp-port">Port</label>
 					<input id="mllp-port" type="number" bind:value={mllpPort} class="input-sm" />
-					<label for="mllp-timeout">Timeout (s)</label>
+					<label for="mllp-timeout">Connect Timeout</label>
 					<input id="mllp-timeout" type="number" bind:value={mllpTimeout} class="input-xs" />
+					<span class="hint">s</span>
 				</div>
+
+				<button class="toggle-advanced" onclick={() => { mllpShowAdvanced = !mllpShowAdvanced; }}>
+					{mllpShowAdvanced ? '\u25BC' : '\u25B6'} Advanced MLLP Settings
+				</button>
+				{#if mllpShowAdvanced}
+					<div class="advanced-section">
+						<div class="form-row">
+							<label for="mllp-resptimeout">Response Timeout</label>
+							<input id="mllp-resptimeout" type="number" bind:value={mllpResponseTimeout} class="input-xs" />
+							<span class="hint">s</span>
+							<label for="mllp-encoding">Encoding</label>
+							<select id="mllp-encoding" bind:value={mllpEncoding} class="input-method">
+								<option>UTF-8</option><option>ISO-8859-1</option><option>ASCII</option><option>Windows-1252</option>
+							</select>
+						</div>
+						<div class="form-row">
+							<label for="mllp-startchar">Start Block</label>
+							<input id="mllp-startchar" bind:value={mllpStartChar} class="input-sm" title="MLLP start byte (VT = 0x0B)" />
+							<label for="mllp-endchar1">End Block</label>
+							<input id="mllp-endchar1" bind:value={mllpEndChar1} class="input-sm" title="MLLP end byte 1 (FS = 0x1C)" />
+							<label for="mllp-endchar2">End CR</label>
+							<input id="mllp-endchar2" bind:value={mllpEndChar2} class="input-sm" title="MLLP end byte 2 (CR = 0x0D)" />
+						</div>
+						<div class="form-row">
+							<label for="mllp-retries">Retries</label>
+							<input id="mllp-retries" type="number" min={0} max={10} bind:value={mllpRetries} class="input-xs" />
+							<label for="mllp-retrydelay">Retry Delay</label>
+							<input id="mllp-retrydelay" type="number" min={1} max={60} bind:value={mllpRetryDelay} class="input-xs" />
+							<span class="hint">s</span>
+						</div>
+						<div class="setting-check">
+							<label><input type="checkbox" bind:checked={mllpAutoAck} /> Auto-generate ACK on receive</label>
+						</div>
+					</div>
+				{/if}
 
 				<div class="section-label">Send</div>
 				{#if !hasMessage}
@@ -205,6 +258,44 @@
 					</select>
 					<input bind:value={httpUrl} placeholder="https://server/fhir/Patient" class="input-grow" />
 				</div>
+
+				<button class="toggle-advanced" onclick={() => { httpShowAdvanced = !httpShowAdvanced; }}>
+					{httpShowAdvanced ? '\u25BC' : '\u25B6'} Advanced HTTP Settings
+				</button>
+				{#if httpShowAdvanced}
+					<div class="advanced-section">
+						<div class="form-row">
+							<label for="http-timeout">Timeout</label>
+							<input id="http-timeout" type="number" min={1} max={300} bind:value={httpTimeout} class="input-xs" />
+							<span class="hint">s</span>
+						</div>
+						<div class="setting-check">
+							<label><input type="checkbox" bind:checked={httpFollowRedirects} /> Follow Redirects</label>
+						</div>
+						<div class="form-row">
+							<label for="http-auth">Authentication</label>
+							<select id="http-auth" bind:value={httpAuth} class="input-method">
+								<option value="none">None</option>
+								<option value="basic">Basic Auth</option>
+								<option value="bearer">Bearer Token</option>
+							</select>
+						</div>
+						{#if httpAuth === 'basic'}
+							<div class="form-row">
+								<label for="http-user">Username</label>
+								<input id="http-user" bind:value={httpAuthUser} class="input-grow" />
+								<label for="http-pass">Password</label>
+								<input id="http-pass" type="password" bind:value={httpAuthPass} class="input-grow" />
+							</div>
+						{:else if httpAuth === 'bearer'}
+							<div class="form-row">
+								<label for="http-token">Token</label>
+								<input id="http-token" bind:value={httpAuthUser} placeholder="Bearer token" class="input-grow" />
+							</div>
+						{/if}
+					</div>
+				{/if}
+
 				<div class="section-label">Headers</div>
 				<textarea bind:value={httpHeadersText} rows={2} placeholder="Content-Type: application/json" class="input-area"></textarea>
 				<div class="section-label">Body <span class="hint">(leave empty to send active message)</span></div>
@@ -376,4 +467,12 @@
 	.dv { color: var(--color-text-primary); font-family: 'JetBrains Mono', monospace; }
 	.detail-body { font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-all; margin: 0; padding: 4px; background: var(--color-bg-primary); border-radius: 3px; max-height: 80px; overflow-y: auto; color: var(--color-text-primary); }
 	.comm-empty { padding: 16px; text-align: center; color: var(--color-text-secondary); font-style: italic; }
+
+	/* Advanced toggle */
+	.toggle-advanced { background: none; border: none; color: var(--color-accent); font-size: 11px; font-family: inherit; cursor: pointer; padding: 3px 0; text-align: left; }
+	.toggle-advanced:hover { text-decoration: underline; }
+	.advanced-section { padding: 6px 0 6px 12px; border-left: 2px solid var(--color-accent); margin: 2px 0; display: flex; flex-direction: column; gap: 5px; }
+	.setting-check { margin: 2px 0; }
+	.setting-check label { font-size: 11px; color: var(--color-text-primary); display: flex; align-items: center; gap: 5px; cursor: pointer; }
+	.setting-check input[type="checkbox"] { accent-color: var(--color-accent); }
 </style>
