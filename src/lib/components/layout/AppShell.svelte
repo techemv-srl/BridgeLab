@@ -303,28 +303,19 @@
 	}
 
 	/** Handle expand truncated: replace truncated text inline with full content.
-	 *  markerOccurrence is the 0-based index of the truncation marker on that line. */
-	async function handleEditorExpandTruncated(lineNumber: number, markerOccurrence: string) {
+	 *  fieldPositionStr is the HL7 field position number determined by counting pipes. */
+	async function handleEditorExpandTruncated(lineNumber: number, fieldPositionStr: string) {
 		if (!activeTab?.parseResult) return;
 		const segIdx = lineNumber - 1;
 		const msgId = activeTab.parseResult.message_id;
-		const occurrenceIdx = parseInt(markerOccurrence) || 0;
+		const fieldPosition = parseInt(fieldPositionStr) || 0;
 
 		try {
 			const { expandFieldInline } = await import('$lib/ipc/parser');
-			// Get all fields for this segment and find the Nth truncated one
-			const children = await getTreeChildren(msgId, `seg${segIdx}`);
-			const truncatedFields = children.filter(c => c.is_truncated);
-
-			const targetField = truncatedFields[occurrenceIdx];
-			if (targetField) {
-				const parts = targetField.id.split('.');
-				const fieldIdx = parseInt(parts[1]?.replace('f', '') ?? '0');
-				const expandedText = await expandFieldInline(msgId, segIdx, fieldIdx);
-				if (messageStore.activeTabId) {
-					skipNextAutoParse = true;
-					messageStore.updateContent(messageStore.activeTabId, expandedText);
-				}
+			const expandedText = await expandFieldInline(msgId, segIdx, fieldPosition);
+			if (messageStore.activeTabId) {
+				skipNextAutoParse = true;
+				messageStore.updateContent(messageStore.activeTabId, expandedText);
 			}
 		} catch (e) {
 			console.error('Failed to expand field:', e);
