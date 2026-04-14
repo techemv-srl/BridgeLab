@@ -175,6 +175,7 @@
 	// --- Editor operations ---
 
 	let skipNextAutoParse = false;
+	let autoParseTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async function handleContentChange(value: string) {
 		if (!messageStore.activeTabId) return;
@@ -186,6 +187,28 @@
 		}
 
 		messageStore.updateContent(messageStore.activeTabId, value);
+
+		// Debounced auto-parse (500ms after user stops typing/pasting)
+		if (autoParseTimer) clearTimeout(autoParseTimer);
+		autoParseTimer = setTimeout(() => autoParse(value), 500);
+	}
+
+	async function autoParse(value: string) {
+		if (!messageStore.activeTabId || !value || value.length < 10) return;
+		const trimmed = value.trim();
+		try {
+			if (trimmed.startsWith('MSH|')) {
+				const result = await parseMessage(value);
+				skipNextAutoParse = true;
+				messageStore.updateParseResult(messageStore.activeTabId!, result, result.truncated_text);
+			} else if (trimmed.startsWith('{') && trimmed.includes('"resourceType"')) {
+				const result = await parseFhirMessage(value);
+				skipNextAutoParse = true;
+				messageStore.updateParseResult(messageStore.activeTabId!, result, result.truncated_text);
+			}
+		} catch {
+			// Not valid yet, ignore
+		}
 	}
 
 	async function handleParse() {
@@ -386,6 +409,27 @@
 		}
 	}
 
+	// --- Paste handler (fallback for when Monaco doesn't have focus) ---
+
+	async function handlePaste(e: ClipboardEvent) {
+		// Only intercept if Monaco doesn't have focus
+		const activeEl = document.activeElement;
+		const isMonacoFocused = activeEl?.closest('.editor-container') ||
+			activeEl?.classList.contains('monaco-editor') ||
+			activeEl?.closest('.monaco-editor');
+
+		if (isMonacoFocused) return; // Let Monaco handle it
+
+		const text = e.clipboardData?.getData('text/plain');
+		if (!text || !messageStore.activeTabId) return;
+
+		e.preventDefault();
+		messageStore.updateContent(messageStore.activeTabId, text);
+
+		// Trigger auto-parse
+		await autoParse(text);
+	}
+
 	// --- Keyboard shortcuts ---
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -406,6 +450,7 @@
 	onkeydown={handleKeydown}
 	onmousemove={handleMouseMove}
 	onmouseup={stopDrag}
+	onpaste={handlePaste}
 />
 
 <div
