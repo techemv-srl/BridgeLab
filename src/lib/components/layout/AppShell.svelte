@@ -3,7 +3,9 @@
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
 	import { parseMessage, openFile, getFieldContent } from '$lib/ipc/parser';
 	import { getRecentFiles, addRecentFile, clearRecentFiles, getPreference, setPreference } from '$lib/ipc/database';
+	import { validateMessage, parseFhirMessage } from '$lib/ipc/validation';
 	import type { RecentFile } from '$lib/ipc/database';
+	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
 	import { t, setLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
@@ -11,15 +13,21 @@
 	import EditorTabs from '$lib/components/editor/EditorTabs.svelte';
 	import MenuBar from '$lib/components/layout/MenuBar.svelte';
 	import StatusBar from '$lib/components/layout/StatusBar.svelte';
+	import ValidationPanel from '$lib/components/validation/ValidationPanel.svelte';
 
 	// UI state
 	let treeWidth = $state(350);
 	let isDragging = $state(false);
 	let showTree = $state(true);
+	let showValidation = $state(false);
+	let validationHeight = $state(180);
 	let expandedFieldContent = $state<string | null>(null);
 	let showAbout = $state(false);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
+
+	// Validation state
+	let validationReport = $state<ValidationReport | null>(null);
 
 	// Reactive references to the active tab
 	let activeTab = $derived(messageStore.activeTab);
@@ -160,15 +168,53 @@
 				// Not a valid HL7 message yet
 			}
 		}
+		// Auto-detect FHIR JSON
+		const trimmed = value.trim();
+		if (trimmed.startsWith('{') && trimmed.includes('"resourceType"')) {
+			try {
+				const result = await parseFhirMessage(value);
+				messageStore.updateParseResult(messageStore.activeTabId, result, result.truncated_text);
+			} catch {
+				// Not valid FHIR
+			}
+		}
 	}
 
 	async function handleParse() {
 		if (!activeTab?.content?.trim()) return;
+		const content = activeTab.content.trim();
 		try {
-			const result = await parseMessage(activeTab.content);
+			let result: ParseResult;
+			// Detect format
+			if (content.startsWith('{') && content.includes('"resourceType"')) {
+				result = await parseFhirMessage(content);
+			} else {
+				result = await parseMessage(content);
+			}
 			messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
 		} catch (e) {
 			console.error('Parse error:', e);
+		}
+	}
+
+	async function handleValidate() {
+		if (!activeTab?.parseResult) return;
+		try {
+			if (activeTab.parseResult.format === 'HL7v2') {
+				const report = await validateMessage(activeTab.parseResult.message_id);
+				validationReport = report;
+			}
+			showValidation = true;
+		} catch (e) {
+			console.error('Validation error:', e);
+		}
+	}
+
+	function handleValidationIssueClick(issue: ValidationIssue) {
+		// Navigate to the segment in the tree/editor
+		if (issue.segment_idx !== null && issue.segment_idx !== undefined) {
+			// Scroll editor to the segment line (segments are 1-indexed lines)
+			// The segment index maps roughly to line numbers in the truncated text
 		}
 	}
 
@@ -278,6 +324,8 @@
 		else if (ctrl && e.key === 'w') { e.preventDefault(); handleCloseTab(); }
 		else if (ctrl && e.key === 'b') { e.preventDefault(); handleToggleTree(); }
 		else if (e.key === 'F5') { e.preventDefault(); handleParse(); }
+		else if (e.key === 'F6') { e.preventDefault(); handleValidate(); }
+		else if (ctrl && e.key === 'j') { e.preventDefault(); showValidation = !showValidation; }
 	}
 </script>
 
@@ -305,6 +353,8 @@
 		onClearRecent={handleClearRecent}
 		onOpenRecentFile={handleOpenRecentFile}
 		onParse={handleParse}
+		onValidate={handleValidate}
+		onToggleValidation={() => { showValidation = !showValidation; }}
 		onToggleTree={handleToggleTree}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
@@ -377,6 +427,23 @@
 					</div>
 				{/if}
 			</div>
+
+			<!-- Validation Panel -->
+			{#if showValidation && validationReport}
+				<div class="validation-area" style="height: {validationHeight}px">
+					<div class="panel-header">
+						<span>Validation</span>
+						<button class="panel-close" onclick={() => { showValidation = false; }}>&times;</button>
+					</div>
+					<ValidationPanel
+						issues={validationReport.issues}
+						errorCount={validationReport.error_count}
+						warningCount={validationReport.warning_count}
+						infoCount={validationReport.info_count}
+						onIssueClick={handleValidationIssueClick}
+					/>
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -469,6 +536,28 @@
 	.editor-area {
 		flex: 1;
 		overflow: hidden;
+	}
+
+	.validation-area {
+		display: flex;
+		flex-direction: column;
+		flex-shrink: 0;
+		border-top: 1px solid var(--color-border);
+		overflow: hidden;
+	}
+
+	.panel-close {
+		background: none;
+		border: none;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		font-size: 14px;
+		line-height: 1;
+		padding: 0 4px;
+	}
+
+	.panel-close:hover {
+		color: var(--color-error);
 	}
 
 	.editor-empty {

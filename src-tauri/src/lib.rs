@@ -3,6 +3,7 @@ pub mod database;
 pub mod message_store;
 pub mod parser;
 pub mod utils;
+pub mod validation;
 
 use database::Database;
 use message_store::MessageStore;
@@ -31,6 +32,10 @@ pub fn run() {
             commands::database::get_all_preferences,
             commands::tables::get_segment_info,
             commands::tables::get_field_info,
+            commands::validation::validate_message,
+            commands::validation::validate_fhir,
+            commands::parser::parse_fhir_message,
+            commands::parser::get_fhir_tree_children,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");

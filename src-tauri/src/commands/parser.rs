@@ -2,6 +2,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::message_store::MessageStore;
+use crate::parser::fhir;
 use crate::parser::hl7::lexer::Hl7Lexer;
 use crate::parser::hl7::message::{TreeNode, TreeNodeType};
 use crate::parser::truncation;
@@ -234,4 +235,62 @@ fn build_segment_tree_nodes(
             }
         })
         .collect()
+}
+
+/// Parse a FHIR resource from raw text content.
+#[tauri::command]
+pub fn parse_fhir_message(
+    content: String,
+    store: State<'_, MessageStore>,
+) -> Result<ParseResult, BridgeLabError> {
+    let file_size = content.len() as u64;
+
+    let format_type = fhir::detect_fhir(&content)
+        .ok_or_else(|| BridgeLabError::ParseError("Content is not a valid FHIR resource".into()))?;
+
+    let resource = match format_type {
+        fhir::FhirFormat::Json => fhir::parse_fhir_json(&content)
+            .map_err(|e| BridgeLabError::ParseError(e))?,
+        fhir::FhirFormat::Xml => fhir::parse_fhir_xml(&content)
+            .map_err(|e| BridgeLabError::ParseError(e))?,
+    };
+
+    let message_id = uuid::Uuid::new_v4().to_string();
+    let resource_type = resource.resource_type.clone();
+    let fhir_version = resource.fhir_version.clone();
+    let tree_roots = fhir::build_fhir_tree_nodes(&resource);
+    let tree_count = tree_roots.len();
+
+    let format_str = match format_type {
+        fhir::FhirFormat::Json => "FHIR JSON",
+        fhir::FhirFormat::Xml => "FHIR XML",
+    };
+
+    store.insert_fhir(message_id.clone(), resource);
+
+    Ok(ParseResult {
+        message_id,
+        message_type: resource_type,
+        format: format_str.to_string(),
+        version: fhir_version,
+        truncated_text: content,
+        tree_roots,
+        truncation_count: 0,
+        file_size_bytes: file_size,
+        segment_count: tree_count,
+    })
+}
+
+/// Get child tree nodes for a FHIR resource.
+#[tauri::command]
+pub fn get_fhir_tree_children(
+    message_id: String,
+    node_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<Vec<TreeNode>, BridgeLabError> {
+    let resource = store
+        .get_fhir(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
+
+    Ok(fhir::get_fhir_children(&resource, &node_id))
 }

@@ -13,7 +13,9 @@
 		onClearRecent: () => void;
 		onOpenRecentFile: (path: string) => void;
 		onParse: () => void;
+		onValidate: () => void;
 		onToggleTree: () => void;
+		onToggleValidation: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowAbout: () => void;
@@ -30,7 +32,9 @@
 		onClearRecent,
 		onOpenRecentFile,
 		onParse,
+		onValidate,
 		onToggleTree,
+		onToggleValidation,
 		onSetTheme,
 		onSetLanguage,
 		onShowAbout,
@@ -160,6 +164,10 @@
 					<span>{t('menu.view.tree')}</span>
 					<span class="shortcut">Ctrl+B</span>
 				</button>
+				<button class="menu-item" onclick={() => menuAction(onToggleValidation)}>
+					<span>{t('menu.tools.validate')}</span>
+					<span class="shortcut">Ctrl+J</span>
+				</button>
 				<div class="menu-separator"></div>
 				<div class="menu-label">{t('menu.view.theme')}</div>
 				<button class="menu-item" class:checked={theme === 'dark'} onclick={() => menuAction(() => onSetTheme('dark'))}>
@@ -194,6 +202,10 @@
 				<button class="menu-item" onclick={() => menuAction(onParse)}>
 					<span>{t('menu.tools.parse')}</span>
 					<span class="shortcut">F5</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onValidate)}>
+					<span>{t('menu.tools.validate')}</span>
+					<span class="shortcut">F6</span>
 				</button>
 			</div>
 		{/if}
