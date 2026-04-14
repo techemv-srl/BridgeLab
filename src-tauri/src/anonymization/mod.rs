@@ -80,13 +80,13 @@ pub fn detect_phi(msg: &Hl7Message) -> Vec<PhiLocation> {
 
 /// Anonymize an HL7 message by replacing PHI fields with masked values.
 pub fn anonymize_message(msg: &Hl7Message) -> String {
-    let text = String::from_utf8_lossy(&msg.raw).to_string();
+    let _text = String::from_utf8_lossy(&msg.raw).to_string();
     let mut lines: Vec<String> = Vec::new();
 
     // Split by segment (CR or CRLF)
-    for (seg_idx, seg) in msg.segments.iter().enumerate() {
+    for (_seg_idx, seg) in msg.segments.iter().enumerate() {
         let seg_text = seg.span.as_str(&msg.raw);
-        let mut fields: Vec<&str> = seg_text.split(msg.delimiters.field as char).collect();
+        let fields: Vec<&str> = seg_text.split(msg.delimiters.field as char).collect();
 
         for &(seg_type, field_pos, _name, ref _sensitivity) in PHI_FIELDS {
             if seg.segment_type != seg_type {
@@ -120,7 +120,7 @@ fn anonymize_by_replacement(msg: &Hl7Message) -> String {
     let sep = msg.delimiters.field as char;
     let mut result_segments: Vec<String> = Vec::new();
 
-    for (seg_idx, seg) in msg.segments.iter().enumerate() {
+    for (_seg_idx, seg) in msg.segments.iter().enumerate() {
         let seg_text = seg.span.as_str(&msg.raw);
         let mut fields: Vec<String> = seg_text.split(sep).map(|s| s.to_string()).collect();
 
@@ -147,12 +147,12 @@ fn anonymize_by_replacement(msg: &Hl7Message) -> String {
 }
 
 /// Generate a replacement value that preserves format but masks data.
-fn generate_replacement(original: &str, field_pos: usize, sensitivity: &PhiSensitivity) -> String {
+fn generate_replacement(original: &str, _field_pos: usize, sensitivity: &PhiSensitivity) -> String {
     // Check if it contains components (^)
     if original.contains('^') {
         // Mask each component separately
         let components: Vec<&str> = original.split('^').collect();
-        let masked: Vec<String> = components.iter().enumerate().map(|(i, comp)| {
+        let masked: Vec<String> = components.iter().enumerate().map(|(_i, comp)| {
             if comp.is_empty() {
                 String::new()
             } else {

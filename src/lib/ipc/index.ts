@@ -6,3 +6,5 @@ export * from './communication';
 export * from './anonymization';
 export * from './licensing';
 export * from './templates';
+export * from './bundle';
+export * from './fhirpath';
