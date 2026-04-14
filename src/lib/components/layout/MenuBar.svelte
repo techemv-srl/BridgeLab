@@ -34,6 +34,7 @@
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowSettings: () => void;
+		onCheckUpdates: () => void;
 		onShowAbout: () => void;
 	}
 
@@ -60,6 +61,7 @@
 		onSetTheme,
 		onSetLanguage,
 		onShowSettings,
+		onCheckUpdates,
 		onShowAbout,
 	}: Props = $props();
 
@@ -271,6 +273,10 @@
 		</button>
 		{#if openMenu === 'help'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
+				<button class="menu-item" onclick={() => menuAction(onCheckUpdates)}>
+					<span>Check for Updates</span>
+				</button>
+				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowAbout)}>
 					<span>{tr('menu.help.about')}</span>
 				</button>

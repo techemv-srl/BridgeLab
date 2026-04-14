@@ -93,6 +93,24 @@
 		})();
 	});
 
+	async function handleCheckUpdates() {
+		try {
+			const { checkForUpdates, installUpdate } = await import('$lib/ipc/updater');
+			const info = await checkForUpdates();
+			if (info && info.available) {
+				const ok = confirm(`Update available: v${info.version}\n\nCurrent: v${info.currentVersion}\n\n${info.notes}\n\nInstall now? The app will restart.`);
+				if (ok) {
+					await installUpdate(info.update);
+				}
+			} else {
+				alert('You are running the latest version.');
+			}
+		} catch (e) {
+			console.error('Update check failed:', e);
+			alert('Could not check for updates. Please check your internet connection.');
+		}
+	}
+
 	function applyTheme(t: string) {
 		document.documentElement.setAttribute('data-theme', t);
 	}
@@ -594,6 +612,7 @@
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
 		onShowSettings={() => { showSettings = true; }}
+		onCheckUpdates={handleCheckUpdates}
 		onShowAbout={() => { showAbout = true; }}
 	/>
 
