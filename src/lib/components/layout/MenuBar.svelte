@@ -21,12 +21,16 @@
 		onCloseAllTabs: () => void;
 		onClearRecent: () => void;
 		onOpenRecentFile: (path: string) => void;
+		onNewFromTemplate: () => void;
+		onShowTestCases: () => void;
 		onParse: () => void;
 		onValidate: () => void;
 		onToggleTree: () => void;
 		onToggleValidation: () => void;
 		onToggleCommunication: () => void;
 		onAnonymize: () => void;
+		onShowBundleVisualizer: () => void;
+		onToggleFhirPath: () => void;
 		onCopyFull: () => void;
 		onCopyTruncated: () => void;
 		onExportJson: () => void;
@@ -48,12 +52,16 @@
 		onCloseAllTabs,
 		onClearRecent,
 		onOpenRecentFile,
+		onNewFromTemplate,
+		onShowTestCases,
 		onParse,
 		onValidate,
 		onToggleTree,
 		onToggleValidation,
 		onToggleCommunication,
 		onAnonymize,
+		onShowBundleVisualizer,
+		onToggleFhirPath,
 		onCopyFull,
 		onCopyTruncated,
 		onExportJson,
@@ -95,6 +103,15 @@
 		</button>
 		{#if openMenu === 'file'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
+				<button class="menu-item" onclick={() => menuAction(onNewFromTemplate)}>
+					<span>New from Template...</span>
+					<span class="shortcut">Ctrl+N</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onShowTestCases)}>
+					<span>Test Case Library...</span>
+					<span class="shortcut">Ctrl+L</span>
+				</button>
+				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onOpenFile)}>
 					<span>{tr('menu.file.open')}</span>
 					<span class="shortcut">Ctrl+O</span>
@@ -242,6 +259,13 @@
 					<span class="shortcut">Ctrl+K</span>
 				</button>
 				<div class="menu-separator"></div>
+				<button class="menu-item" onclick={() => menuAction(onShowBundleVisualizer)}>
+					<span>FHIR Bundle Visualizer</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onToggleFhirPath)}>
+					<span>FHIRPath Evaluator</span>
+					<span class="shortcut">Ctrl+P</span>
+				</button>
 				<button class="menu-item" onclick={() => menuAction(onAnonymize)}>
 					<span>{tr('menu.tools.anonymize')}</span>
 				</button>

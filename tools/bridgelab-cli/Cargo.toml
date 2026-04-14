@@ -1,0 +1,17 @@
+[package]
+name = "bridgelab-cli"
+version = "0.1.0"
+edition = "2021"
+description = "BridgeLab CLI - headless HL7 validation and tooling for CI/CD"
+
+[[bin]]
+name = "bridgelab-cli"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+memchr = "2"
+clap = { version = "4", features = ["derive"] }
+walkdir = "2"
+glob = "0.3"

@@ -1,6 +1,8 @@
 pub mod anonymization;
 pub mod communication;
 pub mod licensing;
+pub mod templates;
+pub mod test_cases;
 pub mod database;
 pub mod fileio;
 pub mod parser;
