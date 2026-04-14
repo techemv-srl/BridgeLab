@@ -5,6 +5,21 @@ use std::sync::Mutex;
 
 use crate::communication::profiles::{ConnectionProfile, ProfileType, HistoryEntry};
 
+/// A test case stored for team sharing / regression testing.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TestCase {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub tags: String,
+    pub content: String,
+    pub expected_message_type: String,
+    pub expected_validation_result: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// Database manager for BridgeLab local storage.
 pub struct Database {
     conn: Mutex<Connection>,
@@ -104,6 +119,19 @@ impl Database {
                 status TEXT NOT NULL DEFAULT '',
                 response_time_ms INTEGER NOT NULL DEFAULT 0,
                 timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS test_cases (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL DEFAULT 'general',
+                tags TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL,
+                expected_message_type TEXT NOT NULL DEFAULT '',
+                expected_validation_result TEXT NOT NULL DEFAULT 'valid',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             "
         ).map_err(|e| format!("Migration failed: {}", e))?;
@@ -319,6 +347,68 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM request_history", [])
             .map_err(|e| format!("Clear failed: {}", e))?;
+        Ok(())
+    }
+
+    // --- Test Cases ---
+
+    pub fn save_test_case(&self, tc: &TestCase) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO test_cases (id, name, description, category, tags, content,
+                expected_message_type, expected_validation_result, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))
+             ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name, description=excluded.description,
+                category=excluded.category, tags=excluded.tags, content=excluded.content,
+                expected_message_type=excluded.expected_message_type,
+                expected_validation_result=excluded.expected_validation_result,
+                updated_at=datetime('now')",
+            params![tc.id, tc.name, tc.description, tc.category, tc.tags, tc.content,
+                    tc.expected_message_type, tc.expected_validation_result, tc.created_at],
+        ).map_err(|e| format!("Save failed: {}", e))?;
+        Ok(())
+    }
+
+    pub fn get_test_cases(&self, category_filter: Option<&str>) -> Result<Vec<TestCase>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let query = match category_filter {
+            Some(_) => "SELECT id, name, description, category, tags, content, expected_message_type,
+                        expected_validation_result, created_at, updated_at
+                        FROM test_cases WHERE category = ?1 ORDER BY name",
+            None => "SELECT id, name, description, category, tags, content, expected_message_type,
+                     expected_validation_result, created_at, updated_at
+                     FROM test_cases ORDER BY category, name",
+        };
+
+        let mut stmt = conn.prepare(query).map_err(|e| format!("Query prep failed: {}", e))?;
+
+        let map_row = |row: &rusqlite::Row| -> rusqlite::Result<TestCase> {
+            Ok(TestCase {
+                id: row.get(0)?, name: row.get(1)?, description: row.get(2)?,
+                category: row.get(3)?, tags: row.get(4)?, content: row.get(5)?,
+                expected_message_type: row.get(6)?, expected_validation_result: row.get(7)?,
+                created_at: row.get(8)?, updated_at: row.get(9)?,
+            })
+        };
+
+        let cases: Vec<TestCase> = if let Some(cat) = category_filter {
+            let iter = stmt.query_map(params![cat], map_row)
+                .map_err(|e| format!("Query failed: {}", e))?;
+            iter.filter_map(|r| r.ok()).collect()
+        } else {
+            let iter = stmt.query_map([], map_row)
+                .map_err(|e| format!("Query failed: {}", e))?;
+            iter.filter_map(|r| r.ok()).collect()
+        };
+
+        Ok(cases)
+    }
+
+    pub fn delete_test_case(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM test_cases WHERE id = ?1", params![id])
+            .map_err(|e| format!("Delete failed: {}", e))?;
         Ok(())
     }
 }
