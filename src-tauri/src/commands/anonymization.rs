@@ -3,8 +3,6 @@ use tauri::State;
 
 use crate::anonymization::{self, PhiLocation};
 use crate::message_store::MessageStore;
-use crate::parser::hl7::lexer::Hl7Lexer;
-use crate::parser::hl7::message::TreeNode;
 use crate::parser::truncation;
 
 /// Detect PHI fields in an HL7 message.
