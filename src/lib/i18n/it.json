@@ -1,0 +1,76 @@
+{
+	"app.title": "BridgeLab",
+	"app.subtitle": "HL7 reso semplice",
+
+	"menu.file": "File",
+	"menu.file.open": "Apri File",
+	"menu.file.save": "Salva",
+	"menu.file.saveAs": "Salva con nome...",
+	"menu.file.close": "Chiudi Scheda",
+	"menu.file.closeAll": "Chiudi Tutte le Schede",
+	"menu.file.recent": "File Recenti",
+	"menu.file.clearRecent": "Cancella Recenti",
+	"menu.file.exit": "Esci",
+
+	"menu.edit": "Modifica",
+	"menu.edit.undo": "Annulla",
+	"menu.edit.redo": "Ripristina",
+	"menu.edit.cut": "Taglia",
+	"menu.edit.copy": "Copia",
+	"menu.edit.paste": "Incolla",
+	"menu.edit.find": "Trova",
+	"menu.edit.replace": "Trova e Sostituisci",
+	"menu.edit.selectAll": "Seleziona Tutto",
+
+	"menu.view": "Visualizza",
+	"menu.view.tree": "Struttura Messaggio",
+	"menu.view.statusbar": "Barra di Stato",
+	"menu.view.theme": "Tema",
+	"menu.view.theme.dark": "Scuro",
+	"menu.view.theme.light": "Chiaro",
+	"menu.view.language": "Lingua",
+
+	"menu.tools": "Strumenti",
+	"menu.tools.parse": "Analizza Messaggio",
+	"menu.tools.validate": "Valida",
+	"menu.tools.anonymize": "Anonimizza",
+	"menu.tools.copyFull": "Copia Messaggio Completo",
+	"menu.tools.copyTruncated": "Copia Messaggio Troncato",
+
+	"menu.help": "Aiuto",
+	"menu.help.about": "Informazioni su BridgeLab",
+	"menu.help.shortcuts": "Scorciatoie da Tastiera",
+
+	"tree.header": "Struttura Messaggio",
+	"tree.empty": "Apri un file HL7 o incolla un messaggio per iniziare.",
+	"tree.shortcutHint": "Ctrl+O per aprire un file",
+	"tree.noMessage": "Nessun messaggio caricato",
+
+	"editor.header": "Editor",
+	"editor.untitled": "Senza titolo",
+	"editor.modified": "Modificato",
+
+	"tabs.newTab": "Nuova Scheda",
+	"tabs.closeTab": "Chiudi",
+	"tabs.closeOthers": "Chiudi le altre",
+
+	"status.segments": "{count} segmenti",
+	"status.truncated": "{count} troncati",
+	"status.line": "Riga {line}",
+	"status.column": "Col {col}",
+
+	"modal.fullContent": "Contenuto Completo del Campo",
+	"modal.copy": "Copia negli Appunti",
+	"modal.characters": "{count} caratteri",
+	"modal.close": "Chiudi",
+
+	"dialog.unsavedChanges": "Ci sono modifiche non salvate. Vuoi salvare prima di chiudere?",
+	"dialog.save": "Salva",
+	"dialog.dontSave": "Non Salvare",
+	"dialog.cancel": "Annulla",
+
+	"about.title": "Informazioni su BridgeLab",
+	"about.version": "Versione {version}",
+	"about.description": "Un editor moderno per messaggi HL7/FHIR per professionisti dell'integrazione sanitaria.",
+	"about.license": "Open Core - Gratuito per uso non commerciale"
+}
