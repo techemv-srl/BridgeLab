@@ -259,7 +259,7 @@ pub fn expand_field_inline(
     let mut result_segments: Vec<String> = Vec::new();
 
     for (si, seg) in msg.segments.iter().enumerate() {
-        let seg_text = seg.span.as_str(&msg.raw);
+        let _seg_text = seg.span.as_str(&msg.raw);
         if si == segment_idx {
             // Rebuild this segment with the target field expanded
             let mut fields: Vec<String> = Vec::new();
@@ -425,4 +425,63 @@ pub fn get_fhir_tree_children(
         .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
 
     Ok(fhir::get_fhir_children(&resource, &node_id))
+}
+
+/// Analyze a FHIR Bundle and return entries + references for visualization.
+#[tauri::command]
+pub fn analyze_fhir_bundle(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<fhir::bundle::BundleAnalysis, BridgeLabError> {
+    let resource = store
+        .get_fhir(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id.clone()))?;
+
+    let json = resource.json_value
+        .ok_or_else(|| BridgeLabError::ParseError("FHIR resource is not JSON".into()))?;
+
+    fhir::bundle::analyze_bundle(&json)
+        .map_err(|e| BridgeLabError::ParseError(e))
+}
+
+/// Evaluate a FHIRPath expression on the active FHIR resource.
+#[tauri::command]
+pub fn evaluate_fhirpath(
+    message_id: String,
+    expression: String,
+    store: State<'_, MessageStore>,
+) -> Result<fhir::fhirpath::FhirPathResult, BridgeLabError> {
+    let resource = store
+        .get_fhir(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
+
+    let json = resource.json_value
+        .ok_or_else(|| BridgeLabError::ParseError("FHIR resource is not JSON".into()))?;
+
+    Ok(fhir::fhirpath::evaluate(&expression, &json))
+}
+
+/// Get a specific entry content from a FHIR Bundle (for inspector panel).
+#[tauri::command]
+pub fn get_fhir_bundle_entry(
+    message_id: String,
+    entry_index: usize,
+    store: State<'_, MessageStore>,
+) -> Result<String, BridgeLabError> {
+    let resource = store
+        .get_fhir(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
+
+    let json = resource.json_value
+        .ok_or_else(|| BridgeLabError::ParseError("FHIR resource is not JSON".into()))?;
+
+    let entries = json.get("entry")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| BridgeLabError::ParseError("Bundle has no entry array".into()))?;
+
+    let entry = entries.get(entry_index)
+        .ok_or_else(|| BridgeLabError::ParseError(format!("Entry index {} out of range", entry_index)))?;
+
+    serde_json::to_string_pretty(entry)
+        .map_err(|e| BridgeLabError::ParseError(format!("Serialize failed: {}", e)))
 }

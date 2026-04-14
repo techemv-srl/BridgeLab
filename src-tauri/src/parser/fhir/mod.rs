@@ -1,3 +1,6 @@
+pub mod bundle;
+pub mod fhirpath;
+
 use serde::Serialize;
 use serde_json::Value;
 

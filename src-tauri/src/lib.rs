@@ -5,6 +5,7 @@ pub mod database;
 pub mod licensing;
 pub mod message_store;
 pub mod parser;
+pub mod templates;
 pub mod utils;
 pub mod validation;
 
@@ -40,6 +41,9 @@ pub fn run() {
             commands::validation::validate_fhir,
             commands::parser::parse_fhir_message,
             commands::parser::get_fhir_tree_children,
+            commands::parser::analyze_fhir_bundle,
+            commands::parser::get_fhir_bundle_entry,
+            commands::parser::evaluate_fhirpath,
             commands::parser::expand_field_inline,
             commands::parser::expand_all_fields,
             commands::parser::collapse_all_fields,
@@ -62,6 +66,11 @@ pub fn run() {
             commands::licensing::activate_license,
             commands::licensing::deactivate_license,
             commands::licensing::get_hardware_id,
+            commands::templates::get_templates,
+            commands::templates::get_templates_grouped,
+            commands::test_cases::save_test_case,
+            commands::test_cases::get_test_cases,
+            commands::test_cases::delete_test_case,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");
