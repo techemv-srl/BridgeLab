@@ -16,6 +16,7 @@
 		onValidate: () => void;
 		onToggleTree: () => void;
 		onToggleValidation: () => void;
+		onToggleCommunication: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowAbout: () => void;
@@ -35,6 +36,7 @@
 		onValidate,
 		onToggleTree,
 		onToggleValidation,
+		onToggleCommunication,
 		onSetTheme,
 		onSetLanguage,
 		onShowAbout,
@@ -206,6 +208,11 @@
 				<button class="menu-item" onclick={() => menuAction(onValidate)}>
 					<span>{t('menu.tools.validate')}</span>
 					<span class="shortcut">F6</span>
+				</button>
+				<div class="menu-separator"></div>
+				<button class="menu-item" onclick={() => menuAction(onToggleCommunication)}>
+					<span>Communication Panel</span>
+					<span class="shortcut">Ctrl+K</span>
 				</button>
 			</div>
 		{/if}
