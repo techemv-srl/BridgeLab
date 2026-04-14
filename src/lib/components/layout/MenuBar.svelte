@@ -28,6 +28,8 @@
 		onToggleValidation: () => void;
 		onToggleCommunication: () => void;
 		onAnonymize: () => void;
+		onShowBundleVisualizer: () => void;
+		onToggleFhirPath: () => void;
 		onCopyFull: () => void;
 		onCopyTruncated: () => void;
 		onExportJson: () => void;
@@ -56,6 +58,8 @@
 		onToggleValidation,
 		onToggleCommunication,
 		onAnonymize,
+		onShowBundleVisualizer,
+		onToggleFhirPath,
 		onCopyFull,
 		onCopyTruncated,
 		onExportJson,
@@ -249,6 +253,13 @@
 					<span class="shortcut">Ctrl+K</span>
 				</button>
 				<div class="menu-separator"></div>
+				<button class="menu-item" onclick={() => menuAction(onShowBundleVisualizer)}>
+					<span>FHIR Bundle Visualizer</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onToggleFhirPath)}>
+					<span>FHIRPath Evaluator</span>
+					<span class="shortcut">Ctrl+P</span>
+				</button>
 				<button class="menu-item" onclick={() => menuAction(onAnonymize)}>
 					<span>{tr('menu.tools.anonymize')}</span>
 				</button>
