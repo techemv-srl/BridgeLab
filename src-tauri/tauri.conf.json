@@ -29,12 +29,38 @@
 	"bundle": {
 		"active": true,
 		"targets": "all",
+		"category": "DeveloperTool",
+		"shortDescription": "Modern HL7/FHIR message editor",
+		"longDescription": "BridgeLab is a professional HL7/FHIR message editor for healthcare integration. Handles large messages, MLLP/HTTP transport, anonymization, validation and more.",
+		"copyright": "Copyright (c) 2026 TECHEMV SRL",
+		"publisher": "TECHEMV SRL",
 		"icon": [
 			"icons/32x32.png",
 			"icons/128x128.png",
 			"icons/128x128@2x.png",
 			"icons/icon.icns",
 			"icons/icon.ico"
-		]
+		],
+		"windows": {
+			"webviewInstallMode": { "type": "embedBootstrapper" }
+		},
+		"macOS": {
+			"minimumSystemVersion": "10.15"
+		},
+		"linux": {
+			"deb": {
+				"depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+			}
+		}
+	},
+	"plugins": {
+		"updater": {
+			"active": true,
+			"dialog": true,
+			"pubkey": "PLACEHOLDER_GENERATE_WITH_TAURI_SIGNER",
+			"endpoints": [
+				"https://github.com/1warpengine/HL7_editor/releases/latest/download/latest.json"
+			]
+		}
 	}
 }
