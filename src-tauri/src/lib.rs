@@ -68,6 +68,9 @@ pub fn run() {
             commands::licensing::get_hardware_id,
             commands::templates::get_templates,
             commands::templates::get_templates_grouped,
+            commands::test_cases::save_test_case,
+            commands::test_cases::get_test_cases,
+            commands::test_cases::delete_test_case,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");
