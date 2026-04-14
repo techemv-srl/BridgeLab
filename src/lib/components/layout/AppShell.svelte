@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { /* onMount not used - resolves to server no-op */ } from 'svelte';
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
-	import { parseMessage, openFile, getFieldContent } from '$lib/ipc/parser';
+	import { parseMessage, openFile, getFieldContent, getTreeChildren } from '$lib/ipc/parser';
 	import { getRecentFiles, addRecentFile, clearRecentFiles, getPreference, setPreference } from '$lib/ipc/database';
 	import { validateMessage, parseFhirMessage } from '$lib/ipc/validation';
 	import { getMessageFullText, getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
@@ -286,6 +286,36 @@
 		expandedFieldContent = null;
 	}
 
+	/** Handle expand truncated from editor context menu or click on {...} marker */
+	async function handleEditorExpandTruncated(lineNumber: number, _fieldMarker: string) {
+		if (!activeTab?.parseResult) return;
+		// Line number in editor corresponds to segment index (0-based: line 1 = seg 0)
+		const segIdx = lineNumber - 1;
+		const msgId = activeTab.parseResult.message_id;
+
+		try {
+			// Find which field in this segment is truncated
+			const children = await getTreeChildren(msgId, `seg${segIdx}`);
+			const truncatedField = children.find(c => c.is_truncated);
+			if (truncatedField) {
+				const parts = truncatedField.id.split('.');
+				const fieldIdx = parseInt(parts[1]?.replace('f', '') ?? '0');
+				const fieldContent = await getFieldContent(msgId, segIdx, fieldIdx);
+				expandedFieldContent = fieldContent.full_text;
+			}
+		} catch (e) {
+			console.error('Failed to expand truncated field:', e);
+		}
+	}
+
+	/** Handle "Show in Tree" from editor context menu */
+	function handleEditorNavigateSegment(lineNumber: number, _segmentType: string) {
+		// Expand the tree panel if hidden
+		showTree = true;
+		// The tree should highlight/scroll to the segment at this line
+		// Line number corresponds to segment index (line 1 = segment 0)
+	}
+
 	// --- View operations ---
 
 	function handleToggleTree() {
@@ -549,6 +579,8 @@
 						theme={theme === 'light' ? 'bridgelab-light' : 'bridgelab-dark'}
 						onContentChange={handleContentChange}
 						onCursorChange={handleCursorChange}
+						onExpandTruncated={handleEditorExpandTruncated}
+						onNavigateToSegment={handleEditorNavigateSegment}
 					/>
 				{:else}
 					<div class="editor-empty">
