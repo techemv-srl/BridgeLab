@@ -133,26 +133,30 @@
 				if (!pos) return;
 				const lineContent = editor.getModel()?.getLineContent(pos.lineNumber) ?? '';
 
-				// Find all truncation markers on this line
+				// Find the truncation marker closest to cursor
 				const markerRegex = /\{\.\.\.(\d+) bytes\}/g;
-				let closestMatch: string | null = null;
+				let closestMarkerCol = -1;
 				let closestDist = Infinity;
 				let matchResult;
 				while ((matchResult = markerRegex.exec(lineContent)) !== null) {
 					const markerCenter = matchResult.index + matchResult[0].length / 2;
-					const dist = Math.abs(pos.column - markerCenter);
+					const dist = Math.abs(pos.column - 1 - markerCenter); // pos.column is 1-based
 					if (dist < closestDist) {
 						closestDist = dist;
-						// Pass the occurrence index: how many markers before this one
-						const beforeText = lineContent.substring(0, matchResult.index);
-						const markersBefore = (beforeText.match(/\{\.\.\.(\d+) bytes\}/g) || []).length;
-						closestMatch = String(markersBefore);
+						closestMarkerCol = matchResult.index;
 					}
 				}
 
-				if (closestMatch !== null) {
-					// Pass line number and the marker occurrence index (0-based)
-					onExpandTruncated?.(pos.lineNumber, closestMatch);
+				if (closestMarkerCol >= 0) {
+					// Count pipe separators before the marker to determine field position
+					const textBeforeMarker = lineContent.substring(0, closestMarkerCol);
+					const pipeCount = (textBeforeMarker.match(/\|/g) || []).length;
+					// For PID: PID|f1|f2|f3|... -> pipeCount pipes = field position pipeCount
+					// For MSH: MSH|^~\&|f3|f4|... -> field numbering is offset
+					const segType = lineContent.substring(0, 3);
+					const fieldPosition = segType === 'MSH' ? pipeCount + 1 : pipeCount;
+					// Pass "lineNumber:fieldPosition"
+					onExpandTruncated?.(pos.lineNumber, String(fieldPosition));
 				}
 			}
 		});
