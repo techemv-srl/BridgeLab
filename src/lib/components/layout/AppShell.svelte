@@ -322,6 +322,21 @@
 		}
 	}
 
+	/** Expand ALL truncated fields inline */
+	async function handleExpandAll() {
+		if (!activeTab?.parseResult) return;
+		try {
+			const { expandAllFields } = await import('$lib/ipc/parser');
+			const fullText = await expandAllFields(activeTab.parseResult.message_id);
+			if (messageStore.activeTabId) {
+				skipNextAutoParse = true;
+				messageStore.updateContent(messageStore.activeTabId, fullText);
+			}
+		} catch (e) {
+			console.error('Failed to expand all fields:', e);
+		}
+	}
+
 	/** Re-truncate all expanded fields */
 	async function handleCollapseAll() {
 		if (!activeTab?.parseResult) return;
@@ -626,8 +641,11 @@
 						onContentChange={handleContentChange}
 						onCursorChange={handleCursorChange}
 						onExpandTruncated={handleEditorExpandTruncated}
+						onExpandAll={handleExpandAll}
 						onNavigateToSegment={handleEditorNavigateSegment}
 						onCollapseAll={handleCollapseAll}
+						onCopyFullMessage={handleCopyFull}
+						onCopyTruncatedMessage={handleCopyTruncated}
 					/>
 				{:else}
 					<div class="editor-empty">

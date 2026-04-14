@@ -343,6 +343,19 @@ pub fn expand_field_inline(
     Ok(result_segments.join("\r"))
 }
 
+/// Expand ALL truncated fields: returns the full original message text.
+#[tauri::command]
+pub fn expand_all_fields(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<String, BridgeLabError> {
+    let msg = store
+        .get(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
+
+    Ok(truncation::build_full_text(&msg))
+}
+
 /// Re-truncate a message: returns text with all fields truncated again.
 #[tauri::command]
 pub fn collapse_all_fields(
