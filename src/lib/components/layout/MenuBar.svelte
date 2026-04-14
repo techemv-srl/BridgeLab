@@ -21,6 +21,7 @@
 		onCloseAllTabs: () => void;
 		onClearRecent: () => void;
 		onOpenRecentFile: (path: string) => void;
+		onNewFromTemplate: () => void;
 		onParse: () => void;
 		onValidate: () => void;
 		onToggleTree: () => void;
@@ -48,6 +49,7 @@
 		onCloseAllTabs,
 		onClearRecent,
 		onOpenRecentFile,
+		onNewFromTemplate,
 		onParse,
 		onValidate,
 		onToggleTree,
@@ -95,6 +97,11 @@
 		</button>
 		{#if openMenu === 'file'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
+				<button class="menu-item" onclick={() => menuAction(onNewFromTemplate)}>
+					<span>New from Template...</span>
+					<span class="shortcut">Ctrl+N</span>
+				</button>
+				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onOpenFile)}>
 					<span>{tr('menu.file.open')}</span>
 					<span class="shortcut">Ctrl+O</span>

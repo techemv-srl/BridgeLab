@@ -5,6 +5,7 @@ pub mod database;
 pub mod licensing;
 pub mod message_store;
 pub mod parser;
+pub mod templates;
 pub mod utils;
 pub mod validation;
 
@@ -62,6 +63,8 @@ pub fn run() {
             commands::licensing::activate_license,
             commands::licensing::deactivate_license,
             commands::licensing::get_hardware_id,
+            commands::templates::get_templates,
+            commands::templates::get_templates_grouped,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");

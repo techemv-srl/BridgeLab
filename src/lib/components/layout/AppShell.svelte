@@ -20,7 +20,9 @@
 	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
 	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
+	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
 	import { checkLicense, type LicenseStatus } from '$lib/ipc/licensing';
+	import type { MessageTemplate } from '$lib/ipc/templates';
 
 	// UI state
 	let treeWidth = $state(350);
@@ -35,6 +37,7 @@
 	let showAnonymize = $state(false);
 	let showSettings = $state(false);
 	let showActivation = $state(false);
+	let showTemplates = $state(false);
 	let licenseStatus = $state<LicenseStatus | null>(null);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
@@ -92,6 +95,20 @@
 			}
 		})();
 	});
+
+	function handleTemplateSelected(template: MessageTemplate) {
+		showTemplates = false;
+		// Open in new tab
+		messageStore.newTab();
+		const newTab = messageStore.activeTab;
+		if (newTab) {
+			skipNextAutoParse = true;
+			messageStore.updateContent(newTab.id, template.content);
+			newTab.label = template.name.split(' - ')[0] || template.name;
+			// Trigger parse
+			autoParse(template.content);
+		}
+	}
 
 	async function handleCheckUpdates() {
 		try {
@@ -567,6 +584,7 @@
 		else if (ctrl && e.key === 'j') { e.preventDefault(); showValidation = !showValidation; }
 		else if (ctrl && e.key === 'k') { e.preventDefault(); showCommunication = !showCommunication; }
 		else if (ctrl && e.key === ',') { e.preventDefault(); showSettings = true; }
+		else if (ctrl && e.key === 'n') { e.preventDefault(); showTemplates = true; }
 	}
 </script>
 
@@ -599,6 +617,7 @@
 		onCloseAllTabs={handleCloseAllTabs}
 		onClearRecent={handleClearRecent}
 		onOpenRecentFile={handleOpenRecentFile}
+		onNewFromTemplate={() => { showTemplates = true; }}
 		onParse={handleParse}
 		onValidate={handleValidate}
 		onToggleValidation={() => { showValidation = !showValidation; }}
@@ -792,6 +811,20 @@
 					<p class="about-license">{tr('about.license')}</p>
 					<p class="about-copyright">{tr('about.copyright', { year: new Date().getFullYear().toString() })}</p>
 				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Template selection modal -->
+	{#if showTemplates}
+		<div class="modal-overlay" onclick={() => { showTemplates = false; }} role="presentation">
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
+				<TemplateDialog
+					onSelect={handleTemplateSelected}
+					onClose={() => { showTemplates = false; }}
+				/>
 			</div>
 		</div>
 	{/if}
