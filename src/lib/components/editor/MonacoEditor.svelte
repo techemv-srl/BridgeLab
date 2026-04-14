@@ -15,7 +15,7 @@
 	}
 
 	let {
-		content = $bindable(''),
+		content = '',
 		language = 'hl7v2',
 		theme = 'bridgelab-dark',
 		readonly = false,
@@ -27,10 +27,15 @@
 	let editor: MonacoEditor | undefined;
 	let monaco: MonacoModule | undefined;
 	let isUpdatingFromProp = false;
+	let mounted = false;
 
 	onMount(async () => {
+		mounted = true;
+
 		// Dynamic import to avoid SSR issues
 		monaco = await import('monaco-editor');
+
+		if (!mounted) return; // Component destroyed during async import
 
 		// Configure Monaco environment for web workers
 		self.MonacoEnvironment = {
@@ -47,7 +52,7 @@
 
 		// Create the editor
 		editor = monaco.editor.create(containerEl, {
-			value: content,
+			value: content || '',
 			language,
 			theme,
 			readOnly: readonly,
@@ -68,42 +73,56 @@
 
 		// Listen for content changes
 		editor.onDidChangeModelContent(() => {
-			if (isUpdatingFromProp) return;
+			if (!mounted || isUpdatingFromProp) return;
 			const value = editor!.getValue();
-			content = value;
 			onContentChange?.(value);
 		});
 
 		// Listen for cursor changes
 		editor.onDidChangeCursorPosition((e) => {
+			if (!mounted) return;
 			onCursorChange?.(e.position.lineNumber, e.position.column);
 		});
 	});
 
 	onDestroy(() => {
+		mounted = false;
 		editor?.dispose();
+		editor = undefined;
 	});
 
 	// Update editor when content prop changes externally
 	$effect(() => {
-		if (editor && content !== editor.getValue()) {
-			isUpdatingFromProp = true;
-			editor.setValue(content);
-			isUpdatingFromProp = false;
+		const currentContent = content;
+		if (!mounted || !editor) return;
+		try {
+			if (currentContent !== editor.getValue()) {
+				isUpdatingFromProp = true;
+				editor.setValue(currentContent || '');
+				isUpdatingFromProp = false;
+			}
+		} catch {
+			// Editor may be disposed during transition
 		}
 	});
 
 	// Update theme when prop changes
 	$effect(() => {
-		if (monaco) {
-			monaco.editor.setTheme(theme);
+		const currentTheme = theme;
+		if (!mounted || !monaco) return;
+		try {
+			monaco.editor.setTheme(currentTheme);
+		} catch {
+			// Ignore if disposed
 		}
 	});
 
 	/** Set content programmatically */
 	export function setValue(value: string) {
-		if (editor) {
+		if (editor && mounted) {
+			isUpdatingFromProp = true;
 			editor.setValue(value);
+			isUpdatingFromProp = false;
 		}
 	}
 
@@ -114,12 +133,12 @@
 
 	/** Focus the editor */
 	export function focus() {
-		editor?.focus();
+		if (editor && mounted) editor.focus();
 	}
 
 	/** Reveal a specific line */
 	export function revealLine(line: number) {
-		editor?.revealLineInCenter(line);
+		if (editor && mounted) editor.revealLineInCenter(line);
 	}
 </script>
 
