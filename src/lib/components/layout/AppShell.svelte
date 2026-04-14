@@ -20,7 +20,13 @@
 	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
 	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
+	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
+	import BundleVisualizer from '$lib/components/bundle/BundleVisualizer.svelte';
+	import FhirPathPanel from '$lib/components/fhirpath/FhirPathPanel.svelte';
+	import TestCaseLibrary from '$lib/components/testcases/TestCaseLibrary.svelte';
+	import type { TestCase } from '$lib/ipc/testcases';
 	import { checkLicense, type LicenseStatus } from '$lib/ipc/licensing';
+	import type { MessageTemplate } from '$lib/ipc/templates';
 
 	// UI state
 	let treeWidth = $state(350);
@@ -35,6 +41,10 @@
 	let showAnonymize = $state(false);
 	let showSettings = $state(false);
 	let showActivation = $state(false);
+	let showTemplates = $state(false);
+	let showBundleVisualizer = $state(false);
+	let showFhirPath = $state(false);
+	let showTestCases = $state(false);
 	let licenseStatus = $state<LicenseStatus | null>(null);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
@@ -92,6 +102,32 @@
 			}
 		})();
 	});
+
+	function handleTestCaseLoaded(tc: TestCase) {
+		showTestCases = false;
+		messageStore.newTab();
+		const newTab = messageStore.activeTab;
+		if (newTab) {
+			skipNextAutoParse = true;
+			messageStore.updateContent(newTab.id, tc.content);
+			newTab.label = tc.name;
+			autoParse(tc.content);
+		}
+	}
+
+	function handleTemplateSelected(template: MessageTemplate) {
+		showTemplates = false;
+		// Open in new tab
+		messageStore.newTab();
+		const newTab = messageStore.activeTab;
+		if (newTab) {
+			skipNextAutoParse = true;
+			messageStore.updateContent(newTab.id, template.content);
+			newTab.label = template.name.split(' - ')[0] || template.name;
+			// Trigger parse
+			autoParse(template.content);
+		}
+	}
 
 	async function handleCheckUpdates() {
 		try {
@@ -567,6 +603,9 @@
 		else if (ctrl && e.key === 'j') { e.preventDefault(); showValidation = !showValidation; }
 		else if (ctrl && e.key === 'k') { e.preventDefault(); showCommunication = !showCommunication; }
 		else if (ctrl && e.key === ',') { e.preventDefault(); showSettings = true; }
+		else if (ctrl && e.key === 'n') { e.preventDefault(); showTemplates = true; }
+		else if (ctrl && e.key === 'p') { e.preventDefault(); showFhirPath = !showFhirPath; }
+		else if (ctrl && e.key === 'l') { e.preventDefault(); showTestCases = true; }
 	}
 </script>
 
@@ -599,11 +638,15 @@
 		onCloseAllTabs={handleCloseAllTabs}
 		onClearRecent={handleClearRecent}
 		onOpenRecentFile={handleOpenRecentFile}
+		onNewFromTemplate={() => { showTemplates = true; }}
+		onShowTestCases={() => { showTestCases = true; }}
 		onParse={handleParse}
 		onValidate={handleValidate}
 		onToggleValidation={() => { showValidation = !showValidation; }}
 		onToggleCommunication={() => { showCommunication = !showCommunication; }}
 		onAnonymize={handleShowAnonymize}
+		onShowBundleVisualizer={() => { showBundleVisualizer = true; }}
+		onToggleFhirPath={() => { showFhirPath = !showFhirPath; }}
 		onCopyFull={handleCopyFull}
 		onCopyTruncated={handleCopyTruncated}
 		onExportJson={handleExportJson}
@@ -689,7 +732,7 @@
 			</div>
 
 			<!-- Bottom Panels (Validation / Communication) -->
-			{#if (showValidation && validationReport) || showCommunication}
+			{#if (showValidation && validationReport) || showCommunication || showFhirPath}
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<div
@@ -731,6 +774,16 @@
 							}
 						}}
 					/>
+				</div>
+			{/if}
+
+			{#if showFhirPath && activeTab?.parseResult}
+				<div class="bottom-panel" style="height: {bottomPanelHeight}px">
+					<div class="panel-header">
+						<span>FHIRPath</span>
+						<button class="panel-close" onclick={() => { showFhirPath = false; }}>&times;</button>
+					</div>
+					<FhirPathPanel messageId={activeTab.parseResult.message_id} />
 				</div>
 			{/if}
 		</div>
@@ -792,6 +845,50 @@
 					<p class="about-license">{tr('about.license')}</p>
 					<p class="about-copyright">{tr('about.copyright', { year: new Date().getFullYear().toString() })}</p>
 				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- FHIR Bundle Visualizer modal -->
+	{#if showBundleVisualizer && activeTab?.parseResult}
+		<div class="modal-overlay" onclick={() => { showBundleVisualizer = false; }} role="presentation">
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="modal modal-xl" onclick={(e) => e.stopPropagation()} role="dialog">
+				<BundleVisualizer
+					messageId={activeTab.parseResult.message_id}
+					onClose={() => { showBundleVisualizer = false; }}
+				/>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Test Case Library modal -->
+	{#if showTestCases}
+		<div class="modal-overlay" onclick={() => { showTestCases = false; }} role="presentation">
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="modal modal-xl" onclick={(e) => e.stopPropagation()} role="dialog">
+				<TestCaseLibrary
+					currentContent={activeTab?.content ?? ''}
+					currentLabel={activeTab?.label ?? ''}
+					onLoad={handleTestCaseLoaded}
+					onClose={() => { showTestCases = false; }}
+				/>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Template selection modal -->
+	{#if showTemplates}
+		<div class="modal-overlay" onclick={() => { showTemplates = false; }} role="presentation">
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
+				<TemplateDialog
+					onSelect={handleTemplateSelected}
+					onClose={() => { showTemplates = false; }}
+				/>
 			</div>
 		</div>
 	{/if}
@@ -1015,6 +1112,12 @@
 	.modal-lg {
 		width: 700px;
 		max-width: 90%;
+	}
+
+	.modal-xl {
+		width: 1100px;
+		max-width: 95%;
+		height: 80vh;
 	}
 
 	.modal-header {

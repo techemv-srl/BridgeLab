@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { t, subscribeLocale } from '$lib/i18n';
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
+
 	interface Props {
 		messageType?: string;
 		version?: string;
@@ -41,17 +46,17 @@
 			<span class="status-item">v{version}</span>
 		{/if}
 		{#if segmentCount > 0}
-			<span class="status-item">{segmentCount} segments</span>
+			<span class="status-item">{tr('status.segments', { count: segmentCount })}</span>
 		{/if}
 		{#if truncationCount > 0}
-			<span class="status-item truncated">{truncationCount} truncated</span>
+			<span class="status-item truncated">{tr('status.truncated', { count: truncationCount })}</span>
 		{/if}
 	</div>
 	<div class="status-right">
 		{#if fileSize > 0}
 			<span class="status-item">{formatFileSize(fileSize)}</span>
 		{/if}
-		<span class="status-item">Ln {cursorLine}, Col {cursorColumn}</span>
+		<span class="status-item">{tr('status.line', { line: cursorLine })}, {tr('status.column', { col: cursorColumn })}</span>
 	</div>
 </div>
 
