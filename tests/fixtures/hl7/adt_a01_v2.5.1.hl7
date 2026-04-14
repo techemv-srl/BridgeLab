@@ -1,0 +1,11 @@
+MSH|^~\&|SENDING_APP|SENDING_FAC|RECEIVING_APP|RECEIVING_FAC|20240115143025||ADT^A01^ADT_A01|MSG00001|P|2.5.1|||AL|NE
+EVN|A01|20240115143025||ADM|JSMITH^Smith^John^^^Dr.|||FACILITY1
+PID|1||123456789^^^HOSP^MR~987654321^^^SSA^SS||Doe^John^Michael^Jr.^Mr.||19800215|M||2106-3^White^HL70005|123 Main Street^^Springfield^IL^62704^US^H||^PRN^PH^^^217^5551234~^NET^Internet^john.doe@email.com|^WPN^PH^^^217^5555678|ENG^English^HL70296|M^Married^HL70002|||123-45-6789|||N^Not Hispanic or Latino^HL70189
+PD1|||Springfield General Hospital^^^HOSP||||V|02^Family^HL70215|N
+NK1|1|Doe^Jane^Marie^^Mrs.|SPO^Spouse^HL70063||^PRN^PH^^^217^5551235|^WPN^PH^^^217^5556789
+PV1|1|I|ICU^ICU-101^A^Springfield General Hospital^^^^ICU|||ATT1234^Johnson^Robert^^^Dr.^MD|REF5678^Williams^Sarah^^^Dr.^MD|CON9012^Brown^Michael^^^Dr.^MD|MED||||7|||ATT1234^Johnson^Robert^^^Dr.^MD|IN||01^Self^HL70064|||||||||||||||||||Springfield General Hospital||ADM|||||20240115143025
+PV2|||^Chest Pain|||||||2|||||||||N|N
+IN1|1|BCBS001^Blue Cross Blue Shield|BCBS^Blue Cross Blue Shield of Illinois|PO Box 805107^^Chicago^IL^60680|^PRN^PH^^^800^5551000||||GROUP123|||20240101|20241231|||SELF|Doe^John^Michael^Jr.^Mr.|01^Self^HL70063|19800215|123 Main Street^^Springfield^IL^62704|Y||1|||||||||||||POLICY123456
+GT1|1||Doe^John^Michael^Jr.^Mr.||123 Main Street^^Springfield^IL^62704|^PRN^PH^^^217^5551234||19800215|M||100^Self^HL70063|123-45-6789
+AL1|1|DA|PENICILLIN|SV^Severe^HL70128|Anaphylaxis|20200315
+DG1|1||I21.0^ST elevation myocardial infarction involving left main coronary artery^I10||20240115|A
