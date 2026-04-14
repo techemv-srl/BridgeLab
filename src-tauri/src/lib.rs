@@ -2,6 +2,7 @@ pub mod commands;
 pub mod anonymization;
 pub mod communication;
 pub mod database;
+pub mod licensing;
 pub mod message_store;
 pub mod parser;
 pub mod utils;
@@ -56,6 +57,10 @@ pub fn run() {
             commands::anonymization::get_message_truncated_text,
             commands::anonymization::export_as_json,
             commands::anonymization::export_as_csv,
+            commands::licensing::check_license,
+            commands::licensing::activate_license,
+            commands::licensing::deactivate_license,
+            commands::licensing::get_hardware_id,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");
