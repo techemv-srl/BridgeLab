@@ -1,13 +1,13 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { /* onMount not used - resolves to server no-op */ } from 'svelte';
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
-	import { parseMessage, openFile, getFieldContent } from '$lib/ipc/parser';
+	import { parseMessage, openFile, getFieldContent, getTreeChildren } from '$lib/ipc/parser';
 	import { getRecentFiles, addRecentFile, clearRecentFiles, getPreference, setPreference } from '$lib/ipc/database';
 	import { validateMessage, parseFhirMessage } from '$lib/ipc/validation';
 	import { getMessageFullText, getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
 	import type { RecentFile } from '$lib/ipc/database';
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
-	import { t, setLocale, type Locale } from '$lib/i18n';
+	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
@@ -17,10 +17,12 @@
 	import ValidationPanel from '$lib/components/validation/ValidationPanel.svelte';
 	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
 	import AnonymizeDialog from '$lib/components/anonymization/AnonymizeDialog.svelte';
+	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
 
 	// UI state
 	let treeWidth = $state(350);
-	let isDragging = $state(false);
+	let draggingTarget = $state<'tree' | 'bottom' | null>(null);
+	let isDragging = $derived(draggingTarget !== null);
 	let showTree = $state(true);
 	let showValidation = $state(false);
 	let showCommunication = $state(false);
@@ -28,8 +30,22 @@
 	let expandedFieldContent = $state<string | null>(null);
 	let showAbout = $state(false);
 	let showAnonymize = $state(false);
+	let showSettings = $state(false);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
+	let localeVersion = $state(0);
+
+	// Subscribe to locale changes to force re-render
+	if (typeof window !== 'undefined') {
+		subscribeLocale(() => { localeVersion++; });
+	}
+
+	// Reactive translate function
+	function tr(key: string, params?: Record<string, string | number>): string {
+		// Reading localeVersion makes this reactive
+		void localeVersion;
+		return t(key, params);
+	}
 
 	// Validation state
 	let validationReport = $state<ValidationReport | null>(null);
@@ -37,27 +53,34 @@
 	// Reactive references to the active tab
 	let activeTab = $derived(messageStore.activeTab);
 
-	onMount(async () => {
-		// Load preferences (wrapped in try/catch for web-only dev mode)
-		try {
-			const savedTheme = await getPreference('theme');
-			if (savedTheme) {
-				theme = savedTheme;
-				applyTheme(savedTheme);
-			}
-			const savedLang = await getPreference('language');
-			if (savedLang) setLocale(savedLang as Locale);
-			const savedTreeWidth = await getPreference('tree_width');
-			if (savedTreeWidth) treeWidth = parseInt(savedTreeWidth) || 350;
-			recentFiles = await getRecentFiles(20);
-		} catch {
-			// Running in web-only mode without Tauri backend
-		}
+	// Initialize app (using $effect instead of onMount which is a server no-op)
+	let appInitialized = false;
+	$effect(() => {
+		if (appInitialized || typeof window === 'undefined') return;
+		appInitialized = true;
 
-		// Start with one empty tab
+		// Start with one empty tab immediately
 		if (messageStore.tabs.length === 0) {
 			messageStore.newTab();
 		}
+
+		// Load preferences async
+		(async () => {
+			try {
+				const savedTheme = await getPreference('theme');
+				if (savedTheme) {
+					theme = savedTheme;
+					applyTheme(savedTheme);
+				}
+				const savedLang = await getPreference('language');
+				if (savedLang) setLocale(savedLang as Locale);
+				const savedTreeWidth = await getPreference('tree_width');
+				if (savedTreeWidth) treeWidth = parseInt(savedTreeWidth) || 350;
+				recentFiles = await getRecentFiles(20);
+			} catch {
+				// Running in web-only mode without Tauri backend
+			}
+		})();
 	});
 
 	function applyTheme(t: string) {
@@ -279,6 +302,36 @@
 		expandedFieldContent = null;
 	}
 
+	/** Handle expand truncated from editor context menu or click on {...} marker */
+	async function handleEditorExpandTruncated(lineNumber: number, _fieldMarker: string) {
+		if (!activeTab?.parseResult) return;
+		// Line number in editor corresponds to segment index (0-based: line 1 = seg 0)
+		const segIdx = lineNumber - 1;
+		const msgId = activeTab.parseResult.message_id;
+
+		try {
+			// Find which field in this segment is truncated
+			const children = await getTreeChildren(msgId, `seg${segIdx}`);
+			const truncatedField = children.find(c => c.is_truncated);
+			if (truncatedField) {
+				const parts = truncatedField.id.split('.');
+				const fieldIdx = parseInt(parts[1]?.replace('f', '') ?? '0');
+				const fieldContent = await getFieldContent(msgId, segIdx, fieldIdx);
+				expandedFieldContent = fieldContent.full_text;
+			}
+		} catch (e) {
+			console.error('Failed to expand truncated field:', e);
+		}
+	}
+
+	/** Handle "Show in Tree" from editor context menu */
+	function handleEditorNavigateSegment(lineNumber: number, _segmentType: string) {
+		// Expand the tree panel if hidden
+		showTree = true;
+		// The tree should highlight/scroll to the segment at this line
+		// Line number corresponds to segment index (line 1 = segment 0)
+	}
+
 	// --- View operations ---
 
 	function handleToggleTree() {
@@ -393,20 +446,30 @@
 	// --- Splitter ---
 
 	function startDrag(e: MouseEvent) {
-		isDragging = true;
+		draggingTarget = 'tree';
+		e.preventDefault();
+	}
+
+	function startBottomDrag(e: MouseEvent) {
+		draggingTarget = 'bottom';
 		e.preventDefault();
 	}
 
 	function handleMouseMove(e: MouseEvent) {
-		if (!isDragging) return;
-		treeWidth = Math.max(200, Math.min(600, e.clientX));
+		if (draggingTarget === 'tree') {
+			treeWidth = Math.max(200, Math.min(600, e.clientX));
+		} else if (draggingTarget === 'bottom') {
+			const windowHeight = window.innerHeight;
+			const newHeight = windowHeight - e.clientY - 24; // 24 = status bar height
+			bottomPanelHeight = Math.max(100, Math.min(windowHeight * 0.7, newHeight));
+		}
 	}
 
 	async function stopDrag() {
-		if (isDragging) {
-			isDragging = false;
+		if (draggingTarget === 'tree') {
 			try { await setPreference('tree_width', String(treeWidth)); } catch { /* web mode */ }
 		}
+		draggingTarget = null;
 	}
 
 	// --- Paste handler (fallback for when Monaco doesn't have focus) ---
@@ -443,6 +506,7 @@
 		else if (e.key === 'F6') { e.preventDefault(); handleValidate(); }
 		else if (ctrl && e.key === 'j') { e.preventDefault(); showValidation = !showValidation; }
 		else if (ctrl && e.key === 'k') { e.preventDefault(); showCommunication = !showCommunication; }
+		else if (ctrl && e.key === ',') { e.preventDefault(); showSettings = true; }
 	}
 </script>
 
@@ -482,6 +546,7 @@
 		onToggleTree={handleToggleTree}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
+		onShowSettings={() => { showSettings = true; }}
 		onShowAbout={() => { showAbout = true; }}
 	/>
 
@@ -492,7 +557,7 @@
 			<div class="tree-panel" style="width: {treeWidth}px">
 				{#if activeTab?.parseResult}
 					<div class="panel-header">
-						<span>{t('tree.header')}</span>
+						<span>{tr('tree.header')}</span>
 						<span class="panel-badge">{activeTab.parseResult.segment_count}</span>
 					</div>
 					<MessageTree
@@ -503,11 +568,11 @@
 					/>
 				{:else}
 					<div class="panel-header">
-						<span>{t('tree.header')}</span>
+						<span>{tr('tree.header')}</span>
 					</div>
 					<div class="panel-empty">
-						<p>{t('tree.empty')}</p>
-						<p class="shortcut-hint">{t('tree.shortcutHint')}</p>
+						<p>{tr('tree.empty')}</p>
+						<p class="shortcut-hint">{tr('tree.shortcutHint')}</p>
 					</div>
 				{/if}
 			</div>
@@ -542,15 +607,28 @@
 						theme={theme === 'light' ? 'bridgelab-light' : 'bridgelab-dark'}
 						onContentChange={handleContentChange}
 						onCursorChange={handleCursorChange}
+						onExpandTruncated={handleEditorExpandTruncated}
+						onNavigateToSegment={handleEditorNavigateSegment}
 					/>
 				{:else}
 					<div class="editor-empty">
-						<p>{t('tree.empty')}</p>
+						<p>{tr('tree.empty')}</p>
 					</div>
 				{/if}
 			</div>
 
 			<!-- Bottom Panels (Validation / Communication) -->
+			{#if (showValidation && validationReport) || showCommunication}
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<div
+					class="bottom-splitter"
+					onmousedown={startBottomDrag}
+					role="separator"
+					tabindex={0}
+				></div>
+			{/if}
+
 			{#if showValidation && validationReport}
 				<div class="bottom-panel" style="height: {bottomPanelHeight}px">
 					<div class="panel-header">
@@ -575,6 +653,7 @@
 					</div>
 					<CommunicationPanel
 						currentMessage={activeTab?.content ?? ''}
+						activeTabLabel={activeTab?.label ?? ''}
 						onMessageReceived={(content) => {
 							if (messageStore.activeTabId) {
 								messageStore.updateContent(messageStore.activeTabId, content);
@@ -593,7 +672,7 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
 				<div class="modal-header">
-					<span>{t('modal.fullContent')}</span>
+					<span>{tr('modal.fullContent')}</span>
 					<button class="modal-close" onclick={closeExpandedField}>&times;</button>
 				</div>
 				<div class="modal-body">
@@ -601,9 +680,9 @@
 				</div>
 				<div class="modal-footer">
 					<button class="btn" onclick={() => { navigator.clipboard.writeText(expandedFieldContent!); }}>
-						{t('modal.copy')}
+						{tr('modal.copy')}
 					</button>
-					<span class="modal-info">{t('modal.characters', { count: expandedFieldContent.length.toLocaleString() })}</span>
+					<span class="modal-info">{tr('modal.characters', { count: expandedFieldContent.length.toLocaleString() })}</span>
 				</div>
 			</div>
 		</div>
@@ -631,16 +710,32 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="modal modal-small" onclick={(e) => e.stopPropagation()} role="dialog">
 				<div class="modal-header">
-					<span>{t('about.title')}</span>
+					<span>{tr('about.title')}</span>
 					<button class="modal-close" onclick={() => { showAbout = false; }}>&times;</button>
 				</div>
 				<div class="modal-body about-body">
-					<div class="about-title">{t('app.title')}</div>
-					<div class="about-subtitle">{t('app.subtitle')}</div>
-					<div class="about-version">{t('about.version', { version: '0.2.0' })}</div>
-					<p class="about-desc">{t('about.description')}</p>
-					<p class="about-license">{t('about.license')}</p>
+					<div class="about-title">{tr('app.title')}</div>
+					<div class="about-subtitle">{tr('app.subtitle')}</div>
+					<div class="about-version">{tr('about.version', { version: '0.2.0' })}</div>
+					<p class="about-desc">{tr('about.description')}</p>
+					<p class="about-license">{tr('about.license')}</p>
+					<p class="about-copyright">{tr('about.copyright', { year: new Date().getFullYear().toString() })}</p>
 				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Settings modal -->
+	{#if showSettings}
+		<div class="modal-overlay" onclick={() => { showSettings = false; }} role="presentation">
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
+				<SettingsModal
+					{theme}
+					onClose={() => { showSettings = false; }}
+					onThemeChange={handleSetTheme}
+				/>
 			</div>
 		</div>
 	{/if}
@@ -690,6 +785,17 @@
 	.editor-area {
 		flex: 1;
 		overflow: hidden;
+	}
+
+	.bottom-splitter {
+		height: 4px;
+		cursor: ns-resize;
+		background-color: var(--color-border);
+		flex-shrink: 0;
+	}
+
+	.bottom-splitter:hover {
+		background-color: var(--color-accent);
 	}
 
 	.bottom-panel {
@@ -820,6 +926,11 @@
 		max-width: 90%;
 	}
 
+	.modal-lg {
+		width: 700px;
+		max-width: 90%;
+	}
+
 	.modal-header {
 		display: flex;
 		justify-content: space-between;
@@ -899,5 +1010,12 @@
 	.about-license {
 		font-size: 11px;
 		color: var(--color-text-secondary);
+	}
+
+	.about-copyright {
+		font-size: 10px;
+		color: var(--color-text-secondary);
+		margin-top: 12px;
+		opacity: 0.7;
 	}
 </style>
