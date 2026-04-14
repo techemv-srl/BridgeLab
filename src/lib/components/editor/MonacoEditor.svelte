@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { registerHL7Language } from './HL7MonarchLanguage';
+	import { registerHL7AutoComplete } from './HL7AutoComplete';
 
 	type MonacoModule = typeof import('monaco-editor');
 	type IStandaloneCodeEditor = import('monaco-editor').editor.IStandaloneCodeEditor;
@@ -63,6 +64,7 @@
 			};
 
 			registerHL7Language(mod);
+			registerHL7AutoComplete(mod);
 
 			const ed = mod.editor.create(containerEl!, {
 				value: content || '',
