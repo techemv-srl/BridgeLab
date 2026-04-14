@@ -1,6 +1,9 @@
 <script lang="ts">
 	import type { MessageTab } from '$lib/stores/messages.svelte';
-	import { t } from '$lib/i18n';
+	import { t, subscribeLocale } from '$lib/i18n';
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
 	interface Props {
 		tabs: MessageTab[];
@@ -60,19 +63,19 @@
 					{tab.label}
 				</span>
 				{#if tab.isModified}
-					<span class="tab-modified-dot" title={t('editor.modified')}></span>
+					<span class="tab-modified-dot" title={tr('editor.modified')}></span>
 				{/if}
 				<button
 					class="tab-close"
 					onclick={(e) => handleCloseTab(e, tab.id)}
-					title={t('tabs.closeTab')}
+					title={tr('tabs.closeTab')}
 				>
 					&times;
 				</button>
 			</div>
 		{/each}
 	</div>
-	<button class="tab-new" onclick={onNewTab} title={t('tabs.newTab')}>
+	<button class="tab-new" onclick={onNewTab} title={tr('tabs.newTab')}>
 		+
 	</button>
 </div>
@@ -83,10 +86,10 @@
 		style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px"
 	>
 		<button onclick={() => { onCloseTab(contextMenuTabId!); closeContextMenu(); }}>
-			{t('tabs.closeTab')}
+			{tr('tabs.closeTab')}
 		</button>
 		<button onclick={() => { closeContextMenu(); }}>
-			{t('tabs.closeOthers')}
+			{tr('tabs.closeOthers')}
 		</button>
 	</div>
 {/if}
