@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { detectPhi, anonymizeMessage, type PhiLocation, type AnonymizeResult } from '$lib/ipc/anonymization';
-	import { t } from '$lib/i18n';
+	import { t, subscribeLocale } from '$lib/i18n';
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
 	interface Props {
 		messageId: string;
@@ -63,7 +66,7 @@
 
 <div class="anon-dialog">
 	<div class="anon-header">
-		<span>{t('menu.tools.anonymize')}</span>
+		<span>{tr('menu.tools.anonymize')}</span>
 		<button class="close-btn" onclick={onClose}>&times;</button>
 	</div>
 
@@ -105,7 +108,7 @@
 			<button class="btn btn-primary" onclick={handleApply}>Open in New Tab</button>
 			<button class="btn" onclick={handleCopyAnonymized}>Copy to Clipboard</button>
 		{/if}
-		<button class="btn" onclick={onClose}>{t('dialog.cancel')}</button>
+		<button class="btn" onclick={onClose}>{tr('dialog.cancel')}</button>
 	</div>
 </div>
 
