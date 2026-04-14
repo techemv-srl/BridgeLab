@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod anonymization;
 pub mod communication;
 pub mod database;
 pub mod message_store;
@@ -46,6 +47,12 @@ pub fn run() {
             commands::communication::delete_connection_profile,
             commands::communication::get_request_history,
             commands::communication::clear_request_history,
+            commands::anonymization::detect_phi,
+            commands::anonymization::anonymize_message,
+            commands::anonymization::get_message_full_text,
+            commands::anonymization::get_message_truncated_text,
+            commands::anonymization::export_as_json,
+            commands::anonymization::export_as_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");
