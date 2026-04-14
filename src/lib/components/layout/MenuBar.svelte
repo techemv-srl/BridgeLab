@@ -1,6 +1,15 @@
 <script lang="ts">
-	import { t } from '$lib/i18n';
+	import { t, subscribeLocale } from '$lib/i18n';
 	import type { RecentFile } from '$lib/ipc/database';
+
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') {
+		subscribeLocale(() => { localeVersion++; });
+	}
+	function tr(key: string, params?: Record<string, string | number>): string {
+		void localeVersion;
+		return t(key, params);
+	}
 
 	interface Props {
 		recentFiles: RecentFile[];
@@ -78,33 +87,33 @@
 			class:active={openMenu === 'file'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('file'); }}
 		>
-			{t('menu.file')}
+			{tr('menu.file')}
 		</button>
 		{#if openMenu === 'file'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onOpenFile)}>
-					<span>{t('menu.file.open')}</span>
+					<span>{tr('menu.file.open')}</span>
 					<span class="shortcut">Ctrl+O</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onSave)}>
-					<span>{t('menu.file.save')}</span>
+					<span>{tr('menu.file.save')}</span>
 					<span class="shortcut">Ctrl+S</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onSaveAs)}>
-					<span>{t('menu.file.saveAs')}</span>
+					<span>{tr('menu.file.saveAs')}</span>
 					<span class="shortcut">Ctrl+Shift+S</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onCloseTab)}>
-					<span>{t('menu.file.close')}</span>
+					<span>{tr('menu.file.close')}</span>
 					<span class="shortcut">Ctrl+W</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onCloseAllTabs)}>
-					<span>{t('menu.file.closeAll')}</span>
+					<span>{tr('menu.file.closeAll')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				{#if recentFiles.length > 0}
-					<div class="menu-label">{t('menu.file.recent')}</div>
+					<div class="menu-label">{tr('menu.file.recent')}</div>
 					{#each recentFiles.slice(0, 8) as file}
 						<button
 							class="menu-item recent-item"
@@ -116,10 +125,10 @@
 					{/each}
 					<div class="menu-separator"></div>
 					<button class="menu-item" onclick={() => menuAction(onClearRecent)}>
-						<span>{t('menu.file.clearRecent')}</span>
+						<span>{tr('menu.file.clearRecent')}</span>
 					</button>
 				{:else}
-					<div class="menu-label menu-empty">{t('menu.file.recent')}: —</div>
+					<div class="menu-label menu-empty">{tr('menu.file.recent')}: —</div>
 				{/if}
 			</div>
 		{/if}
@@ -132,29 +141,29 @@
 			class:active={openMenu === 'edit'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('edit'); }}
 		>
-			{t('menu.edit')}
+			{tr('menu.edit')}
 		</button>
 		{#if openMenu === 'edit'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => { document.execCommand('undo'); closeMenu(); }}>
-					<span>{t('menu.edit.undo')}</span>
+					<span>{tr('menu.edit.undo')}</span>
 					<span class="shortcut">Ctrl+Z</span>
 				</button>
 				<button class="menu-item" onclick={() => { document.execCommand('redo'); closeMenu(); }}>
-					<span>{t('menu.edit.redo')}</span>
+					<span>{tr('menu.edit.redo')}</span>
 					<span class="shortcut">Ctrl+Y</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => { document.execCommand('cut'); closeMenu(); }}>
-					<span>{t('menu.edit.cut')}</span>
+					<span>{tr('menu.edit.cut')}</span>
 					<span class="shortcut">Ctrl+X</span>
 				</button>
 				<button class="menu-item" onclick={() => { document.execCommand('copy'); closeMenu(); }}>
-					<span>{t('menu.edit.copy')}</span>
+					<span>{tr('menu.edit.copy')}</span>
 					<span class="shortcut">Ctrl+C</span>
 				</button>
 				<button class="menu-item" onclick={() => { document.execCommand('paste'); closeMenu(); }}>
-					<span>{t('menu.edit.paste')}</span>
+					<span>{tr('menu.edit.paste')}</span>
 					<span class="shortcut">Ctrl+V</span>
 				</button>
 			</div>
@@ -168,28 +177,28 @@
 			class:active={openMenu === 'view'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('view'); }}
 		>
-			{t('menu.view')}
+			{tr('menu.view')}
 		</button>
 		{#if openMenu === 'view'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onToggleTree)}>
-					<span>{t('menu.view.tree')}</span>
+					<span>{tr('menu.view.tree')}</span>
 					<span class="shortcut">Ctrl+B</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleValidation)}>
-					<span>{t('menu.tools.validate')}</span>
+					<span>{tr('menu.tools.validate')}</span>
 					<span class="shortcut">Ctrl+J</span>
 				</button>
 				<div class="menu-separator"></div>
-				<div class="menu-label">{t('menu.view.theme')}</div>
+				<div class="menu-label">{tr('menu.view.theme')}</div>
 				<button class="menu-item" class:checked={theme === 'dark'} onclick={() => menuAction(() => onSetTheme('dark'))}>
-					<span>{t('menu.view.theme.dark')}</span>
+					<span>{tr('menu.view.theme.dark')}</span>
 				</button>
 				<button class="menu-item" class:checked={theme === 'light'} onclick={() => menuAction(() => onSetTheme('light'))}>
-					<span>{t('menu.view.theme.light')}</span>
+					<span>{tr('menu.view.theme.light')}</span>
 				</button>
 				<div class="menu-separator"></div>
-				<div class="menu-label">{t('menu.view.language')}</div>
+				<div class="menu-label">{tr('menu.view.language')}</div>
 				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('en'))}>
 					<span>English</span>
 				</button>
@@ -207,16 +216,16 @@
 			class:active={openMenu === 'tools'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('tools'); }}
 		>
-			{t('menu.tools')}
+			{tr('menu.tools')}
 		</button>
 		{#if openMenu === 'tools'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onParse)}>
-					<span>{t('menu.tools.parse')}</span>
+					<span>{tr('menu.tools.parse')}</span>
 					<span class="shortcut">F5</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onValidate)}>
-					<span>{t('menu.tools.validate')}</span>
+					<span>{tr('menu.tools.validate')}</span>
 					<span class="shortcut">F6</span>
 				</button>
 				<div class="menu-separator"></div>
@@ -226,13 +235,13 @@
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onAnonymize)}>
-					<span>{t('menu.tools.anonymize')}</span>
+					<span>{tr('menu.tools.anonymize')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onCopyFull)}>
-					<span>{t('menu.tools.copyFull')}</span>
+					<span>{tr('menu.tools.copyFull')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onCopyTruncated)}>
-					<span>{t('menu.tools.copyTruncated')}</span>
+					<span>{tr('menu.tools.copyTruncated')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onExportJson)}>
@@ -252,12 +261,12 @@
 			class:active={openMenu === 'help'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('help'); }}
 		>
-			{t('menu.help')}
+			{tr('menu.help')}
 		</button>
 		{#if openMenu === 'help'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onShowAbout)}>
-					<span>{t('menu.help.about')}</span>
+					<span>{tr('menu.help.about')}</span>
 				</button>
 			</div>
 		{/if}

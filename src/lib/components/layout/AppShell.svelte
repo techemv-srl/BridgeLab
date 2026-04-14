@@ -7,7 +7,7 @@
 	import { getMessageFullText, getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
 	import type { RecentFile } from '$lib/ipc/database';
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
-	import { t, setLocale, type Locale } from '$lib/i18n';
+	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
@@ -30,6 +30,19 @@
 	let showAnonymize = $state(false);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
+	let localeVersion = $state(0);
+
+	// Subscribe to locale changes to force re-render
+	if (typeof window !== 'undefined') {
+		subscribeLocale(() => { localeVersion++; });
+	}
+
+	// Reactive translate function
+	function tr(key: string, params?: Record<string, string | number>): string {
+		// Reading localeVersion makes this reactive
+		void localeVersion;
+		return t(key, params);
+	}
 
 	// Validation state
 	let validationReport = $state<ValidationReport | null>(null);
@@ -529,7 +542,7 @@
 			<div class="tree-panel" style="width: {treeWidth}px">
 				{#if activeTab?.parseResult}
 					<div class="panel-header">
-						<span>{t('tree.header')}</span>
+						<span>{tr('tree.header')}</span>
 						<span class="panel-badge">{activeTab.parseResult.segment_count}</span>
 					</div>
 					<MessageTree
@@ -540,11 +553,11 @@
 					/>
 				{:else}
 					<div class="panel-header">
-						<span>{t('tree.header')}</span>
+						<span>{tr('tree.header')}</span>
 					</div>
 					<div class="panel-empty">
-						<p>{t('tree.empty')}</p>
-						<p class="shortcut-hint">{t('tree.shortcutHint')}</p>
+						<p>{tr('tree.empty')}</p>
+						<p class="shortcut-hint">{tr('tree.shortcutHint')}</p>
 					</div>
 				{/if}
 			</div>
@@ -584,7 +597,7 @@
 					/>
 				{:else}
 					<div class="editor-empty">
-						<p>{t('tree.empty')}</p>
+						<p>{tr('tree.empty')}</p>
 					</div>
 				{/if}
 			</div>
@@ -632,7 +645,7 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
 				<div class="modal-header">
-					<span>{t('modal.fullContent')}</span>
+					<span>{tr('modal.fullContent')}</span>
 					<button class="modal-close" onclick={closeExpandedField}>&times;</button>
 				</div>
 				<div class="modal-body">
@@ -640,9 +653,9 @@
 				</div>
 				<div class="modal-footer">
 					<button class="btn" onclick={() => { navigator.clipboard.writeText(expandedFieldContent!); }}>
-						{t('modal.copy')}
+						{tr('modal.copy')}
 					</button>
-					<span class="modal-info">{t('modal.characters', { count: expandedFieldContent.length.toLocaleString() })}</span>
+					<span class="modal-info">{tr('modal.characters', { count: expandedFieldContent.length.toLocaleString() })}</span>
 				</div>
 			</div>
 		</div>
@@ -670,15 +683,16 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="modal modal-small" onclick={(e) => e.stopPropagation()} role="dialog">
 				<div class="modal-header">
-					<span>{t('about.title')}</span>
+					<span>{tr('about.title')}</span>
 					<button class="modal-close" onclick={() => { showAbout = false; }}>&times;</button>
 				</div>
 				<div class="modal-body about-body">
-					<div class="about-title">{t('app.title')}</div>
-					<div class="about-subtitle">{t('app.subtitle')}</div>
-					<div class="about-version">{t('about.version', { version: '0.2.0' })}</div>
-					<p class="about-desc">{t('about.description')}</p>
-					<p class="about-license">{t('about.license')}</p>
+					<div class="about-title">{tr('app.title')}</div>
+					<div class="about-subtitle">{tr('app.subtitle')}</div>
+					<div class="about-version">{tr('about.version', { version: '0.2.0' })}</div>
+					<p class="about-desc">{tr('about.description')}</p>
+					<p class="about-license">{tr('about.license')}</p>
+					<p class="about-copyright">{tr('about.copyright', { year: new Date().getFullYear().toString() })}</p>
 				</div>
 			</div>
 		</div>
@@ -938,5 +952,12 @@
 	.about-license {
 		font-size: 11px;
 		color: var(--color-text-secondary);
+	}
+
+	.about-copyright {
+		font-size: 10px;
+		color: var(--color-text-secondary);
+		margin-top: 12px;
+		opacity: 0.7;
 	}
 </style>

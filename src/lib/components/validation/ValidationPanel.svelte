@@ -1,6 +1,9 @@
 <script lang="ts">
 	import type { ValidationIssue } from '$lib/ipc/validation';
-	import { t } from '$lib/i18n';
+	import { t, subscribeLocale } from '$lib/i18n';
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
 	interface Props {
 		issues: ValidationIssue[];

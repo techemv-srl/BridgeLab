@@ -72,5 +72,6 @@
 	"about.title": "About BridgeLab",
 	"about.version": "Version {version}",
 	"about.description": "A modern HL7/FHIR message editor for healthcare integration professionals.",
-	"about.license": "Open Core - Free for non-commercial use"
+	"about.license": "Open Core - Free for non-commercial use",
+	"about.copyright": "Made by TECHEMV SRL - All rights reserved (C) {year}"
 }
