@@ -302,23 +302,25 @@
 		expandedFieldContent = null;
 	}
 
-	/** Handle expand truncated: replace truncated text inline with full content */
-	async function handleEditorExpandTruncated(lineNumber: number, _fieldMarker: string) {
+	/** Handle expand truncated: replace truncated text inline with full content.
+	 *  markerOccurrence is the 0-based index of the truncation marker on that line. */
+	async function handleEditorExpandTruncated(lineNumber: number, markerOccurrence: string) {
 		if (!activeTab?.parseResult) return;
 		const segIdx = lineNumber - 1;
 		const msgId = activeTab.parseResult.message_id;
+		const occurrenceIdx = parseInt(markerOccurrence) || 0;
 
 		try {
 			const { expandFieldInline } = await import('$lib/ipc/parser');
-			// Find which field is truncated
+			// Get all fields for this segment and find the Nth truncated one
 			const children = await getTreeChildren(msgId, `seg${segIdx}`);
-			const truncatedField = children.find(c => c.is_truncated);
-			if (truncatedField) {
-				const parts = truncatedField.id.split('.');
+			const truncatedFields = children.filter(c => c.is_truncated);
+
+			const targetField = truncatedFields[occurrenceIdx];
+			if (targetField) {
+				const parts = targetField.id.split('.');
 				const fieldIdx = parseInt(parts[1]?.replace('f', '') ?? '0');
-				// Get the full text with this field expanded inline
 				const expandedText = await expandFieldInline(msgId, segIdx, fieldIdx);
-				// Update the editor content directly
 				if (messageStore.activeTabId) {
 					skipNextAutoParse = true;
 					messageStore.updateContent(messageStore.activeTabId, expandedText);
