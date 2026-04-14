@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { registerHL7Language } from './HL7MonarchLanguage';
 
 	type MonacoModule = typeof import('monaco-editor');
@@ -27,17 +27,13 @@
 	let editor: MonacoEditor | undefined;
 	let monaco: MonacoModule | undefined;
 	let isUpdatingFromProp = false;
-	let mounted = false;
+	let alive = true;
 
 	onMount(async () => {
-		mounted = true;
-
-		// Dynamic import to avoid SSR issues
 		monaco = await import('monaco-editor');
 
-		if (!mounted) return; // Component destroyed during async import
+		if (!alive) return;
 
-		// Configure Monaco environment for web workers
 		self.MonacoEnvironment = {
 			getWorker(_: string, _label: string) {
 				return new Worker(
@@ -47,10 +43,8 @@
 			}
 		};
 
-		// Register HL7 language
 		registerHL7Language(monaco);
 
-		// Create the editor
 		editor = monaco.editor.create(containerEl, {
 			value: content || '',
 			language,
@@ -71,74 +65,82 @@
 			padding: { top: 8 },
 		});
 
-		// Listen for content changes
 		editor.onDidChangeModelContent(() => {
-			if (!mounted || isUpdatingFromProp) return;
-			const value = editor!.getValue();
+			if (!alive || isUpdatingFromProp || !editor) return;
+			const value = editor.getValue();
 			onContentChange?.(value);
 		});
 
-		// Listen for cursor changes
 		editor.onDidChangeCursorPosition((e) => {
-			if (!mounted) return;
+			if (!alive) return;
 			onCursorChange?.(e.position.lineNumber, e.position.column);
 		});
+
+		// Focus the editor so paste works immediately
+		editor.focus();
 	});
 
 	onDestroy(() => {
-		mounted = false;
-		editor?.dispose();
-		editor = undefined;
+		alive = false;
+		if (editor) {
+			editor.dispose();
+			editor = undefined;
+		}
 	});
 
-	// Update editor when content prop changes externally
-	$effect(() => {
-		const currentContent = content;
-		if (!mounted || !editor) return;
-		try {
-			if (currentContent !== editor.getValue()) {
-				isUpdatingFromProp = true;
-				editor.setValue(currentContent || '');
-				isUpdatingFromProp = false;
+	// Sync content prop -> editor using a polling approach instead of $effect
+	// This avoids Svelte 5 signal-null crashes during component teardown
+	let syncInterval: ReturnType<typeof setInterval> | undefined;
+	let lastSyncedContent = '';
+
+	onMount(() => {
+		lastSyncedContent = content || '';
+		syncInterval = setInterval(() => {
+			if (!alive || !editor) return;
+			try {
+				const propContent = content || '';
+				if (propContent !== lastSyncedContent && propContent !== editor.getValue()) {
+					isUpdatingFromProp = true;
+					editor.setValue(propContent);
+					isUpdatingFromProp = false;
+					lastSyncedContent = propContent;
+				}
+			} catch {
+				// Ignore errors during teardown
 			}
-		} catch {
-			// Editor may be disposed during transition
-		}
+		}, 100);
 	});
 
-	// Update theme when prop changes
+	onDestroy(() => {
+		if (syncInterval) clearInterval(syncInterval);
+	});
+
+	// Theme sync - safe because theme is a simple string, not bound to component lifecycle
 	$effect(() => {
-		const currentTheme = theme;
-		if (!mounted || !monaco) return;
-		try {
-			monaco.editor.setTheme(currentTheme);
-		} catch {
-			// Ignore if disposed
+		if (alive && monaco) {
+			try { monaco.editor.setTheme(theme); } catch { /* ignore */ }
 		}
 	});
 
-	/** Set content programmatically */
 	export function setValue(value: string) {
-		if (editor && mounted) {
+		if (editor && alive) {
 			isUpdatingFromProp = true;
 			editor.setValue(value);
 			isUpdatingFromProp = false;
+			lastSyncedContent = value;
 		}
 	}
 
-	/** Get current content */
 	export function getValue(): string {
-		return editor?.getValue() ?? content;
+		return editor?.getValue() ?? '';
 	}
 
-	/** Focus the editor */
 	export function focus() {
-		if (editor && mounted) editor.focus();
+		if (editor && alive) editor.focus();
 	}
 
-	/** Reveal a specific line */
 	export function revealLine(line: number) {
-		if (editor && mounted) editor.revealLineInCenter(line);
+		if (editor && alive) editor.revealLineInCenter(line);
 	}
 </script>
 
