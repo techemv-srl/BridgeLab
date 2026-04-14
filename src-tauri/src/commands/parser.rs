@@ -34,6 +34,12 @@ pub fn parse_message(
     _source: Option<String>,
     store: State<'_, MessageStore>,
 ) -> Result<ParseResult, BridgeLabError> {
+    // Strip UTF-8 BOM if present
+    let content = if content.starts_with('\u{FEFF}') {
+        content[3..].to_string()
+    } else {
+        content
+    };
     let data = content.into_bytes();
     let file_size = data.len() as u64;
 
