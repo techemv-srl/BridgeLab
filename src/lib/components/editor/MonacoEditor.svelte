@@ -24,8 +24,8 @@
 	}: Props = $props();
 
 	let containerEl: HTMLDivElement;
-	let editor: IStandaloneCodeEditor | undefined;
-	let monaco: MonacoModule | undefined;
+	let editor = $state<IStandaloneCodeEditor | undefined>(undefined);
+	let monaco = $state<MonacoModule | undefined>(undefined);
 	let isUpdatingFromProp = false;
 
 	onMount(() => {
