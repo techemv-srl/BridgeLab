@@ -39,6 +39,11 @@ export async function expandFieldInline(
 	return invoke<string>('expand_field_inline', { messageId, segmentIdx, fieldIdx });
 }
 
+/** Expand ALL truncated fields - returns full original message text */
+export async function expandAllFields(messageId: string): Promise<string> {
+	return invoke<string>('expand_all_fields', { messageId });
+}
+
 /** Re-truncate all fields - returns text with all fields truncated */
 export async function collapseAllFields(messageId: string): Promise<string> {
 	return invoke<string>('collapse_all_fields', { messageId });
