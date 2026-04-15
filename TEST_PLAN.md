@@ -507,7 +507,26 @@ Before running tests:
 | BL-SESSION-09 | P2 | Large message session | Session with 10 MB file | Restore completes in <3s | |
 | BL-SESSION-10 | P2 | Empty session fallback | Fresh DB | One empty Untitled tab is created | |
 
-## 32. Packaging & Installer
+## 32. Plugin Packs (declarative)
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-PLUG-01 | P0 | Plugins dir auto-created | Open Settings → Plugins on fresh install | `validation/` and `anonymization/` subdirs exist under `<config>/BridgeLab/plugins` | |
+| BL-PLUG-02 | P0 | Open plugins folder button | Click "Open plugins folder" | OS file manager reveals the plugins directory | |
+| BL-PLUG-03 | P0 | Drop validation pack, reload | Copy `examples/plugins/validation/sample-validation.json` into plugins dir, click Reload | Pack appears in list with rule_count=4, kind=validation | |
+| BL-PLUG-04 | P0 | Custom rule fires on F6 | Load a PID without PID-3 populated, F6 | Validation panel includes `SAMPLE-PID-001` warning | |
+| BL-PLUG-05 | P0 | Regex rule with component | Load a PID with lowercase family name, F6 | `SAMPLE-PID-002` info issue appears | |
+| BL-PLUG-06 | P0 | one_of rule | Load a PV1 with `Q` as patient class, F6 | `SAMPLE-PV1-001` error appears | |
+| BL-PLUG-07 | P1 | max_length rule | Load a PID with SSN 20 chars long, F6 | `SAMPLE-PID-003` warning appears | |
+| BL-PLUG-08 | P0 | PHI plugin extends anonymizer | Drop `sample-eu-phi.json`, reload, load message with PID-25 set, run Anonymize | PID-25 is redacted; no double-mask on built-in fields | |
+| BL-PLUG-09 | P1 | Toggle plugin off | Uncheck enable for `sample-validation`, F6 | Plugin rule ids no longer appear in the report | |
+| BL-PLUG-10 | P1 | Toggle persists | Close app, reopen, open Settings → Plugins | Plugin remains disabled | |
+| BL-PLUG-11 | P1 | Bad JSON surfaces error | Drop a malformed .json, Reload | Plugin shows with red error text, toggle disabled, registry unaffected | |
+| BL-PLUG-12 | P1 | Severities mapped | All three severities in one file | Report counts (error/warning/info) increment correctly | |
+| BL-PLUG-13 | P2 | Reload during session | Edit pack on disk, click Reload | Live rules update without restart | |
+| BL-PLUG-14 | P2 | Plugins folder path shown | Check Settings → Plugins | Absolute path printed next to the toolbar | |
+
+## 33. Packaging & Installer
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
@@ -522,7 +541,7 @@ Before running tests:
 | BL-PKG-09 | P2 | File association `.hl7` | Install, double-click .hl7 | Opens in BridgeLab | |
 | BL-PKG-10 | P2 | About dialog version matches installer | Launch installed build | About shows 0.1.0 (or current) | |
 
-## 33. Regression / Bug Verification
+## 34. Regression / Bug Verification
 
 Tests for bugs fixed in previous releases, run to prevent regressions.
 
