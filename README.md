@@ -6,6 +6,15 @@
 ![License](https://img.shields.io/badge/License-Open%20Core-green)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
+## Links
+
+- **Landing page**: [docs/site/](docs/site/) - deployed to GitHub Pages
+  via [`.github/workflows/pages.yml`](.github/workflows/pages.yml). Preview
+  locally with `python3 -m http.server --directory docs/site 4173`.
+- **Plugin docs**: [docs/PLUGINS.md](docs/PLUGINS.md)
+- **Test plan**: [TEST_PLAN.md](TEST_PLAN.md)
+- **Roadmap**: [ROADMAP.md](ROADMAP.md)
+
 ## Features
 
 - **HL7 v2.x parser** - SIMD-accelerated streaming parser, handles 5-10MB messages with base64 sections smoothly
