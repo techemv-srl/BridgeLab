@@ -53,7 +53,7 @@
 				class:active={filterSeverity === 'all'}
 				onclick={() => { filterSeverity = 'all'; }}
 			>
-				All ({issues.length})
+				{tr('validation.all') || 'All'} ({issues.length})
 			</button>
 			{#if errorCount > 0}
 				<button
@@ -85,8 +85,8 @@
 		</div>
 		<div class="validation-actions">
 			<select class="sort-select" bind:value={sortField}>
-				<option value="severity">By Severity</option>
-				<option value="segment">By Segment</option>
+				<option value="severity">{tr('validation.bySeverity')}</option>
+				<option value="segment">{tr('validation.bySegment')}</option>
 			</select>
 		</div>
 	</div>
@@ -95,9 +95,9 @@
 		{#if filteredIssues.length === 0}
 			<div class="validation-empty">
 				{#if issues.length === 0}
-					No validation issues found
+					{tr('validation.noIssues')}
 				{:else}
-					No issues match the current filter
+					{tr('validation.noMatch') || 'No issues match the current filter'}
 				{/if}
 			</div>
 		{:else}
