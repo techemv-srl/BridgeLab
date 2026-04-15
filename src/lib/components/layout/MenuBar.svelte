@@ -263,8 +263,8 @@
 		{#if openMenu === 'tools'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onParse)}>
-					<span>{tr('menu.tools.parse')}</span>
-					<span class="shortcut">{sc('tools.parse')}</span>
+					<span>{tr('menu.tools.reparse')}</span>
+					<span class="shortcut">{sc('tools.reparse')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onValidate)}>
 					<span>{tr('menu.tools.validate')}</span>

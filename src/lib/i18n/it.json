@@ -35,6 +35,7 @@
 
 	"menu.tools": "Strumenti",
 	"menu.tools.parse": "Analizza Messaggio",
+	"menu.tools.reparse": "Ri-analizza Messaggio",
 	"menu.tools.validate": "Valida",
 	"menu.tools.anonymize": "Anonimizza",
 	"menu.tools.copyFull": "Copia Messaggio Completo",

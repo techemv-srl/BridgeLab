@@ -35,6 +35,7 @@
 
 	"menu.tools": "Werkzeuge",
 	"menu.tools.parse": "Nachricht analysieren",
+	"menu.tools.reparse": "Nachricht erneut analysieren",
 	"menu.tools.validate": "Validieren",
 	"menu.tools.anonymize": "Anonymisieren",
 	"menu.tools.copyFull": "Vollständige Nachricht kopieren",
