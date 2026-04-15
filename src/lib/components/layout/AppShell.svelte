@@ -280,13 +280,15 @@
 	async function handleContentChange(value: string) {
 		if (!messageStore.activeTabId) return;
 
+		// Always save the current editor text to the tab - even if autoparse should be skipped.
+		// Previously this return was above updateContent, causing user edits to be lost.
+		messageStore.updateContent(messageStore.activeTabId, value);
+
 		// Skip auto-parse if content was just set by file open / parse action
 		if (skipNextAutoParse) {
 			skipNextAutoParse = false;
 			return;
 		}
-
-		messageStore.updateContent(messageStore.activeTabId, value);
 
 		// Debounced auto-parse (500ms after user stops typing/pasting)
 		if (autoParseTimer) clearTimeout(autoParseTimer);
@@ -312,11 +314,13 @@
 	}
 
 	async function handleParse() {
-		if (!activeTab?.content?.trim()) return;
+		if (!activeTab?.content?.trim()) {
+			alert('No message to parse. Paste or open a message first.');
+			return;
+		}
 		const content = activeTab.content.trim();
 		try {
 			let result: ParseResult;
-			// Detect format
 			if (content.startsWith('{') && content.includes('"resourceType"')) {
 				result = await parseFhirMessage(content);
 			} else {
@@ -324,22 +328,74 @@
 			}
 			skipNextAutoParse = true;
 			messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
+			console.log('[BridgeLab] Parsed:', result.message_type, result.segment_count, 'segments');
 		} catch (e) {
 			console.error('Parse error:', e);
+			alert(`Parse failed: ${e}\n\nThe message may be malformed. Validation will still run to check structure.`);
 		}
 	}
 
 	async function handleValidate() {
-		if (!activeTab?.parseResult) return;
-		try {
-			if (activeTab.parseResult.format === 'HL7v2') {
-				const report = await validateMessage(activeTab.parseResult.message_id);
-				validationReport = report;
-			}
-			showValidation = true;
-		} catch (e) {
-			console.error('Validation error:', e);
+		if (!activeTab?.content?.trim()) {
+			alert('No message to validate.');
+			return;
 		}
+		showValidation = true;
+
+		// If we have a valid parseResult, use the backend validator
+		if (activeTab.parseResult && activeTab.parseResult.format === 'HL7v2') {
+			try {
+				validationReport = await validateMessage(activeTab.parseResult.message_id);
+				return;
+			} catch (e) {
+				console.error('Validation IPC error:', e);
+			}
+		}
+
+		// Message is not parsed successfully - produce a synthetic report
+		const content = activeTab.content;
+		const issues: ValidationIssue[] = [];
+		const firstLine = content.split(/[\r\n]/)[0] ?? '';
+
+		if (!firstLine.startsWith('MSH|')) {
+			issues.push({
+				severity: 'error',
+				rule_id: 'STRUCT-002',
+				segment_idx: 0,
+				segment_type: firstLine.substring(0, 3).toUpperCase() || null,
+				field_position: null,
+				message: `First segment must be MSH, found '${firstLine.substring(0, 10)}...'`,
+			});
+		}
+
+		if (firstLine.length < 8) {
+			issues.push({
+				severity: 'error',
+				rule_id: 'STRUCT-001',
+				segment_idx: null,
+				segment_type: null,
+				field_position: null,
+				message: 'Message header too short to contain required MSH fields',
+			});
+		}
+
+		if (issues.length === 0) {
+			issues.push({
+				severity: 'warning',
+				rule_id: 'PARSE-001',
+				segment_idx: null,
+				segment_type: null,
+				field_position: null,
+				message: 'Message could not be parsed - try "Parse Message" (F5) to see the specific error',
+			});
+		}
+
+		validationReport = {
+			issues,
+			error_count: issues.filter(i => i.severity === 'error').length,
+			warning_count: issues.filter(i => i.severity === 'warning').length,
+			info_count: issues.filter(i => i.severity === 'info').length,
+		};
 	}
 
 	function handleValidationIssueClick(issue: ValidationIssue) {
