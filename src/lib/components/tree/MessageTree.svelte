@@ -8,14 +8,25 @@
 		roots: TreeNode[];
 		onNodeSelect?: (node: TreeNode) => void;
 		onFieldExpand?: (content: string) => void;
-		/** Navigate to and expand a specific segment by index */
-		navigateToSegmentIdx?: number | null;
+		/** Navigate to a specific segment and optionally a field within it. Stamp forces re-trigger. */
+		navigateTo?: { segmentIdx: number; fieldPosition: number | null; stamp: number } | null;
+		/** Callback to request the editor to navigate to the selected tree node */
+		onNavigateToEditor?: (segmentIdx: number, fieldPosition: number | null, componentIdx: number | null) => void;
 	}
 
-	let { messageId, roots, onNodeSelect, onFieldExpand, navigateToSegmentIdx = null }: Props = $props();
+	let {
+		messageId,
+		roots,
+		onNodeSelect,
+		onFieldExpand,
+		navigateTo = null,
+		onNavigateToEditor,
+	}: Props = $props();
+
+	type VNode = TreeNode & { _children?: TreeNode[]; _expanded?: boolean };
 
 	// Flat list of visible nodes for virtual scrolling
-	let visibleNodes = $state<(TreeNode & { _children?: TreeNode[]; _expanded?: boolean })[]>([]);
+	let visibleNodes = $state<VNode[]>([]);
 	let selectedNodeId = $state<string | null>(null);
 
 	// Initialize with root nodes
@@ -23,24 +34,43 @@
 		visibleNodes = roots.map((r) => ({ ...r, _expanded: false }));
 	});
 
-	// Navigate to a specific segment when requested
+	// Track the last processed stamp to avoid duplicate navigation
+	let lastNavStamp = $state(0);
+
+	// Navigate to a specific segment + optional field when requested
 	$effect(() => {
-		if (navigateToSegmentIdx !== null && navigateToSegmentIdx !== undefined) {
-			const segId = `seg${navigateToSegmentIdx}`;
-			const node = visibleNodes.find(n => n.id === segId);
-			if (node) {
-				selectedNodeId = segId;
-				if (!node._expanded) {
-					toggleNode(node);
-				}
-				// Scroll to the node
-				const el = document.querySelector(`[data-node-id="${segId}"]`);
-				el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			}
-		}
+		if (!navigateTo || navigateTo.stamp === lastNavStamp) return;
+		lastNavStamp = navigateTo.stamp;
+		void navigateToTarget(navigateTo.segmentIdx, navigateTo.fieldPosition);
 	});
 
-	async function toggleNode(node: TreeNode & { _children?: TreeNode[]; _expanded?: boolean }) {
+	async function navigateToTarget(segmentIdx: number, fieldPosition: number | null) {
+		const segId = `seg${segmentIdx}`;
+		let segNode = visibleNodes.find((n) => n.id === segId);
+		if (!segNode) return;
+
+		// Expand segment if we need to reach a field
+		if (fieldPosition !== null && !segNode._expanded) {
+			await toggleNode(segNode);
+			segNode = visibleNodes.find((n) => n.id === segId);
+		}
+
+		let targetId = segId;
+		if (fieldPosition !== null && segNode) {
+			const fieldId = `${segId}.f${fieldPosition}`;
+			const fieldNode = visibleNodes.find((n) => n.id === fieldId);
+			if (fieldNode) targetId = fieldId;
+		}
+
+		selectedNodeId = targetId;
+		// Scroll the target into view
+		requestAnimationFrame(() => {
+			const el = document.querySelector(`[data-node-id="${CSS.escape(targetId)}"]`);
+			el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		});
+	}
+
+	async function toggleNode(node: VNode) {
 		const idx = visibleNodes.findIndex((n) => n.id === node.id);
 		if (idx === -1) return;
 
@@ -92,6 +122,26 @@
 		const content = await getFieldContent(messageId, segIdx, fieldIdx);
 		onFieldExpand?.(content.full_text);
 	}
+
+	/** Parse a node id like "seg3", "seg3.f5", "seg3.f5.c2" into navigation parts. */
+	function parseNodeId(id: string): { segmentIdx: number | null; fieldPosition: number | null; componentIdx: number | null } {
+		const parts = id.split('.');
+		let segmentIdx: number | null = null;
+		let fieldPosition: number | null = null;
+		let componentIdx: number | null = null;
+		for (const p of parts) {
+			if (p.startsWith('seg')) segmentIdx = parseInt(p.slice(3));
+			else if (p.startsWith('f')) fieldPosition = parseInt(p.slice(1));
+			else if (p.startsWith('c')) componentIdx = parseInt(p.slice(1));
+		}
+		return { segmentIdx, fieldPosition, componentIdx };
+	}
+
+	function showInEditor(node: TreeNode) {
+		const { segmentIdx, fieldPosition, componentIdx } = parseNodeId(node.id);
+		if (segmentIdx === null) return;
+		onNavigateToEditor?.(segmentIdx, fieldPosition, componentIdx);
+	}
 </script>
 
 <div class="tree-container">
@@ -107,6 +157,7 @@
 					onToggle={() => toggleNode(node)}
 					onSelect={() => selectNode(node)}
 					onExpandTruncated={() => expandTruncated(node)}
+					onShowInEditor={onNavigateToEditor ? () => showInEditor(node) : undefined}
 				/>
 			{/each}
 		</div>
