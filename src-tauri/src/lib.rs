@@ -5,16 +5,21 @@ pub mod database;
 pub mod licensing;
 pub mod message_store;
 pub mod parser;
+pub mod plugins;
 pub mod templates;
 pub mod utils;
 pub mod validation;
 
 use database::Database;
 use message_store::MessageStore;
+use plugins::PluginRegistry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let db = Database::new().expect("Failed to initialize database");
+    let plugins = PluginRegistry::new();
+    // Best-effort plugin load; failures surface per-file via PluginInfo.error.
+    let _ = plugins.reload();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -22,6 +27,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(MessageStore::new())
         .manage(db)
+        .manage(plugins)
         .invoke_handler(tauri::generate_handler![
             commands::parser::parse_message,
             commands::parser::get_tree_children,
@@ -74,6 +80,12 @@ pub fn run() {
             commands::test_cases::save_test_case,
             commands::test_cases::get_test_cases,
             commands::test_cases::delete_test_case,
+            commands::plugins::list_plugins,
+            commands::plugins::reload_plugins,
+            commands::plugins::set_plugin_enabled,
+            commands::plugins::apply_plugin_overrides,
+            commands::plugins::get_plugins_dir,
+            commands::plugins::open_plugins_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");

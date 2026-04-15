@@ -103,6 +103,23 @@
 				if (savedRestore !== null) restoreSession = savedRestore !== 'false';
 				recentFiles = await getRecentFiles(20);
 
+				// Apply plugin enable/disable overrides (stored as plugin_enabled:<id>)
+				try {
+					const { getAllPreferences } = await import('$lib/ipc/database');
+					const { applyPluginOverrides } = await import('$lib/ipc/plugins');
+					const prefs = await getAllPreferences();
+					const overrides: Record<string, boolean> = {};
+					for (const p of prefs) {
+						if (p.key.startsWith('plugin_enabled:')) {
+							const id = p.key.slice('plugin_enabled:'.length);
+							overrides[id] = p.value !== 'false';
+						}
+					}
+					if (Object.keys(overrides).length > 0) {
+						await applyPluginOverrides(overrides);
+					}
+				} catch { /* web mode */ }
+
 				// Notepad++-style tab restore
 				if (restoreSession) {
 					const { loadSession } = await import('$lib/ipc/database');

@@ -1,19 +1,31 @@
 use serde::Serialize;
 use tauri::State;
 
-use crate::anonymization::{self, PhiLocation};
+use crate::anonymization::{self, ExtraPhiField, PhiLocation};
 use crate::message_store::MessageStore;
 use crate::parser::truncation;
+use crate::plugins::{self, PluginRegistry};
 
-/// Detect PHI fields in an HL7 message.
+fn plugin_phi_rules(registry: &PluginRegistry) -> Vec<ExtraPhiField> {
+    registry.active_phi_rules().into_iter().map(|r| ExtraPhiField {
+        segment: r.segment,
+        field: r.field,
+        name: r.name,
+        sensitivity: plugins::parse_sensitivity(&r.sensitivity),
+    }).collect()
+}
+
+/// Detect PHI fields in an HL7 message (built-in + plugin rules).
 #[tauri::command]
 pub fn detect_phi(
     message_id: String,
     store: State<'_, MessageStore>,
+    registry: State<'_, PluginRegistry>,
 ) -> Result<Vec<PhiLocation>, String> {
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
-    Ok(anonymization::detect_phi(&msg))
+    let extra = plugin_phi_rules(&registry);
+    Ok(anonymization::detect_phi_with_extra(&msg, &extra))
 }
 
 /// Anonymize an HL7 message and return the anonymized text.
@@ -21,12 +33,14 @@ pub fn detect_phi(
 pub fn anonymize_message(
     message_id: String,
     store: State<'_, MessageStore>,
+    registry: State<'_, PluginRegistry>,
 ) -> Result<AnonymizeResult, String> {
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
-    let phi_count = anonymization::detect_phi(&msg).len();
-    let anonymized_text = anonymization::anonymize_message(&msg);
+    let extra = plugin_phi_rules(&registry);
+    let phi_count = anonymization::detect_phi_with_extra(&msg, &extra).len();
+    let anonymized_text = anonymization::anonymize_message_with_extra(&msg, &extra);
 
     Ok(AnonymizeResult {
         anonymized_text,
