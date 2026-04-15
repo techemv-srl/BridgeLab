@@ -18,6 +18,9 @@
 - **Export** - JSON, CSV, structured representations
 - **5 Languages** - English, Italian, French, Spanish, German
 - **Licensing** - Ed25519-signed offline license verification, hardware binding, 30-day trial
+- **Field Inspector** - Side panel showing HL7 standard metadata (name, type, required, max length, description) for the selected tree node
+- **Schema-aware Tree** - Optional view that injects placeholder rows for every field defined by the standard so you see what _could_ be populated
+- **Precise Editor ↔ Tree navigation** - Right-click a field in the editor to highlight it in the tree, or right-click a tree node to select the matching range in Monaco
 
 ## Stack
 
@@ -46,13 +49,26 @@ pnpm tauri dev
 ### Testing
 
 ```bash
-# Rust tests
+# Rust tests (parser, validation, anonymization, licensing, ...)
 cd src-tauri && cargo test
 
-# Frontend check
+# Frontend check & build
 pnpm check
 pnpm build
+
+# Generate the QA Excel workbook from TEST_PLAN.md
+pip install openpyxl
+python scripts/test_plan_to_excel.py   # -> TEST_PLAN.xlsx (gitignored)
 ```
+
+Full manual test catalogue lives in [`TEST_PLAN.md`](TEST_PLAN.md) (~300 cases
+organized by feature area). CI automates the automatable slice:
+
+- [`ci.yml`](.github/workflows/ci.yml) - `cargo check`/`cargo test --all`,
+  `svelte-check` (0 errors), `pnpm build`
+- [`feature-tests.yml`](.github/workflows/feature-tests.yml) - CLI feature
+  tests, HL7 fixtures (parser/info/validate/anonymize/batch/JUnit), FHIR
+  fixture integrity, schema-lookup Rust tests, license keygen roundtrip
 
 ## Building a Release
 
