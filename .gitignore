@@ -8,3 +8,8 @@ target/
 *.log
 .DS_Store
 Thumbs.db
+
+# Generated test reports
+TEST_PLAN.xlsx
+test-results/
+junit*.xml
