@@ -100,6 +100,11 @@
 			addContextMenuActions(ed, mod);
 
 			editor = ed;
+			// Note: Monaco's default Ctrl+K (delete line), Ctrl+J (join), Ctrl+L are kept.
+			// Users can reassign app shortcuts that conflict via Settings > Keyboard Shortcuts.
+			// When Monaco has focus, its shortcuts take priority; click outside editor to use
+			// app-level shortcuts like Ctrl+K for Communication panel.
+
 			ed.focus();
 		} catch (err) {
 			console.error('[Monaco] Init failed:', err);
