@@ -19,25 +19,34 @@ pub async fn open_file(
 }
 
 /// Save message content to a file.
+/// If `content` is provided, it is written directly (use when editor text differs from stored).
+/// Otherwise falls back to the MessageStore content using `message_id`.
 #[tauri::command]
 pub async fn save_file(
-    message_id: String,
+    message_id: Option<String>,
     path: String,
+    content: Option<String>,
     store: State<'_, MessageStore>,
 ) -> Result<SaveResult, BridgeLabError> {
-    let msg = store
-        .get(&message_id)
-        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
+    let bytes: Vec<u8> = if let Some(c) = content {
+        c.into_bytes()
+    } else if let Some(id) = message_id {
+        let msg = store
+            .get(&id)
+            .ok_or_else(|| BridgeLabError::MessageNotFound(id))?;
+        msg.raw.clone()
+    } else {
+        return Err(BridgeLabError::FileError(
+            "Either content or message_id must be provided".into(),
+        ));
+    };
 
-    let content = String::from_utf8_lossy(&msg.raw);
-    tokio::fs::write(&path, content.as_bytes())
+    let bytes_written = bytes.len() as u64;
+    tokio::fs::write(&path, &bytes)
         .await
         .map_err(|e| BridgeLabError::FileError(format!("Failed to write {}: {}", path, e)))?;
 
-    Ok(SaveResult {
-        path,
-        bytes_written: msg.raw.len() as u64,
-    })
+    Ok(SaveResult { path, bytes_written })
 }
 
 #[derive(Debug, Serialize)]

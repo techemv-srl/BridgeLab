@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t, subscribeLocale, setLocale, getLocale, type Locale } from '$lib/i18n';
 	import { getPreference, setPreference } from '$lib/ipc/database';
+	import ShortcutsEditor from '$lib/components/layout/ShortcutsEditor.svelte';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -96,6 +97,7 @@
 	const sections = [
 		{ id: 'editor', label: 'Editor', icon: '\u270E' },
 		{ id: 'display', label: 'Display', icon: '\u2600' },
+		{ id: 'shortcuts', label: 'Shortcuts', icon: '\u2328' },
 		{ id: 'parser', label: 'Parser', icon: '\u2699' },
 		{ id: 'memory', label: 'Performance', icon: '\u26A1' },
 	];
@@ -226,6 +228,10 @@
 						<option value="de">Deutsch</option>
 					</select>
 				</div>
+
+			{:else if activeSection === 'shortcuts'}
+				<h3>Keyboard Shortcuts</h3>
+				<ShortcutsEditor />
 
 			{:else if activeSection === 'parser'}
 				<h3>Parser &amp; Truncation</h3>
