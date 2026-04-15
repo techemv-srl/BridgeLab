@@ -19,6 +19,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install test utilities (xmllint, jq)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-utils jq
+
       - name: Cache cargo
         uses: actions/cache@v4
         with:

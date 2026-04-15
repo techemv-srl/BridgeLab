@@ -100,6 +100,23 @@
 			addContextMenuActions(ed, mod);
 
 			editor = ed;
+			// Disable Monaco's built-in Ctrl+K (delete line) so our global handler gets it
+			// for Communication panel toggle. Same for Ctrl+L (delete lines) to allow Test Cases.
+			const disableKey = (keybinding: number) => {
+				ed.addCommand(keybinding, () => {
+					// Dispatch a synthetic keydown so the window-level handler catches it
+					const ctrl = (keybinding & mod.KeyMod.CtrlCmd) !== 0;
+					const key = String.fromCharCode((keybinding & 0xff)).toLowerCase();
+					const event = new KeyboardEvent('keydown', {
+						key, ctrlKey: ctrl, metaKey: ctrl, bubbles: true, cancelable: true,
+					});
+					window.dispatchEvent(event);
+				});
+			};
+			disableKey(mod.KeyMod.CtrlCmd | mod.KeyCode.KeyK);
+			disableKey(mod.KeyMod.CtrlCmd | mod.KeyCode.KeyL);
+			disableKey(mod.KeyMod.CtrlCmd | mod.KeyCode.KeyJ);
+
 			ed.focus();
 		} catch (err) {
 			console.error('[Monaco] Init failed:', err);
