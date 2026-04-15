@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { t, subscribeLocale, setLocale, getLocale, type Locale } from '$lib/i18n';
 	import { getPreference, setPreference } from '$lib/ipc/database';
+	import {
+		listPlugins, reloadPlugins, setPluginEnabled,
+		openPluginsFolder, getPluginsDir, type PluginInfo,
+	} from '$lib/ipc/plugins';
 	import ShortcutsEditor from '$lib/components/layout/ShortcutsEditor.svelte';
 
 	let localeVersion = $state(0);
@@ -100,12 +104,65 @@
 		onClose();
 	}
 
+	// Plugins state
+	let plugins = $state<PluginInfo[]>([]);
+	let pluginsDir = $state('');
+	let pluginsLoading = $state(false);
+	let pluginsError = $state<string | null>(null);
+
+	async function loadPluginsInfo() {
+		pluginsLoading = true;
+		pluginsError = null;
+		try {
+			plugins = await listPlugins();
+			pluginsDir = await getPluginsDir();
+		} catch (e) {
+			pluginsError = String(e);
+		} finally {
+			pluginsLoading = false;
+		}
+	}
+
+	async function handleReloadPlugins() {
+		pluginsLoading = true;
+		pluginsError = null;
+		try {
+			plugins = await reloadPlugins();
+		} catch (e) {
+			pluginsError = String(e);
+		} finally {
+			pluginsLoading = false;
+		}
+	}
+
+	async function handleTogglePlugin(p: PluginInfo) {
+		const nextEnabled = !p.enabled;
+		try {
+			await setPluginEnabled(p.id, nextEnabled);
+			await setPreference(`plugin_enabled:${p.id}`, String(nextEnabled));
+			p.enabled = nextEnabled;
+		} catch (e) {
+			pluginsError = String(e);
+		}
+	}
+
+	async function handleOpenPluginsFolder() {
+		try { await openPluginsFolder(); } catch (e) { pluginsError = String(e); }
+	}
+
+	$effect(() => {
+		if (activeSection === 'plugins' && plugins.length === 0 && !pluginsError) {
+			void loadPluginsInfo();
+		}
+	});
+
 	const sections = [
 		{ id: 'editor', label: 'Editor', icon: '\u270E' },
 		{ id: 'display', label: 'Display', icon: '\u2600' },
 		{ id: 'shortcuts', label: 'Shortcuts', icon: '\u2328' },
 		{ id: 'parser', label: 'Parser', icon: '\u2699' },
 		{ id: 'memory', label: 'Performance', icon: '\u26A1' },
+		{ id: 'plugins', label: 'Plugins', icon: '\u2699' },
 	];
 
 	const fontFamilies = [
@@ -289,6 +346,68 @@
 						<li>The parser uses SIMD-accelerated scanning for fast indexing</li>
 					</ul>
 				</div>
+
+			{:else if activeSection === 'plugins'}
+				<h3>Plugins</h3>
+
+				<p class="hint" style="margin-bottom: 8px;">
+					Drop JSON rule packs in the plugins folder. Validation rules extend
+					the built-in HL7 checks; anonymization rules extend the PHI catalogue.
+					No code execution &ndash; plugins are pure data.
+				</p>
+
+				<div class="plugins-toolbar">
+					<button class="btn" onclick={handleReloadPlugins} disabled={pluginsLoading}>
+						{pluginsLoading ? 'Loading…' : 'Reload'}
+					</button>
+					<button class="btn" onclick={handleOpenPluginsFolder}>Open plugins folder</button>
+					<code class="plugins-path" title={pluginsDir}>{pluginsDir}</code>
+				</div>
+
+				{#if pluginsError}
+					<div class="plugin-error">{pluginsError}</div>
+				{/if}
+
+				{#if !pluginsLoading && plugins.length === 0}
+					<div class="info-block">
+						No plugins installed. Use the "Open plugins folder" button and
+						create a <code>.json</code> file under <code>validation/</code> or
+						<code>anonymization/</code>. See <code>docs/PLUGINS.md</code> for
+						the schema.
+					</div>
+				{/if}
+
+				{#each plugins as p}
+					<div class="plugin-row" class:errored={!!p.error}>
+						<div class="plugin-main">
+							<div class="plugin-title">
+								<strong>{p.name}</strong>
+								<span class="plugin-kind">{p.kind}</span>
+								<span class="plugin-version">v{p.version}</span>
+							</div>
+							{#if p.description}
+								<div class="plugin-desc">{p.description}</div>
+							{/if}
+							<div class="plugin-meta">
+								<span>{p.rule_count} rule{p.rule_count === 1 ? '' : 's'}</span>
+								{#if p.author}<span>by {p.author}</span>{/if}
+								<span class="plugin-filepath" title={p.path}>{p.path}</span>
+							</div>
+							{#if p.error}
+								<div class="plugin-error">Parse error: {p.error}</div>
+							{/if}
+						</div>
+						<label class="plugin-toggle">
+							<input
+								type="checkbox"
+								checked={p.enabled}
+								disabled={!!p.error}
+								onchange={() => handleTogglePlugin(p)}
+							/>
+							{p.enabled ? 'Enabled' : 'Disabled'}
+						</label>
+					</div>
+				{/each}
 			{/if}
 		</div>
 	</div>
@@ -337,6 +456,20 @@
 	.light-preview { background: linear-gradient(135deg, #eff1f5 50%, #dce0e8 50%); }
 
 	.info-block { margin-top: 12px; padding: 10px 12px; background: var(--color-bg-tertiary); border-radius: 4px; font-size: 11px; color: var(--color-text-secondary); }
+
+	.plugins-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+	.plugins-path { font-size: 10px; color: var(--color-text-secondary); word-break: break-all; }
+	.plugin-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 10px; border: 1px solid var(--color-border); border-radius: 4px; margin-bottom: 8px; }
+	.plugin-row.errored { border-color: var(--color-error); }
+	.plugin-main { flex: 1; min-width: 0; }
+	.plugin-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+	.plugin-kind { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--color-bg-tertiary); color: var(--color-text-secondary); text-transform: uppercase; }
+	.plugin-version { font-size: 10px; color: var(--color-text-secondary); }
+	.plugin-desc { font-size: 12px; color: var(--color-text-secondary); margin: 4px 0; }
+	.plugin-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 10px; color: var(--color-text-secondary); }
+	.plugin-filepath { font-family: 'JetBrains Mono', monospace; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; }
+	.plugin-error { color: var(--color-error); font-size: 11px; margin-top: 4px; }
+	.plugin-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; }
 	.info-block ul { margin: 6px 0 0; padding-left: 16px; }
 	.info-block li { margin-bottom: 4px; }
 

@@ -6,5 +6,6 @@ pub mod test_cases;
 pub mod database;
 pub mod fileio;
 pub mod parser;
+pub mod plugins;
 pub mod tables;
 pub mod validation;

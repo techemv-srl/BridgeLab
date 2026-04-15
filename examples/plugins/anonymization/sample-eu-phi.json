@@ -1,0 +1,13 @@
+{
+	"id": "sample-eu-phi",
+	"name": "EU-specific PHI extensions",
+	"description": "Sample extra PHI fields used by some EU deployments.",
+	"author": "BridgeLab",
+	"version": "1.0",
+	"enabled": true,
+	"phi_rules": [
+		{ "segment": "PID", "field": 25, "sensitivity": "high",   "name": "EU National ID" },
+		{ "segment": "ZPI", "field": 3,  "sensitivity": "medium", "name": "Custom internal ID" },
+		{ "segment": "IN2", "field": 8,  "sensitivity": "medium", "name": "Subscriber SSN" }
+	]
+}
