@@ -25,9 +25,19 @@ export async function openFile(path: string): Promise<ParseResult> {
 	return invoke<ParseResult>('open_file', { path });
 }
 
-/** Save message content to a file */
-export async function saveFile(messageId: string, path: string): Promise<{ path: string; bytes_written: number }> {
-	return invoke('save_file', { messageId, path });
+/** Save message content to a file.
+ *  Pass `content` to save the current editor text (preferred when user edited the message).
+ *  Pass `messageId` to save the original parsed content from the message store. */
+export async function saveFile(args: {
+	path: string;
+	content?: string;
+	messageId?: string;
+}): Promise<{ path: string; bytes_written: number }> {
+	return invoke('save_file', {
+		messageId: args.messageId ?? null,
+		path: args.path,
+		content: args.content ?? null,
+	});
 }
 
 /** Expand a truncated field inline - returns full text with that field expanded */
