@@ -1,7 +1,7 @@
 # BridgeLab Test Plan
 
 **Version**: 0.1.0
-**Last Updated**: April 2026
+**Last Updated**: April 2026 (r2)
 **Status**: In progress - updated as features are completed
 
 ## Purpose
@@ -135,7 +135,7 @@ Before running tests:
 | BL-EDITOR-03 | P0 | HL7 syntax highlighting | Load HL7 message | Segments colored purple, delimiters distinct | |
 | BL-EDITOR-04 | P0 | Dark theme applies | Load message in dark mode | Background #1e1e2e, text light | |
 | BL-EDITOR-05 | P0 | Light theme applies | Switch to light theme | Background light, text dark | |
-| BL-EDITOR-06 | P1 | Context menu: Show in Tree | Right-click segment, click Show in Tree | Tree panel opens, segment highlighted & scrolled to | |
+| BL-EDITOR-06 | P1 | Context menu: Show in Tree (field precision) | Right-click inside a specific field (e.g. PID-5), click Show in Tree | Tree panel opens, segment expanded, field node `PID-5` selected & scrolled to | |
 | BL-EDITOR-07 | P1 | Context menu: Copy Segment | Right-click, Copy Segment | Line copied to clipboard | |
 | BL-EDITOR-08 | P1 | Context menu: Copy Full Message | Right-click, Copy Full | Original full message in clipboard | |
 | BL-EDITOR-09 | P1 | Context menu: Copy Truncated | Right-click, Copy Truncated | Truncated version in clipboard | |
@@ -435,7 +435,64 @@ Before running tests:
 | BL-UPD-02 | P2 | No update dialog | If no update | Alert "You are running the latest version" | |
 | BL-UPD-03 | P2 | Update download | If update available | Downloads and prompts restart | |
 
-## 27. Regression / Bug Verification
+## 27. Tree ↔ Editor Navigation
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-NAV-01 | P0 | Editor → Tree (segment) | Right-click on the segment name (e.g. "PID"), Show in Tree | Tree opens, `seg{N}` node selected, scrolled to view | |
+| BL-NAV-02 | P0 | Editor → Tree (field) | Right-click inside PID-5 content, Show in Tree | Tree opens, segment expanded, `seg{N}.f5` field node selected | |
+| BL-NAV-03 | P0 | Editor → Tree (MSH-1 separator) | Right-click on the first `\|` in MSH, Show in Tree | Tree selects MSH field at position 1 (Field Separator) | |
+| BL-NAV-04 | P0 | Editor → Tree (MSH-2 encoding chars) | Right-click on `^~\&`, Show in Tree | Tree selects MSH-2 node | |
+| BL-NAV-05 | P0 | Tree → Editor (segment) | Right-click segment node in tree, Show in Editor | Monaco reveals the segment line, cursor at column 1 | |
+| BL-NAV-06 | P0 | Tree → Editor (field) | Right-click field node (e.g. PID-5) in tree, Show in Editor | Monaco reveals the line, cursor at field start, field text selected | |
+| BL-NAV-07 | P1 | Tree → Editor (component) | Right-click component node (e.g. PID-5.1), Show in Editor | Selection narrows to the component within the field | |
+| BL-NAV-08 | P1 | Same-target re-trigger | Show in Editor, click elsewhere, Show in Editor on same node | Selection re-applies (stamp forces effect to re-run) | |
+| BL-NAV-09 | P1 | Navigation localized | Switch to IT, right-click on tree node | Menu shows "Mostra nell'Editor" | |
+| BL-NAV-10 | P2 | Placeholder suppresses Show in Editor | Enable Schema Fields, right-click a placeholder field | "Show in Editor" entry is hidden (no physical position) | |
+
+## 28. Field Inspector
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-INSP-01 | P0 | Panel visible by default | Load a message, look at tree panel bottom half | Inspector shown with "Select a node..." placeholder | |
+| BL-INSP-02 | P0 | Toggle from View menu | View → Field Inspector | Inspector shows/hides | |
+| BL-INSP-03 | P0 | Toggle from tree header ⓘ button | Click the ⓘ in the tree panel header | Inspector shows/hides | |
+| BL-INSP-04 | P0 | Segment selection | Click a segment node (e.g. PID) | Inspector shows segment code, name, description, field count | |
+| BL-INSP-05 | P0 | Field selection with schema | Click PID-5 | Inspector shows position "PID-5", name "Patient Name", data type "XPN", required Yes, max length 250, description | |
+| BL-INSP-06 | P1 | Required flag highlighted | Click a required field (e.g. MSH-9) | "Required: Yes" rendered with emphasized color | |
+| BL-INSP-07 | P1 | Repeating flag shown | Click PID-3 (Patient Identifier List) | "Repeating: Yes" | |
+| BL-INSP-08 | P1 | Current value displayed | Select a populated field | Value box shows the text, length reported | |
+| BL-INSP-09 | P1 | Truncated badge & View Full | Select a truncated base64 field | Red "truncated" badge + "View full value" button visible | |
+| BL-INSP-10 | P1 | View Full opens modal | Click "View full value" | Expanded field modal appears with full content | |
+| BL-INSP-11 | P1 | Z-segment schema unknown | Click a ZDS field node | Inspector shows "Not in HL7 standard (Z-segment or custom)" | |
+| BL-INSP-12 | P1 | Inspector translates | Switch to FR/IT/ES/DE | All inspector labels localized | |
+| BL-INSP-13 | P2 | No selection fallback | Deselect / reload | Shows placeholder text | |
+
+## 29. Schema-aware Tree
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-SCHEMA-01 | P1 | Toggle from View menu | View → Show Schema Fields | Setting toggles on/off | |
+| BL-SCHEMA-02 | P1 | Expanding segment injects placeholders | Enable the flag, expand PID in a minimal message | All PID-1..PID-20 slots shown; missing positions rendered dim/italic | |
+| BL-SCHEMA-03 | P1 | Placeholders dimmed | Inspect placeholder rows | Opacity ~0.5, italic, trailing ` ·` marker | |
+| BL-SCHEMA-04 | P1 | Real fields unaffected | Compare populated vs missing fields in same segment | Real fields full opacity, placeholders dim | |
+| BL-SCHEMA-05 | P1 | Inspector still works on placeholders | Click a placeholder | Inspector shows schema info (no current value section) | |
+| BL-SCHEMA-06 | P1 | Show in Editor hidden on placeholders | Right-click a placeholder | Context menu has no "Show in Editor" entry | |
+| BL-SCHEMA-07 | P1 | Toggling re-initializes tree | Expand PID, toggle flag twice | Placeholders appear/disappear consistently | |
+| BL-SCHEMA-08 | P1 | Sort by field position | Expand PID with flag on | Fields ordered by numeric position (1, 2, 3, ... 20) | |
+| BL-SCHEMA-09 | P2 | Flag localized in menu | Switch language, open View menu | "Show Schema Fields" translated | |
+| BL-SCHEMA-10 | P2 | Unknown segment falls back | Expand a Z-segment with flag on | Only actual fields shown (no schema to merge) | |
+
+## 30. Monaco Hover / Overflow
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-HOVER-01 | P0 | Hover visible near top of editor | Hover on an MSH field with the cursor near the top | Tooltip renders completely (below the line), not clipped by the editor frame | |
+| BL-HOVER-02 | P1 | Hover near right edge | Hover on a field near the right margin | Tooltip flows outside the editor bounds via `fixedOverflowWidgets` | |
+| BL-HOVER-03 | P1 | Hover delay consistent | Hover and wait 300ms | Tooltip appears after delay, stays sticky | |
+| BL-HOVER-04 | P2 | Hover content reflects schema | Hover on a known field | Shows HL7 field name / type / required metadata | |
+
+## 31. Regression / Bug Verification
 
 Tests for bugs fixed in previous releases, run to prevent regressions.
 
@@ -448,6 +505,9 @@ Tests for bugs fixed in previous releases, run to prevent regressions.
 | BL-REG-05 | P0 | i18n reactive | Change language | All UI updates immediately | |
 | BL-REG-06 | P0 | Settings modal visible | Open Settings | Modal appears centered, not cut off | |
 | BL-REG-07 | P0 | HTTP Send button not cut | Open HTTP panel, scroll down | Send button visible above status bar | |
+| BL-REG-08 | P0 | Typing does not reset cursor | Type additional characters mid-line in a parseable message | Cursor stays where typed, characters persist after the 500ms auto-parse fires | |
+| BL-REG-09 | P0 | Auto-parse preserves content | Paste, wait >500ms, continue typing | `tab.content` not overwritten by parser's truncated_text | |
+| BL-REG-10 | P1 | Show in Tree passes field position | Right-click inside a field (not on segment name) | Tree highlights the exact field, not just the segment | |
 
 ---
 
@@ -482,12 +542,15 @@ Add observations during testing here:
 
 ## Automated Tests
 
-Separately from this manual plan, the following automated tests run on every commit:
+Separately from this manual plan, the following automated tests run on every commit (see `.github/workflows/feature-tests.yml`):
 
-- **Rust unit tests**: `cd src-tauri && cargo test` (69 tests)
-- **Rust integration**: CI on Linux/macOS/Windows via GitHub Actions
-- **Frontend build**: `pnpm build` succeeds
-- **Linting**: ESLint, svelte-check (mostly clean)
+- **CLI feature tests** (BL-CLI-01..12) - validate, JSON, JUnit, info, anonymize, to-json, batch
+- **Rust core tests** - `cd src-tauri && cargo test` (unit + integration, ~70 tests)
+- **Schema lookup** (BL-INSP-05 partial) - `get_segment_info` / `get_field_info` for MSH/PID/PV1
+- **Parser fixtures** (BL-PARSER-01/02/03, BL-PERF-03) - smoke over `tests/fixtures/hl7/` via CLI
+- **Keygen roundtrip** (BL-LIC-14) - generate keypair, sign a license, verify signature
+- **Frontend check** - `pnpm check` (svelte-check) runs with 0 errors threshold
+- **Frontend build** - `pnpm build` succeeds
 
 ## How to Add Tests
 
