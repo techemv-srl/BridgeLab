@@ -175,14 +175,19 @@ jobs:
       - name: Test - anonymize preserves segment count (BL-ANON-10)
         run: |
           CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          # HL7 uses CR between segments but fixtures on disk may use LF; the
+          # anonymize output writes CR to stay HL7-compliant. Normalize both
+          # streams to LF before counting segment-prefix lines.
+          count_segments() { tr '\r' '\n' | grep -c '^[A-Z][A-Z0-9][A-Z0-9]|' || true; }
           for f in tests/fixtures/hl7/adt_a01_small.hl7 \
                    tests/fixtures/hl7/adt_a01_v2.5.1.hl7; do
-            ORIG_SEG=$(grep -c '^[A-Z][A-Z0-9][A-Z0-9]|' "$f" || true)
-            ANON_SEG=$($CLI anonymize "$f" | grep -c '^[A-Z][A-Z0-9][A-Z0-9]|' || true)
-            if [ "$ORIG_SEG" != "$ANON_SEG" ]; then
+            ORIG_SEG=$(cat "$f"           | count_segments)
+            ANON_SEG=$($CLI anonymize "$f" | count_segments)
+            if [ "$ORIG_SEG" != "$ANON_SEG" ] || [ "$ORIG_SEG" -lt 1 ]; then
               echo "BL-ANON-10 FAILED: $f orig=$ORIG_SEG anon=$ANON_SEG"
               exit 1
             fi
+            echo "  $f -> $ORIG_SEG segments preserved"
           done
           echo "BL-ANON-10 PASSED"
 
