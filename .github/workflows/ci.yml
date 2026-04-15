@@ -61,8 +61,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check TypeScript
-        run: pnpm check || true
+      - name: Svelte check (0 errors required, warnings allowed)
+        run: pnpm exec svelte-check --threshold error --output human
 
       - name: Build frontend
         run: pnpm build
