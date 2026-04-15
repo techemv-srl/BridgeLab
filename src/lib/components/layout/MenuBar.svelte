@@ -79,6 +79,13 @@
 		openMenu = openMenu === name ? null : name;
 	}
 
+	function hoverMenu(name: string) {
+		// Only switch menu on hover if one is already open (standard menubar UX)
+		if (openMenu !== null && openMenu !== name) {
+			openMenu = name;
+		}
+	}
+
 	function closeMenu() {
 		openMenu = null;
 	}
@@ -98,6 +105,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'file'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('file'); }}
+			onmouseenter={() => hoverMenu('file')}
 		>
 			{tr('menu.file')}
 		</button>
@@ -161,6 +169,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'edit'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('edit'); }}
+			onmouseenter={() => hoverMenu('edit')}
 		>
 			{tr('menu.edit')}
 		</button>
@@ -202,6 +211,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'view'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('view'); }}
+			onmouseenter={() => hoverMenu('view')}
 		>
 			{tr('menu.view')}
 		</button>
@@ -240,6 +250,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'tools'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('tools'); }}
+			onmouseenter={() => hoverMenu('tools')}
 		>
 			{tr('menu.tools')}
 		</button>
@@ -292,6 +303,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'help'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('help'); }}
+			onmouseenter={() => hoverMenu('help')}
 		>
 			{tr('menu.help')}
 		</button>
