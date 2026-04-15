@@ -9,6 +9,7 @@
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
 	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
+	import { shortcutStore, matchesKeys } from '$lib/stores/shortcuts.svelte';
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
 	import EditorTabs from '$lib/components/editor/EditorTabs.svelte';
@@ -97,6 +98,7 @@
 			}
 			try {
 				licenseStatus = await checkLicense();
+			await shortcutStore.loadFromPrefs();
 			} catch {
 				// License check failed - treat as trial
 			}
@@ -660,21 +662,33 @@
 
 	// --- Keyboard shortcuts ---
 
+	/** Action handlers mapped by shortcut id. */
+	const shortcutActions: Record<string, () => void> = {
+		'file.open': () => handleOpenFile(),
+		'file.save': () => handleSave(),
+		'file.saveAs': () => handleSaveAs(),
+		'file.closeTab': () => handleCloseTab(),
+		'file.newFromTemplate': () => { showTemplates = true; },
+		'file.testCases': () => { showTestCases = true; },
+		'edit.settings': () => { showSettings = true; },
+		'view.toggleTree': () => handleToggleTree(),
+		'view.toggleValidation': () => { showValidation = !showValidation; },
+		'view.toggleCommunication': () => { showCommunication = !showCommunication; },
+		'view.toggleFhirPath': () => { showFhirPath = !showFhirPath; },
+		'tools.parse': () => handleParse(),
+		'tools.validate': () => handleValidate(),
+	};
+
 	function handleKeydown(e: KeyboardEvent) {
-		const ctrl = e.ctrlKey || e.metaKey;
-		if (ctrl && e.key === 'o') { e.preventDefault(); handleOpenFile(); }
-		else if (ctrl && e.key === 's' && e.shiftKey) { e.preventDefault(); handleSaveAs(); }
-		else if (ctrl && e.key === 's') { e.preventDefault(); handleSave(); }
-		else if (ctrl && e.key === 'w') { e.preventDefault(); handleCloseTab(); }
-		else if (ctrl && e.key === 'b') { e.preventDefault(); handleToggleTree(); }
-		else if (e.key === 'F5') { e.preventDefault(); handleParse(); }
-		else if (e.key === 'F6') { e.preventDefault(); handleValidate(); }
-		else if (ctrl && e.key === 'j') { e.preventDefault(); showValidation = !showValidation; }
-		else if (ctrl && e.key === 'k') { e.preventDefault(); showCommunication = !showCommunication; }
-		else if (ctrl && e.key === ',') { e.preventDefault(); showSettings = true; }
-		else if (ctrl && e.key === 'n') { e.preventDefault(); showTemplates = true; }
-		else if (ctrl && e.key === 'p') { e.preventDefault(); showFhirPath = !showFhirPath; }
-		else if (ctrl && e.key === 'l') { e.preventDefault(); showTestCases = true; }
+		// Iterate through shortcut store to find a match; respects user customization
+		for (const [id, action] of Object.entries(shortcutActions)) {
+			const keys = shortcutStore.get(id);
+			if (keys && matchesKeys(e, keys)) {
+				e.preventDefault();
+				action();
+				return;
+			}
+		}
 	}
 </script>
 
