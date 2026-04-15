@@ -18,6 +18,8 @@
 		onCollapseAll?: () => void;
 		onCopyFullMessage?: () => void;
 		onCopyTruncatedMessage?: () => void;
+		/** External navigation request (e.g., from tree). Stamp forces re-trigger on identical targets. */
+		navigation?: { line: number; column: number; selectionLength: number; stamp: number } | null;
 	}
 
 	let {
@@ -33,6 +35,7 @@
 		onCollapseAll,
 		onCopyFullMessage,
 		onCopyTruncatedMessage,
+		navigation = null,
 	}: Props = $props();
 
 	let containerEl = $state<HTMLDivElement | undefined>(undefined);
@@ -263,6 +266,28 @@
 		if (monacoMod && editor) {
 			try { monacoMod.editor.setTheme(theme); } catch { /* ignore */ }
 		}
+	});
+
+	// External navigation sync: scroll + select the requested range
+	let lastNavStamp = 0;
+	$effect(() => {
+		if (!navigation || !editor || !monacoMod) return;
+		if (navigation.stamp === lastNavStamp) return;
+		lastNavStamp = navigation.stamp;
+		const { line, column, selectionLength } = navigation;
+		try {
+			editor.revealLineInCenter(line);
+			editor.setPosition({ lineNumber: line, column });
+			if (selectionLength > 0) {
+				editor.setSelection({
+					startLineNumber: line,
+					startColumn: column,
+					endLineNumber: line,
+					endColumn: column + selectionLength,
+				});
+			}
+			editor.focus();
+		} catch { /* ignore */ }
 	});
 
 	export function setValue(value: string) {
