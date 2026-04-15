@@ -492,7 +492,22 @@ Before running tests:
 | BL-HOVER-03 | P1 | Hover delay consistent | Hover and wait 300ms | Tooltip appears after delay, stays sticky | |
 | BL-HOVER-04 | P2 | Hover content reflects schema | Hover on a known field | Shows HL7 field name / type / required metadata | |
 
-## 31. Packaging & Installer
+## 31. Session Persistence (Notepad++-style)
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-SESSION-01 | P0 | Tabs restored after relaunch | Open 2 files + 1 pasted untitled tab, close app, reopen | All 3 tabs re-appear with same content, labels, active tab | |
+| BL-SESSION-02 | P0 | Unsaved edits survive close | Type changes in Untitled, close app, reopen | Typed text is back, `isModified` flag still set | |
+| BL-SESSION-03 | P0 | Active tab preserved | Switch to 2nd tab, close, reopen | 2nd tab is focused on startup | |
+| BL-SESSION-04 | P0 | Tree/inspector rehydrate | After restore | Auto-parse runs on each restored tab so tree populates | |
+| BL-SESSION-05 | P1 | Toggle off in Settings | Uncheck "Restore open tabs on startup", save, close, reopen | Fresh single Untitled tab, previous session cleared on next save | |
+| BL-SESSION-06 | P1 | Debounced autosave | Type rapidly | Only one save IPC ~800ms after the last keystroke | |
+| BL-SESSION-07 | P1 | Cursor position persists | Move cursor, close, reopen | Cursor returns to same line/column | |
+| BL-SESSION-08 | P1 | File path association | Open a .hl7 file, close, reopen | Tab reopens with filePath intact; Ctrl+S saves back to same file | |
+| BL-SESSION-09 | P2 | Large message session | Session with 10 MB file | Restore completes in <3s | |
+| BL-SESSION-10 | P2 | Empty session fallback | Fresh DB | One empty Untitled tab is created | |
+
+## 32. Packaging & Installer
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
@@ -507,7 +522,7 @@ Before running tests:
 | BL-PKG-09 | P2 | File association `.hl7` | Install, double-click .hl7 | Opens in BridgeLab | |
 | BL-PKG-10 | P2 | About dialog version matches installer | Launch installed build | About shows 0.1.0 (or current) | |
 
-## 32. Regression / Bug Verification
+## 33. Regression / Bug Verification
 
 Tests for bugs fixed in previous releases, run to prevent regressions.
 
