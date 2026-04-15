@@ -161,6 +161,71 @@ class MessageStore {
 			this.activeTabId = tabId;
 		}
 	}
+
+	/**
+	 * Serialize the current session for persistence. Excludes parseResult
+	 * (it is re-derived from content on restore).
+	 */
+	serializeSession(): Array<{
+		tab_order: number;
+		label: string;
+		file_path: string | null;
+		content: string;
+		is_modified: boolean;
+		is_active: boolean;
+		cursor_line: number;
+		cursor_column: number;
+	}> {
+		return this.tabs.map((t, idx) => ({
+			tab_order: idx,
+			label: t.label,
+			file_path: t.filePath,
+			content: t.content,
+			is_modified: t.isModified,
+			is_active: t.id === this.activeTabId,
+			cursor_line: t.cursorLine,
+			cursor_column: t.cursorColumn,
+		}));
+	}
+
+	/**
+	 * Restore tabs from a persisted session. Skips empty sessions.
+	 * Returns true if at least one tab was restored.
+	 */
+	restoreSession(
+		tabs: Array<{
+			tab_order: number;
+			label: string;
+			file_path: string | null;
+			content: string;
+			is_modified: boolean;
+			is_active: boolean;
+			cursor_line: number;
+			cursor_column: number;
+		}>,
+	): boolean {
+		if (!tabs || tabs.length === 0) return false;
+		const sorted = [...tabs].sort((a, b) => a.tab_order - b.tab_order);
+		this.tabs = [];
+		let activeId: string | null = null;
+		for (const s of sorted) {
+			const id = `tab-${this.nextId++}`;
+			const tab: MessageTab = {
+				id,
+				label: s.label || 'Untitled',
+				filePath: s.file_path,
+				content: s.content,
+				parseResult: null,
+				isModified: s.is_modified,
+				cursorLine: s.cursor_line,
+				cursorColumn: s.cursor_column,
+			};
+			this.tabs.push(tab);
+			if (s.is_active) activeId = id;
+		}
+		this.activeTabId = activeId ?? this.tabs[0]?.id ?? null;
+		return true;
+	}
 }
 
 /** Singleton message store. */

@@ -20,6 +20,19 @@ pub struct TestCase {
     pub updated_at: String,
 }
 
+/// A persisted editor tab (Notepad++-style session restore).
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct SessionTab {
+    pub tab_order: i64,
+    pub label: String,
+    pub file_path: Option<String>,
+    pub content: String,
+    pub is_modified: bool,
+    pub is_active: bool,
+    pub cursor_line: i64,
+    pub cursor_column: i64,
+}
+
 /// Database manager for BridgeLab local storage.
 pub struct Database {
     conn: Mutex<Connection>,
@@ -120,6 +133,21 @@ impl Database {
                 response_time_ms INTEGER NOT NULL DEFAULT 0,
                 timestamp TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS session_tabs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tab_order INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                file_path TEXT,
+                content TEXT NOT NULL,
+                is_modified INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 0,
+                cursor_line INTEGER NOT NULL DEFAULT 1,
+                cursor_column INTEGER NOT NULL DEFAULT 1,
+                saved_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            INSERT OR IGNORE INTO preferences (key, value) VALUES ('restore_session', 'true');
 
             CREATE TABLE IF NOT EXISTS test_cases (
                 id TEXT PRIMARY KEY,
@@ -409,6 +437,72 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM test_cases WHERE id = ?1", params![id])
             .map_err(|e| format!("Delete failed: {}", e))?;
+        Ok(())
+    }
+
+    // --- Session (open tabs) ---
+
+    /// Replace the persisted session with the given list of tabs.
+    pub fn save_session(&self, tabs: &[SessionTab]) -> Result<(), String> {
+        let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| format!("Begin tx failed: {}", e))?;
+
+        tx.execute("DELETE FROM session_tabs", [])
+            .map_err(|e| format!("Clear session failed: {}", e))?;
+
+        for t in tabs {
+            tx.execute(
+                "INSERT INTO session_tabs
+                 (tab_order, label, file_path, content, is_modified, is_active, cursor_line, cursor_column)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    t.tab_order,
+                    t.label,
+                    t.file_path,
+                    t.content,
+                    if t.is_modified { 1_i64 } else { 0 },
+                    if t.is_active { 1_i64 } else { 0 },
+                    t.cursor_line,
+                    t.cursor_column,
+                ],
+            ).map_err(|e| format!("Insert session tab failed: {}", e))?;
+        }
+
+        tx.commit().map_err(|e| format!("Commit failed: {}", e))?;
+        Ok(())
+    }
+
+    /// Load the persisted session in tab_order.
+    pub fn load_session(&self) -> Result<Vec<SessionTab>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT tab_order, label, file_path, content, is_modified, is_active,
+                    cursor_line, cursor_column
+             FROM session_tabs
+             ORDER BY tab_order ASC"
+        ).map_err(|e| format!("Prepare failed: {}", e))?;
+
+        let iter = stmt.query_map([], |row| {
+            Ok(SessionTab {
+                tab_order: row.get::<_, i64>(0)?,
+                label: row.get(1)?,
+                file_path: row.get(2)?,
+                content: row.get(3)?,
+                is_modified: row.get::<_, i64>(4)? != 0,
+                is_active: row.get::<_, i64>(5)? != 0,
+                cursor_line: row.get(6)?,
+                cursor_column: row.get(7)?,
+            })
+        }).map_err(|e| format!("Query failed: {}", e))?;
+
+        Ok(iter.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Remove the persisted session.
+    pub fn clear_session(&self) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM session_tabs", [])
+            .map_err(|e| format!("Clear session failed: {}", e))?;
         Ok(())
     }
 }
