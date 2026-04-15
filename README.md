@@ -70,6 +70,26 @@ organized by feature area). CI automates the automatable slice:
   tests, HL7 fixtures (parser/info/validate/anonymize/batch/JUnit), FHIR
   fixture integrity, schema-lookup Rust tests, license keygen roundtrip
 
+## Plugin packs (declarative rules)
+
+BridgeLab accepts user-supplied **JSON plugin packs** that extend the
+built-in validator and PHI anonymizer **without running any code**.
+
+```
+<config_dir>/BridgeLab/plugins/
+├── validation/    *.json  - extra validation rules (not_empty, regex,
+│                            one_of, max_length, min_length, contains)
+└── anonymization/ *.json  - extra PHI fields merged with the built-in list
+```
+
+Manage packs from **Settings → Plugins**: list, toggle on/off (persisted),
+Reload, "Open plugins folder". See [docs/PLUGINS.md](docs/PLUGINS.md) for
+the full schema and examples; ready-to-copy reference packs live under
+[`examples/plugins/`](examples/plugins).
+
+Scripted plugins (sandboxed JS, WASM) are on the roadmap as layers on top
+of this declarative baseline.
+
 ## Resource usage
 
 BridgeLab does **not** require memory tuning - the Rust backend uses zero-copy

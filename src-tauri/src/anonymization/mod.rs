@@ -50,15 +50,29 @@ const PHI_FIELDS: &[(&str, usize, &str, PhiSensitivity)] = &[
     ("GT1", 12, "Guarantor SSN", PhiSensitivity::High),
 ];
 
-/// Detect PHI fields in an HL7 message.
+/// A runtime-defined PHI field (e.g. from a plugin). Built-in fields live in
+/// the `PHI_FIELDS` constant, plugins add to this list.
+#[derive(Debug, Clone)]
+pub struct ExtraPhiField {
+    pub segment: String,
+    pub field: usize,
+    pub name: String,
+    pub sensitivity: PhiSensitivity,
+}
+
+/// Detect PHI fields in an HL7 message using the built-in rules only.
 pub fn detect_phi(msg: &Hl7Message) -> Vec<PhiLocation> {
+    detect_phi_with_extra(msg, &[])
+}
+
+/// Detect PHI fields, merging the built-in catalogue with extra plugin rules.
+pub fn detect_phi_with_extra(msg: &Hl7Message, extra: &[ExtraPhiField]) -> Vec<PhiLocation> {
     let mut locations = Vec::new();
 
+    // Built-in PHI fields
     for (seg_idx, seg) in msg.segments.iter().enumerate() {
         for &(seg_type, field_pos, field_name, ref sensitivity) in PHI_FIELDS {
-            if seg.segment_type != seg_type {
-                continue;
-            }
+            if seg.segment_type != seg_type { continue; }
             if let Some(field) = seg.fields.iter().find(|f| f.position == field_pos) {
                 let value = field.span.as_str(&msg.raw).trim();
                 if !value.is_empty() {
@@ -73,6 +87,33 @@ pub fn detect_phi(msg: &Hl7Message) -> Vec<PhiLocation> {
                 }
             }
         }
+
+        // Plugin-contributed PHI fields (dedup against built-in)
+        for rule in extra {
+            if seg.segment_type != rule.segment { continue; }
+            // Skip duplicates (same segment + field already covered by built-in)
+            let already = PHI_FIELDS.iter().any(|&(st, fp, _, _)| {
+                st == rule.segment.as_str() && fp == rule.field
+            });
+            if already { continue; }
+            if let Some(field) = seg.fields.iter().find(|f| f.position == rule.field) {
+                let value = field.span.as_str(&msg.raw).trim();
+                if !value.is_empty() {
+                    locations.push(PhiLocation {
+                        segment_idx: seg_idx,
+                        segment_type: rule.segment.clone(),
+                        field_position: rule.field,
+                        field_name: if rule.name.is_empty() {
+                            format!("{}-{}", rule.segment, rule.field)
+                        } else {
+                            rule.name.clone()
+                        },
+                        sensitivity: rule.sensitivity.clone(),
+                        current_value: value.chars().take(50).collect(),
+                    });
+                }
+            }
+        }
     }
 
     locations
@@ -80,63 +121,41 @@ pub fn detect_phi(msg: &Hl7Message) -> Vec<PhiLocation> {
 
 /// Anonymize an HL7 message by replacing PHI fields with masked values.
 pub fn anonymize_message(msg: &Hl7Message) -> String {
-    let _text = String::from_utf8_lossy(&msg.raw).to_string();
-    let mut lines: Vec<String> = Vec::new();
+    anonymize_message_with_extra(msg, &[])
+}
 
-    // Split by segment (CR or CRLF)
-    for (_seg_idx, seg) in msg.segments.iter().enumerate() {
-        let seg_text = seg.span.as_str(&msg.raw);
-        let fields: Vec<&str> = seg_text.split(msg.delimiters.field as char).collect();
-
-        for &(seg_type, field_pos, _name, ref _sensitivity) in PHI_FIELDS {
-            if seg.segment_type != seg_type {
-                continue;
-            }
-            // For MSH, field indexing is offset by 1 because MSH-1 is the separator itself
-            let field_idx = if seg.segment_type == "MSH" {
-                field_pos
-            } else {
-                field_pos
-            };
-
-            if field_idx < fields.len() {
-                let original = fields[field_idx];
-                if !original.trim().is_empty() {
-                    // We can't mutate borrowed slices, so we rebuild
-                    // Use a placeholder approach
-                }
-            }
-        }
-
-        lines.push(seg_text.to_string());
-    }
-
-    // Rebuild with replacements using a direct approach
-    anonymize_by_replacement(msg)
+/// Anonymize an HL7 message, respecting both the built-in PHI catalogue and
+/// any extra plugin-contributed fields.
+pub fn anonymize_message_with_extra(msg: &Hl7Message, extra: &[ExtraPhiField]) -> String {
+    anonymize_by_replacement(msg, extra)
 }
 
 /// Anonymize by building a new message with PHI fields replaced.
-fn anonymize_by_replacement(msg: &Hl7Message) -> String {
+fn anonymize_by_replacement(msg: &Hl7Message, extra: &[ExtraPhiField]) -> String {
     let sep = msg.delimiters.field as char;
     let mut result_segments: Vec<String> = Vec::new();
 
-    for (_seg_idx, seg) in msg.segments.iter().enumerate() {
+    for seg in msg.segments.iter() {
         let seg_text = seg.span.as_str(&msg.raw);
         let mut fields: Vec<String> = seg_text.split(sep).map(|s| s.to_string()).collect();
 
-        let is_msh = seg.segment_type == "MSH";
-
         for &(seg_type, field_pos, _name, ref sensitivity) in PHI_FIELDS {
-            if seg.segment_type != seg_type {
-                continue;
-            }
-
-            // In HL7, for non-MSH segments: fields[0] = segment name, fields[1] = field 1
-            // For MSH: fields[0] = "MSH", fields[1] = encoding chars, fields[2] = MSH-3
-            let idx = if is_msh { field_pos } else { field_pos };
-
+            if seg.segment_type != seg_type { continue; }
+            let idx = field_pos;
             if idx < fields.len() && !fields[idx].trim().is_empty() {
                 fields[idx] = generate_replacement(&fields[idx], field_pos, sensitivity);
+            }
+        }
+
+        for rule in extra {
+            if seg.segment_type != rule.segment { continue; }
+            let already = PHI_FIELDS.iter().any(|&(st, fp, _, _)| {
+                st == rule.segment.as_str() && fp == rule.field
+            });
+            if already { continue; }
+            let idx = rule.field;
+            if idx < fields.len() && !fields[idx].trim().is_empty() {
+                fields[idx] = generate_replacement(&fields[idx], rule.field, &rule.sensitivity);
             }
         }
 
