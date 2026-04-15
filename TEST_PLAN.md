@@ -15,6 +15,30 @@ This document defines manual test cases to verify that all BridgeLab functionali
 - **Priority**: P0 (critical) | P1 (major) | P2 (normal) | P3 (minor)
 - **Platforms**: Windows 11, macOS 14+, Linux (Ubuntu 22.04+)
 
+### Excel export for tracking
+
+Export the plan to a formatted Excel workbook:
+
+```bash
+pip install openpyxl
+python scripts/test_plan_to_excel.py
+# -> produces TEST_PLAN.xlsx with one sheet per section
+```
+
+The Excel has added columns (Tested By, Tested At, Notes) plus color-coded
+Priority and Status cells. Share the `.xlsx` with the QA team for execution.
+
+### Automated tests
+
+Three GitHub Actions workflows run on every push:
+
+- **ci.yml** - builds frontend and tests Rust core
+- **feature-tests.yml** - CLI feature tests + Rust integration tests +
+  license signing roundtrip
+- **release.yml** - triggered by `v*` tags for cross-platform builds
+
+See `.github/workflows/` for details.
+
 ## Pre-requisites
 
 Before running tests:

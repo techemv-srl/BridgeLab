@@ -1,0 +1,148 @@
+name: Feature Tests
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cli-feature-tests:
+    name: CLI Feature Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/bridgelab-cli/target
+          key: ${{ runner.os }}-cli-${{ hashFiles('tools/bridgelab-cli/Cargo.lock') }}
+
+      - name: Build CLI
+        working-directory: tools/bridgelab-cli
+        run: cargo build --release
+
+      - name: Test - validate valid file (should exit 0)
+        run: |
+          ./tools/bridgelab-cli/target/release/bridgelab-cli validate tests/fixtures/hl7/adt_a01_small.hl7
+          echo "BL-CLI-01 PASSED"
+
+      - name: Test - validate invalid file (should exit 1)
+        run: |
+          if ./tools/bridgelab-cli/target/release/bridgelab-cli validate tests/fixtures/hl7/invalid_structure.hl7; then
+            echo "BL-CLI-02 FAILED: expected non-zero exit"
+            exit 1
+          else
+            echo "BL-CLI-02 PASSED"
+          fi
+
+      - name: Test - JSON output is valid
+        run: |
+          ./tools/bridgelab-cli/target/release/bridgelab-cli validate tests/fixtures/hl7/adt_a01_small.hl7 --format json | jq .
+          echo "BL-CLI-03 PASSED"
+
+      - name: Test - JUnit XML output
+        run: |
+          ./tools/bridgelab-cli/target/release/bridgelab-cli validate tests/fixtures/hl7/adt_a01_small.hl7 --format junit > /tmp/junit.xml
+          xmllint --noout /tmp/junit.xml
+          echo "BL-CLI-04 PASSED"
+
+      - name: Test - info command shows correct metadata
+        run: |
+          OUTPUT=$(./tools/bridgelab-cli/target/release/bridgelab-cli info tests/fixtures/hl7/adt_a01_small.hl7 --json)
+          echo "$OUTPUT" | jq -e '.[0].message_type == "ADT^A01"' > /dev/null
+          echo "$OUTPUT" | jq -e '.[0].version == "2.5"' > /dev/null
+          echo "BL-CLI-06/07 PASSED"
+
+      - name: Test - anonymize removes PHI
+        run: |
+          ORIGINAL=$(cat tests/fixtures/hl7/adt_a01_small.hl7)
+          ANON=$(./tools/bridgelab-cli/target/release/bridgelab-cli anonymize tests/fixtures/hl7/adt_a01_small.hl7)
+          if echo "$ANON" | grep -q "DOE\^JOHN"; then
+            echo "BL-CLI-08 FAILED: patient name not redacted"
+            exit 1
+          fi
+          if echo "$ANON" | grep -q "REDACTED"; then
+            echo "BL-CLI-08 PASSED"
+          else
+            echo "BL-CLI-08 FAILED: expected REDACTED in output"
+            exit 1
+          fi
+
+      - name: Test - to-json conversion
+        run: |
+          JSON=$(./tools/bridgelab-cli/target/release/bridgelab-cli to-json tests/fixtures/hl7/adt_a01_small.hl7)
+          echo "$JSON" | jq -e '.message_type == "ADT^A01"' > /dev/null
+          echo "$JSON" | jq -e '.segments | length >= 5' > /dev/null
+          echo "BL-CLI-10 PASSED"
+
+      - name: Test - batch directory
+        run: |
+          ./tools/bridgelab-cli/target/release/bridgelab-cli batch tests/fixtures/hl7 --json > /tmp/batch.json
+          TOTAL=$(jq '.total_files' /tmp/batch.json)
+          if [ "$TOTAL" -lt 3 ]; then
+            echo "BL-CLI-11 FAILED: expected at least 3 files"
+            exit 1
+          fi
+          echo "BL-CLI-11/12 PASSED (found $TOTAL files)"
+
+  rust-feature-tests:
+    name: Rust Core Feature Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev \
+            librsvg2-dev libayatana-appindicator3-dev build-essential
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-feat-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Run full test suite
+        working-directory: src-tauri
+        run: cargo test --all -- --nocapture
+
+      - name: Test keygen tool
+        working-directory: tools/bridgelab-keygen
+        run: cargo build --release
+
+      - name: Generate and verify a license (integration test)
+        run: |
+          cd tools/bridgelab-keygen
+          ./target/release/bridgelab-keygen generate-keypair \
+            --private /tmp/test-priv.key --public /tmp/test-pub.key
+
+          KEY=$(./target/release/bridgelab-keygen generate \
+            --private /tmp/test-priv.key \
+            --license-type pro \
+            --licensee "Test Co" \
+            --email test@test.com \
+            --days 365)
+
+          ./target/release/bridgelab-keygen verify \
+            --public /tmp/test-pub.key \
+            "$KEY"
+
+          echo "BL-LIC-14 PASSED"
