@@ -14,7 +14,7 @@
 		onCursorChange?: (line: number, column: number) => void;
 		onExpandTruncated?: (lineNumber: number, fieldPosition: string) => void;
 		onExpandAll?: () => void;
-		onNavigateToSegment?: (lineNumber: number, segmentType: string) => void;
+		onNavigateToSegment?: (lineNumber: number, segmentType: string, fieldPosition?: number) => void;
 		onCollapseAll?: () => void;
 		onCopyFullMessage?: () => void;
 		onCopyTruncatedMessage?: () => void;
@@ -80,6 +80,14 @@
 				automaticLayout: true,
 				renderLineHighlight: 'line',
 				bracketPairColorization: { enabled: false },
+				// Render hover/suggest widgets outside the editor bounds to avoid clipping
+				fixedOverflowWidgets: true,
+				hover: {
+					enabled: true,
+					above: false,  // Prefer showing below cursor to avoid top clipping
+					delay: 300,
+					sticky: true,
+				},
 				tabSize: 4,
 				smoothScrolling: true,
 				cursorBlinking: 'smooth',
@@ -116,17 +124,22 @@
 		// "Show in Tree" action
 		ed.addAction({
 			id: 'bridgelab.showInTree',
-			label: 'Show Segment in Tree',
+			label: 'Show in Tree',
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 1,
 			keybindings: [mod.KeyMod.Alt | mod.KeyCode.KeyT],
 			run: (editor) => {
-				const line = editor.getPosition()?.lineNumber;
-				if (!line) return;
-				const lineContent = editor.getModel()?.getLineContent(line) ?? '';
+				const pos = editor.getPosition();
+				if (!pos) return;
+				const lineContent = editor.getModel()?.getLineContent(pos.lineNumber) ?? '';
 				const segType = lineContent.substring(0, 3);
 				if (segType && /^[A-Z][A-Z0-9]{2}$/.test(segType)) {
-					onNavigateToSegment?.(line, segType);
+					// Calculate field position based on pipe count before cursor column
+					const textBefore = lineContent.substring(0, pos.column - 1);
+					const pipeCount = (textBefore.match(/\|/g) || []).length;
+					// MSH has offset: pipeCount == 1 means MSH-1 (the separator itself)
+					const fieldPosition = pipeCount; // 0 = segment name, 1+ = field
+					onNavigateToSegment?.(pos.lineNumber, segType, fieldPosition);
 				}
 			}
 		});
