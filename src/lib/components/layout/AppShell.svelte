@@ -34,7 +34,7 @@
 
 	// UI state
 	let treeWidth = $state(350);
-	let draggingTarget = $state<'tree' | 'bottom' | null>(null);
+	let draggingTarget = $state<'tree' | 'bottom' | 'inspector' | null>(null);
 	let isDragging = $derived(draggingTarget !== null);
 	let showTree = $state(true);
 	let showInspector = $state(true);
@@ -42,6 +42,7 @@
 	let showValidation = $state(false);
 	let showCommunication = $state(false);
 	let bottomPanelHeight = $state(220);
+	let inspectorHeight = $state(260);
 	let expandedFieldContent = $state<string | null>(null);
 	let showAbout = $state(false);
 	let showAnonymize = $state(false);
@@ -97,6 +98,8 @@
 				if (savedLang) setLocale(savedLang as Locale);
 				const savedTreeWidth = await getPreference('tree_width');
 				if (savedTreeWidth) treeWidth = parseInt(savedTreeWidth) || 350;
+				const savedInspectorHeight = await getPreference('inspector_height');
+				if (savedInspectorHeight) inspectorHeight = parseInt(savedInspectorHeight) || 260;
 				recentFiles = await getRecentFiles(20);
 			} catch {
 				// Running in web-only mode without Tauri backend
@@ -728,6 +731,11 @@
 		e.preventDefault();
 	}
 
+	function startInspectorDrag(e: MouseEvent) {
+		draggingTarget = 'inspector';
+		e.preventDefault();
+	}
+
 	function handleMouseMove(e: MouseEvent) {
 		if (draggingTarget === 'tree') {
 			treeWidth = Math.max(200, Math.min(600, e.clientX));
@@ -735,12 +743,19 @@
 			const windowHeight = window.innerHeight;
 			const newHeight = windowHeight - e.clientY - 24; // 24 = status bar height
 			bottomPanelHeight = Math.max(100, Math.min(windowHeight * 0.7, newHeight));
+		} else if (draggingTarget === 'inspector') {
+			const windowHeight = window.innerHeight;
+			// Inspector is anchored to the bottom of the tree panel (above status bar)
+			const newHeight = windowHeight - e.clientY - 24;
+			inspectorHeight = Math.max(100, Math.min(windowHeight * 0.8, newHeight));
 		}
 	}
 
 	async function stopDrag() {
 		if (draggingTarget === 'tree') {
 			try { await setPreference('tree_width', String(treeWidth)); } catch { /* web mode */ }
+		} else if (draggingTarget === 'inspector') {
+			try { await setPreference('inspector_height', String(inspectorHeight)); } catch { /* web mode */ }
 		}
 		draggingTarget = null;
 	}
@@ -889,7 +904,18 @@
 						/>
 					</div>
 					{#if showInspector}
-						<div class="inspector-wrapper">
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+						<div
+							class="inspector-splitter"
+							class:active={draggingTarget === 'inspector'}
+							role="separator"
+							tabindex={0}
+							aria-orientation="horizontal"
+							onmousedown={startInspectorDrag}
+							title="Drag to resize"
+						></div>
+						<div class="inspector-wrapper" style="height: {inspectorHeight}px">
 							<FieldInspector
 								messageId={activeTab.parseResult.message_id}
 								version={activeTab.parseResult.version}
@@ -1199,11 +1225,23 @@
 
 	.inspector-wrapper {
 		flex: 0 0 auto;
-		height: 260px;
-		min-height: 120px;
-		max-height: 50%;
+		min-height: 100px;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.inspector-splitter {
+		flex: 0 0 auto;
+		height: 4px;
+		background-color: var(--color-border);
+		cursor: row-resize;
+		transition: background-color 0.15s;
+	}
+
+	.inspector-splitter:hover,
+	.inspector-splitter.active {
+		background-color: var(--color-accent);
 	}
 
 	.inspector-toggle {
