@@ -312,12 +312,12 @@
 		try {
 			if (trimmed.startsWith('MSH|')) {
 				const result = await parseMessage(value);
-				skipNextAutoParse = true;
-				messageStore.updateParseResult(messageStore.activeTabId!, result, result.truncated_text);
+				// Background parse while user is typing: update parseResult only,
+				// do NOT replace editor content (would reset cursor to 1:1).
+				messageStore.updateParseResult(messageStore.activeTabId!, result);
 			} else if (trimmed.startsWith('{') && trimmed.includes('"resourceType"')) {
 				const result = await parseFhirMessage(value);
-				skipNextAutoParse = true;
-				messageStore.updateParseResult(messageStore.activeTabId!, result, result.truncated_text);
+				messageStore.updateParseResult(messageStore.activeTabId!, result);
 			}
 		} catch {
 			// Not valid yet, ignore
@@ -515,17 +515,84 @@
 		}
 	}
 
-	/** Handle "Show in Tree" - expand tree panel and select the segment */
-	function handleEditorNavigateSegment(lineNumber: number, _segmentType: string) {
+	/** Handle "Show in Tree" - expand tree panel and select the segment + optional field */
+	function handleEditorNavigateSegment(lineNumber: number, _segmentType: string, fieldPosition?: number) {
 		showTree = true;
-		// Trigger tree to expand/select segment at this index
 		const segIdx = lineNumber - 1;
 		if (activeTab?.parseResult) {
-			selectedTreeSegmentIdx = segIdx;
+			treeNavigation = {
+				segmentIdx: segIdx,
+				fieldPosition: fieldPosition ?? null,
+				stamp: Date.now(),  // stamp to force re-trigger even on same target
+			};
 		}
 	}
 
-	let selectedTreeSegmentIdx = $state<number | null>(null);
+	/** Tree navigation request from editor: includes segment index and optional field position */
+	let treeNavigation = $state<{ segmentIdx: number; fieldPosition: number | null; stamp: number } | null>(null);
+
+	/** Editor navigation request from tree: scrolls Monaco to a specific position */
+	let editorNavigation = $state<{ line: number; column: number; selectionLength: number; stamp: number } | null>(null);
+
+	/** Handle a tree node requesting to show its position in the editor */
+	function handleTreeNavigateToEditor(segmentIdx: number, fieldPosition: number | null, componentIdx: number | null) {
+		if (!activeTab?.parseResult) return;
+		const text = activeTab.content;
+		const lines = text.split(/\r\n|\r|\n/);
+		if (segmentIdx >= lines.length) return;
+
+		const line = lines[segmentIdx];
+		const lineNumber = segmentIdx + 1;
+		let column = 1;
+		let selectionLength = line.length;
+
+		if (fieldPosition !== null && fieldPosition !== undefined) {
+			// Find the start column of this field by counting pipes
+			const isMsh = line.startsWith('MSH');
+			let pipeIdx = 0;
+			let cursor = 0;
+
+			if (isMsh && fieldPosition === 1) {
+				// MSH-1 is the field separator at position 4
+				column = 4;
+				selectionLength = 1;
+			} else if (isMsh && fieldPosition === 2) {
+				// MSH-2 is the encoding chars at position 5
+				column = 5;
+				selectionLength = 4;
+			} else {
+				// For non-MSH segments: pipes start counting after segment name
+				// fieldPosition 1 = first field after first pipe
+				// For MSH: fieldPosition 3 = third field after the encoding chars
+				const targetPipe = isMsh ? fieldPosition - 1 : fieldPosition;
+				while (cursor < line.length && pipeIdx < targetPipe) {
+					if (line[cursor] === '|') pipeIdx++;
+					cursor++;
+				}
+				column = cursor + 1;
+				// Find the end of this field (next pipe or end of line)
+				let end = cursor;
+				while (end < line.length && line[end] !== '|') end++;
+				selectionLength = Math.max(1, end - cursor);
+
+				// Optionally narrow to component
+				if (componentIdx !== null && componentIdx !== undefined && componentIdx > 0) {
+					const fieldText = line.substring(cursor, end);
+					const components = fieldText.split('^');
+					if (componentIdx <= components.length) {
+						let compStart = 0;
+						for (let i = 0; i < componentIdx - 1; i++) {
+							compStart += components[i].length + 1; // +1 for '^'
+						}
+						column = cursor + compStart + 1;
+						selectionLength = Math.max(1, components[componentIdx - 1].length);
+					}
+				}
+			}
+		}
+
+		editorNavigation = { line: lineNumber, column, selectionLength, stamp: Date.now() };
+	}
 
 	// --- View operations ---
 
@@ -795,7 +862,8 @@
 						roots={activeTab.parseResult.tree_roots}
 						onNodeSelect={handleNodeSelect}
 						onFieldExpand={handleFieldExpand}
-						navigateToSegmentIdx={selectedTreeSegmentIdx}
+						navigateTo={treeNavigation}
+						onNavigateToEditor={handleTreeNavigateToEditor}
 					/>
 				{:else}
 					<div class="panel-header">
@@ -844,6 +912,7 @@
 						onCollapseAll={handleCollapseAll}
 						onCopyFullMessage={handleCopyFull}
 						onCopyTruncatedMessage={handleCopyTruncated}
+						navigation={editorNavigation}
 					/>
 				{:else}
 					<div class="editor-empty">

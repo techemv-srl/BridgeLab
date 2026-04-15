@@ -14,10 +14,12 @@
 		onCursorChange?: (line: number, column: number) => void;
 		onExpandTruncated?: (lineNumber: number, fieldPosition: string) => void;
 		onExpandAll?: () => void;
-		onNavigateToSegment?: (lineNumber: number, segmentType: string) => void;
+		onNavigateToSegment?: (lineNumber: number, segmentType: string, fieldPosition?: number) => void;
 		onCollapseAll?: () => void;
 		onCopyFullMessage?: () => void;
 		onCopyTruncatedMessage?: () => void;
+		/** External navigation request (e.g., from tree). Stamp forces re-trigger on identical targets. */
+		navigation?: { line: number; column: number; selectionLength: number; stamp: number } | null;
 	}
 
 	let {
@@ -33,6 +35,7 @@
 		onCollapseAll,
 		onCopyFullMessage,
 		onCopyTruncatedMessage,
+		navigation = null,
 	}: Props = $props();
 
 	let containerEl = $state<HTMLDivElement | undefined>(undefined);
@@ -80,6 +83,14 @@
 				automaticLayout: true,
 				renderLineHighlight: 'line',
 				bracketPairColorization: { enabled: false },
+				// Render hover/suggest widgets outside the editor bounds to avoid clipping
+				fixedOverflowWidgets: true,
+				hover: {
+					enabled: true,
+					above: false,  // Prefer showing below cursor to avoid top clipping
+					delay: 300,
+					sticky: true,
+				},
 				tabSize: 4,
 				smoothScrolling: true,
 				cursorBlinking: 'smooth',
@@ -116,17 +127,22 @@
 		// "Show in Tree" action
 		ed.addAction({
 			id: 'bridgelab.showInTree',
-			label: 'Show Segment in Tree',
+			label: 'Show in Tree',
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 1,
 			keybindings: [mod.KeyMod.Alt | mod.KeyCode.KeyT],
 			run: (editor) => {
-				const line = editor.getPosition()?.lineNumber;
-				if (!line) return;
-				const lineContent = editor.getModel()?.getLineContent(line) ?? '';
+				const pos = editor.getPosition();
+				if (!pos) return;
+				const lineContent = editor.getModel()?.getLineContent(pos.lineNumber) ?? '';
 				const segType = lineContent.substring(0, 3);
 				if (segType && /^[A-Z][A-Z0-9]{2}$/.test(segType)) {
-					onNavigateToSegment?.(line, segType);
+					// Calculate field position based on pipe count before cursor column
+					const textBefore = lineContent.substring(0, pos.column - 1);
+					const pipeCount = (textBefore.match(/\|/g) || []).length;
+					// MSH has offset: pipeCount == 1 means MSH-1 (the separator itself)
+					const fieldPosition = pipeCount; // 0 = segment name, 1+ = field
+					onNavigateToSegment?.(pos.lineNumber, segType, fieldPosition);
 				}
 			}
 		});
@@ -250,6 +266,28 @@
 		if (monacoMod && editor) {
 			try { monacoMod.editor.setTheme(theme); } catch { /* ignore */ }
 		}
+	});
+
+	// External navigation sync: scroll + select the requested range
+	let lastNavStamp = 0;
+	$effect(() => {
+		if (!navigation || !editor || !monacoMod) return;
+		if (navigation.stamp === lastNavStamp) return;
+		lastNavStamp = navigation.stamp;
+		const { line, column, selectionLength } = navigation;
+		try {
+			editor.revealLineInCenter(line);
+			editor.setPosition({ lineNumber: line, column });
+			if (selectionLength > 0) {
+				editor.setSelection({
+					startLineNumber: line,
+					startColumn: column,
+					endLineNumber: line,
+					endColumn: column + selectionLength,
+				});
+			}
+			editor.focus();
+		} catch { /* ignore */ }
 	});
 
 	export function setValue(value: string) {
