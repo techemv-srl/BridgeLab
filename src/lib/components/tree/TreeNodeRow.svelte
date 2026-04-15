@@ -1,17 +1,28 @@
 <script lang="ts">
 	import type { TreeNode } from '$lib/types/hl7';
+	import { t, subscribeLocale } from '$lib/i18n';
+
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') {
+		subscribeLocale(() => { localeVersion++; });
+	}
+	function tr(key: string): string {
+		void localeVersion;
+		return t(key);
+	}
 
 	interface Props {
 		node: TreeNode;
 		isSelected: boolean;
 		isExpanded: boolean;
+		isPlaceholder?: boolean;
 		onToggle: () => void;
 		onSelect: () => void;
 		onExpandTruncated: () => void;
 		onShowInEditor?: () => void;
 	}
 
-	let { node, isSelected, isExpanded, onToggle, onSelect, onExpandTruncated, onShowInEditor }: Props = $props();
+	let { node, isSelected, isExpanded, isPlaceholder = false, onToggle, onSelect, onExpandTruncated, onShowInEditor }: Props = $props();
 
 	const indent = $derived((node.depth - 1) * 16);
 
@@ -71,6 +82,7 @@
 	class:segment={node.node_type === 'segment'}
 	class:field={node.node_type === 'field'}
 	class:component={node.node_type === 'component'}
+	class:placeholder={isPlaceholder}
 	data-node-id={node.id}
 	role="treeitem"
 	tabindex={0}
@@ -121,7 +133,7 @@
 		onkeydown={(e) => { if (e.key === 'Escape') menuOpen = false; }}
 	>
 		<button class="context-menu-item" onclick={handleShowInEditor}>
-			Show in Editor
+			{tr('ctx.showInEditor')}
 		</button>
 	</div>
 {/if}
@@ -183,6 +195,16 @@
 
 	.component .label {
 		color: var(--color-component);
+	}
+
+	.tree-node.placeholder {
+		opacity: 0.5;
+		font-style: italic;
+	}
+
+	.tree-node.placeholder .label::after {
+		content: ' ·';
+		opacity: 0.5;
 	}
 
 	.value {

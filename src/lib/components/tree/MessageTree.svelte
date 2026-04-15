@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TreeNode } from '$lib/types/hl7';
 	import { getTreeChildren, getFieldContent } from '$lib/ipc/parser';
+	import { getSegmentInfo } from '$lib/ipc/tables';
 	import TreeNodeRow from './TreeNodeRow.svelte';
 
 	interface Props {
@@ -12,6 +13,10 @@
 		navigateTo?: { segmentIdx: number; fieldPosition: number | null; stamp: number } | null;
 		/** Callback to request the editor to navigate to the selected tree node */
 		onNavigateToEditor?: (segmentIdx: number, fieldPosition: number | null, componentIdx: number | null) => void;
+		/** HL7 version used to look up schema field definitions */
+		version?: string;
+		/** When true, inject placeholder rows for schema-defined fields that are absent from the message */
+		showSchemaFields?: boolean;
 	}
 
 	let {
@@ -21,16 +26,20 @@
 		onFieldExpand,
 		navigateTo = null,
 		onNavigateToEditor,
+		version = '',
+		showSchemaFields = false,
 	}: Props = $props();
 
-	type VNode = TreeNode & { _children?: TreeNode[]; _expanded?: boolean };
+	type VNode = TreeNode & { _children?: TreeNode[]; _expanded?: boolean; _isPlaceholder?: boolean };
 
 	// Flat list of visible nodes for virtual scrolling
 	let visibleNodes = $state<VNode[]>([]);
 	let selectedNodeId = $state<string | null>(null);
 
-	// Initialize with root nodes
+	// Initialize with root nodes (also re-init when showSchemaFields toggles so
+	// previously-expanded segments pick up / drop placeholder rows).
 	$effect(() => {
+		void showSchemaFields;
 		visibleNodes = roots.map((r) => ({ ...r, _expanded: false }));
 	});
 
@@ -70,6 +79,66 @@
 		});
 	}
 
+	/** Extract segment-type code (e.g. "PID") from a segment node's label. */
+	function segmentTypeFromNode(node: TreeNode): string | null {
+		const m = node.label.match(/^([A-Z][A-Z0-9]{2})/);
+		return m ? m[1] : null;
+	}
+
+	/**
+	 * If showSchemaFields is on and the node being expanded is a segment, merge
+	 * the real children with placeholder nodes for schema-defined fields that
+	 * are absent from the actual message.
+	 */
+	async function mergeSchemaPlaceholders(segNode: VNode, realChildren: TreeNode[]): Promise<VNode[]> {
+		if (!showSchemaFields || !version || segNode.node_type !== 'segment') {
+			return realChildren.map((c) => ({ ...c, _expanded: false }));
+		}
+		const segType = segmentTypeFromNode(segNode);
+		if (!segType) return realChildren.map((c) => ({ ...c, _expanded: false }));
+
+		try {
+			const info = await getSegmentInfo(segType, version);
+			if (!info) return realChildren.map((c) => ({ ...c, _expanded: false }));
+
+			const segId = segNode.id; // "seg{N}"
+			const existing = new Set<number>();
+			for (const c of realChildren) {
+				const m = c.id.match(/\.f(\d+)$/);
+				if (m) existing.add(parseInt(m[1]));
+			}
+
+			const placeholders: VNode[] = info.fields
+				.filter((f) => !existing.has(f.position))
+				.map((f) => ({
+					id: `${segId}.f${f.position}`,
+					label: `${segType}-${f.position} ${f.name}`,
+					value_preview: '',
+					node_type: 'field' as const,
+					depth: segNode.depth + 1,
+					has_children: false,
+					is_truncated: false,
+					child_count: 0,
+					_expanded: false,
+					_isPlaceholder: true,
+				}));
+
+			const merged: VNode[] = [
+				...realChildren.map((c) => ({ ...c, _expanded: false })),
+				...placeholders,
+			];
+			// Sort by field position
+			merged.sort((a, b) => {
+				const am = a.id.match(/\.f(\d+)$/);
+				const bm = b.id.match(/\.f(\d+)$/);
+				return (am ? parseInt(am[1]) : 0) - (bm ? parseInt(bm[1]) : 0);
+			});
+			return merged;
+		} catch {
+			return realChildren.map((c) => ({ ...c, _expanded: false }));
+		}
+	}
+
 	async function toggleNode(node: VNode) {
 		const idx = visibleNodes.findIndex((n) => n.id === node.id);
 		if (idx === -1) return;
@@ -96,7 +165,7 @@
 				const children = await getTreeChildren(messageId, node.id);
 				node._children = children;
 			}
-			const childNodes = node._children!.map((c) => ({ ...c, _expanded: false }));
+			const childNodes = await mergeSchemaPlaceholders(node, node._children!);
 			visibleNodes = [
 				...visibleNodes.slice(0, idx),
 				{ ...node, _expanded: true },
@@ -154,10 +223,11 @@
 					{node}
 					isSelected={selectedNodeId === node.id}
 					isExpanded={node._expanded ?? false}
+					isPlaceholder={node._isPlaceholder ?? false}
 					onToggle={() => toggleNode(node)}
 					onSelect={() => selectNode(node)}
 					onExpandTruncated={() => expandTruncated(node)}
-					onShowInEditor={onNavigateToEditor ? () => showInEditor(node) : undefined}
+					onShowInEditor={onNavigateToEditor && !node._isPlaceholder ? () => showInEditor(node) : undefined}
 				/>
 			{/each}
 		</div>
