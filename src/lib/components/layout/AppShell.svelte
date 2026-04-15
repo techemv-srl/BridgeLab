@@ -14,6 +14,7 @@
 	import AppDialog from '$lib/components/shared/AppDialog.svelte';
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
+	import FieldInspector from '$lib/components/tree/FieldInspector.svelte';
 	import EditorTabs from '$lib/components/editor/EditorTabs.svelte';
 	import MenuBar from '$lib/components/layout/MenuBar.svelte';
 	import StatusBar from '$lib/components/layout/StatusBar.svelte';
@@ -36,6 +37,7 @@
 	let draggingTarget = $state<'tree' | 'bottom' | null>(null);
 	let isDragging = $derived(draggingTarget !== null);
 	let showTree = $state(true);
+	let showInspector = $state(true);
 	let showValidation = $state(false);
 	let showCommunication = $state(false);
 	let bottomPanelHeight = $state(220);
@@ -444,18 +446,26 @@
 
 	// --- Tree operations ---
 
+	/** Currently selected tree node (for Field Inspector) */
+	let selectedTreeNode = $state<TreeNode | null>(null);
+
 	function handleNodeSelect(node: TreeNode) {
-		// Navigate editor to the corresponding segment line
-		if (node.node_type === 'segment') {
-			const segIdx = parseInt(node.id.replace('seg', ''));
-			// Segments correspond to lines (1-based)
-			// The editor will scroll to this line
-			const editorEl = document.querySelector('.editor-container') as HTMLElement;
-			if (editorEl) {
-				// Monaco editor line reveal is handled via the MonacoEditor component
-			}
-		}
+		selectedTreeNode = node;
 	}
+
+	/** Derive the segment type code (e.g. "PID") for the currently selected tree node. */
+	let selectedSegmentType = $derived.by<string | null>(() => {
+		if (!selectedTreeNode || !activeTab?.parseResult) return null;
+		const parts = selectedTreeNode.id.split('.');
+		const segPart = parts.find((p) => p.startsWith('seg'));
+		if (!segPart) return null;
+		const segIdx = parseInt(segPart.slice(3));
+		const segNode = activeTab.parseResult.tree_roots[segIdx];
+		if (!segNode) return null;
+		// Segment label is "MSH (0)" / "PID (1)" — take the 3-char code
+		const m = segNode.label.match(/^([A-Z][A-Z0-9]{2})/);
+		return m ? m[1] : null;
+	});
 
 	function handleFieldExpand(content: string) {
 		expandedFieldContent = content;
@@ -840,6 +850,7 @@
 		onExportJson={handleExportJson}
 		onExportCsv={handleExportCsv}
 		onToggleTree={handleToggleTree}
+		onToggleInspector={() => { showInspector = !showInspector; }}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
 		onShowSettings={() => { showSettings = true; }}
@@ -856,15 +867,34 @@
 					<div class="panel-header">
 						<span>{tr('tree.header')}</span>
 						<span class="panel-badge">{activeTab.parseResult.segment_count}</span>
+						<button
+							class="inspector-toggle"
+							class:active={showInspector}
+							title={tr('inspector.title')}
+							onclick={() => { showInspector = !showInspector; }}
+						>ⓘ</button>
 					</div>
-					<MessageTree
-						messageId={activeTab.parseResult.message_id}
-						roots={activeTab.parseResult.tree_roots}
-						onNodeSelect={handleNodeSelect}
-						onFieldExpand={handleFieldExpand}
-						navigateTo={treeNavigation}
-						onNavigateToEditor={handleTreeNavigateToEditor}
-					/>
+					<div class="tree-scroll">
+						<MessageTree
+							messageId={activeTab.parseResult.message_id}
+							roots={activeTab.parseResult.tree_roots}
+							onNodeSelect={handleNodeSelect}
+							onFieldExpand={handleFieldExpand}
+							navigateTo={treeNavigation}
+							onNavigateToEditor={handleTreeNavigateToEditor}
+						/>
+					</div>
+					{#if showInspector}
+						<div class="inspector-wrapper">
+							<FieldInspector
+								messageId={activeTab.parseResult.message_id}
+								version={activeTab.parseResult.version}
+								selectedNode={selectedTreeNode}
+								segmentType={selectedSegmentType}
+								onViewFullValue={(text) => { expandedFieldContent = text; }}
+							/>
+						</div>
+					{/if}
 				{:else}
 					<div class="panel-header">
 						<span>{tr('tree.header')}</span>
@@ -1149,6 +1179,49 @@
 		flex-direction: column;
 		flex-shrink: 0;
 		overflow: hidden;
+	}
+
+	.tree-scroll {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.tree-scroll :global(.tree-container) {
+		flex: 1;
+	}
+
+	.inspector-wrapper {
+		flex: 0 0 auto;
+		height: 260px;
+		min-height: 120px;
+		max-height: 50%;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.inspector-toggle {
+		margin-left: auto;
+		background: none;
+		border: 1px solid transparent;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		font-size: 14px;
+		padding: 0 6px;
+		border-radius: 3px;
+		line-height: 1;
+	}
+
+	.inspector-toggle:hover {
+		background-color: var(--color-bg-tertiary);
+		color: var(--color-text-primary);
+	}
+
+	.inspector-toggle.active {
+		color: var(--color-accent);
+		border-color: var(--color-accent);
 	}
 
 	.editor-panel {
