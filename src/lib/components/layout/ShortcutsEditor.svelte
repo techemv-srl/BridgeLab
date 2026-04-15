@@ -1,5 +1,11 @@
 <script lang="ts">
 	import { shortcutStore, SHORTCUTS, eventToKeys, type ShortcutDef } from '$lib/stores/shortcuts.svelte';
+	import { dialogStore } from '$lib/stores/dialog.svelte';
+	import { t, subscribeLocale } from '$lib/i18n';
+
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
 	let capturingId = $state<string | null>(null);
 	let capturedKeys = $state('');
@@ -82,7 +88,7 @@
 	}
 
 	async function resetAll() {
-		if (!confirm('Reset all shortcuts to defaults?')) return;
+		if (!(await dialogStore.confirm(tr('dialog.resetShortcuts')))) return;
 		shortcutStore.resetDefaults();
 		await shortcutStore.save();
 	}

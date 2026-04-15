@@ -93,13 +93,25 @@ jobs:
 
       - name: Test - batch directory
         run: |
-          ./tools/bridgelab-cli/target/release/bridgelab-cli batch tests/fixtures/hl7 --json > /tmp/batch.json
+          # Batch is expected to exit non-zero because fixtures include
+          # intentionally-invalid files (invalid_structure.hl7). We validate
+          # that the JSON output is well-formed and contains expected fields.
+          ./tools/bridgelab-cli/target/release/bridgelab-cli batch tests/fixtures/hl7 --json > /tmp/batch.json || true
+          jq . /tmp/batch.json > /dev/null
           TOTAL=$(jq '.total_files' /tmp/batch.json)
+          VALID=$(jq '.valid_files' /tmp/batch.json)
+          FAILED=$(jq '.failed_files' /tmp/batch.json)
           if [ "$TOTAL" -lt 3 ]; then
-            echo "BL-CLI-11 FAILED: expected at least 3 files"
+            echo "BL-CLI-11 FAILED: expected at least 3 files, got $TOTAL"
+            cat /tmp/batch.json
             exit 1
           fi
-          echo "BL-CLI-11/12 PASSED (found $TOTAL files)"
+          if [ "$VALID" -lt 1 ]; then
+            echo "BL-CLI-11 FAILED: expected at least 1 valid file"
+            cat /tmp/batch.json
+            exit 1
+          fi
+          echo "BL-CLI-11/12 PASSED: total=$TOTAL valid=$VALID failed=$FAILED"
 
   rust-feature-tests:
     name: Rust Core Feature Tests

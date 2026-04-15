@@ -1,5 +1,11 @@
 <script lang="ts">
 	import { getTestCases, saveTestCase, deleteTestCase, type TestCase } from '$lib/ipc/testcases';
+	import { dialogStore } from '$lib/stores/dialog.svelte';
+	import { t, subscribeLocale } from '$lib/i18n';
+
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
 	interface Props {
 		currentContent?: string;
@@ -88,18 +94,18 @@
 			await load();
 			mode = 'list';
 		} catch (e) {
-			alert(`Save failed: ${e}`);
+			await dialogStore.error(tr('dialog.saveFailed'), undefined, String(e));
 		}
 	}
 
 	async function handleDelete(tc: TestCase) {
-		if (!confirm(`Delete test case "${tc.name}"?`)) return;
+		if (!(await dialogStore.confirm(tr('dialog.deleteConfirm', { name: tc.name })))) return;
 		try {
 			await deleteTestCase(tc.id);
 			await load();
 			if (selectedId === tc.id) selectedId = null;
 		} catch (e) {
-			alert(`Delete failed: ${e}`);
+			await dialogStore.error(tr('tc.delete'), undefined, String(e));
 		}
 	}
 </script>

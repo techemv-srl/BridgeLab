@@ -10,6 +10,8 @@
 	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
 	import { shortcutStore, matchesKeys } from '$lib/stores/shortcuts.svelte';
+	import { dialogStore } from '$lib/stores/dialog.svelte';
+	import AppDialog from '$lib/components/shared/AppDialog.svelte';
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
 	import EditorTabs from '$lib/components/editor/EditorTabs.svelte';
@@ -136,16 +138,23 @@
 			const { checkForUpdates, installUpdate } = await import('$lib/ipc/updater');
 			const info = await checkForUpdates();
 			if (info && info.available) {
-				const ok = confirm(`Update available: v${info.version}\n\nCurrent: v${info.currentVersion}\n\n${info.notes}\n\nInstall now? The app will restart.`);
+				const ok = await dialogStore.show({
+					kind: 'confirm',
+					title: t('dialog.updateAvailable', { version: info.version }),
+					message: t('dialog.updateCurrent', { current: info.currentVersion })
+						+ '\n\n' + (info.notes || '')
+						+ '\n\n' + t('dialog.updateInstallNow'),
+					showCancel: true,
+				});
 				if (ok) {
 					await installUpdate(info.update);
 				}
 			} else {
-				alert('You are running the latest version.');
+				await dialogStore.info(t('dialog.updateUpToDate'));
 			}
 		} catch (e) {
 			console.error('Update check failed:', e);
-			alert('Could not check for updates. Please check your internet connection.');
+			await dialogStore.error(t('dialog.updateCheckFailed'), undefined, String(e));
 		}
 	}
 
@@ -222,7 +231,7 @@
 			console.log('[BridgeLab] Saved to:', activeTab.filePath);
 		} catch (e) {
 			console.error('Save failed:', e);
-			alert(`Save failed: ${e}`);
+			await dialogStore.error(t('dialog.saveFailed'), undefined, String(e));
 		}
 	}
 
@@ -245,7 +254,7 @@
 			}
 		} catch (e) {
 			console.error('Save As failed:', e);
-			alert(`Save As failed: ${e}`);
+			await dialogStore.error(t('dialog.saveAsFailed'), undefined, String(e));
 		}
 	}
 
@@ -315,84 +324,103 @@
 		}
 	}
 
+	/**
+	 * Parse Message (F5): alias for Validate. We open the validation panel which
+	 * always parses fresh and shows all issues (including parse errors). This
+	 * avoids duplication between "parse" and "validate".
+	 */
 	async function handleParse() {
-		if (!activeTab?.content?.trim()) {
-			alert('No message to parse. Paste or open a message first.');
-			return;
-		}
-		const content = activeTab.content.trim();
-		try {
-			let result: ParseResult;
-			if (content.startsWith('{') && content.includes('"resourceType"')) {
-				result = await parseFhirMessage(content);
-			} else {
-				result = await parseMessage(content);
-			}
-			skipNextAutoParse = true;
-			messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
-			console.log('[BridgeLab] Parsed:', result.message_type, result.segment_count, 'segments');
-		} catch (e) {
-			console.error('Parse error:', e);
-			alert(`Parse failed: ${e}\n\nThe message may be malformed. Validation will still run to check structure.`);
-		}
+		await handleValidate();
 	}
 
+	/**
+	 * Validate the current message. Always parses fresh from the editor content
+	 * rather than relying on cached parseResult (which could be stale if the
+	 * user edited the text but the parse failed).
+	 */
 	async function handleValidate() {
 		if (!activeTab?.content?.trim()) {
-			alert('No message to validate.');
+			await dialogStore.warning(t('dialog.noMessageToValidate'));
 			return;
 		}
 		showValidation = true;
+		const content = activeTab.content;
+		const trimmed = content.trim();
 
-		// If we have a valid parseResult, use the backend validator
-		if (activeTab.parseResult && activeTab.parseResult.format === 'HL7v2') {
+		// FHIR branch
+		if (trimmed.startsWith('{') && trimmed.includes('"resourceType"')) {
 			try {
-				validationReport = await validateMessage(activeTab.parseResult.message_id);
-				return;
+				const result = await parseFhirMessage(trimmed);
+				skipNextAutoParse = true;
+				messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
+				// TODO: run FHIR-specific validation rules
+				validationReport = {
+					issues: [{
+						severity: 'info',
+						rule_id: 'FHIR-OK',
+						segment_idx: null,
+						segment_type: null,
+						field_position: null,
+						message: `FHIR ${result.message_type} parsed successfully`,
+					}],
+					error_count: 0, warning_count: 0, info_count: 1,
+				};
 			} catch (e) {
-				console.error('Validation IPC error:', e);
+				validationReport = buildSyntheticReport(content, String(e));
 			}
+			return;
 		}
 
-		// Message is not parsed successfully - produce a synthetic report
-		const content = activeTab.content;
+		// HL7 v2 branch: try to parse fresh
+		try {
+			const result = await parseMessage(content);
+			skipNextAutoParse = true;
+			messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
+			try {
+				validationReport = await validateMessage(result.message_id);
+			} catch (ve) {
+				console.error('Validation IPC error:', ve);
+				validationReport = buildSyntheticReport(content, String(ve));
+			}
+		} catch (e) {
+			// Parse failed - produce a detailed synthetic report explaining why
+			console.error('Parse error:', e);
+			validationReport = buildSyntheticReport(content, String(e));
+		}
+	}
+
+	/** Build a synthetic validation report when parsing fails. */
+	function buildSyntheticReport(content: string, parseError: string): ValidationReport {
 		const issues: ValidationIssue[] = [];
 		const firstLine = content.split(/[\r\n]/)[0] ?? '';
-
-		if (!firstLine.startsWith('MSH|')) {
-			issues.push({
-				severity: 'error',
-				rule_id: 'STRUCT-002',
-				segment_idx: 0,
-				segment_type: firstLine.substring(0, 3).toUpperCase() || null,
-				field_position: null,
-				message: `First segment must be MSH, found '${firstLine.substring(0, 10)}...'`,
-			});
-		}
+		const firstSegType = firstLine.substring(0, 3);
 
 		if (firstLine.length < 8) {
 			issues.push({
-				severity: 'error',
-				rule_id: 'STRUCT-001',
-				segment_idx: null,
-				segment_type: null,
-				field_position: null,
-				message: 'Message header too short to contain required MSH fields',
+				severity: 'error', rule_id: 'STRUCT-001',
+				segment_idx: null, segment_type: null, field_position: null,
+				message: t('val.tooShort'),
 			});
-		}
-
-		if (issues.length === 0) {
+		} else if (!firstLine.startsWith('MSH|')) {
 			issues.push({
-				severity: 'warning',
-				rule_id: 'PARSE-001',
-				segment_idx: null,
-				segment_type: null,
-				field_position: null,
-				message: 'Message could not be parsed - try "Parse Message" (F5) to see the specific error',
+				severity: 'error', rule_id: 'STRUCT-002',
+				segment_idx: 0, segment_type: firstSegType || null, field_position: null,
+				message: t('val.notMshStart', { found: firstSegType }),
+			});
+			issues.push({
+				severity: 'info', rule_id: 'HINT-001',
+				segment_idx: null, segment_type: null, field_position: null,
+				message: t('val.parseFailedHint', { prefix: firstSegType }),
+			});
+		} else {
+			issues.push({
+				severity: 'error', rule_id: 'PARSE-001',
+				segment_idx: null, segment_type: null, field_position: null,
+				message: t('val.genericParseError', { error: parseError }),
 			});
 		}
 
-		validationReport = {
+		return {
 			issues,
 			error_count: issues.filter(i => i.severity === 'error').length,
 			warning_count: issues.filter(i => i.severity === 'warning').length,
@@ -1005,6 +1033,9 @@
 			</div>
 		</div>
 	{/if}
+
+	<!-- In-app dialog (replaces native alert/confirm) -->
+	<AppDialog />
 
 	<!-- Status bar -->
 	<StatusBar
