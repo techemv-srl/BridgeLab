@@ -53,3 +53,28 @@ export async function setPreference(key: string, value: string): Promise<void> {
 export async function getAllPreferences(): Promise<Preference[]> {
 	return invoke('get_all_preferences');
 }
+
+// --- Session persistence (Notepad++-style restore) ---
+
+export interface SessionTab {
+	tab_order: number;
+	label: string;
+	file_path: string | null;
+	content: string;
+	is_modified: boolean;
+	is_active: boolean;
+	cursor_line: number;
+	cursor_column: number;
+}
+
+export async function saveSession(tabs: SessionTab[]): Promise<void> {
+	return invoke('save_session', { tabs });
+}
+
+export async function loadSession(): Promise<SessionTab[]> {
+	return invoke('load_session');
+}
+
+export async function clearSession(): Promise<void> {
+	return invoke('clear_session');
+}

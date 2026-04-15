@@ -77,17 +77,16 @@
 
 	// Initialize app (using $effect instead of onMount which is a server no-op)
 	let appInitialized = false;
+	let restoreSession = $state(true);
 	$effect(() => {
 		if (appInitialized || typeof window === 'undefined') return;
 		appInitialized = true;
 
-		// Start with one empty tab immediately
-		if (messageStore.tabs.length === 0) {
-			messageStore.newTab();
-		}
-
-		// Load preferences and check license async
+		// Load preferences and check license async. We intentionally do NOT
+		// create the default "Untitled" tab synchronously here - if a previous
+		// session exists we want to restore it instead.
 		(async () => {
+			let sessionRestored = false;
 			try {
 				const savedTheme = await getPreference('theme');
 				if (savedTheme) {
@@ -100,10 +99,31 @@
 				if (savedTreeWidth) treeWidth = parseInt(savedTreeWidth) || 350;
 				const savedInspectorHeight = await getPreference('inspector_height');
 				if (savedInspectorHeight) inspectorHeight = parseInt(savedInspectorHeight) || 260;
+				const savedRestore = await getPreference('restore_session');
+				if (savedRestore !== null) restoreSession = savedRestore !== 'false';
 				recentFiles = await getRecentFiles(20);
+
+				// Notepad++-style tab restore
+				if (restoreSession) {
+					const { loadSession } = await import('$lib/ipc/database');
+					const sessionTabs = await loadSession();
+					if (sessionTabs && sessionTabs.length > 0) {
+						sessionRestored = messageStore.restoreSession(sessionTabs);
+						// Re-parse any HL7/FHIR content so tree + inspector populate
+						for (const tab of messageStore.tabs) {
+							void autoParse(tab.content);
+						}
+					}
+				}
 			} catch {
 				// Running in web-only mode without Tauri backend
 			}
+
+			// Fallback: empty tab if no session restored
+			if (!sessionRestored && messageStore.tabs.length === 0) {
+				messageStore.newTab();
+			}
+
 			try {
 				licenseStatus = await checkLicense();
 			await shortcutStore.loadFromPrefs();
@@ -111,6 +131,31 @@
 				// License check failed - treat as trial
 			}
 		})();
+	});
+
+	// Session autosave: persist open tabs whenever they change, debounced.
+	let sessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		if (!appInitialized || typeof window === 'undefined') return;
+		if (!restoreSession) return;
+		// Track tabs + active id as dependencies
+		void messageStore.tabs;
+		void messageStore.activeTabId;
+		for (const t of messageStore.tabs) {
+			void t.content;
+			void t.label;
+			void t.filePath;
+			void t.isModified;
+		}
+		if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
+		sessionSaveTimer = setTimeout(async () => {
+			try {
+				const { saveSession } = await import('$lib/ipc/database');
+				await saveSession(messageStore.serializeSession());
+			} catch {
+				// web mode or backend unavailable - ignore
+			}
+		}, 800);
 	});
 
 	function handleTestCaseLoaded(tc: TestCase) {

@@ -1,5 +1,5 @@
 use tauri::State;
-use crate::database::{Database, RecentFile, Preference};
+use crate::database::{Database, RecentFile, Preference, SessionTab};
 
 #[tauri::command]
 pub fn get_recent_files(limit: usize, db: State<'_, Database>) -> Result<Vec<RecentFile>, String> {
@@ -41,4 +41,19 @@ pub fn set_preference(key: String, value: String, db: State<'_, Database>) -> Re
 #[tauri::command]
 pub fn get_all_preferences(db: State<'_, Database>) -> Result<Vec<Preference>, String> {
     db.get_all_preferences()
+}
+
+#[tauri::command]
+pub fn save_session(tabs: Vec<SessionTab>, db: State<'_, Database>) -> Result<(), String> {
+    db.save_session(&tabs)
+}
+
+#[tauri::command]
+pub fn load_session(db: State<'_, Database>) -> Result<Vec<SessionTab>, String> {
+    db.load_session()
+}
+
+#[tauri::command]
+pub fn clear_session(db: State<'_, Database>) -> Result<(), String> {
+    db.clear_session()
 }
