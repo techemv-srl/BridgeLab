@@ -36,7 +36,7 @@ export const SHORTCUTS: ShortcutDef[] = [
 	{ id: 'view.toggleFhirPath', label: 'Toggle FHIRPath Panel', category: 'view', defaultKeys: 'Ctrl+P' },
 
 	// Tools
-	{ id: 'tools.parse', label: 'Parse Message', category: 'tools', defaultKeys: 'F5' },
+	{ id: 'tools.reparse', label: 'Re-parse Message', category: 'tools', defaultKeys: '' },
 	{ id: 'tools.validate', label: 'Validate', category: 'tools', defaultKeys: 'F6' },
 
 	// Editor (Monaco native - informational only)

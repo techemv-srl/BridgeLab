@@ -703,11 +703,21 @@
 		'view.toggleValidation': () => { showValidation = !showValidation; },
 		'view.toggleCommunication': () => { showCommunication = !showCommunication; },
 		'view.toggleFhirPath': () => { showFhirPath = !showFhirPath; },
-		'tools.parse': () => handleParse(),
+		'tools.reparse': () => handleParse(),
 		'tools.validate': () => handleValidate(),
 	};
 
 	function handleKeydown(e: KeyboardEvent) {
+		// Always block F5 in Tauri WebView - it would reload the entire app and lose state
+		if (e.key === 'F5') {
+			e.preventDefault();
+			// If user has F5 assigned to an action, run it; otherwise silently block
+			const shortcut = Object.entries(shortcutActions).find(
+				([id]) => shortcutStore.get(id) === 'F5'
+			);
+			if (shortcut) shortcut[1]();
+			return;
+		}
 		// Iterate through shortcut store to find a match; respects user customization
 		for (const [id, action] of Object.entries(shortcutActions)) {
 			const keys = shortcutStore.get(id);
