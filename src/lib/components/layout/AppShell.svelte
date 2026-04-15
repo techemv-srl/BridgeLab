@@ -862,7 +862,8 @@
 						roots={activeTab.parseResult.tree_roots}
 						onNodeSelect={handleNodeSelect}
 						onFieldExpand={handleFieldExpand}
-						navigateToSegmentIdx={selectedTreeSegmentIdx}
+						navigateTo={treeNavigation}
+						onNavigateToEditor={handleTreeNavigateToEditor}
 					/>
 				{:else}
 					<div class="panel-header">
@@ -911,6 +912,7 @@
 						onCollapseAll={handleCollapseAll}
 						onCopyFullMessage={handleCopyFull}
 						onCopyTruncatedMessage={handleCopyTruncated}
+						navigation={editorNavigation}
 					/>
 				{:else}
 					<div class="editor-empty">
