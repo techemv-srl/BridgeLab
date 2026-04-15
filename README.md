@@ -70,6 +70,29 @@ organized by feature area). CI automates the automatable slice:
   tests, HL7 fixtures (parser/info/validate/anonymize/batch/JUnit), FHIR
   fixture integrity, schema-lookup Rust tests, license keygen roundtrip
 
+## Resource usage
+
+BridgeLab does **not** require memory tuning - the Rust backend uses zero-copy
+parsing plus on-demand field truncation, and peak RAM stays below ~300 MB even
+on 10 MB messages. If you want to trade display fidelity for IPC size on
+unusually large files, adjust **Settings → Parser → Truncation threshold**.
+
+## Installer options
+
+Per-platform installer configuration lives in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json).
+
+- **Windows NSIS**: shows the MIT license page, a language selector (EN/IT/FR/ES/DE),
+  installs to `%LOCALAPPDATA%\Programs\BridgeLab` by default (current user), LZMA compression
+- **Windows MSI (WiX)**: multi-language (en-US/it-IT/fr-FR/es-ES/de-DE)
+- **macOS DMG**: presents a drag-to-Applications layout with the app + Applications icons
+- **Linux .deb**: declares `libwebkit2gtk-4.1-0` + `libgtk-3-0` dependencies, `utils` section
+- **Linux AppImage**: bundles the media framework so GStreamer-dependent features work offline
+- **Linux .rpm**: declares `webkit2gtk4.1` + `gtk3` dependencies
+- **File association**: `.hl7` is registered so double-clicking a file opens BridgeLab
+
+The MIT `LICENSE` file at the repo root is referenced from the bundle
+`licenseFile` field and included in the installer payload.
+
 ## Building a Release
 
 Create a signed tag to trigger the release workflow:

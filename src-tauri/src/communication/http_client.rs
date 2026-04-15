@@ -143,3 +143,95 @@ pub async fn send_request(
         error: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// Tiny HTTP/1.1 server: reads a single request, extracts the method +
+    /// body, replies with 200 + JSON echo. Enough to exercise the client.
+    async fn serve_one(port: u16, expect_body: &'static str) {
+        let listener = TcpListener::bind(("127.0.0.1", port)).await.unwrap();
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buf = vec![0u8; 16 * 1024];
+        let n = stream.read(&mut buf).await.unwrap();
+        let req = String::from_utf8_lossy(&buf[..n]).to_string();
+
+        // Parse request line (first line)
+        let first = req.lines().next().unwrap_or("");
+        let method = first.split_whitespace().next().unwrap_or("GET").to_string();
+
+        // Parse body (after blank line)
+        let body = req.split("\r\n\r\n").nth(1).unwrap_or("");
+        if !expect_body.is_empty() {
+            assert!(body.contains(expect_body),
+                    "server did not receive expected body '{}', got '{}'",
+                    expect_body, body);
+        }
+
+        let resp_body = format!("{{\"method\":\"{}\",\"echo\":\"{}\"}}", method, body);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            resp_body.len(), resp_body
+        );
+        stream.write_all(response.as_bytes()).await.unwrap();
+        let _ = stream.flush().await;
+    }
+
+    fn pick_free_port() -> u16 {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        port
+    }
+
+    #[tokio::test]
+    async fn test_http_get_roundtrip() {
+        let port = pick_free_port();
+        let server = tokio::spawn(async move { serve_one(port, "").await });
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+        let headers = HashMap::new();
+        let url = format!("http://127.0.0.1:{}/ping", port);
+        let res = send_request(&url, HttpMethod::Get, &headers, None, 5).await;
+        server.await.unwrap();
+
+        assert!(res.success, "GET failed: {:?}", res.error);
+        assert_eq!(res.status_code, 200);
+        assert!(res.body.contains("\"method\":\"GET\""),
+                "body did not reflect GET method: {}", res.body);
+    }
+
+    #[tokio::test]
+    async fn test_http_post_with_body_and_header() {
+        let port = pick_free_port();
+        let payload = "MSH|^~\\&|Sender|Fac|Recv|Fac|20260415||ADT^A01|CTRL|P|2.5";
+        let server = tokio::spawn(async move { serve_one(port, "ADT^A01").await });
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/hl7-v2".to_string());
+        headers.insert("X-Test".to_string(), "bridgelab".to_string());
+
+        let url = format!("http://127.0.0.1:{}/submit", port);
+        let res = send_request(&url, HttpMethod::Post, &headers, Some(payload), 5).await;
+        server.await.unwrap();
+
+        assert!(res.success, "POST failed: {:?}", res.error);
+        assert_eq!(res.status_code, 200);
+        assert!(res.body.contains("\"method\":\"POST\""));
+    }
+
+    #[tokio::test]
+    async fn test_http_connection_refused() {
+        // Pick a port and don't bind it
+        let port = pick_free_port();
+        let headers = HashMap::new();
+        let url = format!("http://127.0.0.1:{}/nobody-home", port);
+        let res = send_request(&url, HttpMethod::Get, &headers, None, 2).await;
+        assert!(!res.success);
+        assert!(res.error.is_some());
+    }
+}

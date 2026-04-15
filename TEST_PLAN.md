@@ -492,7 +492,22 @@ Before running tests:
 | BL-HOVER-03 | P1 | Hover delay consistent | Hover and wait 300ms | Tooltip appears after delay, stays sticky | |
 | BL-HOVER-04 | P2 | Hover content reflects schema | Hover on a known field | Shows HL7 field name / type / required metadata | |
 
-## 31. Regression / Bug Verification
+## 31. Packaging & Installer
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-PKG-01 | P1 | Windows NSIS installer launches | Run `BridgeLab_<ver>_x64-setup.exe` | Language selector, welcome screen, license page shown | |
+| BL-PKG-02 | P1 | NSIS license page shows MIT text | Progress through installer | LICENSE file contents rendered | |
+| BL-PKG-03 | P1 | NSIS install mode: current user | Default flow | App installed under `%LOCALAPPDATA%\Programs\BridgeLab` | |
+| BL-PKG-04 | P1 | NSIS language selector offers 5 langs | Language combo | English, Italian, French, Spanish, German | |
+| BL-PKG-05 | P1 | macOS DMG opens with background | Mount `.dmg` | Window shows app icon + Applications shortcut laid out | |
+| BL-PKG-06 | P1 | Linux .deb lists correct deps | `dpkg -I *.deb` | `Depends:` includes libwebkit2gtk-4.1-0, libgtk-3-0 | |
+| BL-PKG-07 | P1 | Linux .deb section utils | `dpkg -I *.deb` | `Section: utils`, `Priority: optional` | |
+| BL-PKG-08 | P1 | AppImage bundles media framework | Run AppImage offline | GStreamer-dependent features work | |
+| BL-PKG-09 | P2 | File association `.hl7` | Install, double-click .hl7 | Opens in BridgeLab | |
+| BL-PKG-10 | P2 | About dialog version matches installer | Launch installed build | About shows 0.1.0 (or current) | |
+
+## 32. Regression / Bug Verification
 
 Tests for bugs fixed in previous releases, run to prevent regressions.
 
@@ -545,12 +560,25 @@ Add observations during testing here:
 Separately from this manual plan, the following automated tests run on every commit (see `.github/workflows/feature-tests.yml`):
 
 - **CLI feature tests** (BL-CLI-01..12) - validate, JSON, JUnit, info, anonymize, to-json, batch
-- **Rust core tests** - `cd src-tauri && cargo test` (unit + integration, ~70 tests)
+- **Rust core tests** - `cd src-tauri && cargo test` (unit + integration, ~75 tests)
 - **Schema lookup** (BL-INSP-05 partial) - `get_segment_info` / `get_field_info` for MSH/PID/PV1
 - **Parser fixtures** (BL-PARSER-01/02/03, BL-PERF-03) - smoke over `tests/fixtures/hl7/` via CLI
+- **MLLP roundtrip** (BL-MLLP-04/05/09/10) - in-process listener with auto-ACK verified both from the
+  client side (ACK received) and the server side (decoded message), plus connection-refused path
+- **HTTP roundtrip** (BL-HTTP-01/02/04/06) - in-process HTTP/1.1 server exercises GET and POST
+  with custom headers, body echo and connection-refused error reporting
 - **Keygen roundtrip** (BL-LIC-14) - generate keypair, sign a license, verify signature
 - **Frontend check** - `pnpm check` (svelte-check) runs with 0 errors threshold
 - **Frontend build** - `pnpm build` succeeds
+
+### Memory / performance tuning
+
+**BridgeLab does not require manual memory configuration.** The Rust backend
+uses zero-copy parsing + field truncation so peak RAM stays well under 300 MB
+even on 10 MB messages (BL-PERF-09). Monaco's virtual scrolling keeps the
+editor light. The only tunable knob lives in _Settings → Parser → Truncation
+threshold_ and only affects how much text is sent across IPC - not total
+memory consumption.
 
 ## How to Add Tests
 
