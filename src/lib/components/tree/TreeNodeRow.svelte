@@ -1,5 +1,15 @@
 <script lang="ts">
 	import type { TreeNode } from '$lib/types/hl7';
+	import { t, subscribeLocale } from '$lib/i18n';
+
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') {
+		subscribeLocale(() => { localeVersion++; });
+	}
+	function tr(key: string): string {
+		void localeVersion;
+		return t(key);
+	}
 
 	interface Props {
 		node: TreeNode;
@@ -121,7 +131,7 @@
 		onkeydown={(e) => { if (e.key === 'Escape') menuOpen = false; }}
 	>
 		<button class="context-menu-item" onclick={handleShowInEditor}>
-			Show in Editor
+			{tr('ctx.showInEditor')}
 		</button>
 	</div>
 {/if}
