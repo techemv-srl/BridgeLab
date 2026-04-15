@@ -38,6 +38,7 @@
 	let isDragging = $derived(draggingTarget !== null);
 	let showTree = $state(true);
 	let showInspector = $state(true);
+	let showSchemaFields = $state(false);
 	let showValidation = $state(false);
 	let showCommunication = $state(false);
 	let bottomPanelHeight = $state(220);
@@ -851,6 +852,7 @@
 		onExportCsv={handleExportCsv}
 		onToggleTree={handleToggleTree}
 		onToggleInspector={() => { showInspector = !showInspector; }}
+		onToggleSchemaFields={() => { showSchemaFields = !showSchemaFields; }}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
 		onShowSettings={() => { showSettings = true; }}
@@ -878,6 +880,8 @@
 						<MessageTree
 							messageId={activeTab.parseResult.message_id}
 							roots={activeTab.parseResult.tree_roots}
+							version={activeTab.parseResult.version}
+							showSchemaFields={showSchemaFields}
 							onNodeSelect={handleNodeSelect}
 							onFieldExpand={handleFieldExpand}
 							navigateTo={treeNavigation}

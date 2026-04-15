@@ -76,6 +76,9 @@
 	"inspector.truncated": "gekürzt",
 	"inspector.yes": "Ja",
 	"inspector.no": "Nein",
+
+	"view.schemaFields": "Standardfelder anzeigen",
+	"view.schemaFieldsHint": "Leere Felder aus dem Standard",
 	"ctx.expandField": "Gekürztes Feld erweitern",
 	"ctx.expandAll": "Alle gekürzten Felder erweitern",
 	"ctx.collapseAll": "Alle erweiterten Felder kürzen",
