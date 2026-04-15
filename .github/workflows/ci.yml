@@ -61,6 +61,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Sync SvelteKit types
+        run: pnpm exec svelte-kit sync
+
       - name: Svelte check (0 errors required, warnings allowed)
         run: pnpm exec svelte-check --threshold error --output human
 
