@@ -76,6 +76,9 @@
 	"inspector.truncated": "truncado",
 	"inspector.yes": "Sí",
 	"inspector.no": "No",
+
+	"view.schemaFields": "Mostrar campos del estándar",
+	"view.schemaFieldsHint": "Campos vacíos del estándar",
 	"ctx.expandField": "Expandir campo truncado",
 	"ctx.expandAll": "Expandir todos los campos truncados",
 	"ctx.collapseAll": "Contraer todos los campos expandidos",

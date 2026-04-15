@@ -33,6 +33,7 @@
 		onValidate: () => void;
 		onToggleTree: () => void;
 		onToggleInspector: () => void;
+		onToggleSchemaFields: () => void;
 		onToggleValidation: () => void;
 		onToggleCommunication: () => void;
 		onAnonymize: () => void;
@@ -65,6 +66,7 @@
 		onValidate,
 		onToggleTree,
 		onToggleInspector,
+		onToggleSchemaFields,
 		onToggleValidation,
 		onToggleCommunication,
 		onAnonymize,
@@ -231,6 +233,9 @@
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleInspector)}>
 					<span>{tr('inspector.title')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onToggleSchemaFields)}>
+					<span>{tr('view.schemaFields')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleValidation)}>
 					<span>{tr('menu.tools.validate')}</span>
