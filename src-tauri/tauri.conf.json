@@ -31,9 +31,20 @@
 		"targets": "all",
 		"category": "DeveloperTool",
 		"shortDescription": "Modern HL7/FHIR message editor",
-		"longDescription": "BridgeLab is a professional HL7/FHIR message editor for healthcare integration. Handles large messages, MLLP/HTTP transport, anonymization, validation and more.",
+		"longDescription": "BridgeLab is a professional HL7/FHIR message editor for healthcare integration. It handles large messages (5-10MB with base64 payloads), MLLP/HTTP transport with listener support, anonymization, validation against the HL7 standard, FHIR Bundle visualization and FHIRPath evaluation. Multi-language UI (EN, IT, FR, ES, DE).",
 		"copyright": "Copyright (c) 2026 TECHEMV SRL",
 		"publisher": "TECHEMV SRL",
+		"homepage": "https://github.com/1warpengine/HL7_editor",
+		"license": "MIT",
+		"licenseFile": "../LICENSE",
+		"fileAssociations": [
+			{
+				"ext": ["hl7"],
+				"name": "HL7 Message",
+				"description": "HL7 v2.x message",
+				"role": "Editor"
+			}
+		],
 		"icon": [
 			"icons/32x32.png",
 			"icons/128x128.png",
@@ -42,14 +53,37 @@
 			"icons/icon.ico"
 		],
 		"windows": {
-			"webviewInstallMode": { "type": "embedBootstrapper" }
+			"webviewInstallMode": { "type": "embedBootstrapper" },
+			"nsis": {
+				"installMode": "currentUser",
+				"installerIcon": "icons/icon.ico",
+				"displayLanguageSelector": true,
+				"languages": ["English", "Italian", "French", "Spanish", "German"],
+				"compression": "lzma"
+			},
+			"wix": {
+				"language": ["en-US", "it-IT", "fr-FR", "es-ES", "de-DE"]
+			}
 		},
 		"macOS": {
-			"minimumSystemVersion": "10.15"
+			"minimumSystemVersion": "10.15",
+			"dmg": {
+				"windowSize": { "width": 660, "height": 400 },
+				"appPosition":  { "x": 180, "y": 170 },
+				"applicationFolderPosition": { "x": 480, "y": 170 }
+			}
 		},
 		"linux": {
 			"deb": {
-				"depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+				"depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"],
+				"section": "utils",
+				"priority": "optional"
+			},
+			"appimage": {
+				"bundleMediaFramework": true
+			},
+			"rpm": {
+				"depends": ["webkit2gtk4.1", "gtk3"]
 			}
 		}
 	},

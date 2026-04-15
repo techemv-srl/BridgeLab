@@ -888,8 +888,16 @@
 							class="inspector-toggle"
 							class:active={showInspector}
 							title={tr('inspector.title')}
+							aria-label={tr('inspector.title')}
 							onclick={() => { showInspector = !showInspector; }}
-						>ⓘ</button>
+						>
+							<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+								<rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+								<line x1="1.5" y1="7" x2="14.5" y2="7" stroke="currentColor" stroke-width="1.2"/>
+								<line x1="4" y1="9.5" x2="12" y2="9.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+								<line x1="4" y1="11.5" x2="10" y2="11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+							</svg>
+						</button>
 					</div>
 					<div class="tree-scroll">
 						<MessageTree
@@ -1250,9 +1258,11 @@
 		border: 1px solid transparent;
 		color: var(--color-text-secondary);
 		cursor: pointer;
-		font-size: 14px;
-		padding: 0 6px;
+		padding: 3px 5px;
 		border-radius: 3px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		line-height: 1;
 	}
 
