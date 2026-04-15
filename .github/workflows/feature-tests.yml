@@ -194,8 +194,9 @@ jobs:
       - name: Test - validate missing MSH-9 detected (BL-VALID-03)
         run: |
           CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          # --format json returns [{file, report: {issues: [...]}}]
           OUT=$($CLI validate tests/fixtures/hl7/missing_msh9.hl7 --format json || true)
-          echo "$OUT" | jq -e '.issues | map(select(.rule_id | startswith("MSH"))) | length > 0' > /dev/null
+          echo "$OUT" | jq -e '.[0].report.issues | map(select(.rule_id | startswith("MSH"))) | length > 0' > /dev/null
           echo "BL-VALID-03 PASSED"
 
   fhir-fixture-tests:
