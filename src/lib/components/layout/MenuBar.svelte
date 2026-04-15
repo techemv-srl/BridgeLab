@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { t, subscribeLocale } from '$lib/i18n';
 	import type { RecentFile } from '$lib/ipc/database';
+	import { shortcutStore } from '$lib/stores/shortcuts.svelte';
+
+	/** Get current key combination for a shortcut id. */
+	function sc(id: string): string {
+		return shortcutStore.get(id);
+	}
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') {
@@ -79,6 +85,13 @@
 		openMenu = openMenu === name ? null : name;
 	}
 
+	function hoverMenu(name: string) {
+		// Only switch menu on hover if one is already open (standard menubar UX)
+		if (openMenu !== null && openMenu !== name) {
+			openMenu = name;
+		}
+	}
+
 	function closeMenu() {
 		openMenu = null;
 	}
@@ -98,6 +111,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'file'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('file'); }}
+			onmouseenter={() => hoverMenu('file')}
 		>
 			{tr('menu.file')}
 		</button>
@@ -105,29 +119,29 @@
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onNewFromTemplate)}>
 					<span>New from Template...</span>
-					<span class="shortcut">Ctrl+N</span>
+					<span class="shortcut">{sc('file.newFromTemplate')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onShowTestCases)}>
 					<span>Test Case Library...</span>
-					<span class="shortcut">Ctrl+L</span>
+					<span class="shortcut">{sc('file.testCases')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onOpenFile)}>
 					<span>{tr('menu.file.open')}</span>
-					<span class="shortcut">Ctrl+O</span>
+					<span class="shortcut">{sc('file.open')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onSave)}>
 					<span>{tr('menu.file.save')}</span>
-					<span class="shortcut">Ctrl+S</span>
+					<span class="shortcut">{sc('file.save')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onSaveAs)}>
 					<span>{tr('menu.file.saveAs')}</span>
-					<span class="shortcut">Ctrl+Shift+S</span>
+					<span class="shortcut">{sc('file.saveAs')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onCloseTab)}>
 					<span>{tr('menu.file.close')}</span>
-					<span class="shortcut">Ctrl+W</span>
+					<span class="shortcut">{sc('file.closeTab')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onCloseAllTabs)}>
 					<span>{tr('menu.file.closeAll')}</span>
@@ -161,6 +175,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'edit'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('edit'); }}
+			onmouseenter={() => hoverMenu('edit')}
 		>
 			{tr('menu.edit')}
 		</button>
@@ -190,7 +205,7 @@
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowSettings)}>
 					<span>Settings</span>
-					<span class="shortcut">Ctrl+,</span>
+					<span class="shortcut">{sc('edit.settings')}</span>
 				</button>
 			</div>
 		{/if}
@@ -202,6 +217,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'view'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('view'); }}
+			onmouseenter={() => hoverMenu('view')}
 		>
 			{tr('menu.view')}
 		</button>
@@ -209,11 +225,11 @@
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onToggleTree)}>
 					<span>{tr('menu.view.tree')}</span>
-					<span class="shortcut">Ctrl+B</span>
+					<span class="shortcut">{sc('view.toggleTree')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleValidation)}>
 					<span>{tr('menu.tools.validate')}</span>
-					<span class="shortcut">Ctrl+J</span>
+					<span class="shortcut">{sc('view.toggleValidation')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<div class="menu-label">{tr('menu.view.theme')}</div>
@@ -240,6 +256,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'tools'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('tools'); }}
+			onmouseenter={() => hoverMenu('tools')}
 		>
 			{tr('menu.tools')}
 		</button>
@@ -247,16 +264,16 @@
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onParse)}>
 					<span>{tr('menu.tools.parse')}</span>
-					<span class="shortcut">F5</span>
+					<span class="shortcut">{sc('tools.parse')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onValidate)}>
 					<span>{tr('menu.tools.validate')}</span>
-					<span class="shortcut">F6</span>
+					<span class="shortcut">{sc('tools.validate')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onToggleCommunication)}>
 					<span>Communication Panel</span>
-					<span class="shortcut">Ctrl+K</span>
+					<span class="shortcut">{sc('view.toggleCommunication')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowBundleVisualizer)}>
@@ -264,7 +281,7 @@
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleFhirPath)}>
 					<span>FHIRPath Evaluator</span>
-					<span class="shortcut">Ctrl+P</span>
+					<span class="shortcut">{sc('view.toggleFhirPath')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onAnonymize)}>
 					<span>{tr('menu.tools.anonymize')}</span>
@@ -292,6 +309,7 @@
 			class="menu-trigger"
 			class:active={openMenu === 'help'}
 			onclick={(e) => { e.stopPropagation(); toggleMenu('help'); }}
+			onmouseenter={() => hoverMenu('help')}
 		>
 			{tr('menu.help')}
 		</button>
