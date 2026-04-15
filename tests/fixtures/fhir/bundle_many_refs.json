@@ -1,0 +1,60 @@
+{
+	"resourceType": "Bundle",
+	"id": "many-refs",
+	"type": "collection",
+	"total": 5,
+	"entry": [
+		{
+			"fullUrl": "urn:uuid:patient-main",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "pm1",
+				"name": [{"family": "Johnson", "given": ["Robert"]}],
+				"gender": "male",
+				"birthDate": "1955-03-22"
+			}
+		},
+		{
+			"fullUrl": "urn:uuid:practitioner-1",
+			"resource": {
+				"resourceType": "Practitioner",
+				"id": "pr1",
+				"name": [{"family": "Williams", "given": ["Sarah"], "prefix": ["Dr."]}]
+			}
+		},
+		{
+			"fullUrl": "urn:uuid:encounter-1",
+			"resource": {
+				"resourceType": "Encounter",
+				"id": "e1",
+				"status": "finished",
+				"class": {"code": "AMB", "display": "ambulatory"},
+				"subject": {"reference": "urn:uuid:patient-main"},
+				"participant": [{"individual": {"reference": "urn:uuid:practitioner-1"}}]
+			}
+		},
+		{
+			"fullUrl": "urn:uuid:condition-1",
+			"resource": {
+				"resourceType": "Condition",
+				"id": "c1",
+				"code": {"text": "Hypertension"},
+				"subject": {"reference": "urn:uuid:patient-main"},
+				"encounter": {"reference": "urn:uuid:encounter-1"}
+			}
+		},
+		{
+			"fullUrl": "urn:uuid:observation-1",
+			"resource": {
+				"resourceType": "Observation",
+				"id": "obs1",
+				"status": "final",
+				"code": {"text": "Blood Pressure"},
+				"subject": {"reference": "urn:uuid:patient-main"},
+				"encounter": {"reference": "urn:uuid:encounter-1"},
+				"performer": [{"reference": "urn:uuid:practitioner-1"}],
+				"valueQuantity": {"value": 145, "unit": "mmHg"}
+			}
+		}
+	]
+}
