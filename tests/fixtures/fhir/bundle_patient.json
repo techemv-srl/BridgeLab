@@ -1,0 +1,28 @@
+{
+	"resourceType": "Bundle",
+	"id": "simple-bundle",
+	"type": "collection",
+	"entry": [
+		{
+			"fullUrl": "urn:uuid:patient-1",
+			"resource": {
+				"resourceType": "Patient",
+				"id": "p1",
+				"name": [{"family": "Smith", "given": ["Jane"]}],
+				"gender": "female",
+				"birthDate": "1990-05-15"
+			}
+		},
+		{
+			"fullUrl": "urn:uuid:obs-1",
+			"resource": {
+				"resourceType": "Observation",
+				"id": "o1",
+				"status": "final",
+				"code": {"text": "Heart Rate"},
+				"subject": {"reference": "urn:uuid:patient-1"},
+				"valueQuantity": {"value": 72, "unit": "bpm"}
+			}
+		}
+	]
+}
