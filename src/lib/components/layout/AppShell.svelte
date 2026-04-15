@@ -204,21 +204,32 @@
 	}
 
 	async function handleSave() {
-		if (!activeTab?.filePath || !activeTab?.parseResult) return;
+		if (!activeTab) return;
+		// If tab has no file path (Untitled / from paste/template), fall back to Save As
+		if (!activeTab.filePath) {
+			await handleSaveAs();
+			return;
+		}
 		try {
 			const { saveFile } = await import('$lib/ipc/parser');
-			await saveFile(activeTab.parseResult.message_id, activeTab.filePath);
+			await saveFile({
+				path: activeTab.filePath,
+				content: activeTab.content, // save current editor text, not the parsed store
+			});
 			messageStore.markSaved(activeTab.id);
+			console.log('[BridgeLab] Saved to:', activeTab.filePath);
 		} catch (e) {
 			console.error('Save failed:', e);
+			alert(`Save failed: ${e}`);
 		}
 	}
 
 	async function handleSaveAs() {
-		if (!activeTab?.parseResult) return;
+		if (!activeTab) return;
 		try {
 			const { save } = await import('@tauri-apps/plugin-dialog');
 			const path = await save({
+				defaultPath: activeTab.filePath ?? activeTab.label,
 				filters: [
 					{ name: 'HL7 Messages', extensions: ['hl7'] },
 					{ name: 'All Files', extensions: ['*'] },
@@ -226,11 +237,13 @@
 			});
 			if (path) {
 				const { saveFile } = await import('$lib/ipc/parser');
-				await saveFile(activeTab.parseResult.message_id, path);
+				await saveFile({ path, content: activeTab.content });
 				messageStore.markSaved(activeTab.id, path);
+				console.log('[BridgeLab] Saved as:', path);
 			}
 		} catch (e) {
 			console.error('Save As failed:', e);
+			alert(`Save As failed: ${e}`);
 		}
 	}
 
