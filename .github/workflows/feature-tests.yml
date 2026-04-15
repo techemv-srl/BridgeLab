@@ -270,6 +270,11 @@ jobs:
           # Re-run only the HL7 tables tests with output for traceability
           cargo test --all parser::hl7::tables -- --nocapture
 
+      - name: MLLP + HTTP roundtrip tests (BL-MLLP-04/05/09/10, BL-HTTP-01/02)
+        working-directory: src-tauri
+        run: |
+          cargo test --all communication:: -- --nocapture
+
       - name: Test keygen tool
         working-directory: tools/bridgelab-keygen
         run: cargo build --release

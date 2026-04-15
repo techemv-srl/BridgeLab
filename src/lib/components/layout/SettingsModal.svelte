@@ -41,6 +41,9 @@
 	// Memory settings
 	let maxOpenMessages = $state(50);
 
+	// Session settings
+	let restoreSession = $state(true);
+
 	// Load saved settings
 	let loaded = false;
 	$effect(() => {
@@ -71,6 +74,8 @@
 			if (mo) maxOpenMessages = parseInt(mo) || 50;
 			const rw = await getPreference('editor_render_whitespace');
 			if (rw) renderWhitespace = rw;
+			const rs = await getPreference('restore_session');
+			if (rs !== null) restoreSession = rs !== 'false';
 		} catch { /* web mode */ }
 	}
 
@@ -86,6 +91,7 @@
 			await setPreference('auto_parse_delay', String(autoParseDelay));
 			await setPreference('max_open_messages', String(maxOpenMessages));
 			await setPreference('editor_render_whitespace', renderWhitespace);
+			await setPreference('restore_session', String(restoreSession));
 			await setPreference('theme', currentTheme);
 			await setPreference('language', currentLocale);
 		} catch { /* web mode */ }
@@ -259,6 +265,19 @@
 					<label for="s-maxmsg">Max Open Messages</label>
 					<input id="s-maxmsg" type="number" min={5} max={200} bind:value={maxOpenMessages} class="input-sm" />
 					<span class="hint">messages kept in memory</span>
+				</div>
+
+				<h3>Session</h3>
+
+				<div class="setting-check">
+					<label>
+						<input type="checkbox" bind:checked={restoreSession} />
+						Restore open tabs on startup
+					</label>
+					<div class="hint">
+						When enabled, BridgeLab saves your open tabs (including unsaved
+						edits) and reopens them the next time you launch the app.
+					</div>
 				</div>
 
 				<div class="info-block">

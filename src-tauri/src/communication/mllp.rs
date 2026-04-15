@@ -254,10 +254,10 @@ mod tests {
         let msg = "MSH|^~\\&|Send|SF|Recv|RF|20230101||ADT^A01|MSG001|P|2.5\rPID|||12345";
 
         // Spawn listener task that echoes back
-        let handle = tokio::spawn(async move {
+        let _handle = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut buf = vec![0u8; 4096];
-            let n = stream.read(&mut buf).await.unwrap();
+            let _n = stream.read(&mut buf).await.unwrap();
             // Echo the same data back as ACK
             let response = mllp_frame("MSH|^~\\&|Recv||Send||20230101||ACK|ACK001|P|2.5\rMSA|AA|MSG001");
             stream.write_all(&response).await.unwrap();
@@ -267,6 +267,57 @@ mod tests {
         assert!(result.success);
         assert!(result.response.contains("MSA|AA|MSG001"));
 
-        handle.await.unwrap();
+        _handle.await.unwrap();
+    }
+
+    /// BL-MLLP-09/10/11 (backend slice): start the real `receive_one` listener,
+    /// send a framed HL7 message to it, and verify the listener returns the
+    /// decoded payload AND writes back an AA ACK when auto_ack is enabled.
+    #[tokio::test]
+    async fn test_mllp_receive_one_with_auto_ack() {
+        // Bind to an ephemeral port first, then hand it to receive_one.
+        // receive_one binds 0.0.0.0:{port} itself, so we need to pick a free
+        // port separately and then spawn the listener.
+        let probe = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe); // release so receive_one can bind
+
+        // Spawn the receiver under test
+        let receiver = tokio::spawn(async move {
+            receive_one(port, 5, true).await
+        });
+
+        // Give the listener a moment to start
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        // Client: framed send to localhost:port
+        let msg = "MSH|^~\\&|Sender|Fac|Receiver|Fac|20260415120000||ADT^A01|UNIT001|P|2.5\rPID|||42";
+        let result = send("127.0.0.1", port, msg, 5).await;
+        assert!(result.success, "client send failed: {:?}", result.error);
+        // auto_ack should have returned an AA ACK referencing our control id
+        assert!(result.response.contains("MSA|AA"),
+                "expected AA ACK, got: {}", result.response);
+        assert!(result.response.contains("UNIT001"),
+                "ACK should echo control id, got: {}", result.response);
+
+        // Server side: should have captured the inbound message
+        let received = receiver.await.unwrap().expect("receive_one errored");
+        assert_eq!(received.content, msg);
+        assert!(received.source_addr.starts_with("127.0.0.1:"));
+        assert!(!received.received_at.is_empty());
+    }
+
+    /// BL-MLLP-08 equivalent: connection to a closed port fails fast with an
+    /// actionable error, not a hang.
+    #[tokio::test]
+    async fn test_mllp_send_refused() {
+        // Grab a port that we immediately release
+        let probe = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+
+        let result = send("127.0.0.1", port, "MSH|^~\\&|x", 2).await;
+        assert!(!result.success);
+        assert!(result.error.is_some());
     }
 }
