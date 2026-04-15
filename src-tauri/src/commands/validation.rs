@@ -3,7 +3,8 @@ use tauri::State;
 
 use crate::message_store::MessageStore;
 use crate::parser::fhir;
-use crate::validation::{self, ValidationReport};
+use crate::plugins::{self, PluginRegistry};
+use crate::validation::{self, Severity, ValidationReport};
 
 #[derive(Debug, Serialize)]
 pub struct FhirValidationReport {
@@ -14,16 +15,36 @@ pub struct FhirValidationReport {
 }
 
 /// Validate an HL7 message by its store ID.
+///
+/// Runs built-in validations followed by any active user-defined plugin rules
+/// (files in `<config>/BridgeLab/plugins/validation/*.json`).
 #[tauri::command]
 pub fn validate_message(
     message_id: String,
     store: State<'_, MessageStore>,
+    registry: State<'_, PluginRegistry>,
 ) -> Result<ValidationReport, String> {
     let msg = store
         .get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
-    Ok(validation::validate_hl7_message(&msg))
+    let mut report = validation::validate_hl7_message(&msg);
+
+    // Append plugin rules (if any are installed + enabled)
+    let plugin_rules = registry.active_validation_rules();
+    if !plugin_rules.is_empty() {
+        let extra = plugins::run_custom_validations(&msg, &plugin_rules);
+        for issue in extra {
+            match issue.severity {
+                Severity::Error   => report.error_count   += 1,
+                Severity::Warning => report.warning_count += 1,
+                Severity::Info    => report.info_count    += 1,
+            }
+            report.issues.push(issue);
+        }
+    }
+
+    Ok(report)
 }
 
 /// Validate a FHIR JSON resource.

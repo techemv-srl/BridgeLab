@@ -1,0 +1,43 @@
+{
+	"id": "sample-validation",
+	"name": "Sample validation rules",
+	"description": "Demonstrates every check type supported by BridgeLab plugin packs.",
+	"author": "BridgeLab",
+	"version": "1.0",
+	"enabled": true,
+	"validation_rules": [
+		{
+			"rule_id": "SAMPLE-PID-001",
+			"severity": "warning",
+			"segment": "PID",
+			"field": 3,
+			"check": { "type": "not_empty" },
+			"message": "PID-3 (Patient Identifier List) should be populated"
+		},
+		{
+			"rule_id": "SAMPLE-PID-002",
+			"severity": "info",
+			"segment": "PID",
+			"field": 5,
+			"component": 1,
+			"check": { "type": "regex", "pattern": "^[A-Z][A-Za-z' -]+$" },
+			"message": "PID-5.1 (family name) should start with an uppercase letter"
+		},
+		{
+			"rule_id": "SAMPLE-PV1-001",
+			"severity": "error",
+			"segment": "PV1",
+			"field": 2,
+			"check": { "type": "one_of", "values": ["I", "O", "E", "R", "P", "B"] },
+			"message": "PV1-2 (Patient Class) must be I/O/E/R/P/B"
+		},
+		{
+			"rule_id": "SAMPLE-PID-003",
+			"severity": "warning",
+			"segment": "PID",
+			"field": 19,
+			"check": { "type": "max_length", "max": 16 },
+			"message": "PID-19 (SSN) longer than expected"
+		}
+	]
+}
