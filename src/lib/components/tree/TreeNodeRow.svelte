@@ -15,13 +15,14 @@
 		node: TreeNode;
 		isSelected: boolean;
 		isExpanded: boolean;
+		isPlaceholder?: boolean;
 		onToggle: () => void;
 		onSelect: () => void;
 		onExpandTruncated: () => void;
 		onShowInEditor?: () => void;
 	}
 
-	let { node, isSelected, isExpanded, onToggle, onSelect, onExpandTruncated, onShowInEditor }: Props = $props();
+	let { node, isSelected, isExpanded, isPlaceholder = false, onToggle, onSelect, onExpandTruncated, onShowInEditor }: Props = $props();
 
 	const indent = $derived((node.depth - 1) * 16);
 
@@ -81,6 +82,7 @@
 	class:segment={node.node_type === 'segment'}
 	class:field={node.node_type === 'field'}
 	class:component={node.node_type === 'component'}
+	class:placeholder={isPlaceholder}
 	data-node-id={node.id}
 	role="treeitem"
 	tabindex={0}
@@ -193,6 +195,16 @@
 
 	.component .label {
 		color: var(--color-component);
+	}
+
+	.tree-node.placeholder {
+		opacity: 0.5;
+		font-style: italic;
+	}
+
+	.tree-node.placeholder .label::after {
+		content: ' ·';
+		opacity: 0.5;
 	}
 
 	.value {

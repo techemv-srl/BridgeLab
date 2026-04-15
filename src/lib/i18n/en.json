@@ -76,6 +76,9 @@
 	"inspector.truncated": "truncated",
 	"inspector.yes": "Yes",
 	"inspector.no": "No",
+
+	"view.schemaFields": "Show Schema Fields",
+	"view.schemaFieldsHint": "Empty fields from standard",
 	"ctx.expandField": "Expand Truncated Field",
 	"ctx.expandAll": "Expand All Truncated Fields",
 	"ctx.collapseAll": "Collapse All Expanded Fields",
