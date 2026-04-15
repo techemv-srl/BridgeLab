@@ -86,12 +86,20 @@ class MessageStore {
 		}
 	}
 
-	/** Update parse result for a tab. */
-	updateParseResult(tabId: string, parseResult: ParseResult, truncatedText: string) {
+	/**
+	 * Update parse result for a tab.
+	 * If truncatedText is provided, also replaces tab.content (use only for explicit
+	 * user actions like open file / re-parse). When called from background auto-parse
+	 * while the user is typing, omit truncatedText so the editor content/cursor is
+	 * not disturbed.
+	 */
+	updateParseResult(tabId: string, parseResult: ParseResult, truncatedText?: string) {
 		const tab = this.tabs.find((t) => t.id === tabId);
 		if (tab) {
 			tab.parseResult = parseResult;
-			tab.content = truncatedText;
+			if (truncatedText !== undefined) {
+				tab.content = truncatedText;
+			}
 		}
 	}
 
