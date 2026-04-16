@@ -13,8 +13,3 @@ Thumbs.db
 TEST_PLAN.xlsx
 test-results/
 junit*.xml
-
-# Private tooling (lives in bridgelab-pro private repo)
-tools/bridgelab-keygen/
-*.key
-*.pem

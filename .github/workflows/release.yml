@@ -12,7 +12,6 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    environment: production
     permissions:
       contents: write
     outputs:
