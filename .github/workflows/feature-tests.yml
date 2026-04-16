@@ -275,25 +275,5 @@ jobs:
         run: |
           cargo test --all communication:: -- --nocapture
 
-      - name: Test keygen tool
-        working-directory: tools/bridgelab-keygen
-        run: cargo build --release
-
-      - name: Generate and verify a license (integration test)
-        run: |
-          cd tools/bridgelab-keygen
-          ./target/release/bridgelab-keygen generate-keypair \
-            --private /tmp/test-priv.key --public /tmp/test-pub.key
-
-          KEY=$(./target/release/bridgelab-keygen generate \
-            --private /tmp/test-priv.key \
-            --license-type pro \
-            --licensee "Test Co" \
-            --email test@test.com \
-            --days 365)
-
-          ./target/release/bridgelab-keygen verify \
-            --public /tmp/test-pub.key \
-            "$KEY"
-
-          echo "BL-LIC-14 PASSED"
+      # Keygen roundtrip test (BL-LIC-14) is run in the private
+      # bridgelab-pro CI where the signing tool lives.

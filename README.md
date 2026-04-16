@@ -124,27 +124,18 @@ The MIT `LICENSE` file at the repo root is referenced from the bundle
 
 ## Building a Release
 
-Create a signed tag to trigger the release workflow:
+Releases are built via GitHub Actions and require repository
+maintainer access. See the internal playbook for the signing and
+publishing workflow. Binaries are published to
+[GitHub Releases](https://github.com/1warpengine/HL7_editor/releases).
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+## License Keys
 
-GitHub Actions will build installers for Windows (.msi), macOS (.dmg), and Linux (.AppImage, .deb).
-
-## License Keys (for vendors)
-
-Use the CLI tool in `tools/bridgelab-keygen/` to generate signed license keys.
-See [tools/bridgelab-keygen/README.md](tools/bridgelab-keygen/README.md) for details.
-
-Simple workflow:
-
-```bash
-cd tools/bridgelab-keygen
-cargo run --release -- generate-keypair
-cargo run --release -- generate --license-type pro --licensee "Acme Corp" --email admin@acme.com --days 365
-```
+BridgeLab uses Ed25519-signed license keys with hardware binding.
+License generation is handled via a private internal tool.
+See the [licensing overview](docs/LICENSING.md) for how keys are
+structured and verified (the verification path is open; the signing
+path is not distributed).
 
 ## Project Structure
 
