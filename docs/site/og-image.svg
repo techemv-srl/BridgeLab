@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+	<defs>
+		<linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+			<stop offset="0%" stop-color="#1e1e2e"/>
+			<stop offset="100%" stop-color="#181825"/>
+		</linearGradient>
+		<radialGradient id="glow" cx="80%" cy="20%" r="50%">
+			<stop offset="0%" stop-color="#89b4fa" stop-opacity="0.25"/>
+			<stop offset="100%" stop-color="#89b4fa" stop-opacity="0"/>
+		</radialGradient>
+		<linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+			<stop offset="0%" stop-color="#89b4fa"/>
+			<stop offset="100%" stop-color="#cba6f7"/>
+		</linearGradient>
+	</defs>
+
+	<rect width="1200" height="630" fill="url(#bg)"/>
+	<rect width="1200" height="630" fill="url(#glow)"/>
+
+	<!-- Bridge icon -->
+	<g transform="translate(90 100)" fill="none" stroke="#89b4fa" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+		<path d="M10 50c20-40 80-40 100 0"/>
+		<path d="M22 50v22"/>
+		<path d="M46 50v22"/>
+		<path d="M74 50v22"/>
+		<path d="M98 50v22"/>
+	</g>
+	<rect x="90" y="172" width="120" height="8" rx="2" fill="#89b4fa"/>
+
+	<text x="90" y="320" font-family="Inter, sans-serif" font-size="96" font-weight="800" fill="#cdd6f4" letter-spacing="-3">BridgeLab</text>
+	<text x="90" y="400" font-family="Inter, sans-serif" font-size="44" font-weight="600" fill="url(#grad)">HL7/FHIR made simple.</text>
+
+	<text x="90" y="470" font-family="Inter, sans-serif" font-size="26" fill="#a6adc8">Modern, open-source HL7 v2 and FHIR editor.</text>
+	<text x="90" y="505" font-family="Inter, sans-serif" font-size="26" fill="#a6adc8">Windows · macOS · Linux · MIT core.</text>
+
+	<!-- Badges -->
+	<g transform="translate(90 550)" font-family="Inter, sans-serif" font-size="18" font-weight="600">
+		<g>
+			<rect x="0" y="0" width="140" height="36" rx="18" fill="#313244"/>
+			<text x="70" y="24" text-anchor="middle" fill="#cdd6f4">v0.1.0</text>
+		</g>
+		<g transform="translate(152 0)">
+			<rect width="140" height="36" rx="18" fill="#313244"/>
+			<text x="70" y="24" text-anchor="middle" fill="#a6e3a1">Open Core</text>
+		</g>
+		<g transform="translate(304 0)">
+			<rect width="160" height="36" rx="18" fill="#313244"/>
+			<text x="80" y="24" text-anchor="middle" fill="#89b4fa">10 MB parsing</text>
+		</g>
+	</g>
+
+	<!-- TECHEMV tag -->
+	<text x="1110" y="590" text-anchor="end" font-family="Inter, sans-serif" font-size="16" fill="#6c7086">TECHEMV SRL · 2026</text>
+</svg>
