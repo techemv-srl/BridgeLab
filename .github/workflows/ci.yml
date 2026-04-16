@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-# Fork PRs cannot access secrets. This workflow only reads source code
-# and runs tests, so it is safe for fork PRs (no secrets needed).
-
 jobs:
   test-rust:
     name: Test Rust backend
