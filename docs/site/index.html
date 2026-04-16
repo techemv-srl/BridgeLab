@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>BridgeLab &mdash; HL7/FHIR made simple</title>
+	<meta name="description" content="A modern, open-source HL7 v2 and FHIR message editor. Handles 10 MB messages with base64 payloads, MLLP/HTTP listeners, anonymization, validation and plugin rule packs. Windows, macOS, Linux." />
+	<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+	<link rel="stylesheet" href="style.css" />
+
+	<meta property="og:type" content="website" />
+	<meta property="og:title" content="BridgeLab &mdash; HL7/FHIR made simple" />
+	<meta property="og:description" content="Modern open-source HL7/FHIR editor. 10 MB messages, MLLP/HTTP, anonymization, FHIRPath, plugin rule packs." />
+	<meta property="og:image" content="og-image.svg" />
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content="BridgeLab &mdash; HL7/FHIR made simple" />
+	<meta name="twitter:description" content="Modern open-source HL7/FHIR editor." />
+	<meta name="twitter:image" content="og-image.svg" />
+</head>
+<body>
+
+<header class="nav">
+	<div class="nav-wrap">
+		<a class="brand" href="#">
+			<svg class="brand-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<path d="M3 14c3-6 15-6 18 0" />
+				<path d="M6 14v5" />
+				<path d="M18 14v5" />
+				<path d="M10 14v5" />
+				<path d="M14 14v5" />
+				<rect x="2" y="19" width="20" height="2" rx="0.5" />
+			</svg>
+			<span>BridgeLab</span>
+		</a>
+		<nav class="nav-links">
+			<a href="#features">Features</a>
+			<a href="#compare">Compare</a>
+			<a href="#plugins">Plugins</a>
+			<a href="#download">Download</a>
+			<a href="#faq">FAQ</a>
+			<a class="nav-github" href="https://github.com/1warpengine/HL7_editor" aria-label="GitHub">
+				<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12a11.5 11.5 0 008 10.9c.6.1.8-.3.8-.6v-2.3c-3.3.7-4-1.4-4-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 016 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0023.5 12C23.5 5.7 18.3.5 12 .5z"/></svg>
+			</a>
+		</nav>
+	</div>
+</header>
+
+<main>
+
+<!-- HERO -->
+<section class="hero">
+	<div class="wrap">
+		<div class="hero-copy">
+			<span class="eyebrow">v0.1.0 &middot; Open Core &middot; MIT</span>
+			<h1>HL7/FHIR <span class="grad">made simple.</span></h1>
+			<p class="lede">
+				A modern message editor for healthcare integration. Handles
+				10 MB messages with base64 payloads, speaks MLLP and HTTP in
+				both directions, validates against the HL7 standard and runs
+				on every desktop you use.
+			</p>
+			<div class="cta">
+				<a class="btn btn-primary" href="#download">Download</a>
+				<a class="btn" href="https://github.com/1warpengine/HL7_editor">View on GitHub</a>
+			</div>
+			<ul class="kpi">
+				<li><strong>&lt; 2s</strong><span>open a 10 MB message</span></li>
+				<li><strong>&lt; 300 MB</strong><span>peak RAM, base64 included</span></li>
+				<li><strong>5</strong><span>UI languages (EN/IT/FR/ES/DE)</span></li>
+			</ul>
+		</div>
+
+		<div class="hero-visual" aria-hidden="true">
+			<div class="shot">
+				<div class="shot-bar">
+					<span></span><span></span><span></span>
+					<span class="shot-title">BridgeLab &mdash; adt_a01.hl7</span>
+				</div>
+				<div class="shot-body">
+					<pre class="code"><span class="seg">MSH</span>|^~\&amp;|SENDING_APP|FAC|RECEIVING_APP|FAC|20260415||<span class="val">ADT^A01</span>|MSG0001|P|<span class="ver">2.5</span>
+<span class="seg">EVN</span>|A01|20260415120000
+<span class="seg">PID</span>|1||MRN12345^^^HOSPITAL^MR||<span class="val">DOE^JOHN^A</span>||19800101|M|||...
+<span class="seg">PV1</span>|1|I|WARD01^101^A||||<span class="val">SMITH^JANE^M</span>|||CAR
+<span class="seg">OBX</span>|1|ED|^^PDF^Base64|| <span class="trunc">{...256000 bytes}</span>
+<span class="seg">DG1</span>|1||I10^Essential hypertension|...</pre>
+					<div class="side">
+						<div class="tree-h">Tree</div>
+						<ul class="tree">
+							<li class="on">▸ MSH <em>(0)</em></li>
+							<li>▸ EVN <em>(1)</em></li>
+							<li>▾ PID <em>(2)</em>
+								<ul>
+									<li>PID-3 <em>Patient ID</em></li>
+									<li class="sel">PID-5 <em>Patient Name</em></li>
+									<li>PID-7 <em>Date of Birth</em></li>
+								</ul>
+							</li>
+							<li>▸ PV1 <em>(3)</em></li>
+							<li>▸ OBX <em>(4) · truncated</em></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<!-- FEATURES -->
+<section id="features" class="section">
+	<div class="wrap">
+		<h2>Built for the work integration teams actually do</h2>
+		<div class="features">
+			<article class="feat">
+				<div class="feat-ic">⚡</div>
+				<h3>Large-message ready</h3>
+				<p>
+					SIMD-accelerated streaming parser with on-demand field
+					truncation. Open multi-megabyte ORU^R01 messages with
+					base64 attachments in under two seconds. The editor
+					never shows you 10 MB of raw text.
+				</p>
+			</article>
+			<article class="feat">
+				<div class="feat-ic">🔗</div>
+				<h3>Client &amp; listener, bidirectional</h3>
+				<p>
+					Send via MLLP / HTTP / HTTPS, listen on any port with
+					auto-ACK and a live inbox. Connection profiles are
+					saved per-protocol. Everything works offline against
+					your own test servers.
+				</p>
+			</article>
+			<article class="feat">
+				<div class="feat-ic">🔍</div>
+				<h3>Validation &amp; FHIRPath</h3>
+				<p>
+					Structural, field-level and data-type validation out of
+					the box. FHIRPath evaluator for Bundles, Observations,
+					Patients. Your own rules drop in as declarative JSON
+					plugin packs &mdash; no recompile.
+				</p>
+			</article>
+			<article class="feat">
+				<div class="feat-ic">🛡️</div>
+				<h3>PHI anonymization</h3>
+				<p>
+					21 built-in PHI fields across PID/NK1/IN1/GT1 with
+					sensitivity-aware masking. Extend the catalogue with
+					regional PHI via plugin packs. Structure is preserved
+					so anonymized messages remain valid.
+				</p>
+			</article>
+			<article class="feat">
+				<div class="feat-ic">📄</div>
+				<h3>Field Inspector</h3>
+				<p>
+					Right-click any field in the editor or the tree to see
+					the HL7 schema-derived name, type, cardinality, length
+					limits and current value. Schema-aware tree optionally
+					shows every possible field, not just the populated ones.
+				</p>
+			</article>
+			<article class="feat">
+				<div class="feat-ic">🌍</div>
+				<h3>i18n + cross-platform</h3>
+				<p>
+					UI in English, Italian, French, Spanish and German.
+					Native installers for Windows (NSIS + MSI), macOS (DMG)
+					and Linux (.deb, .rpm, AppImage) &mdash; with .hl7 file
+					association and language selector.
+				</p>
+			</article>
+		</div>
+	</div>
+</section>
+
+<!-- COMPARE -->
+<section id="compare" class="section alt">
+	<div class="wrap">
+		<h2>Why a new HL7 editor in 2026?</h2>
+		<p class="sub">
+			Integration engineers are squeezed between free tools that
+			stopped updating years ago and enterprise products priced for
+			nine-figure hospital systems. BridgeLab targets the middle.
+		</p>
+		<div class="compare">
+			<table>
+				<thead>
+					<tr>
+						<th>Tool</th>
+						<th>FHIR support</th>
+						<th>macOS / Linux</th>
+						<th>Large messages</th>
+						<th>Price</th>
+						<th>Actively maintained</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr class="highlight">
+						<td><strong>BridgeLab</strong></td>
+						<td>Yes</td>
+						<td>Yes</td>
+						<td>10 MB, smoothly</td>
+						<td>Free core, paid Pro</td>
+						<td>Yes (2026)</td>
+					</tr>
+					<tr>
+						<td>7edit</td>
+						<td>No</td>
+						<td>No</td>
+						<td>Slow</td>
+						<td>~$300-500 / seat</td>
+						<td>No (~2015)</td>
+					</tr>
+					<tr>
+						<td>HL7 Inspector</td>
+						<td>No</td>
+						<td>Java-only</td>
+						<td>Struggles</td>
+						<td>Free (GPL)</td>
+						<td>Minimal</td>
+					</tr>
+					<tr>
+						<td>HAPI TestPanel</td>
+						<td>No</td>
+						<td>Java-only</td>
+						<td>Struggles</td>
+						<td>Free (MPL)</td>
+						<td>Minimal</td>
+					</tr>
+					<tr>
+						<td>HL7 Spy</td>
+						<td>View only</td>
+						<td>No</td>
+						<td>Good</td>
+						<td>~$8,745 / year</td>
+						<td>Yes</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</section>
+
+<!-- PLUGINS -->
+<section id="plugins" class="section">
+	<div class="wrap two-col">
+		<div>
+			<span class="eyebrow">Plugin packs</span>
+			<h2>Your rules &mdash; dropped in as JSON.</h2>
+			<p>
+				Every hospital has custom ADT quirks, Z-segments, regional
+				PHI fields. BridgeLab reads declarative JSON packs from a
+				user folder and merges them into the validator and the
+				anonymizer. No code execution, no sandbox surprises.
+			</p>
+			<ul class="check">
+				<li>Six check types: <code>not_empty</code>, <code>regex</code>, <code>one_of</code>, <code>max_length</code>, <code>min_length</code>, <code>contains</code></li>
+				<li>Component-level narrowing via the <code>component</code> field</li>
+				<li>Extra PHI fields with sensitivity-aware masking</li>
+				<li>Live reload without restarting the app</li>
+				<li>Per-pack enable/disable, persisted across sessions</li>
+			</ul>
+			<a class="btn" href="https://github.com/1warpengine/HL7_editor/blob/main/docs/PLUGINS.md">Read the plugin docs &rarr;</a>
+		</div>
+		<div class="plugin-sample">
+<pre class="code"><span class="json-key">"rule_id"</span>: <span class="json-str">"ACME-PID-001"</span>,
+<span class="json-key">"severity"</span>: <span class="json-str">"error"</span>,
+<span class="json-key">"segment"</span>: <span class="json-str">"PID"</span>,
+<span class="json-key">"field"</span>: <span class="json-num">3</span>,
+<span class="json-key">"check"</span>: { <span class="json-key">"type"</span>: <span class="json-str">"not_empty"</span> },
+<span class="json-key">"message"</span>: <span class="json-str">"PID-3 must be populated"</span></pre>
+		</div>
+	</div>
+</section>
+
+<!-- DOWNLOAD -->
+<section id="download" class="section alt">
+	<div class="wrap">
+		<h2>Download</h2>
+		<p class="sub">
+			Pick your platform. Installers include the MIT license page and
+			a language selector. Starts with a 30-day Pro trial; the free
+			tier stays usable for real work forever.
+		</p>
+		<div class="dlgrid">
+			<a class="dl" href="https://github.com/1warpengine/HL7_editor/releases/latest">
+				<div class="dl-os">Windows</div>
+				<div class="dl-file">.msi / .exe (NSIS)</div>
+				<div class="dl-hint">x64 &middot; 10+</div>
+			</a>
+			<a class="dl" href="https://github.com/1warpengine/HL7_editor/releases/latest">
+				<div class="dl-os">macOS</div>
+				<div class="dl-file">.dmg</div>
+				<div class="dl-hint">Apple Silicon &amp; Intel &middot; 10.15+</div>
+			</a>
+			<a class="dl" href="https://github.com/1warpengine/HL7_editor/releases/latest">
+				<div class="dl-os">Linux</div>
+				<div class="dl-file">.AppImage / .deb / .rpm</div>
+				<div class="dl-hint">x64 &middot; glibc 2.31+</div>
+			</a>
+		</div>
+		<p class="sub tiny">
+			Prefer the terminal?
+			<code>brew tap</code>, <code>winget</code> and an AUR package are on the roadmap.
+			For now, grab the binary or
+			<a href="https://github.com/1warpengine/HL7_editor#development">build from source</a>.
+		</p>
+	</div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" class="section">
+	<div class="wrap">
+		<h2>Frequently asked</h2>
+		<div class="faq">
+			<details>
+				<summary>Is the core really free for commercial use?</summary>
+				<p>
+					Yes. The core is MIT-licensed and stays fully usable
+					for production integration work. Pro and Enterprise
+					tiers unlock cloud features (team test case library,
+					SOAP with WSDL, priority support) but nothing that
+					blocks day-to-day HL7 work.
+				</p>
+			</details>
+			<details>
+				<summary>Can I point BridgeLab at a real live feed?</summary>
+				<p>
+					That is the primary use case. Start a listener on
+					port 2575, send HL7 via MLLP from your feed, see
+					received messages in the inbox and open any of them
+					in a new editor tab. Auto-ACK is configurable per
+					listener.
+				</p>
+			</details>
+			<details>
+				<summary>How do you handle 10 MB messages with base64 PDFs?</summary>
+				<p>
+					The Rust backend uses a streaming zero-copy parser
+					with field-level truncation. The editor receives
+					truncated text (<code>{...N bytes}</code> markers) so
+					Monaco is never asked to render megabytes. Expansion
+					is on-demand via right-click or per-field.
+				</p>
+			</details>
+			<details>
+				<summary>Does it work offline?</summary>
+				<p>
+					Fully. Parsing, validation, MLLP and HTTP targeting
+					local hosts, anonymization, export, CLI &mdash; none
+					require network access. License activation happens
+					online once, then validation works offline via
+					Ed25519-signed tokens.
+				</p>
+			</details>
+			<details>
+				<summary>What about PHI and data residency?</summary>
+				<p>
+					BridgeLab processes every message locally. Nothing
+					leaves your machine unless you explicitly send it via
+					the Communication panel. Telemetry is off by default
+					and, when enabled, carries only anonymous usage
+					counters.
+				</p>
+			</details>
+			<details>
+				<summary>How do plugins work?</summary>
+				<p>
+					Drop a JSON file in
+					<code>&lt;config&gt;/BridgeLab/plugins/validation/</code>
+					or
+					<code>/anonymization/</code>.
+					The app loads it at startup or on demand via
+					Settings &rarr; Plugins. No code runs &mdash; plugins
+					are declarative rules. See
+					<a href="https://github.com/1warpengine/HL7_editor/blob/main/docs/PLUGINS.md">PLUGINS.md</a>.
+				</p>
+			</details>
+			<details>
+				<summary>Which HL7 versions are supported?</summary>
+				<p>
+					v2.3 through v2.8 for segment / field schemas.
+					Custom (Z-) segments parse and edit cleanly, they
+					just fall back to raw values in the Field Inspector
+					unless you ship a plugin pack for them.
+				</p>
+			</details>
+			<details>
+				<summary>Is there a CLI?</summary>
+				<p>
+					Yes &mdash;
+					<code>bridgelab-cli validate</code>,
+					<code>info</code>,
+					<code>anonymize</code>,
+					<code>to-json</code>,
+					<code>batch</code>.
+					Outputs JSON or JUnit XML so you can wire it into CI.
+				</p>
+			</details>
+		</div>
+	</div>
+</section>
+
+</main>
+
+<footer>
+	<div class="wrap foot">
+		<div>
+			<div class="brand">
+				<svg class="brand-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M3 14c3-6 15-6 18 0" />
+					<path d="M6 14v5" /><path d="M18 14v5" /><path d="M10 14v5" /><path d="M14 14v5" />
+					<rect x="2" y="19" width="20" height="2" rx="0.5" />
+				</svg>
+				<span>BridgeLab</span>
+			</div>
+			<p class="foot-copy">HL7/FHIR made simple. Built by <strong>TECHEMV SRL</strong>.</p>
+		</div>
+		<div class="foot-links">
+			<a href="https://github.com/1warpengine/HL7_editor">GitHub</a>
+			<a href="https://github.com/1warpengine/HL7_editor/releases">Releases</a>
+			<a href="https://github.com/1warpengine/HL7_editor/blob/main/docs/PLUGINS.md">Plugins</a>
+			<a href="https://github.com/1warpengine/HL7_editor/blob/main/TEST_PLAN.md">Test plan</a>
+			<a href="https://github.com/1warpengine/HL7_editor/blob/main/LICENSE">License (MIT)</a>
+		</div>
+	</div>
+	<div class="wrap foot-bottom">
+		<span>&copy; 2026 TECHEMV SRL &middot; Open Core</span>
+	</div>
+</footer>
+
+</body>
+</html>
