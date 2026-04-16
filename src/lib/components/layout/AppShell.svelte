@@ -1158,11 +1158,39 @@
 					<button class="modal-close" onclick={() => { showAbout = false; }}>&times;</button>
 				</div>
 				<div class="modal-body about-body">
+					<!-- Bridge logo -->
+					<div class="about-logo" aria-hidden="true">
+						<svg viewBox="0 0 120 60" width="120" height="60" fill="none" xmlns="http://www.w3.org/2000/svg">
+							<defs>
+								<linearGradient id="bridge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+									<stop offset="0%" stop-color="var(--color-accent, #89b4fa)"/>
+									<stop offset="100%" stop-color="var(--color-segment, #cba6f7)"/>
+								</linearGradient>
+							</defs>
+							<path d="M10 35c15-25 65-25 100 0" stroke="url(#bridge-grad)" stroke-width="3.5" stroke-linecap="round"/>
+							<line x1="22" y1="35" x2="22" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
+							<line x1="46" y1="35" x2="46" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
+							<line x1="70" y1="35" x2="70" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
+							<line x1="94" y1="35" x2="94" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
+							<rect x="6" y="50" width="108" height="4" rx="1.5" fill="url(#bridge-grad)"/>
+						</svg>
+					</div>
+
 					<div class="about-title">{tr('app.title')}</div>
 					<div class="about-subtitle">{tr('app.subtitle')}</div>
-					<div class="about-version">{tr('about.version', { version: '0.2.0' })}</div>
+					<div class="about-version">{tr('about.version', { version: '0.1.0' })}</div>
 					<p class="about-desc">{tr('about.description')}</p>
 					<p class="about-license">{tr('about.license')}</p>
+
+					<div class="about-company">
+						<div class="about-company-name">TECHEMV SRL</div>
+						<div class="about-contact">
+							<a href="mailto:info@techemv.it">info@techemv.it</a>
+							<span class="about-sep">&middot;</span>
+							<a href="https://www.techemv.it" target="_blank" rel="noopener">www.techemv.it</a>
+						</div>
+					</div>
+
 					<p class="about-copyright">{tr('about.copyright', { year: new Date().getFullYear().toString() })}</p>
 				</div>
 			</div>
@@ -1549,12 +1577,18 @@
 	/* About dialog */
 	.about-body {
 		text-align: center;
+		padding: 24px 20px;
+	}
+
+	.about-logo {
+		margin-bottom: 16px;
 	}
 
 	.about-title {
-		font-size: 24px;
-		font-weight: 700;
+		font-size: 26px;
+		font-weight: 800;
 		color: var(--color-accent);
+		letter-spacing: -0.02em;
 	}
 
 	.about-subtitle {
@@ -1579,6 +1613,42 @@
 	.about-license {
 		font-size: 11px;
 		color: var(--color-text-secondary);
+		margin-bottom: 16px;
+	}
+
+	.about-company {
+		padding: 12px 0;
+		border-top: 1px solid var(--color-border);
+		margin-top: 8px;
+	}
+
+	.about-company-name {
+		font-size: 13px;
+		font-weight: 700;
+		color: var(--color-text-primary);
+		margin-bottom: 4px;
+	}
+
+	.about-contact {
+		font-size: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+	}
+
+	.about-contact a {
+		color: var(--color-accent);
+		text-decoration: none;
+	}
+
+	.about-contact a:hover {
+		text-decoration: underline;
+	}
+
+	.about-sep {
+		color: var(--color-text-secondary);
+		opacity: 0.5;
 	}
 
 	.about-copyright {
