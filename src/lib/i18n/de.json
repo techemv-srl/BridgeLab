@@ -253,6 +253,10 @@
 	"act.contactUs": "Kontaktieren Sie uns",
 	"act.trialExpired": "Testversion abgelaufen. Community-Funktionen bleiben verfügbar.",
 
+	"banner.trialPro": "Pro-Testversion: {days} Tage verbleibend. Nach Ablauf bleiben die Community-Funktionen verfügbar.",
+	"banner.freeAfterTrial": "Testversion abgelaufen. Community-Funktionen sind aktiv. Upgraden Sie für Pro-Funktionen.",
+	"banner.expired": "Lizenz abgelaufen. Upgraden Sie, um den vollen Zugriff wiederherzustellen.",
+
 	"activate": "Aktivieren",
 	"upgrade": "Upgraden",
 	"cancel": "Abbrechen",
