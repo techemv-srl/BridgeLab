@@ -18,7 +18,7 @@
 	let urgent = $derived(
 		status.license_type === 'expired' ||
 		status.license_type === 'free' ||
-		(status.license_type === 'trial' && (status.days_remaining ?? 0) <= 5)
+		(status.license_type === 'trial' && (status.days_remaining ?? 0) <= 3)
 	);
 
 	// Show banner when:
