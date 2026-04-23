@@ -47,6 +47,7 @@
 		onSetLanguage: (lang: string) => void;
 		onShowSettings: () => void;
 		onCheckUpdates: () => void;
+		onShowHelp: () => void;
 		onShowAbout: () => void;
 	}
 
@@ -80,6 +81,7 @@
 		onSetLanguage,
 		onShowSettings,
 		onCheckUpdates,
+		onShowHelp,
 		onShowAbout,
 	}: Props = $props();
 
@@ -325,6 +327,10 @@
 		</button>
 		{#if openMenu === 'help'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
+				<button class="menu-item" onclick={() => menuAction(onShowHelp)}>
+					<span>{tr('menu.help.manual')}</span>
+					<span class="shortcut">F1</span>
+				</button>
 				<button class="menu-item" onclick={() => menuAction(onCheckUpdates)}>
 					<span>{tr('menu.help.updates')}</span>
 				</button>
