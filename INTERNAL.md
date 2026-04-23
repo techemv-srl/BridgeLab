@@ -78,6 +78,14 @@ Then, every time you want to publish:
 
 ```bash
 git fetch origin release/public
+
+# Pre-flight: refuse to mirror if INTERNAL.md or keygen slipped into release/public.
+# (Defense-in-depth: the public-safety.yml workflow catches the same thing on GitHub.)
+if git ls-tree -r --name-only origin/release/public | grep -qE '^(INTERNAL\.md|tools/bridgelab-keygen/)'; then
+  echo "REFUSING TO SYNC: dev-only files present on origin/release/public. Clean release/public first." >&2
+  exit 1
+fi
+
 git push techemv origin/release/public:main --force
 ```
 
