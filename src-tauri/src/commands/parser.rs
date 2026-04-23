@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::licensing::feature_gate;
 use crate::message_store::MessageStore;
 use crate::parser::fhir;
 use crate::parser::hl7::lexer::Hl7Lexer;
@@ -427,12 +428,14 @@ pub fn get_fhir_tree_children(
     Ok(fhir::get_fhir_children(&resource, &node_id))
 }
 
-/// Analyze a FHIR Bundle and return entries + references for visualization.
+/// Analyze a FHIR Bundle (Pro feature).
 #[tauri::command]
 pub fn analyze_fhir_bundle(
     message_id: String,
     store: State<'_, MessageStore>,
 ) -> Result<fhir::bundle::BundleAnalysis, BridgeLabError> {
+    feature_gate::require("bundle_visualizer")
+        .map_err(|e| BridgeLabError::ParseError(e))?;
     let resource = store
         .get_fhir(&message_id)
         .ok_or_else(|| BridgeLabError::MessageNotFound(message_id.clone()))?;
@@ -444,13 +447,15 @@ pub fn analyze_fhir_bundle(
         .map_err(|e| BridgeLabError::ParseError(e))
 }
 
-/// Evaluate a FHIRPath expression on the active FHIR resource.
+/// Evaluate a FHIRPath expression (Pro feature).
 #[tauri::command]
 pub fn evaluate_fhirpath(
     message_id: String,
     expression: String,
     store: State<'_, MessageStore>,
 ) -> Result<fhir::fhirpath::FhirPathResult, BridgeLabError> {
+    feature_gate::require("fhirpath")
+        .map_err(|e| BridgeLabError::ParseError(e))?;
     let resource = store
         .get_fhir(&message_id)
         .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;

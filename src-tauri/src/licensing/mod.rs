@@ -2,12 +2,14 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey, PUBLIC_KEY_LENGTH, SIGNAT
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub mod feature_gate;
+
 // =============================================================================
 // The PUBLIC key is embedded in the app for offline verification.
 // The PRIVATE key is kept secret in the CLI tool only.
 // Generate a new keypair with: bridgelab-keygen generate-keypair
 // =============================================================================
-const PUBLIC_KEY_HEX: &str = "PLACEHOLDER_GENERATE_WITH_CLI";
+const PUBLIC_KEY_HEX: &str = "cd9559f4beffe61a9c2878434a84fb2c3de85e36247c4188537c722d9fcc2649";
 
 /// License payload (the data that gets signed).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,19 +275,7 @@ pub fn activate_simple_key(key: &str, licensee: &str, email: &str) -> Result<Lic
         return Err("License key too short (minimum 8 characters)".into());
     }
 
-    let features = match license_type {
-        LicenseType::Free => vec!["core".into(), "hl7v2".into()],
-        LicenseType::Professional => vec![
-            "core".into(), "hl7v2".into(), "fhir".into(),
-            "mllp".into(), "http".into(), "anonymize".into(), "export".into(),
-        ],
-        LicenseType::Enterprise => vec![
-            "core".into(), "hl7v2".into(), "fhir".into(),
-            "mllp".into(), "http".into(), "anonymize".into(), "export".into(),
-            "soap".into(), "plugins".into(), "priority_support".into(),
-        ],
-        _ => vec!["core".into()],
-    };
+    let features = feature_gate::available_features_for_type(&license_type);
 
     let expires_at = match license_type {
         LicenseType::Free => None,
