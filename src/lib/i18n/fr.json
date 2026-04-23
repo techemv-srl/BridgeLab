@@ -242,6 +242,14 @@
 	"act.nameCompany": "Nom / Entreprise",
 	"act.licenseTypes": "Types de Licence",
 
+	"act.daysRemaining": "{days} jours restants",
+	"act.hwHint": "Partagez cet ID lors de la demande d'une clé de licence.",
+	"act.keyPlaceholder": "Collez votre clé de licence ici...",
+	"act.communityDesc": "Éditeur HL7 v2, analyseur, validation, MLLP/HTTP de base.",
+	"act.proDesc": "+ Listener, HTTP complet, anonymisation, export, FHIRPath, Bundle, plugins illimités.",
+	"act.entDesc": "Tout Pro + SOAP, support prioritaire.",
+	"act.contactUs": "Nous contacter",
+
 	"activate": "Activer",
 	"upgrade": "Mettre à niveau",
 	"cancel": "Annuler",
