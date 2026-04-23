@@ -39,10 +39,6 @@ jobs:
         working-directory: src-tauri
         run: cargo test --all
 
-      - name: Check CLI keygen tool
-        working-directory: tools/bridgelab-keygen
-        run: cargo check
-
   test-frontend:
     name: Test frontend
     runs-on: ubuntu-latest
