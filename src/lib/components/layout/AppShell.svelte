@@ -940,6 +940,7 @@
 		onShowSettings={() => { showSettings = true; }}
 		onCheckUpdates={handleCheckUpdates}
 		onShowHelp={() => { showHelp = true; }}
+		onShowActivation={() => { showActivation = true; }}
 		onShowAbout={() => { showAbout = true; }}
 	/>
 
