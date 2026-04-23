@@ -1179,19 +1179,19 @@
 				<div class="modal-body about-body">
 					<!-- Bridge logo -->
 					<div class="about-logo" aria-hidden="true">
-						<svg viewBox="0 0 120 60" width="120" height="60" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<svg viewBox="0 0 100 52" width="100" height="52" fill="none" xmlns="http://www.w3.org/2000/svg">
 							<defs>
 								<linearGradient id="bridge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
 									<stop offset="0%" stop-color="var(--color-accent, #89b4fa)"/>
 									<stop offset="100%" stop-color="var(--color-segment, #cba6f7)"/>
 								</linearGradient>
 							</defs>
-							<path d="M10 35c15-25 65-25 100 0" stroke="url(#bridge-grad)" stroke-width="3.5" stroke-linecap="round"/>
-							<line x1="22" y1="35" x2="22" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="46" y1="35" x2="46" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="70" y1="35" x2="70" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="94" y1="35" x2="94" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<rect x="6" y="50" width="108" height="4" rx="1.5" fill="url(#bridge-grad)"/>
+							<path d="M4 30 Q50 -2 96 30" stroke="url(#bridge-grad)" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+							<line x1="20" y1="24" x2="20" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="2.8" stroke-linecap="round"/>
+							<line x1="40" y1="14" x2="40" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="2.8" stroke-linecap="round"/>
+							<line x1="60" y1="14" x2="60" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="2.8" stroke-linecap="round"/>
+							<line x1="80" y1="24" x2="80" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="2.8" stroke-linecap="round"/>
+							<rect x="4" y="42" width="92" height="4" rx="2" fill="url(#bridge-grad)"/>
 						</svg>
 					</div>
 
