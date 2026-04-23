@@ -75,6 +75,7 @@ pub fn run() {
             commands::licensing::activate_license,
             commands::licensing::deactivate_license,
             commands::licensing::get_hardware_id,
+            commands::licensing::get_available_features,
             commands::templates::get_templates,
             commands::templates::get_templates_grouped,
             commands::test_cases::save_test_case,

@@ -43,3 +43,9 @@ pub fn deactivate_license() -> Result<LicenseStatus, String> {
 pub fn get_hardware_id() -> Result<String, String> {
     Ok(licensing::get_hardware_id())
 }
+
+/// Get the list of features available to the current user.
+#[tauri::command]
+pub fn get_available_features() -> Result<Vec<String>, String> {
+    Ok(licensing::feature_gate::available_features())
+}
