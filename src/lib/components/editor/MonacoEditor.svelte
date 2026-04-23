@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { registerHL7Language } from './HL7MonarchLanguage';
 	import { registerHL7AutoComplete } from './HL7AutoComplete';
+	import { t } from '$lib/i18n';
 
 	type MonacoModule = typeof import('monaco-editor');
 	type IStandaloneCodeEditor = import('monaco-editor').editor.IStandaloneCodeEditor;
@@ -127,7 +128,7 @@
 		// "Show in Tree" action
 		ed.addAction({
 			id: 'bridgelab.showInTree',
-			label: 'Show in Tree',
+			label: t('ctx.showInTree'),
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 1,
 			keybindings: [mod.KeyMod.Alt | mod.KeyCode.KeyT],
@@ -150,7 +151,7 @@
 		// "Expand Truncated Field" action
 		ed.addAction({
 			id: 'bridgelab.expandTruncated',
-			label: 'Expand Truncated Field',
+			label: t('ctx.expandField'),
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 2,
 			precondition: undefined,
@@ -190,7 +191,7 @@
 		// "Expand All Truncated Fields" action
 		ed.addAction({
 			id: 'bridgelab.expandAll',
-			label: 'Expand All Truncated Fields',
+			label: t('ctx.expandAll'),
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 3,
 			run: () => {
@@ -201,7 +202,7 @@
 		// "Collapse All" action - re-truncate expanded fields
 		ed.addAction({
 			id: 'bridgelab.collapseAll',
-			label: 'Collapse All Expanded Fields',
+			label: t('ctx.collapseAll'),
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 4,
 			run: () => {
@@ -212,7 +213,7 @@
 		// "Copy Full Message" action
 		ed.addAction({
 			id: 'bridgelab.copyFullMessage',
-			label: 'Copy Full Message (with expanded fields)',
+			label: t('ctx.copyFull'),
 			contextMenuGroupId: '9_cutcopypaste',
 			contextMenuOrder: 8,
 			run: () => {
@@ -223,7 +224,7 @@
 		// "Copy Truncated Message" action
 		ed.addAction({
 			id: 'bridgelab.copyTruncatedMessage',
-			label: 'Copy Truncated Message (for email)',
+			label: t('ctx.copyTruncated'),
 			contextMenuGroupId: '9_cutcopypaste',
 			contextMenuOrder: 9,
 			run: () => {
@@ -234,7 +235,7 @@
 		// "Copy Line as Segment" action
 		ed.addAction({
 			id: 'bridgelab.copySegment',
-			label: 'Copy Segment',
+			label: t('ctx.copySegment'),
 			contextMenuGroupId: '9_cutcopypaste',
 			contextMenuOrder: 10,
 			keybindings: [mod.KeyMod.Alt | mod.KeyCode.KeyC],
