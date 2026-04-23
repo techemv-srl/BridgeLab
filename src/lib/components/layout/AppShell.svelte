@@ -16,6 +16,7 @@
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
 	import FieldInspector from '$lib/components/tree/FieldInspector.svelte';
+	import HelpWindow from '$lib/components/layout/HelpWindow.svelte';
 	import EditorTabs from '$lib/components/editor/EditorTabs.svelte';
 	import MenuBar from '$lib/components/layout/MenuBar.svelte';
 	import StatusBar from '$lib/components/layout/StatusBar.svelte';
@@ -53,6 +54,7 @@
 	let showBundleVisualizer = $state(false);
 	let showFhirPath = $state(false);
 	let showTestCases = $state(false);
+	let showHelp = $state(false);
 	let licenseStatus = $state<LicenseStatus | null>(null);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
@@ -861,6 +863,11 @@
 	};
 
 	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'F1') {
+			e.preventDefault();
+			showHelp = !showHelp;
+			return;
+		}
 		// Always block F5 in Tauri WebView - it would reload the entire app and lose state
 		if (e.key === 'F5') {
 			e.preventDefault();
@@ -932,6 +939,7 @@
 		onSetLanguage={handleSetLanguage}
 		onShowSettings={() => { showSettings = true; }}
 		onCheckUpdates={handleCheckUpdates}
+		onShowHelp={() => { showHelp = true; }}
 		onShowAbout={() => { showAbout = true; }}
 	/>
 
@@ -1271,6 +1279,10 @@
 	{/if}
 
 	<!-- In-app dialog (replaces native alert/confirm) -->
+	{#if showHelp}
+		<HelpWindow onClose={() => { showHelp = false; }} />
+	{/if}
+
 	<AppDialog />
 
 	<!-- Status bar -->
