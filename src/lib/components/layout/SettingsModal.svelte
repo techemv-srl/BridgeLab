@@ -108,6 +108,7 @@
 	let plugins = $state<PluginInfo[]>([]);
 	let pluginsDir = $state('');
 	let pluginsLoading = $state(false);
+	let pluginsLoaded = $state(false);
 	let pluginsError = $state<string | null>(null);
 
 	async function loadPluginsInfo() {
@@ -120,6 +121,7 @@
 			pluginsError = String(e);
 		} finally {
 			pluginsLoading = false;
+			pluginsLoaded = true;
 		}
 	}
 
@@ -151,7 +153,7 @@
 	}
 
 	$effect(() => {
-		if (activeSection === 'plugins' && plugins.length === 0 && !pluginsError) {
+		if (activeSection === 'plugins' && !pluginsLoaded && !pluginsLoading) {
 			void loadPluginsInfo();
 		}
 	});
@@ -162,7 +164,7 @@
 		{ id: 'shortcuts', label: 'Shortcuts', icon: '\u2328' },
 		{ id: 'parser', label: 'Parser', icon: '\u2699' },
 		{ id: 'memory', label: 'Performance', icon: '\u26A1' },
-		{ id: 'plugins', label: 'Plugins', icon: '\u2699' },
+		{ id: 'plugins', label: tr('plugins.title'), icon: '\u2699' },
 	];
 
 	const fontFamilies = [
@@ -348,19 +350,17 @@
 				</div>
 
 			{:else if activeSection === 'plugins'}
-				<h3>Plugins</h3>
+				<h3>{tr('plugins.title')}</h3>
 
 				<p class="hint" style="margin-bottom: 8px;">
-					Drop JSON rule packs in the plugins folder. Validation rules extend
-					the built-in HL7 checks; anonymization rules extend the PHI catalogue.
-					No code execution &ndash; plugins are pure data.
+					{tr('plugins.description')}
 				</p>
 
 				<div class="plugins-toolbar">
 					<button class="btn" onclick={handleReloadPlugins} disabled={pluginsLoading}>
-						{pluginsLoading ? 'Loading…' : 'Reload'}
+						{pluginsLoading ? tr('plugins.loading') : tr('plugins.reload')}
 					</button>
-					<button class="btn" onclick={handleOpenPluginsFolder}>Open plugins folder</button>
+					<button class="btn" onclick={handleOpenPluginsFolder}>{tr('plugins.openFolder')}</button>
 					<code class="plugins-path" title={pluginsDir}>{pluginsDir}</code>
 				</div>
 
@@ -368,12 +368,9 @@
 					<div class="plugin-error">{pluginsError}</div>
 				{/if}
 
-				{#if !pluginsLoading && plugins.length === 0}
+				{#if !pluginsLoading && pluginsLoaded && plugins.length === 0}
 					<div class="info-block">
-						No plugins installed. Use the "Open plugins folder" button and
-						create a <code>.json</code> file under <code>validation/</code> or
-						<code>anonymization/</code>. See <code>docs/PLUGINS.md</code> for
-						the schema.
+						{tr('plugins.noPlugins')}
 					</div>
 				{/if}
 
@@ -389,12 +386,12 @@
 								<div class="plugin-desc">{p.description}</div>
 							{/if}
 							<div class="plugin-meta">
-								<span>{p.rule_count} rule{p.rule_count === 1 ? '' : 's'}</span>
-								{#if p.author}<span>by {p.author}</span>{/if}
+								<span>{tr(p.rule_count === 1 ? 'plugins.rule' : 'plugins.rules', { count: p.rule_count })}</span>
+								{#if p.author}<span>{tr('plugins.by', { author: p.author })}</span>{/if}
 								<span class="plugin-filepath" title={p.path}>{p.path}</span>
 							</div>
 							{#if p.error}
-								<div class="plugin-error">Parse error: {p.error}</div>
+								<div class="plugin-error">{tr('plugins.parseError', { error: p.error })}</div>
 							{/if}
 						</div>
 						<label class="plugin-toggle">
@@ -404,7 +401,7 @@
 								disabled={!!p.error}
 								onchange={() => handleTogglePlugin(p)}
 							/>
-							{p.enabled ? 'Enabled' : 'Disabled'}
+							{p.enabled ? tr('plugins.enabled') : tr('plugins.disabled')}
 						</label>
 					</div>
 				{/each}
