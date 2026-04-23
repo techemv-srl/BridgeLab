@@ -1285,6 +1285,7 @@
 					{theme}
 					onClose={() => { showSettings = false; }}
 					onThemeChange={handleSetTheme}
+					onShowActivation={() => { showSettings = false; showActivation = true; }}
 				/>
 			</div>
 		</div>
