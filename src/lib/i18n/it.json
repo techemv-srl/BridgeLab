@@ -46,6 +46,7 @@
 	"menu.help": "Aiuto",
 	"menu.help.about": "Informazioni su BridgeLab",
 	"menu.help.shortcuts": "Scorciatoie da Tastiera",
+	"menu.help.updates": "Controlla Aggiornamenti",
 
 	"tree.header": "Struttura Messaggio",
 	"tree.empty": "Apri un file HL7 o incolla un messaggio per iniziare.",
@@ -241,6 +242,15 @@
 	"act.key": "Chiave Licenza",
 	"act.nameCompany": "Nome / Azienda",
 	"act.licenseTypes": "Tipi di Licenza",
+
+	"act.daysRemaining": "{days} giorni rimanenti",
+	"act.hwHint": "Condividi questo ID quando richiedi una chiave di licenza.",
+	"act.keyPlaceholder": "Incolla qui la tua chiave di licenza...",
+	"act.communityDesc": "Editor HL7 v2, parser, validazione, MLLP/HTTP di base.",
+	"act.proDesc": "+ Listener, HTTP completo, anonimizzazione, export, FHIRPath, Bundle, plugin illimitati.",
+	"act.entDesc": "Tutto Pro + SOAP, supporto prioritario.",
+	"act.contactUs": "Contattaci",
+	"act.trialExpired": "Trial scaduto. Le funzionalità Community restano disponibili.",
 
 	"activate": "Attiva",
 	"upgrade": "Aggiorna",
