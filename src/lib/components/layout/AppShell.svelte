@@ -16,6 +16,7 @@
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
 	import FieldInspector from '$lib/components/tree/FieldInspector.svelte';
+	import HelpWindow from '$lib/components/layout/HelpWindow.svelte';
 	import EditorTabs from '$lib/components/editor/EditorTabs.svelte';
 	import MenuBar from '$lib/components/layout/MenuBar.svelte';
 	import StatusBar from '$lib/components/layout/StatusBar.svelte';
@@ -53,6 +54,7 @@
 	let showBundleVisualizer = $state(false);
 	let showFhirPath = $state(false);
 	let showTestCases = $state(false);
+	let showHelp = $state(false);
 	let licenseStatus = $state<LicenseStatus | null>(null);
 	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
@@ -202,29 +204,8 @@
 		}
 	}
 
-	async function handleCheckUpdates() {
-		try {
-			const { checkForUpdates, installUpdate } = await import('$lib/ipc/updater');
-			const info = await checkForUpdates();
-			if (info && info.available) {
-				const ok = await dialogStore.show({
-					kind: 'confirm',
-					title: t('dialog.updateAvailable', { version: info.version }),
-					message: t('dialog.updateCurrent', { current: info.currentVersion })
-						+ '\n\n' + (info.notes || '')
-						+ '\n\n' + t('dialog.updateInstallNow'),
-					showCancel: true,
-				});
-				if (ok) {
-					await installUpdate(info.update);
-				}
-			} else {
-				await dialogStore.info(t('dialog.updateUpToDate'));
-			}
-		} catch (e) {
-			console.error('Update check failed:', e);
-			await dialogStore.error(t('dialog.updateCheckFailed'), undefined, String(e));
-		}
+	function handleCheckUpdates() {
+		window.open('https://github.com/techemv-srl/BridgeLab/releases', '_blank');
 	}
 
 	function applyTheme(t: string) {
@@ -882,6 +863,11 @@
 	};
 
 	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'F1') {
+			e.preventDefault();
+			showHelp = !showHelp;
+			return;
+		}
 		// Always block F5 in Tauri WebView - it would reload the entire app and lose state
 		if (e.key === 'F5') {
 			e.preventDefault();
@@ -953,6 +939,8 @@
 		onSetLanguage={handleSetLanguage}
 		onShowSettings={() => { showSettings = true; }}
 		onCheckUpdates={handleCheckUpdates}
+		onShowHelp={() => { showHelp = true; }}
+		onShowActivation={() => { showActivation = true; }}
 		onShowAbout={() => { showAbout = true; }}
 	/>
 
@@ -1179,19 +1167,19 @@
 				<div class="modal-body about-body">
 					<!-- Bridge logo -->
 					<div class="about-logo" aria-hidden="true">
-						<svg viewBox="0 0 120 60" width="120" height="60" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<svg viewBox="0 0 120 50" width="120" height="50" fill="none" xmlns="http://www.w3.org/2000/svg">
 							<defs>
 								<linearGradient id="bridge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
 									<stop offset="0%" stop-color="var(--color-accent, #89b4fa)"/>
 									<stop offset="100%" stop-color="var(--color-segment, #cba6f7)"/>
 								</linearGradient>
 							</defs>
-							<path d="M10 35c15-25 65-25 100 0" stroke="url(#bridge-grad)" stroke-width="3.5" stroke-linecap="round"/>
-							<line x1="22" y1="35" x2="22" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="46" y1="35" x2="46" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="70" y1="35" x2="70" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="94" y1="35" x2="94" y2="50" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<rect x="6" y="50" width="108" height="4" rx="1.5" fill="url(#bridge-grad)"/>
+							<path d="M10 32c15-24 75-24 100 0" stroke="url(#bridge-grad)" stroke-width="3.5" stroke-linecap="round"/>
+							<line x1="28" y1="28" x2="28" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
+							<line x1="48" y1="22" x2="48" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
+							<line x1="72" y1="22" x2="72" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
+							<line x1="92" y1="28" x2="92" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
+							<rect x="8" y="42" width="104" height="4" rx="2" fill="url(#bridge-grad)"/>
 						</svg>
 					</div>
 
@@ -1285,12 +1273,17 @@
 					{theme}
 					onClose={() => { showSettings = false; }}
 					onThemeChange={handleSetTheme}
+					onShowActivation={() => { showSettings = false; showActivation = true; }}
 				/>
 			</div>
 		</div>
 	{/if}
 
 	<!-- In-app dialog (replaces native alert/confirm) -->
+	{#if showHelp}
+		<HelpWindow onClose={() => { showHelp = false; }} />
+	{/if}
+
 	<AppDialog />
 
 	<!-- Status bar -->
@@ -1601,6 +1594,8 @@
 
 	.about-logo {
 		margin-bottom: 16px;
+		display: flex;
+		justify-content: center;
 	}
 
 	.about-title {

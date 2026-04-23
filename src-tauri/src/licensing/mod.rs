@@ -192,7 +192,7 @@ pub fn load_or_init_trial() -> TrialData {
 fn new_trial() -> TrialData {
     TrialData {
         started_at: chrono::Utc::now().to_rfc3339(),
-        trial_days: 30,
+        trial_days: 7,
     }
 }
 
@@ -383,18 +383,19 @@ pub fn check_license_status() -> LicenseStatus {
             days_remaining: Some(days),
             licensee: String::new(),
             email: String::new(),
-            features: vec!["core".into(), "hl7v2".into(), "fhir".into(), "mllp".into(), "http".into()],
+            features: feature_gate::available_features_for_type(&LicenseType::Professional),
             message: format!("Trial: {} days remaining", days),
         }
     } else {
+        // Trial expired → fall back to Community (Free) tier, not zero features
         LicenseStatus {
-            is_valid: false,
-            license_type: LicenseType::Expired,
-            days_remaining: Some(0),
+            is_valid: true,
+            license_type: LicenseType::Free,
+            days_remaining: None,
             licensee: String::new(),
             email: String::new(),
-            features: vec![],
-            message: "Trial has expired. Please activate a license.".into(),
+            features: feature_gate::available_features_for_type(&LicenseType::Free),
+            message: "Trial expired. Community features are still available.".into(),
         }
     }
 }
@@ -445,7 +446,7 @@ mod tests {
     fn test_trial_days() {
         let trial = TrialData {
             started_at: chrono::Utc::now().to_rfc3339(),
-            trial_days: 30,
+            trial_days: 7,
         };
         let days = trial_days_remaining(&trial);
         assert!(days >= 29 && days <= 30);
