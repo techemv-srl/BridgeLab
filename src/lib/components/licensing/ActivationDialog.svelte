@@ -129,6 +129,11 @@
 				</button>
 			</div>
 		{:else}
+			<div class="contact-prompt">
+				{tr('act.contactPrompt')}
+				<a href="mailto:info@techemv.it">info@techemv.it</a>
+			</div>
+
 			<!-- Activation form: only the key field -->
 			<div class="form-section">
 				<div class="status-label">{tr('act.activate')}</div>
@@ -183,7 +188,7 @@
 					<div class="type-card highlight">
 						<div class="type-name">Professional</div>
 						<div class="type-desc">{tr('act.proDesc')}</div>
-						<div class="type-price">$99-149/year</div>
+						<div class="type-price">{tr('act.contactUs')}</div>
 					</div>
 					<div class="type-card">
 						<div class="type-name">Enterprise</div>
@@ -243,5 +248,15 @@
 	.type-desc { font-size: 10px; color: var(--color-text-secondary); margin-bottom: 6px; }
 	.type-price { font-size: 12px; font-weight: 700; color: var(--color-accent); }
 
+	.contact-prompt {
+		padding: 10px 14px;
+		background: var(--color-bg-tertiary);
+		border-radius: 6px;
+		border-left: 3px solid var(--color-accent);
+		font-size: 12px;
+		color: var(--color-text-primary);
+		line-height: 1.5;
+	}
+	.contact-prompt a { color: var(--color-accent); font-weight: 600; }
 	.contact-info { text-align: center; font-size: 11px; color: var(--color-text-secondary); margin-top: 12px; }
 </style>

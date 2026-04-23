@@ -192,7 +192,7 @@ pub fn load_or_init_trial() -> TrialData {
 fn new_trial() -> TrialData {
     TrialData {
         started_at: chrono::Utc::now().to_rfc3339(),
-        trial_days: 30,
+        trial_days: 7,
     }
 }
 
@@ -446,7 +446,7 @@ mod tests {
     fn test_trial_days() {
         let trial = TrialData {
             started_at: chrono::Utc::now().to_rfc3339(),
-            trial_days: 30,
+            trial_days: 7,
         };
         let days = trial_days_remaining(&trial);
         assert!(days >= 29 && days <= 30);
