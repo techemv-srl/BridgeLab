@@ -253,6 +253,10 @@
 	"act.contactUs": "Contattaci",
 	"act.trialExpired": "Trial scaduto. Le funzionalità Community restano disponibili.",
 
+	"banner.trialPro": "Trial Pro: {days} giorni rimanenti. Alla scadenza, le funzionalità Community restano disponibili.",
+	"banner.freeAfterTrial": "Trial scaduto. Le funzionalità Community sono attive. Aggiorna per sbloccare le funzionalità Pro.",
+	"banner.expired": "Licenza scaduta. Aggiorna per ripristinare l'accesso completo.",
+
 	"activate": "Attiva",
 	"upgrade": "Aggiorna",
 	"cancel": "Annulla",

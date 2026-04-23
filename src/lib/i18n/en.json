@@ -253,6 +253,10 @@
 	"act.contactUs": "Contact us",
 	"act.trialExpired": "Trial expired. Community features are still available.",
 
+	"banner.trialPro": "Pro trial: {days} days remaining. After expiry, Community features remain available.",
+	"banner.freeAfterTrial": "Trial expired. Community features are active. Upgrade to unlock Pro features.",
+	"banner.expired": "License expired. Upgrade to restore full access.",
+
 	"activate": "Activate",
 	"upgrade": "Upgrade",
 	"cancel": "Cancel",
