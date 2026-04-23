@@ -19,6 +19,26 @@
 	let error = $state('');
 	let activating = $state(false);
 
+	// Live-decode the pasted key to preview licensee + email
+	let keyPreview = $derived.by<{ licensee: string; email: string; type: string; features: string[] } | null>(() => {
+		try {
+			const trimmed = licenseKey.trim();
+			if (!trimmed || trimmed.length < 20) return null;
+			const json = atob(trimmed);
+			const parsed = JSON.parse(json);
+			const p = parsed.payload;
+			if (p && p.licensee) {
+				return {
+					licensee: p.licensee,
+					email: p.email || '',
+					type: (p.license_type || '').replace('_', ' '),
+					features: p.features || [],
+				};
+			}
+		} catch { /* not valid Base64/JSON yet */ }
+		return null;
+	});
+
 	let loaded = false;
 	$effect(() => {
 		if (loaded || typeof window === 'undefined') return;
@@ -118,11 +138,30 @@
 						placeholder="Paste your license key here..."
 						rows="4"
 						class="input-full key-input"></textarea>
-					<div class="key-hint">
-						The license key contains your name, email, and feature
-						entitlements. Just paste the key — nothing else to fill in.
-					</div>
 				</div>
+
+				{#if keyPreview}
+					<div class="key-preview">
+						<div class="preview-row">
+							<label>{tr('act.nameCompany')}</label>
+							<input type="text" value={keyPreview.licensee} readonly class="input-full readonly" />
+						</div>
+						<div class="preview-row">
+							<label>Email</label>
+							<input type="text" value={keyPreview.email} readonly class="input-full readonly" />
+						</div>
+						<div class="preview-row">
+							<label>{tr('act.features')}</label>
+							<div class="preview-features">
+								{#each keyPreview.features as feat}
+									<span class="feature-tag">{feat}</span>
+								{/each}
+							</div>
+						</div>
+					</div>
+				{:else if licenseKey.trim().length > 0}
+					<div class="key-hint">{tr('plugins.loading')}</div>
+				{/if}
 
 				{#if error}
 					<div class="error-msg">{error}</div>
@@ -183,6 +222,12 @@
 	.input-full { width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-bg-tertiary); color: var(--color-text-primary); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 	.key-input { resize: vertical; min-height: 80px; line-height: 1.4; }
 	.key-hint { font-size: 10px; color: var(--color-text-secondary); font-style: italic; }
+
+	.key-preview { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--color-bg-tertiary); border-radius: 6px; border: 1px solid var(--color-border); }
+	.preview-row { display: flex; flex-direction: column; gap: 2px; }
+	.preview-row label { font-size: 10px; color: var(--color-text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+	.readonly { opacity: 0.85; cursor: default; background: var(--color-bg-primary); border-color: transparent; }
+	.preview-features { display: flex; flex-wrap: wrap; gap: 4px; }
 
 	.error-msg { padding: 6px 10px; background: var(--color-error); color: white; border-radius: 4px; font-size: 11px; margin-bottom: 8px; }
 
