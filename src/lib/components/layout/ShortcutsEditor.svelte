@@ -103,13 +103,16 @@
 		return groups;
 	});
 
-	const categoryLabels: Record<string, string> = {
-		file: 'File',
-		edit: 'Edit',
-		view: 'View',
-		tools: 'Tools',
+	const categoryLabels = $derived.by(() => {
+		void localeVersion;
+		return {
+		file: tr('menu.file'),
+		edit: tr('menu.edit'),
+		view: tr('menu.view'),
+		tools: tr('menu.tools'),
 		editor: 'Editor (Monaco)',
 	};
+	});
 </script>
 
 <svelte:window onkeydown={handleCaptureKeydown} />
@@ -117,15 +120,14 @@
 <div class="shortcuts-editor">
 	<div class="header-row">
 		<p class="intro">
-			Click a shortcut to reassign. Press <kbd>Esc</kbd> to cancel, <kbd>Backspace</kbd> to clear.
-			Editor shortcuts are handled by Monaco - reassigning them will override Monaco inside the editor.
+			{tr('shortcuts.intro')}
 		</p>
-		<button class="btn-sm" onclick={resetAll}>Reset All</button>
+		<button class="btn-sm" onclick={resetAll}>{tr('shortcuts.resetAll')}</button>
 	</div>
 
 	{#each Object.entries(groupedShortcuts) as [cat, items]}
 		<div class="category">
-			<div class="category-title">{categoryLabels[cat] ?? cat}</div>
+			<div class="category-title">{(categoryLabels as Record<string, string>)[cat] ?? cat}</div>
 			{#each items as s (s.id)}
 				<div class="shortcut-row">
 					<span class="shortcut-label">
@@ -137,18 +139,18 @@
 					{#if capturingId === s.id}
 						<div class="capture-area">
 							<span class="capture-keys">
-								{capturedKeys || 'Press a key combination...'}
+								{capturedKeys || tr('shortcuts.pressKey')}
 							</span>
 							{#if conflictWarning}
 								<span class="conflict">{conflictWarning}</span>
 							{/if}
 							<button class="btn-xs btn-primary" onclick={applyCapture} disabled={!capturedKeys}>OK</button>
-							<button class="btn-xs" onclick={cancelCapture}>Cancel</button>
+							<button class="btn-xs" onclick={cancelCapture}>{tr('dialog.cancel')}</button>
 						</div>
 					{:else}
 						<div class="binding-area">
-							<button class="binding" onclick={() => startCapture(s.id)} title="Click to rebind">
-								{shortcutStore.get(s.id) || '(none)'}
+							<button class="binding" onclick={() => startCapture(s.id)} title={tr('shortcuts.clickToRebind')}>
+								{shortcutStore.get(s.id) || tr('shortcuts.none')}
 							</button>
 							{#if shortcutStore.get(s.id) !== s.defaultKeys}
 								<button class="btn-xs reset-btn" onclick={() => resetToDefault(s.id)} title="Reset to default ({s.defaultKeys})">
