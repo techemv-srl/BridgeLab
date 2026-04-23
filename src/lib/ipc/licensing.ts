@@ -27,3 +27,17 @@ export async function deactivateLicense(): Promise<LicenseStatus> {
 export async function getHardwareId(): Promise<string> {
 	return invoke('get_hardware_id');
 }
+
+export async function getAvailableFeatures(): Promise<string[]> {
+	return invoke('get_available_features');
+}
+
+/**
+ * Check whether an IPC error is a feature-gate upgrade prompt.
+ * Returns `{ feature, tier }` if yes, `null` if it's a regular error.
+ */
+export function parseUpgradeError(err: unknown): { feature: string; tier: string } | null {
+	const msg = String(err);
+	const m = msg.match(/UPGRADE_REQUIRED:(\w+):(\w+):/);
+	return m ? { feature: m[1], tier: m[2] } : null;
+}
