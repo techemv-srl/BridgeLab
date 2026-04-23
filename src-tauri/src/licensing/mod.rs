@@ -320,8 +320,16 @@ pub fn check_license_status() -> LicenseStatus {
             };
         }
 
-        // Signature check (always enforced)
-        if !verify_signature(&license.payload, &license.signature) {
+        // Signature check (always enforced in release builds).
+        // In debug builds the simple-key activation flow writes a sentinel
+        // signature `"dev-mode-no-signature"` — accept it so that `BL-PRO-XXX`
+        // activations remain usable during local development.
+        #[cfg(debug_assertions)]
+        let skip_sig_check = license.signature == "dev-mode-no-signature";
+        #[cfg(not(debug_assertions))]
+        let skip_sig_check = false;
+
+        if !skip_sig_check && !verify_signature(&license.payload, &license.signature) {
             return LicenseStatus {
                 is_valid: false,
                 license_type: LicenseType::Expired,
