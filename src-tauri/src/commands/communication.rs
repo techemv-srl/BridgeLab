@@ -5,6 +5,7 @@ use crate::communication::http_client::{self, HttpMethod, HttpResult};
 use crate::communication::mllp::{self, MllpSendResult, MllpReceivedMessage};
 use crate::communication::profiles::{ConnectionProfile, HistoryEntry};
 use crate::database::Database;
+use crate::licensing::feature_gate;
 
 // --- MLLP Commands ---
 
@@ -17,10 +18,11 @@ pub async fn mllp_send(
     profile_name: Option<String>,
     db: State<'_, Database>,
 ) -> Result<MllpSendResult, String> {
+    feature_gate::require("mllp_send")?;
+
     let timeout = timeout_secs.unwrap_or(30);
     let result = mllp::send(&host, port, &message, timeout).await;
 
-    // Log to history
     let preview: String = message.chars().take(100).collect();
     let status = if result.success { "OK" } else { "FAILED" };
     let entry = HistoryEntry {
@@ -44,6 +46,8 @@ pub async fn mllp_receive(
     timeout_secs: Option<u64>,
     auto_ack: Option<bool>,
 ) -> Result<MllpReceivedMessage, String> {
+    feature_gate::require("mllp_listen")?;
+
     let timeout = timeout_secs.unwrap_or(60);
     let ack = auto_ack.unwrap_or(true);
     mllp::receive_one(port, timeout, ack).await
@@ -63,9 +67,20 @@ pub async fn http_request(
 ) -> Result<HttpResult, String> {
     let http_method = HttpMethod::from_str(&method)
         .ok_or_else(|| format!("Invalid HTTP method: {}", method))?;
-    let timeout = timeout_secs.unwrap_or(30);
-    let hdrs = headers.unwrap_or_default();
 
+    // GET is community; POST/PUT/DELETE/PATCH require Pro
+    match http_method {
+        HttpMethod::Get => feature_gate::require("http_get")?,
+        _ => feature_gate::require("http_mutate")?,
+    }
+
+    // Auth headers require Pro
+    let hdrs = headers.unwrap_or_default();
+    if hdrs.keys().any(|k| k.to_lowercase() == "authorization") {
+        feature_gate::require("http_auth")?;
+    }
+
+    let timeout = timeout_secs.unwrap_or(30);
     let result = http_client::send_request(
         &url,
         http_method,
@@ -74,7 +89,6 @@ pub async fn http_request(
         timeout,
     ).await;
 
-    // Log to history
     let preview: String = body.as_deref().unwrap_or("").chars().take(100).collect();
     let status = if result.success {
         format!("{} {}", result.status_code, result.status_text)
@@ -132,8 +146,6 @@ pub fn get_connection_profiles(db: State<'_, Database>) -> Result<Vec<Connection
 pub fn delete_connection_profile(id: String, db: State<'_, Database>) -> Result<(), String> {
     db.delete_connection_profile(&id)
 }
-
-// --- Request History ---
 
 #[tauri::command]
 pub fn get_request_history(
