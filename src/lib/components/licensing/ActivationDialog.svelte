@@ -97,7 +97,7 @@
 			<div class="status-value" class:valid={currentStatus.is_valid} class:invalid={!currentStatus.is_valid}>
 				{currentStatus.license_type.toUpperCase()}
 				{#if currentStatus.days_remaining !== null}
-					- {currentStatus.days_remaining} {tr('status.line', { line: '' }).includes('Ln') ? 'days remaining' : 'giorni rimanenti'}
+					- {tr('act.daysRemaining', { days: currentStatus.days_remaining })}
 				{/if}
 			</div>
 			{#if currentStatus.licensee}
@@ -112,7 +112,7 @@
 		<div class="hw-section">
 			<div class="status-label">{tr('act.hardwareId')}</div>
 			<div class="hw-id">{hardwareId || '...'}</div>
-			<div class="hw-hint">Share this ID when requesting a license key.</div>
+			<div class="hw-hint">{tr('act.hwHint')}</div>
 		</div>
 
 		{#if isActive}
@@ -135,7 +135,7 @@
 				<div class="form-row">
 					<label for="act-key">{tr('act.key')}</label>
 					<textarea id="act-key" bind:value={licenseKey}
-						placeholder="Paste your license key here..."
+						placeholder={tr('act.keyPlaceholder')}
 						rows="4"
 						class="input-full key-input"></textarea>
 				</div>
@@ -177,18 +177,18 @@
 				<div class="type-grid">
 					<div class="type-card">
 						<div class="type-name">Community</div>
-						<div class="type-desc">HL7 v2 editor, parser, validation, basic MLLP/HTTP.</div>
+						<div class="type-desc">{tr('act.communityDesc')}</div>
 						<div class="type-price">Free</div>
 					</div>
 					<div class="type-card highlight">
 						<div class="type-name">Professional</div>
-						<div class="type-desc">+ Listener, full HTTP, anonymization, export, FHIRPath, Bundle, unlimited plugins.</div>
+						<div class="type-desc">{tr('act.proDesc')}</div>
 						<div class="type-price">$99-149/year</div>
 					</div>
 					<div class="type-card">
 						<div class="type-name">Enterprise</div>
-						<div class="type-desc">All Pro + SOAP, priority support.</div>
-						<div class="type-price">Contact us</div>
+						<div class="type-desc">{tr('act.entDesc')}</div>
+						<div class="type-price">{tr('act.contactUs')}</div>
 					</div>
 				</div>
 				<div class="contact-info">
