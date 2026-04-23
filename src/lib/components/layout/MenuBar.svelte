@@ -122,11 +122,11 @@
 		{#if openMenu === 'file'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onNewFromTemplate)}>
-					<span>New from Template...</span>
+					<span>{tr('tmpl.title')}...</span>
 					<span class="shortcut">{sc('file.newFromTemplate')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onShowTestCases)}>
-					<span>Test Case Library...</span>
+					<span>{tr('tc.title')}...</span>
 					<span class="shortcut">{sc('file.testCases')}</span>
 				</button>
 				<div class="menu-separator"></div>
@@ -287,10 +287,10 @@
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowBundleVisualizer)}>
-					<span>FHIR Bundle Visualizer</span>
+					<span>{tr('bundle.title')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleFhirPath)}>
-					<span>FHIRPath Evaluator</span>
+					<span>{tr('fp.title')}</span>
 					<span class="shortcut">{sc('view.toggleFhirPath')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onAnonymize)}>
@@ -304,10 +304,10 @@
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onExportJson)}>
-					<span>Export JSON</span>
+					<span>{tr('menu.tools.exportJson')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onExportCsv)}>
-					<span>Export CSV</span>
+					<span>{tr('menu.tools.exportCsv')}</span>
 				</button>
 			</div>
 		{/if}
