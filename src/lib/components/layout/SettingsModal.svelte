@@ -189,11 +189,11 @@
 	});
 
 	const sections = [
-		{ id: 'editor', label: 'Editor', icon: '\u270E' },
-		{ id: 'display', label: 'Display', icon: '\u2600' },
-		{ id: 'shortcuts', label: 'Shortcuts', icon: '\u2328' },
-		{ id: 'parser', label: 'Parser', icon: '\u2699' },
-		{ id: 'memory', label: 'Performance', icon: '\u26A1' },
+		{ id: 'editor', label: tr('settings.editor'), icon: '\u270E' },
+		{ id: 'display', label: tr('settings.display'), icon: '\u2600' },
+		{ id: 'shortcuts', label: tr('settings.shortcuts'), icon: '\u2328' },
+		{ id: 'parser', label: tr('settings.parser'), icon: '\u2699' },
+		{ id: 'memory', label: tr('settings.performance'), icon: '\u26A1' },
 		{ id: 'plugins', label: tr('plugins.title'), icon: '\u2699' },
 		{ id: 'license', label: tr('act.title'), icon: '\ud83d\udd11' },
 	];
@@ -214,7 +214,7 @@
 
 <div class="settings-modal">
 	<div class="settings-header">
-		<span>Settings</span>
+		<span>{tr('settings.title')}</span>
 		<button class="close-btn" onclick={onClose}>&times;</button>
 	</div>
 
@@ -236,16 +236,16 @@
 		<!-- Content -->
 		<div class="settings-content">
 			{#if activeSection === 'editor'}
-				<h3>Editor</h3>
+				<h3>{tr('settings.editor')}</h3>
 
 				<div class="setting-row">
-					<label for="s-fontsize">Font Size</label>
+					<label for="s-fontsize">{tr('settings.fontSize')}</label>
 					<input id="s-fontsize" type="number" min={8} max={32} bind:value={fontSize} class="input-sm" />
 					<span class="hint">px</span>
 				</div>
 
 				<div class="setting-row">
-					<label for="s-fontfamily">Font Family</label>
+					<label for="s-fontfamily">{tr('settings.fontFamily')}</label>
 					<select id="s-fontfamily" bind:value={fontFamily}>
 						{#each fontFamilies as ff}
 							<option value={ff}>{fontLabel(ff)}</option>
@@ -254,12 +254,12 @@
 				</div>
 
 				<div class="setting-row">
-					<label for="s-tabsize">Tab Size</label>
+					<label for="s-tabsize">{tr('settings.tabSize')}</label>
 					<input id="s-tabsize" type="number" min={1} max={8} bind:value={tabSize} class="input-xs" />
 				</div>
 
 				<div class="setting-row">
-					<label for="s-wordwrap">Word Wrap</label>
+					<label for="s-wordwrap">{tr('settings.wordWrap')}</label>
 					<select id="s-wordwrap" bind:value={wordWrap}>
 						<option value="on">On</option>
 						<option value="off">Off</option>
@@ -268,7 +268,7 @@
 				</div>
 
 				<div class="setting-row">
-					<label for="s-whitespace">Render Whitespace</label>
+					<label for="s-whitespace">{tr('settings.renderWhitespace')}</label>
 					<select id="s-whitespace" bind:value={renderWhitespace}>
 						<option value="none">None</option>
 						<option value="boundary">Boundary</option>
@@ -277,23 +277,23 @@
 				</div>
 
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={minimap} /> Show Minimap</label>
+					<label><input type="checkbox" bind:checked={minimap} /> {tr('settings.showMinimap')}</label>
 				</div>
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={lineNumbers} /> Show Line Numbers</label>
+					<label><input type="checkbox" bind:checked={lineNumbers} /> {tr('settings.showLineNumbers')}</label>
 				</div>
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={smoothScrolling} /> Smooth Scrolling</label>
+					<label><input type="checkbox" bind:checked={smoothScrolling} /> {tr('settings.smoothScrolling')}</label>
 				</div>
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={bracketPairColorization} /> Bracket Pair Colorization</label>
+					<label><input type="checkbox" bind:checked={bracketPairColorization} /> {tr('settings.bracketColors')}</label>
 				</div>
 
 			{:else if activeSection === 'display'}
-				<h3>Display</h3>
+				<h3>{tr('settings.display')}</h3>
 
 				<div class="setting-row">
-					<label>Theme</label>
+					<label>{tr('settings.theme')}</label>
 					<div class="theme-options">
 						<button
 							class="theme-btn"
@@ -301,7 +301,7 @@
 							onclick={() => { currentTheme = 'dark'; }}
 						>
 							<div class="theme-preview dark-preview"></div>
-							Dark
+							{tr('menu.view.theme.dark')}
 						</button>
 						<button
 							class="theme-btn"
@@ -309,13 +309,13 @@
 							onclick={() => { currentTheme = 'light'; }}
 						>
 							<div class="theme-preview light-preview"></div>
-							Light
+							{tr('menu.view.theme.light')}
 						</button>
 					</div>
 				</div>
 
 				<div class="setting-row">
-					<label for="s-locale">Language</label>
+					<label for="s-locale">{tr('settings.language')}</label>
 					<select id="s-locale" bind:value={currentLocale}>
 						<option value="en">English</option>
 						<option value="it">Italiano</option>
@@ -326,57 +326,56 @@
 				</div>
 
 			{:else if activeSection === 'shortcuts'}
-				<h3>Keyboard Shortcuts</h3>
+				<h3>{tr('settings.shortcuts')}</h3>
 				<ShortcutsEditor />
 
 			{:else if activeSection === 'parser'}
-				<h3>Parser &amp; Truncation</h3>
+				<h3>{tr('settings.parserTitle')}</h3>
 
 				<div class="setting-row">
-					<label for="s-trunc">Truncation Threshold</label>
+					<label for="s-trunc">{tr('settings.truncThreshold')}</label>
 					<input id="s-trunc" type="number" min={50} max={10000} step={50} bind:value={truncationThreshold} class="input-sm" />
-					<span class="hint">bytes - fields larger than this are truncated in the editor</span>
+					<span class="hint">{tr('settings.truncHint')}</span>
 				</div>
 
 				<div class="setting-row">
-					<label for="s-autoparsedelay">Auto-Parse Delay</label>
+					<label for="s-autoparsedelay">{tr('settings.autoParseDelay')}</label>
 					<input id="s-autoparsedelay" type="number" min={100} max={5000} step={100} bind:value={autoParseDelay} class="input-sm" />
-					<span class="hint">ms - delay before auto-parsing after typing</span>
+					<span class="hint">{tr('settings.autoParseDelayHint')}</span>
 				</div>
 
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={autoParse} /> Auto-parse on content change</label>
+					<label><input type="checkbox" bind:checked={autoParse} /> {tr('settings.autoParse')}</label>
 				</div>
 
 			{:else if activeSection === 'memory'}
-				<h3>Performance</h3>
+				<h3>{tr('settings.performance')}</h3>
 
 				<div class="setting-row">
-					<label for="s-maxmsg">Max Open Messages</label>
+					<label for="s-maxmsg">{tr('settings.maxOpenMessages')}</label>
 					<input id="s-maxmsg" type="number" min={5} max={200} bind:value={maxOpenMessages} class="input-sm" />
-					<span class="hint">messages kept in memory</span>
+					<span class="hint">{tr('settings.maxOpenHint')}</span>
 				</div>
 
-				<h3>Session</h3>
+				<h3>{tr('settings.session')}</h3>
 
 				<div class="setting-check">
 					<label>
 						<input type="checkbox" bind:checked={restoreSession} />
-						Restore open tabs on startup
+						{tr('settings.restoreSession')}
 					</label>
 					<div class="hint">
-						When enabled, BridgeLab saves your open tabs (including unsaved
-						edits) and reopens them the next time you launch the app.
+						{tr('settings.restoreSessionHint')}
 					</div>
 				</div>
 
 				<div class="info-block">
-					<strong>Memory tips:</strong>
+					<strong>{tr('settings.memoryTips')}</strong>
 					<ul>
-						<li>Large messages (5-10 MB) with base64 are truncated in the editor for performance</li>
-						<li>Full content is available via "Expand Field" or "Copy Full Message"</li>
-						<li>Reduce max open messages if experiencing slowness</li>
-						<li>The parser uses SIMD-accelerated scanning for fast indexing</li>
+						<li>{tr('settings.memTip1')}</li>
+						<li>{tr('settings.memTip2')}</li>
+						<li>{tr('settings.memTip3')}</li>
+						<li>{tr('settings.memTip4')}</li>
 					</ul>
 				</div>
 
@@ -484,8 +483,8 @@
 	</div>
 
 	<div class="settings-footer">
-		<button class="btn" onclick={onClose}>Cancel</button>
-		<button class="btn btn-primary" onclick={saveAndClose}>Save &amp; Close</button>
+		<button class="btn" onclick={onClose}>{tr('dialog.cancel')}</button>
+		<button class="btn btn-primary" onclick={saveAndClose}>{tr('settings.save')}</button>
 	</div>
 </div>
 
