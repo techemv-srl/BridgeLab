@@ -48,6 +48,7 @@
 		onShowSettings: () => void;
 		onCheckUpdates: () => void;
 		onShowHelp: () => void;
+		onShowActivation: () => void;
 		onShowAbout: () => void;
 	}
 
@@ -82,6 +83,7 @@
 		onShowSettings,
 		onCheckUpdates,
 		onShowHelp,
+		onShowActivation,
 		onShowAbout,
 	}: Props = $props();
 
@@ -330,6 +332,9 @@
 				<button class="menu-item" onclick={() => menuAction(onShowHelp)}>
 					<span>{tr('menu.help.manual')}</span>
 					<span class="shortcut">F1</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onShowActivation)}>
+					<span>{tr('act.activate')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onCheckUpdates)}>
 					<span>{tr('menu.help.updates')}</span>
