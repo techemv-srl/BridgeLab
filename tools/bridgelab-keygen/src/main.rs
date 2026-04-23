@@ -77,15 +77,29 @@ struct LicenseFile {
 
 fn features_for(license_type: &str) -> Vec<String> {
     match license_type {
-        "free" => vec!["core".into(), "hl7v2".into()],
+        "free" => vec![
+            "core".into(), "hl7v2".into(), "fhir_parse".into(),
+            "validation".into(), "mllp_send".into(), "http_get".into(),
+            "anonymize_detect".into(),
+        ],
         "pro" | "professional" => vec![
-            "core".into(), "hl7v2".into(), "fhir".into(),
-            "mllp".into(), "http".into(), "anonymize".into(), "export".into(),
+            "core".into(), "hl7v2".into(), "fhir_parse".into(),
+            "validation".into(), "mllp_send".into(), "http_get".into(),
+            "anonymize_detect".into(),
+            "mllp_listen".into(), "http_mutate".into(), "http_auth".into(),
+            "anonymize_mask".into(), "export".into(), "fhirpath".into(),
+            "bundle_visualizer".into(), "plugins_unlimited".into(),
+            "test_cases_unlimited".into(),
         ],
         "ent" | "enterprise" => vec![
-            "core".into(), "hl7v2".into(), "fhir".into(),
-            "mllp".into(), "http".into(), "anonymize".into(), "export".into(),
-            "soap".into(), "plugins".into(), "priority_support".into(),
+            "core".into(), "hl7v2".into(), "fhir_parse".into(),
+            "validation".into(), "mllp_send".into(), "http_get".into(),
+            "anonymize_detect".into(),
+            "mllp_listen".into(), "http_mutate".into(), "http_auth".into(),
+            "anonymize_mask".into(), "export".into(), "fhirpath".into(),
+            "bundle_visualizer".into(), "plugins_unlimited".into(),
+            "test_cases_unlimited".into(),
+            "soap".into(), "priority_support".into(),
         ],
         _ => vec!["core".into()],
     }
