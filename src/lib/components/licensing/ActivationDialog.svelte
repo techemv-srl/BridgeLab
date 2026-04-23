@@ -183,7 +183,7 @@
 					<div class="type-card highlight">
 						<div class="type-name">Professional</div>
 						<div class="type-desc">{tr('act.proDesc')}</div>
-						<div class="type-price">$99-149/year</div>
+						<div class="type-price">{tr('act.contactUs')}</div>
 					</div>
 					<div class="type-card">
 						<div class="type-name">Enterprise</div>
