@@ -5,6 +5,7 @@
 		listPlugins, reloadPlugins, setPluginEnabled,
 		openPluginsFolder, getPluginsDir, type PluginInfo,
 	} from '$lib/ipc/plugins';
+	import { checkLicense, getHardwareId, deactivateLicense, getAvailableFeatures, type LicenseStatus } from '$lib/ipc/licensing';
 	import ShortcutsEditor from '$lib/components/layout/ShortcutsEditor.svelte';
 
 	let localeVersion = $state(0);
@@ -15,9 +16,10 @@
 		theme: string;
 		onClose: () => void;
 		onThemeChange: (theme: string) => void;
+		onShowActivation?: () => void;
 	}
 
-	let { theme, onClose, onThemeChange }: Props = $props();
+	let { theme, onClose, onThemeChange, onShowActivation }: Props = $props();
 
 	let activeSection = $state('editor');
 
@@ -104,10 +106,39 @@
 		onClose();
 	}
 
+	// License state
+	let licenseStatus = $state<LicenseStatus | null>(null);
+	let hardwareId = $state('');
+	let availableFeatures = $state<string[]>([]);
+	let licenseLoaded = $state(false);
+
+	async function loadLicenseInfo() {
+		try {
+			licenseStatus = await checkLicense();
+			hardwareId = await getHardwareId();
+			availableFeatures = await getAvailableFeatures();
+		} catch { /* web mode */ }
+		licenseLoaded = true;
+	}
+
+	async function handleDeactivate() {
+		try {
+			licenseStatus = await deactivateLicense();
+			availableFeatures = await getAvailableFeatures();
+		} catch { /* */ }
+	}
+
+	$effect(() => {
+		if (activeSection === 'license' && !licenseLoaded) {
+			void loadLicenseInfo();
+		}
+	});
+
 	// Plugins state
 	let plugins = $state<PluginInfo[]>([]);
 	let pluginsDir = $state('');
 	let pluginsLoading = $state(false);
+	let pluginsLoaded = $state(false);
 	let pluginsError = $state<string | null>(null);
 
 	async function loadPluginsInfo() {
@@ -120,6 +151,7 @@
 			pluginsError = String(e);
 		} finally {
 			pluginsLoading = false;
+			pluginsLoaded = true;
 		}
 	}
 
@@ -151,7 +183,7 @@
 	}
 
 	$effect(() => {
-		if (activeSection === 'plugins' && plugins.length === 0 && !pluginsError) {
+		if (activeSection === 'plugins' && !pluginsLoaded && !pluginsLoading) {
 			void loadPluginsInfo();
 		}
 	});
@@ -162,7 +194,8 @@
 		{ id: 'shortcuts', label: 'Shortcuts', icon: '\u2328' },
 		{ id: 'parser', label: 'Parser', icon: '\u2699' },
 		{ id: 'memory', label: 'Performance', icon: '\u26A1' },
-		{ id: 'plugins', label: 'Plugins', icon: '\u2699' },
+		{ id: 'plugins', label: tr('plugins.title'), icon: '\u2699' },
+		{ id: 'license', label: tr('act.title'), icon: '\ud83d\udd11' },
 	];
 
 	const fontFamilies = [
@@ -348,19 +381,17 @@
 				</div>
 
 			{:else if activeSection === 'plugins'}
-				<h3>Plugins</h3>
+				<h3>{tr('plugins.title')}</h3>
 
 				<p class="hint" style="margin-bottom: 8px;">
-					Drop JSON rule packs in the plugins folder. Validation rules extend
-					the built-in HL7 checks; anonymization rules extend the PHI catalogue.
-					No code execution &ndash; plugins are pure data.
+					{tr('plugins.description')}
 				</p>
 
 				<div class="plugins-toolbar">
 					<button class="btn" onclick={handleReloadPlugins} disabled={pluginsLoading}>
-						{pluginsLoading ? 'Loading…' : 'Reload'}
+						{pluginsLoading ? tr('plugins.loading') : tr('plugins.reload')}
 					</button>
-					<button class="btn" onclick={handleOpenPluginsFolder}>Open plugins folder</button>
+					<button class="btn" onclick={handleOpenPluginsFolder}>{tr('plugins.openFolder')}</button>
 					<code class="plugins-path" title={pluginsDir}>{pluginsDir}</code>
 				</div>
 
@@ -368,12 +399,9 @@
 					<div class="plugin-error">{pluginsError}</div>
 				{/if}
 
-				{#if !pluginsLoading && plugins.length === 0}
+				{#if !pluginsLoading && pluginsLoaded && plugins.length === 0}
 					<div class="info-block">
-						No plugins installed. Use the "Open plugins folder" button and
-						create a <code>.json</code> file under <code>validation/</code> or
-						<code>anonymization/</code>. See <code>docs/PLUGINS.md</code> for
-						the schema.
+						{tr('plugins.noPlugins')}
 					</div>
 				{/if}
 
@@ -389,12 +417,12 @@
 								<div class="plugin-desc">{p.description}</div>
 							{/if}
 							<div class="plugin-meta">
-								<span>{p.rule_count} rule{p.rule_count === 1 ? '' : 's'}</span>
-								{#if p.author}<span>by {p.author}</span>{/if}
+								<span>{tr(p.rule_count === 1 ? 'plugins.rule' : 'plugins.rules', { count: p.rule_count })}</span>
+								{#if p.author}<span>{tr('plugins.by', { author: p.author })}</span>{/if}
 								<span class="plugin-filepath" title={p.path}>{p.path}</span>
 							</div>
 							{#if p.error}
-								<div class="plugin-error">Parse error: {p.error}</div>
+								<div class="plugin-error">{tr('plugins.parseError', { error: p.error })}</div>
 							{/if}
 						</div>
 						<label class="plugin-toggle">
@@ -404,10 +432,53 @@
 								disabled={!!p.error}
 								onchange={() => handleTogglePlugin(p)}
 							/>
-							{p.enabled ? 'Enabled' : 'Disabled'}
+							{p.enabled ? tr('plugins.enabled') : tr('plugins.disabled')}
 						</label>
 					</div>
 				{/each}
+
+			{:else if activeSection === 'license'}
+				<h3>{tr('act.title')}</h3>
+
+				{#if licenseStatus}
+					<dl class="license-info">
+						<dt>{tr('act.currentStatus')}</dt>
+						<dd class="license-type-badge" class:trial={licenseStatus.license_type === 'trial'} class:pro={licenseStatus.license_type === 'professional'} class:ent={licenseStatus.license_type === 'enterprise'} class:expired={licenseStatus.license_type === 'expired'}>
+							{licenseStatus.license_type}
+							{#if licenseStatus.days_remaining !== null}
+								({licenseStatus.days_remaining} days)
+							{/if}
+						</dd>
+
+						<dt>{tr('act.hardwareId')}</dt>
+						<dd><code>{hardwareId}</code></dd>
+
+						{#if licenseStatus.licensee}
+							<dt>{tr('act.nameCompany')}</dt>
+							<dd>{licenseStatus.licensee}</dd>
+						{/if}
+
+						<dt>{tr('act.features')}</dt>
+						<dd class="feature-chips">
+							{#each availableFeatures as feat}
+								<span class="chip">{feat}</span>
+							{/each}
+						</dd>
+					</dl>
+
+					<div class="license-actions">
+						<button class="btn btn-primary" onclick={() => { onClose(); onShowActivation?.(); }}>
+							{tr('act.activate')}
+						</button>
+						{#if licenseStatus.license_type !== 'trial' && licenseStatus.license_type !== 'expired'}
+							<button class="btn" onclick={handleDeactivate}>
+								{tr('act.deactivate')}
+							</button>
+						{/if}
+					</div>
+				{:else}
+					<p>{tr('plugins.loading')}</p>
+				{/if}
 			{/if}
 		</div>
 	</div>
@@ -470,6 +541,19 @@
 	.plugin-filepath { font-family: 'JetBrains Mono', monospace; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; }
 	.plugin-error { color: var(--color-error); font-size: 11px; margin-top: 4px; }
 	.plugin-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; }
+
+	.license-info { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; margin: 16px 0; font-size: 13px; }
+	.license-info dt { color: var(--color-text-secondary); font-weight: 600; }
+	.license-info dd { margin: 0; }
+	.license-info code { font-family: 'JetBrains Mono', monospace; font-size: 11px; background: var(--color-bg-tertiary); padding: 2px 6px; border-radius: 3px; user-select: all; }
+	.license-type-badge { font-weight: 700; text-transform: capitalize; }
+	.license-type-badge.trial { color: var(--color-warning, #f9e2af); }
+	.license-type-badge.pro { color: var(--color-accent, #89b4fa); }
+	.license-type-badge.ent { color: var(--color-success, #a6e3a1); }
+	.license-type-badge.expired { color: var(--color-error, #f38ba8); }
+	.feature-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+	.chip { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+	.license-actions { display: flex; gap: 8px; margin-top: 16px; }
 	.info-block ul { margin: 6px 0 0; padding-left: 16px; }
 	.info-block li { margin-bottom: 4px; }
 
