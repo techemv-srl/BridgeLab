@@ -104,9 +104,9 @@ fn trial_file_path() -> Result<PathBuf, String> {
 
 /// Verify an Ed25519 signature on a license payload.
 fn verify_signature(payload: &LicensePayload, signature_hex: &str) -> bool {
-    // If public key is placeholder, accept any well-formed license (dev mode)
+    // Reject if no public key has been configured (shipping placeholder = no valid licenses)
     if PUBLIC_KEY_HEX == "PLACEHOLDER_GENERATE_WITH_CLI" {
-        return true;
+        return false;
     }
 
     let pub_bytes = match hex::decode(PUBLIC_KEY_HEX) {
@@ -254,7 +254,9 @@ pub fn activate_from_key(key: &str) -> Result<LicenseFile, String> {
     Ok(license)
 }
 
-/// Simple key activation (BL-TYPE-CODE format, dev mode).
+/// Simple key activation (BL-TYPE-CODE format).
+/// Only available in debug builds; release builds require a signed license.
+#[cfg(debug_assertions)]
 pub fn activate_simple_key(key: &str, licensee: &str, email: &str) -> Result<LicenseFile, String> {
     let parts: Vec<&str> = key.split('-').collect();
     if parts.len() < 3 || parts[0] != "BL" {
@@ -318,19 +320,17 @@ pub fn check_license_status() -> LicenseStatus {
             };
         }
 
-        // Signature check (skip in dev mode)
-        if license.signature != "dev-mode-no-signature" {
-            if !verify_signature(&license.payload, &license.signature) {
-                return LicenseStatus {
-                    is_valid: false,
-                    license_type: LicenseType::Expired,
-                    days_remaining: None,
-                    licensee: license.payload.licensee,
-                    email: license.payload.email,
-                    features: vec![],
-                    message: "License signature is invalid".into(),
-                };
-            }
+        // Signature check (always enforced)
+        if !verify_signature(&license.payload, &license.signature) {
+            return LicenseStatus {
+                is_valid: false,
+                license_type: LicenseType::Expired,
+                days_remaining: None,
+                licensee: license.payload.licensee,
+                email: license.payload.email,
+                features: vec![],
+                message: "License signature is invalid".into(),
+            };
         }
 
         // Expiration check
