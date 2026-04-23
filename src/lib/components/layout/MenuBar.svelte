@@ -47,6 +47,8 @@
 		onSetLanguage: (lang: string) => void;
 		onShowSettings: () => void;
 		onCheckUpdates: () => void;
+		onShowHelp: () => void;
+		onShowActivation: () => void;
 		onShowAbout: () => void;
 	}
 
@@ -80,6 +82,8 @@
 		onSetLanguage,
 		onShowSettings,
 		onCheckUpdates,
+		onShowHelp,
+		onShowActivation,
 		onShowAbout,
 	}: Props = $props();
 
@@ -122,11 +126,11 @@
 		{#if openMenu === 'file'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onNewFromTemplate)}>
-					<span>New from Template...</span>
+					<span>{tr('tmpl.title')}...</span>
 					<span class="shortcut">{sc('file.newFromTemplate')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onShowTestCases)}>
-					<span>Test Case Library...</span>
+					<span>{tr('tc.title')}...</span>
 					<span class="shortcut">{sc('file.testCases')}</span>
 				</button>
 				<div class="menu-separator"></div>
@@ -208,7 +212,7 @@
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowSettings)}>
-					<span>Settings</span>
+					<span>{tr('menu.edit.settings')}</span>
 					<span class="shortcut">{sc('edit.settings')}</span>
 				</button>
 			</div>
@@ -282,15 +286,15 @@
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onToggleCommunication)}>
-					<span>Communication Panel</span>
+					<span>{tr('menu.view.communication')}</span>
 					<span class="shortcut">{sc('view.toggleCommunication')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowBundleVisualizer)}>
-					<span>FHIR Bundle Visualizer</span>
+					<span>{tr('bundle.title')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleFhirPath)}>
-					<span>FHIRPath Evaluator</span>
+					<span>{tr('fp.title')}</span>
 					<span class="shortcut">{sc('view.toggleFhirPath')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onAnonymize)}>
@@ -304,10 +308,10 @@
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onExportJson)}>
-					<span>Export JSON</span>
+					<span>{tr('menu.tools.exportJson')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onExportCsv)}>
-					<span>Export CSV</span>
+					<span>{tr('menu.tools.exportCsv')}</span>
 				</button>
 			</div>
 		{/if}
@@ -325,8 +329,15 @@
 		</button>
 		{#if openMenu === 'help'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
+				<button class="menu-item" onclick={() => menuAction(onShowHelp)}>
+					<span>{tr('menu.help.manual')}</span>
+					<span class="shortcut">F1</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onShowActivation)}>
+					<span>{tr('act.activate')}</span>
+				</button>
 				<button class="menu-item" onclick={() => menuAction(onCheckUpdates)}>
-					<span>Check for Updates</span>
+					<span>{tr('menu.help.updates')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowAbout)}>

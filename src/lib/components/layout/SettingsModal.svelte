@@ -5,6 +5,7 @@
 		listPlugins, reloadPlugins, setPluginEnabled,
 		openPluginsFolder, getPluginsDir, type PluginInfo,
 	} from '$lib/ipc/plugins';
+	import { checkLicense, getHardwareId, deactivateLicense, getAvailableFeatures, type LicenseStatus } from '$lib/ipc/licensing';
 	import ShortcutsEditor from '$lib/components/layout/ShortcutsEditor.svelte';
 
 	let localeVersion = $state(0);
@@ -15,9 +16,10 @@
 		theme: string;
 		onClose: () => void;
 		onThemeChange: (theme: string) => void;
+		onShowActivation?: () => void;
 	}
 
-	let { theme, onClose, onThemeChange }: Props = $props();
+	let { theme, onClose, onThemeChange, onShowActivation }: Props = $props();
 
 	let activeSection = $state('editor');
 
@@ -104,10 +106,39 @@
 		onClose();
 	}
 
+	// License state
+	let licenseStatus = $state<LicenseStatus | null>(null);
+	let hardwareId = $state('');
+	let availableFeatures = $state<string[]>([]);
+	let licenseLoaded = $state(false);
+
+	async function loadLicenseInfo() {
+		try {
+			licenseStatus = await checkLicense();
+			hardwareId = await getHardwareId();
+			availableFeatures = await getAvailableFeatures();
+		} catch { /* web mode */ }
+		licenseLoaded = true;
+	}
+
+	async function handleDeactivate() {
+		try {
+			licenseStatus = await deactivateLicense();
+			availableFeatures = await getAvailableFeatures();
+		} catch { /* */ }
+	}
+
+	$effect(() => {
+		if (activeSection === 'license' && !licenseLoaded) {
+			void loadLicenseInfo();
+		}
+	});
+
 	// Plugins state
 	let plugins = $state<PluginInfo[]>([]);
 	let pluginsDir = $state('');
 	let pluginsLoading = $state(false);
+	let pluginsLoaded = $state(false);
 	let pluginsError = $state<string | null>(null);
 
 	async function loadPluginsInfo() {
@@ -120,6 +151,7 @@
 			pluginsError = String(e);
 		} finally {
 			pluginsLoading = false;
+			pluginsLoaded = true;
 		}
 	}
 
@@ -151,18 +183,19 @@
 	}
 
 	$effect(() => {
-		if (activeSection === 'plugins' && plugins.length === 0 && !pluginsError) {
+		if (activeSection === 'plugins' && !pluginsLoaded && !pluginsLoading) {
 			void loadPluginsInfo();
 		}
 	});
 
 	const sections = [
-		{ id: 'editor', label: 'Editor', icon: '\u270E' },
-		{ id: 'display', label: 'Display', icon: '\u2600' },
-		{ id: 'shortcuts', label: 'Shortcuts', icon: '\u2328' },
-		{ id: 'parser', label: 'Parser', icon: '\u2699' },
-		{ id: 'memory', label: 'Performance', icon: '\u26A1' },
-		{ id: 'plugins', label: 'Plugins', icon: '\u2699' },
+		{ id: 'editor', label: tr('settings.editor'), icon: '\u270E' },
+		{ id: 'display', label: tr('settings.display'), icon: '\u2600' },
+		{ id: 'shortcuts', label: tr('settings.shortcuts'), icon: '\u2328' },
+		{ id: 'parser', label: tr('settings.parser'), icon: '\u2699' },
+		{ id: 'memory', label: tr('settings.performance'), icon: '\u26A1' },
+		{ id: 'plugins', label: tr('plugins.title'), icon: '\u2699' },
+		{ id: 'license', label: tr('act.title'), icon: '\ud83d\udd11' },
 	];
 
 	const fontFamilies = [
@@ -181,7 +214,7 @@
 
 <div class="settings-modal">
 	<div class="settings-header">
-		<span>Settings</span>
+		<span>{tr('settings.title')}</span>
 		<button class="close-btn" onclick={onClose}>&times;</button>
 	</div>
 
@@ -203,16 +236,16 @@
 		<!-- Content -->
 		<div class="settings-content">
 			{#if activeSection === 'editor'}
-				<h3>Editor</h3>
+				<h3>{tr('settings.editor')}</h3>
 
 				<div class="setting-row">
-					<label for="s-fontsize">Font Size</label>
+					<label for="s-fontsize">{tr('settings.fontSize')}</label>
 					<input id="s-fontsize" type="number" min={8} max={32} bind:value={fontSize} class="input-sm" />
 					<span class="hint">px</span>
 				</div>
 
 				<div class="setting-row">
-					<label for="s-fontfamily">Font Family</label>
+					<label for="s-fontfamily">{tr('settings.fontFamily')}</label>
 					<select id="s-fontfamily" bind:value={fontFamily}>
 						{#each fontFamilies as ff}
 							<option value={ff}>{fontLabel(ff)}</option>
@@ -221,12 +254,12 @@
 				</div>
 
 				<div class="setting-row">
-					<label for="s-tabsize">Tab Size</label>
+					<label for="s-tabsize">{tr('settings.tabSize')}</label>
 					<input id="s-tabsize" type="number" min={1} max={8} bind:value={tabSize} class="input-xs" />
 				</div>
 
 				<div class="setting-row">
-					<label for="s-wordwrap">Word Wrap</label>
+					<label for="s-wordwrap">{tr('settings.wordWrap')}</label>
 					<select id="s-wordwrap" bind:value={wordWrap}>
 						<option value="on">On</option>
 						<option value="off">Off</option>
@@ -235,7 +268,7 @@
 				</div>
 
 				<div class="setting-row">
-					<label for="s-whitespace">Render Whitespace</label>
+					<label for="s-whitespace">{tr('settings.renderWhitespace')}</label>
 					<select id="s-whitespace" bind:value={renderWhitespace}>
 						<option value="none">None</option>
 						<option value="boundary">Boundary</option>
@@ -244,23 +277,23 @@
 				</div>
 
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={minimap} /> Show Minimap</label>
+					<label><input type="checkbox" bind:checked={minimap} /> {tr('settings.showMinimap')}</label>
 				</div>
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={lineNumbers} /> Show Line Numbers</label>
+					<label><input type="checkbox" bind:checked={lineNumbers} /> {tr('settings.showLineNumbers')}</label>
 				</div>
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={smoothScrolling} /> Smooth Scrolling</label>
+					<label><input type="checkbox" bind:checked={smoothScrolling} /> {tr('settings.smoothScrolling')}</label>
 				</div>
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={bracketPairColorization} /> Bracket Pair Colorization</label>
+					<label><input type="checkbox" bind:checked={bracketPairColorization} /> {tr('settings.bracketColors')}</label>
 				</div>
 
 			{:else if activeSection === 'display'}
-				<h3>Display</h3>
+				<h3>{tr('settings.display')}</h3>
 
 				<div class="setting-row">
-					<label>Theme</label>
+					<label>{tr('settings.theme')}</label>
 					<div class="theme-options">
 						<button
 							class="theme-btn"
@@ -268,7 +301,7 @@
 							onclick={() => { currentTheme = 'dark'; }}
 						>
 							<div class="theme-preview dark-preview"></div>
-							Dark
+							{tr('menu.view.theme.dark')}
 						</button>
 						<button
 							class="theme-btn"
@@ -276,13 +309,13 @@
 							onclick={() => { currentTheme = 'light'; }}
 						>
 							<div class="theme-preview light-preview"></div>
-							Light
+							{tr('menu.view.theme.light')}
 						</button>
 					</div>
 				</div>
 
 				<div class="setting-row">
-					<label for="s-locale">Language</label>
+					<label for="s-locale">{tr('settings.language')}</label>
 					<select id="s-locale" bind:value={currentLocale}>
 						<option value="en">English</option>
 						<option value="it">Italiano</option>
@@ -293,74 +326,71 @@
 				</div>
 
 			{:else if activeSection === 'shortcuts'}
-				<h3>Keyboard Shortcuts</h3>
+				<h3>{tr('settings.shortcuts')}</h3>
 				<ShortcutsEditor />
 
 			{:else if activeSection === 'parser'}
-				<h3>Parser &amp; Truncation</h3>
+				<h3>{tr('settings.parserTitle')}</h3>
 
 				<div class="setting-row">
-					<label for="s-trunc">Truncation Threshold</label>
+					<label for="s-trunc">{tr('settings.truncThreshold')}</label>
 					<input id="s-trunc" type="number" min={50} max={10000} step={50} bind:value={truncationThreshold} class="input-sm" />
-					<span class="hint">bytes - fields larger than this are truncated in the editor</span>
+					<span class="hint">{tr('settings.truncHint')}</span>
 				</div>
 
 				<div class="setting-row">
-					<label for="s-autoparsedelay">Auto-Parse Delay</label>
+					<label for="s-autoparsedelay">{tr('settings.autoParseDelay')}</label>
 					<input id="s-autoparsedelay" type="number" min={100} max={5000} step={100} bind:value={autoParseDelay} class="input-sm" />
-					<span class="hint">ms - delay before auto-parsing after typing</span>
+					<span class="hint">{tr('settings.autoParseDelayHint')}</span>
 				</div>
 
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={autoParse} /> Auto-parse on content change</label>
+					<label><input type="checkbox" bind:checked={autoParse} /> {tr('settings.autoParse')}</label>
 				</div>
 
 			{:else if activeSection === 'memory'}
-				<h3>Performance</h3>
+				<h3>{tr('settings.performance')}</h3>
 
 				<div class="setting-row">
-					<label for="s-maxmsg">Max Open Messages</label>
+					<label for="s-maxmsg">{tr('settings.maxOpenMessages')}</label>
 					<input id="s-maxmsg" type="number" min={5} max={200} bind:value={maxOpenMessages} class="input-sm" />
-					<span class="hint">messages kept in memory</span>
+					<span class="hint">{tr('settings.maxOpenHint')}</span>
 				</div>
 
-				<h3>Session</h3>
+				<h3>{tr('settings.session')}</h3>
 
 				<div class="setting-check">
 					<label>
 						<input type="checkbox" bind:checked={restoreSession} />
-						Restore open tabs on startup
+						{tr('settings.restoreSession')}
 					</label>
 					<div class="hint">
-						When enabled, BridgeLab saves your open tabs (including unsaved
-						edits) and reopens them the next time you launch the app.
+						{tr('settings.restoreSessionHint')}
 					</div>
 				</div>
 
 				<div class="info-block">
-					<strong>Memory tips:</strong>
+					<strong>{tr('settings.memoryTips')}</strong>
 					<ul>
-						<li>Large messages (5-10 MB) with base64 are truncated in the editor for performance</li>
-						<li>Full content is available via "Expand Field" or "Copy Full Message"</li>
-						<li>Reduce max open messages if experiencing slowness</li>
-						<li>The parser uses SIMD-accelerated scanning for fast indexing</li>
+						<li>{tr('settings.memTip1')}</li>
+						<li>{tr('settings.memTip2')}</li>
+						<li>{tr('settings.memTip3')}</li>
+						<li>{tr('settings.memTip4')}</li>
 					</ul>
 				</div>
 
 			{:else if activeSection === 'plugins'}
-				<h3>Plugins</h3>
+				<h3>{tr('plugins.title')}</h3>
 
 				<p class="hint" style="margin-bottom: 8px;">
-					Drop JSON rule packs in the plugins folder. Validation rules extend
-					the built-in HL7 checks; anonymization rules extend the PHI catalogue.
-					No code execution &ndash; plugins are pure data.
+					{tr('plugins.description')}
 				</p>
 
 				<div class="plugins-toolbar">
 					<button class="btn" onclick={handleReloadPlugins} disabled={pluginsLoading}>
-						{pluginsLoading ? 'Loading…' : 'Reload'}
+						{pluginsLoading ? tr('plugins.loading') : tr('plugins.reload')}
 					</button>
-					<button class="btn" onclick={handleOpenPluginsFolder}>Open plugins folder</button>
+					<button class="btn" onclick={handleOpenPluginsFolder}>{tr('plugins.openFolder')}</button>
 					<code class="plugins-path" title={pluginsDir}>{pluginsDir}</code>
 				</div>
 
@@ -368,12 +398,9 @@
 					<div class="plugin-error">{pluginsError}</div>
 				{/if}
 
-				{#if !pluginsLoading && plugins.length === 0}
+				{#if !pluginsLoading && pluginsLoaded && plugins.length === 0}
 					<div class="info-block">
-						No plugins installed. Use the "Open plugins folder" button and
-						create a <code>.json</code> file under <code>validation/</code> or
-						<code>anonymization/</code>. See <code>docs/PLUGINS.md</code> for
-						the schema.
+						{tr('plugins.noPlugins')}
 					</div>
 				{/if}
 
@@ -389,12 +416,12 @@
 								<div class="plugin-desc">{p.description}</div>
 							{/if}
 							<div class="plugin-meta">
-								<span>{p.rule_count} rule{p.rule_count === 1 ? '' : 's'}</span>
-								{#if p.author}<span>by {p.author}</span>{/if}
+								<span>{tr(p.rule_count === 1 ? 'plugins.rule' : 'plugins.rules', { count: p.rule_count })}</span>
+								{#if p.author}<span>{tr('plugins.by', { author: p.author })}</span>{/if}
 								<span class="plugin-filepath" title={p.path}>{p.path}</span>
 							</div>
 							{#if p.error}
-								<div class="plugin-error">Parse error: {p.error}</div>
+								<div class="plugin-error">{tr('plugins.parseError', { error: p.error })}</div>
 							{/if}
 						</div>
 						<label class="plugin-toggle">
@@ -404,17 +431,60 @@
 								disabled={!!p.error}
 								onchange={() => handleTogglePlugin(p)}
 							/>
-							{p.enabled ? 'Enabled' : 'Disabled'}
+							{p.enabled ? tr('plugins.enabled') : tr('plugins.disabled')}
 						</label>
 					</div>
 				{/each}
+
+			{:else if activeSection === 'license'}
+				<h3>{tr('act.title')}</h3>
+
+				{#if licenseStatus}
+					<dl class="license-info">
+						<dt>{tr('act.currentStatus')}</dt>
+						<dd class="license-type-badge" class:trial={licenseStatus.license_type === 'trial'} class:pro={licenseStatus.license_type === 'professional'} class:ent={licenseStatus.license_type === 'enterprise'} class:expired={licenseStatus.license_type === 'expired'}>
+							{licenseStatus.license_type}
+							{#if licenseStatus.days_remaining !== null}
+								({licenseStatus.days_remaining} days)
+							{/if}
+						</dd>
+
+						<dt>{tr('act.hardwareId')}</dt>
+						<dd><code>{hardwareId}</code></dd>
+
+						{#if licenseStatus.licensee}
+							<dt>{tr('act.nameCompany')}</dt>
+							<dd>{licenseStatus.licensee}</dd>
+						{/if}
+
+						<dt>{tr('act.features')}</dt>
+						<dd class="feature-chips">
+							{#each availableFeatures as feat}
+								<span class="chip">{feat}</span>
+							{/each}
+						</dd>
+					</dl>
+
+					<div class="license-actions">
+						<button class="btn btn-primary" onclick={() => { onClose(); onShowActivation?.(); }}>
+							{tr('act.activate')}
+						</button>
+						{#if licenseStatus.license_type !== 'trial' && licenseStatus.license_type !== 'expired'}
+							<button class="btn" onclick={handleDeactivate}>
+								{tr('act.deactivate')}
+							</button>
+						{/if}
+					</div>
+				{:else}
+					<p>{tr('plugins.loading')}</p>
+				{/if}
 			{/if}
 		</div>
 	</div>
 
 	<div class="settings-footer">
-		<button class="btn" onclick={onClose}>Cancel</button>
-		<button class="btn btn-primary" onclick={saveAndClose}>Save &amp; Close</button>
+		<button class="btn" onclick={onClose}>{tr('dialog.cancel')}</button>
+		<button class="btn btn-primary" onclick={saveAndClose}>{tr('settings.save')}</button>
 	</div>
 </div>
 
@@ -470,6 +540,19 @@
 	.plugin-filepath { font-family: 'JetBrains Mono', monospace; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; }
 	.plugin-error { color: var(--color-error); font-size: 11px; margin-top: 4px; }
 	.plugin-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; }
+
+	.license-info { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; margin: 16px 0; font-size: 13px; }
+	.license-info dt { color: var(--color-text-secondary); font-weight: 600; }
+	.license-info dd { margin: 0; }
+	.license-info code { font-family: 'JetBrains Mono', monospace; font-size: 11px; background: var(--color-bg-tertiary); padding: 2px 6px; border-radius: 3px; user-select: all; }
+	.license-type-badge { font-weight: 700; text-transform: capitalize; }
+	.license-type-badge.trial { color: var(--color-warning, #f9e2af); }
+	.license-type-badge.pro { color: var(--color-accent, #89b4fa); }
+	.license-type-badge.ent { color: var(--color-success, #a6e3a1); }
+	.license-type-badge.expired { color: var(--color-error, #f38ba8); }
+	.feature-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+	.chip { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: var(--color-bg-tertiary); color: var(--color-text-secondary); }
+	.license-actions { display: flex; gap: 8px; margin-top: 16px; }
 	.info-block ul { margin: 6px 0 0; padding-left: 16px; }
 	.info-block li { margin-bottom: 4px; }
 
