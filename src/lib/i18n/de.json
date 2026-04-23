@@ -250,6 +250,7 @@
 	"act.communityDesc": "HL7 v2 Editor, Parser, Validierung, einfaches MLLP/HTTP.",
 	"act.proDesc": "+ Listener, volles HTTP, Anonymisierung, Export, FHIRPath, Bundle, unbegrenzte Plugins.",
 	"act.entDesc": "Alles Pro + SOAP, Prioritätsunterstützung.",
+	"act.contactPrompt": "Um einen Lizenzschlüssel anzufordern, kontaktieren Sie TECHEMV SRL unter",
 	"act.contactUs": "Kontaktieren Sie uns",
 	"act.trialExpired": "Testversion abgelaufen. Community-Funktionen bleiben verfügbar.",
 
