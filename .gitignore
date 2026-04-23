@@ -14,7 +14,6 @@ TEST_PLAN.xlsx
 test-results/
 junit*.xml
 
-# Private tooling
-tools/bridgelab-keygen/
+# Private artifacts (the keygen source is tracked on dev, excluded on release/public)
 *.key
 *.pem
