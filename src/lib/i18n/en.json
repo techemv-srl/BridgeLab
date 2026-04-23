@@ -249,6 +249,7 @@
 	"act.proDesc": "+ Listener, full HTTP, anonymization, export, FHIRPath, Bundle, unlimited plugins.",
 	"act.entDesc": "All Pro + SOAP, priority support.",
 	"act.contactUs": "Contact us",
+	"act.trialExpired": "Trial expired. Community features are still available.",
 
 	"activate": "Activate",
 	"upgrade": "Upgrade",
