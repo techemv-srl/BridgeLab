@@ -46,6 +46,7 @@
 	"menu.help": "Ayuda",
 	"menu.help.about": "Acerca de BridgeLab",
 	"menu.help.shortcuts": "Atajos de teclado",
+	"menu.help.updates": "Buscar actualizaciones",
 
 	"tree.header": "Estructura del mensaje",
 	"tree.empty": "Abre un archivo HL7 o pega un mensaje para comenzar.",
