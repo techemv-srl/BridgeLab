@@ -11,6 +11,7 @@
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
 	import { shortcutStore, matchesKeys } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
+	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import AppDialog from '$lib/components/shared/AppDialog.svelte';
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
@@ -676,6 +677,20 @@
 		showTree = !showTree;
 	}
 
+	// --- Upgrade prompt helper ---
+
+	async function handleUpgradeError(err: unknown): Promise<boolean> {
+		const upgrade = parseUpgradeError(err);
+		if (upgrade) {
+			await dialogStore.info(
+				`This feature requires a ${upgrade.tier} license.\n\n` +
+				`Upgrade via Settings → Activation or contact info@techemv.it.`
+			);
+			return true;
+		}
+		return false;
+	}
+
 	// --- Anonymization / Copy / Export ---
 
 	function handleShowAnonymize() {
@@ -718,7 +733,9 @@
 		try {
 			const json = await exportAsJson(activeTab.parseResult.message_id);
 			downloadFile(json, `${activeTab.label || 'message'}.json`, 'application/json');
-		} catch (e) { console.error('Export JSON failed:', e); }
+		} catch (e) {
+			if (!await handleUpgradeError(e)) console.error('Export JSON failed:', e);
+		}
 	}
 
 	async function handleExportCsv() {
@@ -726,7 +743,9 @@
 		try {
 			const csv = await exportAsCsv(activeTab.parseResult.message_id);
 			downloadFile(csv, `${activeTab.label || 'message'}.csv`, 'text/csv');
-		} catch (e) { console.error('Export CSV failed:', e); }
+		} catch (e) {
+			if (!await handleUpgradeError(e)) console.error('Export CSV failed:', e);
+		}
 	}
 
 	function downloadFile(content: string, filename: string, mimeType: string) {
