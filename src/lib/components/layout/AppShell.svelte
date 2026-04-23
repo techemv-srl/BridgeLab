@@ -202,29 +202,8 @@
 		}
 	}
 
-	async function handleCheckUpdates() {
-		try {
-			const { checkForUpdates, installUpdate } = await import('$lib/ipc/updater');
-			const info = await checkForUpdates();
-			if (info && info.available) {
-				const ok = await dialogStore.show({
-					kind: 'confirm',
-					title: t('dialog.updateAvailable', { version: info.version }),
-					message: t('dialog.updateCurrent', { current: info.currentVersion })
-						+ '\n\n' + (info.notes || '')
-						+ '\n\n' + t('dialog.updateInstallNow'),
-					showCancel: true,
-				});
-				if (ok) {
-					await installUpdate(info.update);
-				}
-			} else {
-				await dialogStore.info(t('dialog.updateUpToDate'));
-			}
-		} catch (e) {
-			console.error('Update check failed:', e);
-			await dialogStore.error(t('dialog.updateCheckFailed'), undefined, String(e));
-		}
+	function handleCheckUpdates() {
+		window.open('https://github.com/techemv-srl/BridgeLab/releases', '_blank');
 	}
 
 	function applyTheme(t: string) {

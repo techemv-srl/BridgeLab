@@ -326,7 +326,7 @@
 		{#if openMenu === 'help'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onCheckUpdates)}>
-					<span>Check for Updates</span>
+					<span>{tr('menu.help.updates')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowAbout)}>
