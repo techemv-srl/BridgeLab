@@ -1,0 +1,39 @@
+name: Public branch safety
+
+on:
+  push:
+    branches: [release/public]
+  pull_request:
+    branches: [release/public]
+  workflow_dispatch:
+
+jobs:
+  no-dev-only-files:
+    name: Ensure dev-only files never reach release/public
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if INTERNAL.md is present
+        run: |
+          if [ -f "INTERNAL.md" ]; then
+            echo "::error file=INTERNAL.md::INTERNAL.md must never be on release/public (contains keygen + security notes). Run 'git rm INTERNAL.md' and recommit before pushing."
+            exit 1
+          fi
+
+      - name: Fail if keygen tool is present
+        run: |
+          if [ -d "tools/bridgelab-keygen" ]; then
+            echo "::error::tools/bridgelab-keygen must not be in the public repo. Remove before merging into release/public."
+            exit 1
+          fi
+
+      - name: Fail if private keys or .env files are tracked
+        shell: bash
+        run: |
+          leaked=$(git ls-files | grep -E '(private\.key$|\.pem$|^\.env($|\.))' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::Private key / env files tracked on release/public:"
+            echo "$leaked"
+            exit 1
+          fi
