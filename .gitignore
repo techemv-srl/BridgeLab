@@ -13,3 +13,7 @@ Thumbs.db
 TEST_PLAN.xlsx
 test-results/
 junit*.xml
+
+# Private artifacts (the keygen source is tracked on dev, excluded on release/public)
+*.key
+*.pem
