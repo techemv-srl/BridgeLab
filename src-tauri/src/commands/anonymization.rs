@@ -2,6 +2,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::anonymization::{self, ExtraPhiField, PhiLocation};
+use crate::licensing::feature_gate;
 use crate::message_store::MessageStore;
 use crate::parser::truncation;
 use crate::plugins::{self, PluginRegistry};
@@ -28,13 +29,14 @@ pub fn detect_phi(
     Ok(anonymization::detect_phi_with_extra(&msg, &extra))
 }
 
-/// Anonymize an HL7 message and return the anonymized text.
+/// Anonymize an HL7 message and return the anonymized text (Pro feature).
 #[tauri::command]
 pub fn anonymize_message(
     message_id: String,
     store: State<'_, MessageStore>,
     registry: State<'_, PluginRegistry>,
 ) -> Result<AnonymizeResult, String> {
+    feature_gate::require("anonymize_mask")?;
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
@@ -78,12 +80,13 @@ pub fn get_message_truncated_text(
     Ok(anonymization::build_truncated_copy(&msg, thresh))
 }
 
-/// Export message as JSON representation.
+/// Export message as JSON representation (Pro feature).
 #[tauri::command]
 pub fn export_as_json(
     message_id: String,
     store: State<'_, MessageStore>,
 ) -> Result<String, String> {
+    feature_gate::require("export")?;
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
@@ -114,12 +117,13 @@ pub fn export_as_json(
         .map_err(|e| format!("JSON serialization failed: {}", e))
 }
 
-/// Export message as CSV (one row per field).
+/// Export message as CSV (Pro feature).
 #[tauri::command]
 pub fn export_as_csv(
     message_id: String,
     store: State<'_, MessageStore>,
 ) -> Result<String, String> {
+    feature_gate::require("export")?;
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
