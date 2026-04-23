@@ -208,7 +208,7 @@
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowSettings)}>
-					<span>Settings</span>
+					<span>{tr('menu.edit.settings')}</span>
 					<span class="shortcut">{sc('edit.settings')}</span>
 				</button>
 			</div>
@@ -282,7 +282,7 @@
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onToggleCommunication)}>
-					<span>Communication Panel</span>
+					<span>{tr('menu.view.communication')}</span>
 					<span class="shortcut">{sc('view.toggleCommunication')}</span>
 				</button>
 				<div class="menu-separator"></div>
@@ -326,7 +326,7 @@
 		{#if openMenu === 'help'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
 				<button class="menu-item" onclick={() => menuAction(onCheckUpdates)}>
-					<span>Check for Updates</span>
+					<span>{tr('menu.help.updates')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowAbout)}>
