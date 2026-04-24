@@ -70,22 +70,37 @@ Canonical commands — mirror the private `release/public` branch onto the
 public `techemv-srl/BridgeLab` repo (branch `main`). The `techemv` remote
 must already be configured locally:
 
-```bash
+```powershell
 git remote add techemv git@github.com:techemv-srl/BridgeLab.git
 ```
 
-Then, every time you want to publish:
+Then, every time you want to publish (**PowerShell** — this is the canonical
+flow since the sync runs from the Windows release machine):
 
-```bash
+```powershell
 git fetch origin release/public
 
 # Pre-flight: refuse to mirror if INTERNAL.md or keygen slipped into release/public.
 # (Defense-in-depth: the public-safety.yml workflow catches the same thing on GitHub.)
+$leaked = git ls-tree -r --name-only origin/release/public |
+    Select-String -Pattern '^(INTERNAL\.md|tools/bridgelab-keygen/)'
+if ($leaked) {
+    Write-Error "REFUSING TO SYNC: dev-only files present on origin/release/public. Clean release/public first."
+    Write-Host $leaked
+    exit 1
+}
+
+git push techemv origin/release/public:main --force
+```
+
+Equivalent bash (for a Linux/macOS dev box if ever needed):
+
+```bash
+git fetch origin release/public
 if git ls-tree -r --name-only origin/release/public | grep -qE '^(INTERNAL\.md|tools/bridgelab-keygen/)'; then
   echo "REFUSING TO SYNC: dev-only files present on origin/release/public. Clean release/public first." >&2
   exit 1
 fi
-
 git push techemv origin/release/public:main --force
 ```
 
