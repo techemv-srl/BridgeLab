@@ -58,7 +58,15 @@
 		try {
 			preview = await exportXsd(selectedVersion, selectedMessage);
 		} catch (e) {
-			error = `${e}`;
+			const msg = `${e}`;
+			if (msg.startsWith('UPGRADE_REQUIRED:')) {
+				// format: UPGRADE_REQUIRED:<feature>:<tier>:<human message>
+				const parts = msg.split(':');
+				const tier = parts[2] || 'Professional';
+				error = tr('xsd.upgradeRequired', { tier });
+			} else {
+				error = msg;
+			}
 			preview = '';
 		} finally {
 			loading = false;
@@ -119,7 +127,7 @@
 					<span>{tr('xsd.message')}</span>
 					<select bind:value={selectedMessage} onchange={regeneratePreview}>
 						{#each messages as m (m.code)}
-							<option value={m.code}>{m.event} — {m.description}</option>
+							<option value={m.code}>{m.event} — {m.description}{m.tier === 'pro' ? ' (PRO)' : ''}</option>
 						{/each}
 					</select>
 				</label>

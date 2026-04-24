@@ -52,6 +52,7 @@
 	"xsd.save": "Salva con nome…",
 	"xsd.saveTitle": "Salva XSD",
 	"xsd.loading": "Generazione…",
+	"xsd.upgradeRequired": "Questo messaggio richiede una licenza {tier}. Il tier free copre ADT^A01, ADT^A40, ORM^O01 e ORU^R01 in v2.5. Attiva via Aiuto → Attivazione o contatta info@techemv.it.",
 
 	"menu.help": "Aiuto",
 	"menu.help.about": "Informazioni su BridgeLab",
