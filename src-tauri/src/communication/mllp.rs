@@ -8,6 +8,22 @@ const MLLP_START: u8 = 0x0B; // VT (vertical tab)
 const MLLP_END_1: u8 = 0x1C; // FS (file separator)
 const MLLP_END_2: u8 = 0x0D; // CR (carriage return)
 
+/// Hard cap on how much ACK payload we'll buffer from the peer. Real HL7 ACKs
+/// fit in a few KB; anything past this means the peer is either misbehaving
+/// or hostile (streaming without a terminator). Prevents unbounded memory
+/// growth that could otherwise run until the read timeout expires.
+const MAX_ACK_BYTES: usize = 1 * 1024 * 1024; // 1 MiB
+
+/// Inner state of the ACK read loop.
+enum ReadOutcome {
+    /// Saw the MLLP terminator (FS CR) — full ACK received.
+    Terminator,
+    /// Peer closed the connection before sending a terminator.
+    Eof,
+    /// Peer exceeded MAX_ACK_BYTES without sending a terminator.
+    CapExceeded,
+}
+
 /// Result of an MLLP send operation.
 #[derive(Debug, Clone, Serialize)]
 pub struct MllpSendResult {
@@ -118,7 +134,7 @@ pub async fn send(
     let read_status = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
         loop {
             match stream.read(&mut chunk).await {
-                Ok(0) => return Ok::<(), std::io::Error>(()), // peer closed
+                Ok(0) => return Ok::<ReadOutcome, std::io::Error>(ReadOutcome::Eof),
                 Ok(n) => {
                     response_bytes.extend_from_slice(&chunk[..n]);
                     let len = response_bytes.len();
@@ -126,7 +142,10 @@ pub async fn send(
                         && response_bytes[len - 2] == MLLP_END_1
                         && response_bytes[len - 1] == MLLP_END_2
                     {
-                        return Ok(());
+                        return Ok(ReadOutcome::Terminator);
+                    }
+                    if len > MAX_ACK_BYTES {
+                        return Ok(ReadOutcome::CapExceeded);
                     }
                 }
                 Err(e) => return Err(e),
@@ -144,17 +163,32 @@ pub async fn send(
     let response_time_ms = start.elapsed().as_millis() as u64;
 
     match read_status {
-        Ok(Ok(())) if !response_bytes.is_empty() => MllpSendResult {
+        Ok(Ok(ReadOutcome::Terminator)) => MllpSendResult {
             success: true,
             response,
             response_time_ms,
             error: None,
         },
-        Ok(Ok(())) => MllpSendResult {
+        Ok(Ok(ReadOutcome::Eof)) if !response_bytes.is_empty() => MllpSendResult {
+            success: true,
+            response,
+            response_time_ms,
+            error: None,
+        },
+        Ok(Ok(ReadOutcome::Eof)) => MllpSendResult {
             success: false,
             response: String::new(),
             response_time_ms,
             error: Some("Empty response (connection closed by peer)".into()),
+        },
+        Ok(Ok(ReadOutcome::CapExceeded)) => MllpSendResult {
+            success: false,
+            response: String::new(),
+            response_time_ms,
+            error: Some(format!(
+                "Response exceeded {} bytes without MLLP terminator; aborted",
+                MAX_ACK_BYTES
+            )),
         },
         Ok(Err(e)) => MllpSendResult {
             success: false,
@@ -378,6 +412,42 @@ mod tests {
             result.response.contains("MSA|AA|MSG999"),
             "expected full ACK body, got: {:?}",
             result.response
+        );
+    }
+
+    /// A hostile / misbehaving peer that streams data without ever sending the
+    /// MLLP terminator must not blow up client memory. The send() loop caps
+    /// the response buffer at MAX_ACK_BYTES and aborts with a clear error.
+    #[tokio::test]
+    async fn test_mllp_send_caps_unbounded_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Peer that writes 2 MiB of junk with NO MLLP terminator.
+        let _peer = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await.unwrap();
+
+            // 2 MiB chunks so we comfortably exceed MAX_ACK_BYTES (1 MiB)
+            let junk = vec![b'A'; 64 * 1024];
+            for _ in 0..32 {
+                if stream.write_all(&junk).await.is_err() {
+                    break;
+                }
+            }
+            let _ = stream.shutdown().await;
+        });
+
+        let msg = "MSH|^~\\&|Send|SF|Recv|RF|20260423||ADT^A01|CAP001|P|2.5\rPID|||1";
+        let result = send("127.0.0.1", port, msg, 10).await;
+
+        assert!(!result.success, "should abort, not succeed on unbounded stream");
+        let err = result.error.expect("must have an error");
+        assert!(
+            err.contains("exceeded") && err.contains("MLLP terminator"),
+            "expected cap-exceeded error, got: {}",
+            err
         );
     }
 
