@@ -93,6 +93,7 @@ BridgeLab already ships features that are missing or weak in competitors:
 - MLLP + HTTP transport with troubleshooting params
 - Offline Ed25519 license verification
 - Cross-platform (Win + macOS Intel/ARM + Linux)
+- **XSD schema export** for HL7 v2 message types (closes a long-standing 7edit-era gap; 4 common messages free, full catalogue Pro)
 
 ---
 
@@ -105,6 +106,9 @@ BridgeLab already ships features that are missing or weak in competitors:
 - [ ] Beta testing program (50-100 users)
 - [ ] Fix critical bugs from field testing
 - [ ] Polish: keyboard shortcut customization, theme editor
+- [x] **XSD schema export** — Tools → Export message schema as XSD…; covers ADT^A01 / ADT^A40 / ORM^O01 / ORU^R01 in v2.5 (Community), full message catalogue and other versions gated behind Pro
+- [ ] Full v2.5 message catalogue via `hl7-schema-importer` (data-driven schema loader in place; importer for `hl7-dictionary` source pending)
+- [ ] Additional HL7 versions (v2.3, v2.4, v2.6, v2.7, v2.8) via the same importer
 - [ ] Open-source the HL7 parser core as separate crate on crates.io
 - [ ] Launch on GitHub, Product Hunt, Hacker News, Reddit r/healthIT
 - [ ] Documentation site (bridgelab.dev)
