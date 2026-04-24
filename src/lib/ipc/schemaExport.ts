@@ -3,12 +3,14 @@ import { invoke } from '@tauri-apps/api/core';
 export interface VersionOption {
 	key: string;
 	label: string;
+	tier: 'free' | 'pro';
 }
 
 export interface MessageOption {
 	code: string;
 	event: string;
 	description: string;
+	tier: 'free' | 'pro';
 }
 
 export async function listVersions(): Promise<VersionOption[]> {
