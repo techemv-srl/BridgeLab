@@ -20,6 +20,9 @@
 	interface Props {
 		recentFiles: RecentFile[];
 		theme: string;
+		showTree: boolean;
+		showInspector: boolean;
+		showSchemaFields: boolean;
 		onOpenFile: () => void;
 		onSave: () => void;
 		onSaveAs: () => void;
@@ -56,6 +59,9 @@
 	let {
 		recentFiles,
 		theme,
+		showTree,
+		showInspector,
+		showSchemaFields,
 		onOpenFile,
 		onSave,
 		onSaveAs,
@@ -233,14 +239,14 @@
 		</button>
 		{#if openMenu === 'view'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
-				<button class="menu-item" onclick={() => menuAction(onToggleTree)}>
+				<button class="menu-item" class:checked={showTree} onclick={() => menuAction(onToggleTree)}>
 					<span>{tr('menu.view.tree')}</span>
 					<span class="shortcut">{sc('view.toggleTree')}</span>
 				</button>
-				<button class="menu-item" onclick={() => menuAction(onToggleInspector)}>
+				<button class="menu-item" class:checked={showInspector} onclick={() => menuAction(onToggleInspector)}>
 					<span>{tr('inspector.title')}</span>
 				</button>
-				<button class="menu-item" onclick={() => menuAction(onToggleSchemaFields)}>
+				<button class="menu-item" class:checked={showSchemaFields} onclick={() => menuAction(onToggleSchemaFields)}>
 					<span>{tr('view.schemaFields')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleValidation)}>
