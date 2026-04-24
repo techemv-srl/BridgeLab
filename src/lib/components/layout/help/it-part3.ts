@@ -2,6 +2,76 @@ import type { ManualSection } from '../helpContent';
 
 export const itPart3: ManualSection[] = [
 {
+	id: 'schema-export',
+	heading: 'Esportazione schema (XSD)',
+	body: `
+<p>Serve un XSD per descrivere un messaggio HL7 v2 in una pipeline
+XML-based, per un'integrazione contract-first, o per caricarlo in un
+tool di terze parti? Apri <strong>Strumenti → Esporta schema messaggio
+come XSD…</strong> — scegli una versione HL7 e un tipo di messaggio,
+vedi l'anteprima e salva con un clic.</p>
+
+<h3>Cosa ottieni</h3>
+<p>Un XSD autoconsistente nella convenzione standard HL7 v2.xml:</p>
+<ul>
+	<li>Un elemento root per ogni messaggio (es.
+		<code>ADT_A01</code>) con un complex type inline che elenca
+		segmenti e gruppi di segmenti in ordine.</li>
+	<li>Ogni segmento dichiarato come <code>xsd:complexType</code>
+		top-level (<code>MSH</code>, <code>PID</code>,
+		<code>OBX</code>, …) con ogni campo tipizzato secondo il
+		data-type HL7 (<code>XPN</code>, <code>CX</code>,
+		<code>HD</code>, …).</li>
+	<li>Data type compositi espansi nei loro componenti, data type
+		primitivi (<code>ST</code>, <code>ID</code>, <code>NM</code>, …)
+		emessi come <code>xsd:simpleType</code> con restrizione su
+		<code>xsd:string</code>.</li>
+	<li>Cardinalità preservata: <code>minOccurs="0"</code> per i
+		campi opzionali, <code>maxOccurs="unbounded"</code> per quelli
+		ripetibili.</li>
+	<li>Gruppi come <code>ORM_O01.ORDER_DETAIL</code> nella
+		convenzione <code>MESSAGGIO.GRUPPO</code>; blocchi di choice
+		HL7 (<code>OBR | RQD | RQ1 | RXO | ODS | ODT</code>) emessi
+		come <code>xsd:choice</code>.</li>
+</ul>
+
+<h3>Azioni</h3>
+<ul>
+	<li><strong>Copia</strong> — copia l'XSD negli appunti.</li>
+	<li><strong>Salva con nome…</strong> — apre la dialog di sistema
+		con <code>{MESSAGGIO}.xsd</code> come nome suggerito.</li>
+</ul>
+
+<h3>Copertura e tier</h3>
+<p>Il tier free esporta quattro message type ad alto uso in HL7 v2.5,
+così il workflow tipico di debug MLLP è coperto:</p>
+<ul>
+	<li><strong>ADT^A01</strong> — Admit / Visit Notification</li>
+	<li><strong>ADT^A40</strong> — Merge Patient (Patient Identifier
+		List)</li>
+	<li><strong>ORM^O01</strong> — Order Message</li>
+	<li><strong>ORU^R01</strong> — Unsolicited Observation Result</li>
+</ul>
+<p>Ogni altro message type, o ogni altra versione HL7, è marcato
+<strong>(PRO)</strong> nel dropdown e richiede una licenza Professional
+(o un trial attivo). Se provi a esportare una voce gated, BridgeLab
+mostra un prompt di upgrade con link a
+<strong>Aiuto → Attivazione</strong>.</p>
+
+<h3>Nota sul licensing</h3>
+<p>BridgeLab non ridistribuisce alcun file XSD coperto da copyright
+HL7. I metadati di schema sono ricostruiti da specifiche HL7 v2
+pubbliche; ogni file generato ha un header che riconosce HL7® come
+standard sorgente e dichiara l'output come derivative work per scopi
+di interoperabilità.</p>
+
+<div class="info">Target ideale: Astraia e applicazioni di
+integrazione simili che accettano XSD hand-authored per message type
+non nativamente riconosciuti dal motore. Esporti una volta, carichi
+nell'engine, vai avanti.</div>
+`,
+},
+{
 	id: 'fhir',
 	heading: 'Supporto FHIR',
 	body: `

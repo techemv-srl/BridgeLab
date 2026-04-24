@@ -9,3 +9,4 @@ export * from './templates';
 export * from './bundle';
 export * from './fhirpath';
 export * from './testcases';
+export * from './schemaExport';

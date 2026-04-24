@@ -42,6 +42,17 @@
 	"menu.tools.copyTruncated": "Copiar mensaje truncado",
 	"menu.tools.exportJson": "Exportar JSON",
 	"menu.tools.exportCsv": "Exportar CSV",
+	"menu.tools.exportXsd": "Exportar esquema del mensaje como XSD…",
+
+	"xsd.title": "Exportar esquema del mensaje HL7 como XSD",
+	"xsd.intro": "Selecciona una versión de HL7 y un tipo de mensaje. BridgeLab genera un XSD autocontenido para guardar o copiar en tus pipelines de integración.",
+	"xsd.version": "Versión HL7",
+	"xsd.message": "Tipo de mensaje",
+	"xsd.copy": "Copiar",
+	"xsd.save": "Guardar como…",
+	"xsd.saveTitle": "Guardar XSD",
+	"xsd.loading": "Generando…",
+	"xsd.upgradeRequired": "Este mensaje requiere una licencia {tier}. El nivel gratuito cubre ADT^A01, ADT^A40, ORM^O01 y ORU^R01 en v2.5. Activa en Ayuda → Activación o contacta info@techemv.it.",
 
 	"menu.help": "Ayuda",
 	"menu.help.about": "Acerca de BridgeLab",
