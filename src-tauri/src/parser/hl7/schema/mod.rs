@@ -111,6 +111,29 @@ pub struct Hl7Schema {
     pub primitives: Vec<PrimitiveType>,
 }
 
+/// Version-agnostic on-disk payload. Decoupled from the runtime `Hl7Schema`
+/// so the JSON files can live in `resources/hl7/<version>.json` without
+/// duplicating the version tag in every file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HydratedSchema {
+    pub messages: Vec<MessageStructure>,
+    pub segments: Vec<SegmentSpec>,
+    pub composites: Vec<CompositeType>,
+    pub primitives: Vec<PrimitiveType>,
+}
+
+impl HydratedSchema {
+    pub fn into_schema(self, version: Hl7Version) -> Hl7Schema {
+        Hl7Schema {
+            version,
+            messages: self.messages,
+            segments: self.segments,
+            composites: self.composites,
+            primitives: self.primitives,
+        }
+    }
+}
+
 impl Hl7Schema {
     pub fn message(&self, code: &str) -> Option<&MessageStructure> {
         self.messages.iter().find(|m| m.code == code)
@@ -199,10 +222,20 @@ fn collect_segments(elements: &[MessageElement], out: &mut BTreeSet<String>) {
     }
 }
 
+/// Embedded JSON payloads, one per HL7 version.
+///
+/// These files are bootstrapped from `v2_5::schema()` via the `dump_v25`
+/// example binary; the importer tool in `tools/hl7-schema-importer/` will
+/// eventually take over production of these files (F2, F3).
+const V2_5_JSON: &str = include_str!("../../../../resources/hl7/v2_5.json");
+
 pub fn load(version: Hl7Version) -> Hl7Schema {
-    match version {
-        Hl7Version::V2_5 => v2_5::schema(),
-    }
+    let json = match version {
+        Hl7Version::V2_5 => V2_5_JSON,
+    };
+    let hydrated: HydratedSchema = serde_json::from_str(json)
+        .expect("shipped HL7 schema JSON is malformed — this is a build bug");
+    hydrated.into_schema(version)
 }
 
 #[cfg(test)]
@@ -215,6 +248,38 @@ mod tests {
         for code in ["ADT_A01", "ADT_A40", "ORM_O01", "ORU_R01"] {
             assert!(s.message(code).is_some(), "missing message {}", code);
         }
+    }
+
+    /// The data-driven loader and the legacy hand-coded schema must produce
+    /// identical Hl7Schema payloads. Serves both as a regression guard for
+    /// the bootstrap JSON and as a sanity check that the importer tool
+    /// (when it later replaces v2_5.rs as the data source) hasn't drifted.
+    #[test]
+    fn loader_matches_hand_coded_schema_v2_5() {
+        let loaded = load(Hl7Version::V2_5);
+        let direct = v2_5::schema();
+        assert_eq!(loaded.messages.len(), direct.messages.len());
+        assert_eq!(loaded.segments.len(), direct.segments.len());
+        assert_eq!(loaded.composites.len(), direct.composites.len());
+        assert_eq!(loaded.primitives.len(), direct.primitives.len());
+
+        // Spot-check deep equality via JSON round-trip (simpler than deriving
+        // PartialEq on every struct).
+        let loaded_hydrated = HydratedSchema {
+            messages: loaded.messages,
+            segments: loaded.segments,
+            composites: loaded.composites,
+            primitives: loaded.primitives,
+        };
+        let direct_hydrated = HydratedSchema {
+            messages: direct.messages,
+            segments: direct.segments,
+            composites: direct.composites,
+            primitives: direct.primitives,
+        };
+        let a = serde_json::to_string(&loaded_hydrated).unwrap();
+        let b = serde_json::to_string(&direct_hydrated).unwrap();
+        assert_eq!(a, b, "loaded schema drifts from hand-coded v2_5::schema()");
     }
 
     #[test]
