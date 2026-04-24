@@ -106,40 +106,66 @@ pub async fn send(
         };
     }
 
-    // Read response (ACK)
-    let mut buf = vec![0u8; 65536];
-    let read_result = tokio::time::timeout(
-        Duration::from_secs(timeout_secs),
-        stream.read(&mut buf),
-    )
-    .await;
+    // Read ACK by looping until we see the MLLP terminator (FS CR) or EOF.
+    // A single read() may return a partial ACK if the peer flushes in two
+    // TCP segments — leaving unread bytes in the kernel buffer. Dropping
+    // the stream with unread bytes causes the kernel to send RST instead
+    // of FIN, which surfaces on the peer as "Connection reset by peer"
+    // after it has already sent the ACK.
+    let mut response_bytes: Vec<u8> = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 4096];
 
-    match read_result {
-        Ok(Ok(n)) if n > 0 => {
-            let response = mllp_unframe(&buf[..n]).unwrap_or_default();
-            MllpSendResult {
-                success: true,
-                response,
-                response_time_ms: start.elapsed().as_millis() as u64,
-                error: None,
+    let read_status = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
+        loop {
+            match stream.read(&mut chunk).await {
+                Ok(0) => return Ok::<(), std::io::Error>(()), // peer closed
+                Ok(n) => {
+                    response_bytes.extend_from_slice(&chunk[..n]);
+                    let len = response_bytes.len();
+                    if len >= 2
+                        && response_bytes[len - 2] == MLLP_END_1
+                        && response_bytes[len - 1] == MLLP_END_2
+                    {
+                        return Ok(());
+                    }
+                }
+                Err(e) => return Err(e),
             }
         }
-        Ok(Ok(_)) => MllpSendResult {
+    })
+    .await;
+
+    // Gracefully half-close the write side before dropping the stream so the
+    // peer sees FIN, not RST. This is the fix for the "socket error after
+    // ACK" symptom reported by receivers like HAPI / Mirth.
+    let _ = stream.shutdown().await;
+
+    let response = mllp_unframe(&response_bytes).unwrap_or_default();
+    let response_time_ms = start.elapsed().as_millis() as u64;
+
+    match read_status {
+        Ok(Ok(())) if !response_bytes.is_empty() => MllpSendResult {
             success: true,
+            response,
+            response_time_ms,
+            error: None,
+        },
+        Ok(Ok(())) => MllpSendResult {
+            success: false,
             response: String::new(),
-            response_time_ms: start.elapsed().as_millis() as u64,
-            error: Some("Empty response (connection closed)".into()),
+            response_time_ms,
+            error: Some("Empty response (connection closed by peer)".into()),
         },
         Ok(Err(e)) => MllpSendResult {
             success: false,
-            response: String::new(),
-            response_time_ms: start.elapsed().as_millis() as u64,
+            response,
+            response_time_ms,
             error: Some(format!("Read failed: {}", e)),
         },
         Err(_) => MllpSendResult {
             success: false,
-            response: String::new(),
-            response_time_ms: start.elapsed().as_millis() as u64,
+            response,
+            response_time_ms,
             error: Some("Response timed out".into()),
         },
     }
@@ -206,6 +232,10 @@ pub async fn receive_one(
         let ack_framed = mllp_frame(&ack_msg);
         let _ = stream.write_all(&ack_framed).await;
     }
+
+    // Gracefully half-close write side so the client receives FIN, not RST,
+    // after the ACK has been flushed. Mirror of the fix applied in send().
+    let _ = stream.shutdown().await;
 
     let received_at = chrono::Utc::now().to_rfc3339();
 
@@ -305,6 +335,50 @@ mod tests {
         assert_eq!(received.content, msg);
         assert!(received.source_addr.starts_with("127.0.0.1:"));
         assert!(!received.received_at.is_empty());
+    }
+
+    /// Regression: ACK delivered in two TCP segments must be fully assembled
+    /// by the client. Before the loop-read fix, the second segment was left
+    /// in the kernel buffer and the response came back truncated (or empty,
+    /// causing an MLLP unframe failure). Also exercises the graceful close
+    /// path (shutdown before drop) — without it the test peer would observe
+    /// a reset on its read side.
+    #[tokio::test]
+    async fn test_mllp_send_handles_split_ack() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Peer that writes the ACK in two bursts with a deliberate gap to
+        // force the client through multiple read() calls.
+        let _peer = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await.unwrap();
+
+            let ack = mllp_frame(
+                "MSH|^~\\&|Recv||Send||20260423||ACK|ACK999|P|2.5\rMSA|AA|MSG999",
+            );
+            let split = ack.len() / 2;
+            stream.write_all(&ack[..split]).await.unwrap();
+            stream.flush().await.unwrap();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            stream.write_all(&ack[split..]).await.unwrap();
+            stream.flush().await.unwrap();
+
+            // Let the client drive the close; read until EOF so we can
+            // confirm the client shut down cleanly (FIN, not RST).
+            let _ = stream.read(&mut buf).await;
+        });
+
+        let msg = "MSH|^~\\&|Send|SF|Recv|RF|20260423||ADT^A01|MSG999|P|2.5\rPID|||1";
+        let result = send("127.0.0.1", port, msg, 5).await;
+
+        assert!(result.success, "send failed: {:?}", result.error);
+        assert!(
+            result.response.contains("MSA|AA|MSG999"),
+            "expected full ACK body, got: {:?}",
+            result.response
+        );
     }
 
     /// BL-MLLP-08 equivalent: connection to a closed port fails fast with an
