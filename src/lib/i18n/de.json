@@ -52,6 +52,7 @@
 	"xsd.save": "Speichern unter…",
 	"xsd.saveTitle": "XSD speichern",
 	"xsd.loading": "Wird erzeugt…",
+	"xsd.upgradeRequired": "Diese Nachricht benötigt eine {tier}-Lizenz. Die kostenlose Stufe umfasst ADT^A01, ADT^A40, ORM^O01 und ORU^R01 in v2.5. Aktivieren Sie über Hilfe → Aktivierung oder kontaktieren Sie info@techemv.it.",
 
 	"menu.help": "Hilfe",
 	"menu.help.about": "Über BridgeLab",
