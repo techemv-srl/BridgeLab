@@ -87,6 +87,9 @@ pub fn run() {
             commands::plugins::apply_plugin_overrides,
             commands::plugins::get_plugins_dir,
             commands::plugins::open_plugins_folder,
+            commands::schema_export::hl7_schema_list_versions,
+            commands::schema_export::hl7_schema_list_messages,
+            commands::schema_export::hl7_schema_export_xsd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BridgeLab");

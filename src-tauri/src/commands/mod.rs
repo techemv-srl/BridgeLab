@@ -7,5 +7,6 @@ pub mod database;
 pub mod fileio;
 pub mod parser;
 pub mod plugins;
+pub mod schema_export;
 pub mod tables;
 pub mod validation;
