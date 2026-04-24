@@ -25,8 +25,15 @@
 //! | bundle_visualizer  | ✗         | ✓   | ✓          |
 //! | plugins_unlimited  | ✗         | ✓   | ✓          |
 //! | test_cases_unlimited| ✗        | ✓   | ✓          |
+//! | xsd_export_community| ✓ (2)    | ✓   | ✓          |
+//! | xsd_export_full    | ✗         | ✓   | ✓          |
 //! | soap               | ✗         | ✗   | ✓          |
 //! | priority_support   | ✗         | ✗   | ✓          |
+//!
+//! (1) `mllp_send` is community but gated by rate limits elsewhere.
+//! (2) `xsd_export_community` covers the 4 common messages (ADT^A01,
+//!     ADT^A40, ORM^O01, ORU^R01) in v2.5 only. All other messages or
+//!     versions require `xsd_export_full` (Pro).
 
 use crate::licensing::{self, LicenseType};
 
@@ -39,6 +46,7 @@ const COMMUNITY_FEATURES: &[&str] = &[
     "mllp_send",
     "http_get",
     "anonymize_detect",
+    "xsd_export_community",
 ];
 
 /// Additional features unlocked by Pro.
@@ -52,6 +60,7 @@ const PRO_FEATURES: &[&str] = &[
     "bundle_visualizer",
     "plugins_unlimited",
     "test_cases_unlimited",
+    "xsd_export_full",
 ];
 
 /// Additional features unlocked by Enterprise.
