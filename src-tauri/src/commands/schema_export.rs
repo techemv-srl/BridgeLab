@@ -55,6 +55,19 @@ pub fn hl7_schema_list_messages(version_key: String) -> Result<Vec<MessageOption
 #[tauri::command]
 pub fn hl7_schema_export_xsd(version_key: String, message_code: String) -> Result<String, String> {
     let v = parse_version(&version_key)?;
+    let s = schema::load(v);
+
+    // Validate the message code *before* applying the license gate: an unknown
+    // code (typo, stale UI state, etc.) should produce a plain "not found"
+    // error regardless of tier, not a misleading UPGRADE_REQUIRED that only
+    // surfaces for Free users.
+    if s.message(&message_code).is_none() {
+        return Err(format!(
+            "Message '{}' not found in HL7 v{}",
+            message_code,
+            v.as_str()
+        ));
+    }
 
     // Gate: community whitelist (4 msg × v2.5) falls under xsd_export_community
     // (always allowed), everything else requires xsd_export_full (Pro).
@@ -64,7 +77,6 @@ pub fn hl7_schema_export_xsd(version_key: String, message_code: String) -> Resul
     };
     feature_gate::require(feature)?;
 
-    let s = schema::load(v);
     schema::xsd::generate_xsd(&s, &message_code)
 }
 
@@ -96,5 +108,24 @@ mod tests {
     #[test]
     fn unknown_message_is_pro() {
         assert_eq!(tier_for(Hl7Version::V2_5, "SIU_S12"), "pro");
+    }
+
+    /// Regression for PR #47 review: an unknown message code must return
+    /// "not found" regardless of tier, not UPGRADE_REQUIRED. The user-facing
+    /// error for a typo or stale UI state must not depend on license state.
+    #[test]
+    fn unknown_message_returns_not_found_before_gate() {
+        let result = hl7_schema_export_xsd("V2_5".into(), "FOO_BAR".into());
+        let err = result.expect_err("FOO_BAR must fail");
+        assert!(
+            err.contains("not found"),
+            "expected 'not found' error before gate, got: {}",
+            err
+        );
+        assert!(
+            !err.contains("UPGRADE_REQUIRED"),
+            "gate leaked for unknown message: {}",
+            err
+        );
     }
 }
