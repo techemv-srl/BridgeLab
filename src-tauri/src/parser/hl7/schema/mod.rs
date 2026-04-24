@@ -1,21 +1,20 @@
-//! HL7 v2.x message schema model (F1 MVP).
+//! HL7 v2.x message schema model.
 //!
-//! This layer captures *message structure* — i.e. which segments (and segment
-//! groups) compose a given message type for a given HL7 version — and the
-//! field layout of each segment. It is a superset of the information in
-//! `tables.rs`, which only carries segment/field metadata.
+//! Produces XSDs compatible with the standard HL7 v2.xml encoding format
+//! (segments → fields with named data types, composite types with
+//! components, primitive types as simple-type restrictions on xsd:string).
 //!
-//! F1 scope: four common messages (ADT^A01, ADT^A40, ORM^O01, ORU^R01) in
-//! HL7 v2.5, hand-coded. F2 will swap the hand-coded data for auto-imported
-//! data across all v2.5 messages and add composite data types + value tables.
+//! Scope: v2.5, messages ADT^A01, ADT^A40, ORM^O01, ORU^R01, plus every
+//! segment, composite and primitive data type those four transitively
+//! reference.
 
 pub mod v2_5;
 pub mod xsd;
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
-/// Supported HL7 versions. Kept as an explicit enum so the UI can offer a
-/// fixed, validated list instead of free-form strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Hl7Version {
     V2_5,
@@ -29,116 +28,177 @@ impl Hl7Version {
     }
 }
 
-/// Structural element inside a message definition.
+/// Structural element inside a message definition. Supports both sequences
+/// (the common case) and choices (e.g. ORM_O01.ORDER_DETAIL opens with a
+/// choice between OBR / RQD / RQ1 / RXO / ODS / ODT).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MessageElement {
-    /// A single segment occurrence.
     Segment {
         code: String,
         required: bool,
         repeats: bool,
     },
-    /// A named group of elements (used for nested structures like
-    /// ORU^R01 PATIENT_RESULT → ORDER_OBSERVATION → OBSERVATION).
     Group {
         name: String,
         required: bool,
         repeats: bool,
         elements: Vec<MessageElement>,
     },
+    /// A choice block — one of the listed segments may appear.
+    /// HL7 v2.xml encodes this as `<xsd:choice minOccurs=... maxOccurs=...>`.
+    Choice {
+        required: bool,
+        repeats: bool,
+        segments: Vec<String>,
+    },
 }
 
-/// A message type definition (the "shape" of ADT^A01, ORM^O01, ...).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageStructure {
-    /// Structure code with the underscore separator used in XSDs, e.g.
-    /// `ADT_A01`. Not `ADT^A01` because `^` isn't valid in XML element
-    /// names.
+    /// XSD-safe code with underscore separator, e.g. `ADT_A01`.
     pub code: String,
-    /// Message type + trigger event, e.g. `ADT^A01`.
+    /// HL7 event notation, e.g. `ADT^A01`.
     pub event: String,
-    /// Human-readable description.
     pub description: String,
-    /// Top-level elements (segments and groups) in order.
     pub elements: Vec<MessageElement>,
 }
 
-/// Field inside a segment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldSpec {
-    /// 1-based position per HL7 convention.
     pub position: usize,
-    /// Human-readable name.
     pub name: String,
-    /// Data type code (e.g. `XPN`, `ST`, `CX`). F1 treats every field as
-    /// `xs:string` with `maxLength` — composite expansion lands in F2.
+    /// Data type reference: either a composite code (`XPN`, `CX`, ...)
+    /// or a primitive code (`ST`, `ID`, `NM`, ...).
     pub data_type: String,
-    /// Max length in bytes, if defined by the standard.
-    pub max_length: Option<usize>,
-    /// Whether the field is required by the standard.
     pub required: bool,
-    /// Whether the field can repeat.
     pub repeats: bool,
 }
 
-/// Segment definition (fields ordered by position).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SegmentSpec {
-    /// Three-letter segment code, e.g. `PID`.
     pub code: String,
-    /// Human-readable name, e.g. `Patient Identification`.
     pub name: String,
-    /// Field list, in order.
     pub fields: Vec<FieldSpec>,
 }
 
-/// Top-level schema bundle for one HL7 version. Looked up by the generator
-/// and the IPC layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentSpec {
+    pub position: usize,
+    pub name: String,
+    /// Data type reference (composite or primitive).
+    pub data_type: String,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositeType {
+    pub code: String,
+    pub components: Vec<ComponentSpec>,
+}
+
+/// A primitive type — rendered as `<xsd:simpleType><xsd:restriction base="xsd:string"/></xsd:simpleType>`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrimitiveType {
+    pub code: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct Hl7Schema {
     pub version: Hl7Version,
-    /// Structure code → message definition (e.g. "ADT_A01" → ...)
     pub messages: Vec<MessageStructure>,
-    /// Segment code → segment definition (shared across messages).
     pub segments: Vec<SegmentSpec>,
+    pub composites: Vec<CompositeType>,
+    pub primitives: Vec<PrimitiveType>,
 }
 
 impl Hl7Schema {
-    /// Look up a message structure by its XSD-safe code (`ADT_A01`).
     pub fn message(&self, code: &str) -> Option<&MessageStructure> {
         self.messages.iter().find(|m| m.code == code)
     }
 
-    /// Look up a segment definition by its three-letter code.
     pub fn segment(&self, code: &str) -> Option<&SegmentSpec> {
         self.segments.iter().find(|s| s.code == code)
     }
 
-    /// Return the set of segment codes actually referenced by the message
-    /// — used by the XSD generator to know which segment complex types
-    /// to emit.
+    pub fn composite(&self, code: &str) -> Option<&CompositeType> {
+        self.composites.iter().find(|c| c.code == code)
+    }
+
+    pub fn is_primitive(&self, code: &str) -> bool {
+        self.primitives.iter().any(|p| p.code == code)
+    }
+
+    /// Flatten all segment codes referenced by `message_code` (groups,
+    /// choices, nested groups). Deduplicated, sorted.
     pub fn segments_used_by(&self, message_code: &str) -> Vec<String> {
-        let mut codes: Vec<String> = Vec::new();
+        let mut codes: BTreeSet<String> = BTreeSet::new();
         if let Some(m) = self.message(message_code) {
             collect_segments(&m.elements, &mut codes);
         }
-        codes.sort();
-        codes.dedup();
-        codes
+        codes.into_iter().collect()
+    }
+
+    /// Transitively collect every composite and primitive data type needed
+    /// to render the XSD for `message_code`. Returns (composites, primitives),
+    /// each sorted by code.
+    pub fn data_types_used_by(&self, message_code: &str) -> (Vec<&CompositeType>, Vec<&PrimitiveType>) {
+        let segments = self.segments_used_by(message_code);
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        let mut to_visit: Vec<String> = Vec::new();
+
+        for code in &segments {
+            if let Some(seg) = self.segment(code) {
+                for f in &seg.fields {
+                    if seen.insert(f.data_type.clone()) {
+                        to_visit.push(f.data_type.clone());
+                    }
+                }
+            }
+        }
+        while let Some(code) = to_visit.pop() {
+            if let Some(c) = self.composite(&code) {
+                for comp in &c.components {
+                    if seen.insert(comp.data_type.clone()) {
+                        to_visit.push(comp.data_type.clone());
+                    }
+                }
+            }
+        }
+
+        let mut composites: Vec<&CompositeType> = self
+            .composites
+            .iter()
+            .filter(|c| seen.contains(&c.code))
+            .collect();
+        composites.sort_by(|a, b| a.code.cmp(&b.code));
+
+        let mut primitives: Vec<&PrimitiveType> = self
+            .primitives
+            .iter()
+            .filter(|p| seen.contains(&p.code))
+            .collect();
+        primitives.sort_by(|a, b| a.code.cmp(&b.code));
+
+        (composites, primitives)
     }
 }
 
-fn collect_segments(elements: &[MessageElement], out: &mut Vec<String>) {
+fn collect_segments(elements: &[MessageElement], out: &mut BTreeSet<String>) {
     for e in elements {
         match e {
-            MessageElement::Segment { code, .. } => out.push(code.clone()),
+            MessageElement::Segment { code, .. } => {
+                out.insert(code.clone());
+            }
             MessageElement::Group { elements, .. } => collect_segments(elements, out),
+            MessageElement::Choice { segments, .. } => {
+                for c in segments {
+                    out.insert(c.clone());
+                }
+            }
         }
     }
 }
 
-/// Returns the schema bundle for the given version. Errors if the version
-/// isn't packaged (F1 only ships v2.5).
 pub fn load(version: Hl7Version) -> Hl7Schema {
     match version {
         Hl7Version::V2_5 => v2_5::schema(),
@@ -158,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn every_message_segment_is_defined() {
+    fn every_referenced_segment_is_defined() {
         let s = load(Hl7Version::V2_5);
         for m in &s.messages {
             for code in s.segments_used_by(&m.code) {
@@ -173,10 +233,22 @@ mod tests {
     }
 
     #[test]
-    fn segments_used_by_deduplicates_and_sorts() {
+    fn every_referenced_data_type_is_defined() {
         let s = load(Hl7Version::V2_5);
-        let adt_a01 = s.segments_used_by("ADT_A01");
-        // MSH, EVN, PID appear first; full list must be sorted and unique
-        assert!(adt_a01.windows(2).all(|w| w[0] < w[1]));
+        for m in &s.messages {
+            let (composites, primitives) = s.data_types_used_by(&m.code);
+            for seg_code in s.segments_used_by(&m.code) {
+                let seg = s.segment(&seg_code).expect("segment missing");
+                for f in &seg.fields {
+                    let found_composite = composites.iter().any(|c| c.code == f.data_type);
+                    let found_primitive = primitives.iter().any(|p| p.code == f.data_type);
+                    assert!(
+                        found_composite || found_primitive,
+                        "segment {} field {} uses data type {} which is not defined",
+                        seg_code, f.position, f.data_type
+                    );
+                }
+            }
+        }
     }
 }
