@@ -25,6 +25,7 @@
 - **HTTP client** - GET/POST/PUT/DELETE/PATCH with Basic/Bearer auth, headers, timeout
 - **Anonymization** - 21 known PHI field definitions across PID/NK1/IN1/GT1
 - **Export** - JSON, CSV, structured representations
+- **XSD schema export** - Generate HL7 v2.xml compatible XSD files for any supported message type (4 common messages in v2.5 free, full catalogue in Pro). Useful for integration engines that accept hand-authored schemas (Astraia, BizTalk, XMLSpy…).
 - **5 Languages** - English, Italian, French, Spanish, German
 - **Licensing** - Ed25519-signed offline license verification, hardware binding, 30-day trial
 - **Field Inspector** - Side panel showing HL7 standard metadata (name, type, required, max length, description) for the selected tree node
