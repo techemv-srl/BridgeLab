@@ -150,6 +150,93 @@
 </div>
 
 <style>
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+	}
+
+	.modal.modal-large {
+		background: var(--color-bg, #1e1e2e);
+		color: var(--color-text, #cdd6f4);
+		border: 1px solid var(--color-border, #313244);
+		border-radius: 6px;
+		width: min(960px, 92vw);
+		max-height: 86vh;
+		display: flex;
+		flex-direction: column;
+		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+	}
+
+	.modal-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid var(--color-border, #313244);
+		font-weight: 600;
+	}
+
+	.modal-close {
+		background: transparent;
+		border: none;
+		color: var(--color-text, #cdd6f4);
+		font-size: 1.25rem;
+		cursor: pointer;
+		padding: 0 0.25rem;
+	}
+
+	.modal-body {
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		overflow: auto;
+		flex: 1;
+	}
+
+	.modal-footer {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		border-top: 1px solid var(--color-border, #313244);
+	}
+
+	.btn {
+		background: var(--color-input-bg, #313244);
+		color: var(--color-text, #cdd6f4);
+		border: 1px solid var(--color-border, #45475a);
+		border-radius: 4px;
+		padding: 0.4rem 0.9rem;
+		font-size: 0.85rem;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.btn:hover:not(:disabled) {
+		background: var(--color-border, #45475a);
+	}
+
+	.btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.btn-primary {
+		background: var(--color-accent, #89b4fa);
+		color: #11111b;
+		border-color: var(--color-accent, #89b4fa);
+	}
+
+	.btn-primary:hover:not(:disabled) {
+		background: #7aa4e8;
+	}
+
 	.xsd-intro {
 		margin: 0 0 1rem;
 		font-size: 0.85rem;

@@ -914,6 +914,9 @@
 	<MenuBar
 		{recentFiles}
 		{theme}
+		{showTree}
+		{showInspector}
+		{showSchemaFields}
 		onOpenFile={handleOpenFile}
 		onSave={handleSave}
 		onSaveAs={handleSaveAs}
