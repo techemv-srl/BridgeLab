@@ -457,7 +457,7 @@ mod tests {
             trial_days: 7,
         };
         let days = trial_days_remaining(&trial);
-        assert!(days >= 29 && days <= 30);
+        assert!(days >= 6 && days <= 7, "expected 6-7 days remaining, got {}", days);
     }
 
     #[test]

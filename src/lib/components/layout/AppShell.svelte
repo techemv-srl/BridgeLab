@@ -24,6 +24,7 @@
 	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
 	import AnonymizeDialog from '$lib/components/anonymization/AnonymizeDialog.svelte';
 	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
+	import SchemaExportDialog from '$lib/components/layout/SchemaExportDialog.svelte';
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
 	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
 	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
@@ -49,6 +50,7 @@
 	let showAbout = $state(false);
 	let showAnonymize = $state(false);
 	let showSettings = $state(false);
+	let showSchemaExport = $state(false);
 	let showActivation = $state(false);
 	let showTemplates = $state(false);
 	let showBundleVisualizer = $state(false);
@@ -912,6 +914,9 @@
 	<MenuBar
 		{recentFiles}
 		{theme}
+		{showTree}
+		{showInspector}
+		{showSchemaFields}
 		onOpenFile={handleOpenFile}
 		onSave={handleSave}
 		onSaveAs={handleSaveAs}
@@ -931,6 +936,7 @@
 		onCopyFull={handleCopyFull}
 		onCopyTruncated={handleCopyTruncated}
 		onExportJson={handleExportJson}
+		onExportXsd={() => { showSchemaExport = true; }}
 		onExportCsv={handleExportCsv}
 		onToggleTree={handleToggleTree}
 		onToggleInspector={() => { showInspector = !showInspector; }}
@@ -1277,6 +1283,11 @@
 				/>
 			</div>
 		</div>
+	{/if}
+
+	<!-- Schema XSD export dialog -->
+	{#if showSchemaExport}
+		<SchemaExportDialog onClose={() => { showSchemaExport = false; }} />
 	{/if}
 
 	<!-- In-app dialog (replaces native alert/confirm) -->

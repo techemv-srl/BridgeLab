@@ -8,6 +8,22 @@ const MLLP_START: u8 = 0x0B; // VT (vertical tab)
 const MLLP_END_1: u8 = 0x1C; // FS (file separator)
 const MLLP_END_2: u8 = 0x0D; // CR (carriage return)
 
+/// Hard cap on how much ACK payload we'll buffer from the peer. Real HL7 ACKs
+/// fit in a few KB; anything past this means the peer is either misbehaving
+/// or hostile (streaming without a terminator). Prevents unbounded memory
+/// growth that could otherwise run until the read timeout expires.
+const MAX_ACK_BYTES: usize = 1 * 1024 * 1024; // 1 MiB
+
+/// Inner state of the ACK read loop.
+enum ReadOutcome {
+    /// Saw the MLLP terminator (FS CR) — full ACK received.
+    Terminator,
+    /// Peer closed the connection before sending a terminator.
+    Eof,
+    /// Peer exceeded MAX_ACK_BYTES without sending a terminator.
+    CapExceeded,
+}
+
 /// Result of an MLLP send operation.
 #[derive(Debug, Clone, Serialize)]
 pub struct MllpSendResult {
@@ -106,40 +122,84 @@ pub async fn send(
         };
     }
 
-    // Read response (ACK)
-    let mut buf = vec![0u8; 65536];
-    let read_result = tokio::time::timeout(
-        Duration::from_secs(timeout_secs),
-        stream.read(&mut buf),
-    )
-    .await;
+    // Read ACK by looping until we see the MLLP terminator (FS CR) or EOF.
+    // A single read() may return a partial ACK if the peer flushes in two
+    // TCP segments — leaving unread bytes in the kernel buffer. Dropping
+    // the stream with unread bytes causes the kernel to send RST instead
+    // of FIN, which surfaces on the peer as "Connection reset by peer"
+    // after it has already sent the ACK.
+    let mut response_bytes: Vec<u8> = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 4096];
 
-    match read_result {
-        Ok(Ok(n)) if n > 0 => {
-            let response = mllp_unframe(&buf[..n]).unwrap_or_default();
-            MllpSendResult {
-                success: true,
-                response,
-                response_time_ms: start.elapsed().as_millis() as u64,
-                error: None,
+    let read_status = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
+        loop {
+            match stream.read(&mut chunk).await {
+                Ok(0) => return Ok::<ReadOutcome, std::io::Error>(ReadOutcome::Eof),
+                Ok(n) => {
+                    response_bytes.extend_from_slice(&chunk[..n]);
+                    let len = response_bytes.len();
+                    if len >= 2
+                        && response_bytes[len - 2] == MLLP_END_1
+                        && response_bytes[len - 1] == MLLP_END_2
+                    {
+                        return Ok(ReadOutcome::Terminator);
+                    }
+                    if len > MAX_ACK_BYTES {
+                        return Ok(ReadOutcome::CapExceeded);
+                    }
+                }
+                Err(e) => return Err(e),
             }
         }
-        Ok(Ok(_)) => MllpSendResult {
+    })
+    .await;
+
+    // Gracefully half-close the write side before dropping the stream so the
+    // peer sees FIN, not RST. This is the fix for the "socket error after
+    // ACK" symptom reported by receivers like HAPI / Mirth.
+    let _ = stream.shutdown().await;
+
+    let response = mllp_unframe(&response_bytes).unwrap_or_default();
+    let response_time_ms = start.elapsed().as_millis() as u64;
+
+    match read_status {
+        Ok(Ok(ReadOutcome::Terminator)) => MllpSendResult {
             success: true,
+            response,
+            response_time_ms,
+            error: None,
+        },
+        Ok(Ok(ReadOutcome::Eof)) if !response_bytes.is_empty() => MllpSendResult {
+            success: true,
+            response,
+            response_time_ms,
+            error: None,
+        },
+        Ok(Ok(ReadOutcome::Eof)) => MllpSendResult {
+            success: false,
             response: String::new(),
-            response_time_ms: start.elapsed().as_millis() as u64,
-            error: Some("Empty response (connection closed)".into()),
+            response_time_ms,
+            error: Some("Empty response (connection closed by peer)".into()),
+        },
+        Ok(Ok(ReadOutcome::CapExceeded)) => MllpSendResult {
+            success: false,
+            response: String::new(),
+            response_time_ms,
+            error: Some(format!(
+                "Response exceeded {} bytes without MLLP terminator; aborted",
+                MAX_ACK_BYTES
+            )),
         },
         Ok(Err(e)) => MllpSendResult {
             success: false,
-            response: String::new(),
-            response_time_ms: start.elapsed().as_millis() as u64,
+            response,
+            response_time_ms,
             error: Some(format!("Read failed: {}", e)),
         },
         Err(_) => MllpSendResult {
             success: false,
-            response: String::new(),
-            response_time_ms: start.elapsed().as_millis() as u64,
+            response,
+            response_time_ms,
             error: Some("Response timed out".into()),
         },
     }
@@ -206,6 +266,10 @@ pub async fn receive_one(
         let ack_framed = mllp_frame(&ack_msg);
         let _ = stream.write_all(&ack_framed).await;
     }
+
+    // Gracefully half-close write side so the client receives FIN, not RST,
+    // after the ACK has been flushed. Mirror of the fix applied in send().
+    let _ = stream.shutdown().await;
 
     let received_at = chrono::Utc::now().to_rfc3339();
 
@@ -305,6 +369,86 @@ mod tests {
         assert_eq!(received.content, msg);
         assert!(received.source_addr.starts_with("127.0.0.1:"));
         assert!(!received.received_at.is_empty());
+    }
+
+    /// Regression: ACK delivered in two TCP segments must be fully assembled
+    /// by the client. Before the loop-read fix, the second segment was left
+    /// in the kernel buffer and the response came back truncated (or empty,
+    /// causing an MLLP unframe failure). Also exercises the graceful close
+    /// path (shutdown before drop) — without it the test peer would observe
+    /// a reset on its read side.
+    #[tokio::test]
+    async fn test_mllp_send_handles_split_ack() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Peer that writes the ACK in two bursts with a deliberate gap to
+        // force the client through multiple read() calls.
+        let _peer = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await.unwrap();
+
+            let ack = mllp_frame(
+                "MSH|^~\\&|Recv||Send||20260423||ACK|ACK999|P|2.5\rMSA|AA|MSG999",
+            );
+            let split = ack.len() / 2;
+            stream.write_all(&ack[..split]).await.unwrap();
+            stream.flush().await.unwrap();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            stream.write_all(&ack[split..]).await.unwrap();
+            stream.flush().await.unwrap();
+
+            // Let the client drive the close; read until EOF so we can
+            // confirm the client shut down cleanly (FIN, not RST).
+            let _ = stream.read(&mut buf).await;
+        });
+
+        let msg = "MSH|^~\\&|Send|SF|Recv|RF|20260423||ADT^A01|MSG999|P|2.5\rPID|||1";
+        let result = send("127.0.0.1", port, msg, 5).await;
+
+        assert!(result.success, "send failed: {:?}", result.error);
+        assert!(
+            result.response.contains("MSA|AA|MSG999"),
+            "expected full ACK body, got: {:?}",
+            result.response
+        );
+    }
+
+    /// A hostile / misbehaving peer that streams data without ever sending the
+    /// MLLP terminator must not blow up client memory. The send() loop caps
+    /// the response buffer at MAX_ACK_BYTES and aborts with a clear error.
+    #[tokio::test]
+    async fn test_mllp_send_caps_unbounded_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Peer that writes 2 MiB of junk with NO MLLP terminator.
+        let _peer = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await.unwrap();
+
+            // 2 MiB chunks so we comfortably exceed MAX_ACK_BYTES (1 MiB)
+            let junk = vec![b'A'; 64 * 1024];
+            for _ in 0..32 {
+                if stream.write_all(&junk).await.is_err() {
+                    break;
+                }
+            }
+            let _ = stream.shutdown().await;
+        });
+
+        let msg = "MSH|^~\\&|Send|SF|Recv|RF|20260423||ADT^A01|CAP001|P|2.5\rPID|||1";
+        let result = send("127.0.0.1", port, msg, 10).await;
+
+        assert!(!result.success, "should abort, not succeed on unbounded stream");
+        let err = result.error.expect("must have an error");
+        assert!(
+            err.contains("exceeded") && err.contains("MLLP terminator"),
+            "expected cap-exceeded error, got: {}",
+            err
+        );
     }
 
     /// BL-MLLP-08 equivalent: connection to a closed port fails fast with an
