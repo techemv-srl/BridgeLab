@@ -42,6 +42,16 @@
 	"menu.tools.copyTruncated": "Copier le message tronqué",
 	"menu.tools.exportJson": "Exporter JSON",
 	"menu.tools.exportCsv": "Exporter CSV",
+	"menu.tools.exportXsd": "Exporter le schéma du message au format XSD…",
+
+	"xsd.title": "Exporter le schéma du message HL7 au format XSD",
+	"xsd.intro": "Choisissez une version HL7 et un type de message. BridgeLab génère un XSD autonome à enregistrer ou copier pour vos pipelines d'intégration.",
+	"xsd.version": "Version HL7",
+	"xsd.message": "Type de message",
+	"xsd.copy": "Copier",
+	"xsd.save": "Enregistrer sous…",
+	"xsd.saveTitle": "Enregistrer le XSD",
+	"xsd.loading": "Génération…",
 
 	"menu.help": "Aide",
 	"menu.help.about": "À propos de BridgeLab",

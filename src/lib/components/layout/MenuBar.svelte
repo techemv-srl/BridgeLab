@@ -43,6 +43,7 @@
 		onCopyTruncated: () => void;
 		onExportJson: () => void;
 		onExportCsv: () => void;
+		onExportXsd: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowSettings: () => void;
@@ -78,6 +79,7 @@
 		onCopyTruncated,
 		onExportJson,
 		onExportCsv,
+		onExportXsd,
 		onSetTheme,
 		onSetLanguage,
 		onShowSettings,
@@ -312,6 +314,9 @@
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onExportCsv)}>
 					<span>{tr('menu.tools.exportCsv')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onExportXsd)}>
+					<span>{tr('menu.tools.exportXsd')}</span>
 				</button>
 			</div>
 		{/if}
