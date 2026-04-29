@@ -11,6 +11,7 @@
 - **Landing page**: [docs/site/](docs/site/) - deployed to GitHub Pages
   via [`.github/workflows/pages.yml`](.github/workflows/pages.yml). Preview
   locally with `python3 -m http.server --directory docs/site 4173`.
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Plugin docs**: [docs/PLUGINS.md](docs/PLUGINS.md)
 - **Test plan**: [TEST_PLAN.md](TEST_PLAN.md)
 - **Roadmap**: [ROADMAP.md](ROADMAP.md)
