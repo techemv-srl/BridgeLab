@@ -155,6 +155,51 @@ BridgeLab/
 └── .github/workflows/        # CI/CD pipelines
 ```
 
+## Troubleshooting installs
+
+**Windows Server 2022 / corporate desktops — WebView2 install fails with code `-2147012866`**
+
+The error `0x800072EFE` (`WININET_E_CONNECTION_RESET`) means the
+WebView2 bootstrapper could not download the runtime from Microsoft's
+CDN — typically because the machine has no internet, sits behind a
+firewall that blocks `msedge.api.cdp.microsoft.com`, or has Internet
+Explorer Enhanced Security Configuration enabled (default on Windows
+Server).
+
+Two ways to fix:
+
+1. **Use the offline installer** — from v0.2.0 onwards the standard
+   BridgeLab installer ships with the WebView2 runtime embedded
+   (~150 MB instead of ~13 MB). Download the latest from
+   [Releases](https://github.com/techemv-srl/BridgeLab/releases).
+2. **Install WebView2 manually first**, then run any older BridgeLab
+   installer:
+   <https://developer.microsoft.com/microsoft-edge/webview2/> — pick
+   the **Evergreen Standalone Installer** for x64. Once installed
+   system-wide, BridgeLab installers (online or offline) will skip
+   the WebView2 step entirely.
+
+**Per-user vs per-machine install (Windows)**
+
+The installer asks where to install:
+
+- **Current user only** — installs under
+  `%LOCALAPPDATA%\Programs\BridgeLab`, no admin elevation required.
+- **All users on this machine** — installs under
+  `%PROGRAMFILES%\BridgeLab`, prompts for admin (UAC). Useful on
+  shared workstations and Windows Server.
+
+The choice is remembered for in-place upgrades.
+
+## Contact
+
+**TECHEMV SRL**
+- Email: [info@techemv.it](mailto:info@techemv.it)
+- Web: [www.techemv.it](https://www.techemv.it)
+
+For license purchases, enterprise inquiries, integration support and bug
+reports outside GitHub Issues, reach us at the email above.
+
 ## License
 
 Open Core - Free for non-commercial use.

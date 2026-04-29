@@ -32,9 +32,9 @@
 		"category": "DeveloperTool",
 		"shortDescription": "Modern HL7/FHIR message editor",
 		"longDescription": "BridgeLab is a professional HL7/FHIR message editor for healthcare integration. It handles large messages (5-10MB with base64 payloads), MLLP/HTTP transport with listener support, anonymization, validation against the HL7 standard, FHIR Bundle visualization and FHIRPath evaluation. Multi-language UI (EN, IT, FR, ES, DE).",
-		"copyright": "Copyright (c) 2026 TECHEMV SRL",
+		"copyright": "Copyright (c) 2026 TECHEMV SRL — info@techemv.it",
 		"publisher": "TECHEMV SRL",
-		"homepage": "https://github.com/1warpengine/HL7_editor",
+		"homepage": "https://www.techemv.it",
 		"license": "MIT",
 		"licenseFile": "../LICENSE",
 		"fileAssociations": [
@@ -53,10 +53,12 @@
 			"icons/icon.ico"
 		],
 		"windows": {
-			"webviewInstallMode": { "type": "embedBootstrapper" },
+			"webviewInstallMode": { "type": "offlineInstaller" },
 			"nsis": {
-				"installMode": "currentUser",
+				"installMode": "both",
 				"installerIcon": "icons/icon.ico",
+				"headerImage": "icons/nsis/header.bmp",
+				"sidebarImage": "icons/nsis/sidebar.bmp",
 				"displayLanguageSelector": true,
 				"languages": ["English", "Italian", "French", "Spanish", "German"],
 				"compression": "lzma"
@@ -93,7 +95,7 @@
 			"dialog": true,
 			"pubkey": "PLACEHOLDER_GENERATE_WITH_TAURI_SIGNER",
 			"endpoints": [
-				"https://github.com/1warpengine/HL7_editor/releases/latest/download/latest.json"
+				"https://github.com/techemv-srl/BridgeLab/releases/latest/download/latest.json"
 			]
 		}
 	}
