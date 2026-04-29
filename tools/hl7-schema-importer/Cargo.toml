@@ -1,6 +1,6 @@
 [package]
 name = "hl7-schema-importer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Build-time tool: ingest HL7 v2.x schema data from hl7-dictionary / HAPI and emit BridgeLab schema JSON."
 
