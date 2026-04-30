@@ -13,29 +13,38 @@
 
 	let { status, onActivate }: Props = $props();
 
-	let dismissed = $state(false);
+	// Persist dismissal across restarts, scoped to the current license_type
+	// so the banner reappears if the user transitions trial→free→expired etc.
+	let dismissedFor = $state<string | null>(
+		typeof window !== 'undefined'
+			? localStorage.getItem('trial_banner_dismissed_for')
+			: null
+	);
 
+	// Urgent = banner cannot be dismissed:
+	// - expired Pro/Enterprise license (must reactivate to regain features)
+	// - trial with ≤3 days left (final warning)
+	// Free (trial elapsed) is NOT urgent — community tier remains usable.
 	let urgent = $derived(
 		status.license_type === 'expired' ||
-		status.license_type === 'free' ||
 		(status.license_type === 'trial' && (status.days_remaining ?? 0) <= 3)
 	);
 
-	// Show banner when:
-	// - Trial active and NOT dismissed (or urgent <=5 days which overrides dismiss)
-	// - Free (expired trial)
-	// - Expired license
-	let visible = $derived(() => {
+	let visible = $derived.by(() => {
 		if (status.license_type === 'professional' || status.license_type === 'enterprise') return false;
-		if (status.license_type === 'trial') {
-			if (urgent) return true; // <=5 days: always show
-			return !dismissed; // >5 days: show unless dismissed
-		}
-		return true; // free / expired: always show
+		if (urgent) return true;
+		return dismissedFor !== status.license_type;
 	});
+
+	function dismiss() {
+		dismissedFor = status.license_type;
+		if (typeof window !== 'undefined') {
+			localStorage.setItem('trial_banner_dismissed_for', status.license_type);
+		}
+	}
 </script>
 
-{#if visible()}
+{#if visible}
 	<div class="trial-banner" class:urgent>
 		<span class="banner-text">
 			{#if status.license_type === 'trial'}
@@ -49,8 +58,8 @@
 		<button class="banner-btn" onclick={onActivate}>
 			{tr('activate')}
 		</button>
-		{#if status.license_type === 'trial' && !urgent}
-			<button class="banner-dismiss" onclick={() => { dismissed = true; }} aria-label="Dismiss">&times;</button>
+		{#if !urgent}
+			<button class="banner-dismiss" onclick={dismiss} aria-label="Dismiss">&times;</button>
 		{/if}
 	</div>
 {/if}
