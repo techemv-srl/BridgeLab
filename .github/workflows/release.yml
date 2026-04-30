@@ -70,7 +70,14 @@ jobs:
             os: macos-14
             target: aarch64-apple-darwin
           - name: macOS-Intel
-            os: macos-13
+            # macos-13 was the last Intel hosted runner. GitHub deprecated
+            # it on 2024-12-04 and removed it on 2025-12-01 — any job
+            # pinned to macos-13 now hangs in "Queued" forever with no
+            # runner to pick it up. We cross-compile to x86_64 from an
+            # Apple Silicon runner: the Rust toolchain installs the
+            # target (matrix.platform.target) and Tauri picks it up via
+            # --target on the build command.
+            os: macos-14
             target: x86_64-apple-darwin
           - name: Windows-x64
             os: windows-latest
