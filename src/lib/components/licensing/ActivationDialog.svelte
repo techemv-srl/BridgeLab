@@ -78,9 +78,13 @@
 		}
 	}
 
+	// "Active" = a real paid license is installed. Free (no license) and trial
+	// (auto-grace) do not have anything to deactivate, so the deactivate button
+	// must stay hidden in those states. Expired = a Pro license that lapsed —
+	// also nothing to deactivate (already inactive).
 	let isActive = $derived(
-		currentStatus.license_type !== 'trial' &&
-		currentStatus.license_type !== 'expired'
+		currentStatus.license_type === 'professional' ||
+		currentStatus.license_type === 'enterprise'
 	);
 </script>
 
