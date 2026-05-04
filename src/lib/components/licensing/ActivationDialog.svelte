@@ -46,6 +46,19 @@
 		getHardwareId().then(id => { hardwareId = id; }).catch(() => {});
 	});
 
+	// Steal focus from Monaco when the dialog mounts. Without this the
+	// editor below keeps keyboard focus, so Ctrl+V on the licence textarea
+	// pastes into the active message tab instead of the licence input.
+	let keyTextarea = $state<HTMLTextAreaElement | null>(null);
+	$effect(() => {
+		if (keyTextarea) {
+			// requestAnimationFrame defers until after the modal is rendered
+			// and the dialog overlay has been painted; otherwise focus()
+			// fights the still-mounting dialog.
+			requestAnimationFrame(() => keyTextarea?.focus());
+		}
+	});
+
 	async function handleActivate() {
 		if (!licenseKey.trim()) {
 			error = tr('act.key') + ' is required';
@@ -144,6 +157,7 @@
 				<div class="form-row">
 					<label for="act-key">{tr('act.key')}</label>
 					<textarea id="act-key" bind:value={licenseKey}
+						bind:this={keyTextarea}
 						placeholder={tr('act.keyPlaceholder')}
 						rows="4"
 						class="input-full key-input"></textarea>
