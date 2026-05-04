@@ -16,13 +16,15 @@ pub async fn mllp_send(
     port: u16,
     message: String,
     timeout_secs: Option<u64>,
+    encoding: Option<String>,
     profile_name: Option<String>,
     db: State<'_, Database>,
 ) -> Result<MllpSendResult, String> {
     feature_gate::require("mllp_send")?;
 
     let timeout = timeout_secs.unwrap_or(30);
-    let result = mllp::send(&host, port, &message, timeout).await;
+    let enc = encoding.unwrap_or_default();
+    let result = mllp::send(&host, port, &message, timeout, &enc).await;
 
     let preview: String = message.chars().take(100).collect();
     let status = if result.success { "OK" } else { "FAILED" };
