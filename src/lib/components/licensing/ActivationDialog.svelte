@@ -66,6 +66,18 @@
 		}
 	});
 
+	async function pasteFromClipboard() {
+		try {
+			const text = await navigator.clipboard.readText();
+			licenseKey = text;
+			error = '';
+			// Refocus the textarea so Enter/edit keystrokes go to it
+			keyTextarea?.focus();
+		} catch (e) {
+			error = `Clipboard read failed: ${e}`;
+		}
+	}
+
 	async function handleActivate() {
 		if (!licenseKey.trim()) {
 			error = tr('act.key') + ' is required';
@@ -161,8 +173,11 @@
 			<!-- Activation form: only the key field -->
 			<div class="form-section">
 				<div class="status-label">{tr('act.activate')}</div>
-				<div class="form-row">
+				<div class="form-row key-row">
 					<label for="act-key">{tr('act.key')}</label>
+					<button class="btn btn-paste" onclick={pasteFromClipboard} title={tr('act.pasteFromClipboard')}>
+						📋 {tr('act.paste')}
+					</button>
 					<textarea id="act-key" bind:value={licenseKey}
 						bind:this={keyTextarea}
 						placeholder={tr('act.keyPlaceholder')}
@@ -251,6 +266,19 @@
 	.form-row label { font-size: 11px; color: var(--color-text-secondary); }
 	.input-full { width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-bg-tertiary); color: var(--color-text-primary); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 	.key-input { resize: vertical; min-height: 80px; line-height: 1.4; }
+	.key-row { flex-wrap: wrap; gap: 6px; }
+	.key-row .key-input { flex-basis: 100%; }
+	.btn-paste {
+		padding: 4px 10px;
+		background: var(--color-accent, #89b4fa);
+		color: var(--color-bg-primary, #11111b);
+		border: 1px solid var(--color-accent, #89b4fa);
+		border-radius: 4px;
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.btn-paste:hover { filter: brightness(1.1); }
 	.key-hint { font-size: 10px; color: var(--color-text-secondary); font-style: italic; }
 
 	.key-preview { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--color-bg-tertiary); border-radius: 6px; border: 1px solid var(--color-border); }
