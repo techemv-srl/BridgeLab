@@ -271,6 +271,8 @@
 	"act.daysRemaining": "{days} jours restants",
 	"act.hwHint": "Partagez cet ID lors de la demande d'une clé de licence.",
 	"act.keyPlaceholder": "Collez votre clé de licence ici...",
+	"act.paste": "Coller",
+	"act.pasteFromClipboard": "Coller depuis le presse-papiers",
 	"act.communityDesc": "Éditeur HL7 v2, analyseur, validation, MLLP/HTTP de base.",
 	"act.proDesc": "+ Listener, HTTP complet, anonymisation, export, FHIRPath, Bundle, plugins illimités.",
 	"act.entDesc": "Tout Pro + SOAP, support prioritaire.",

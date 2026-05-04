@@ -292,7 +292,8 @@
 					<div class="advanced-options">
 						<div class="form-row">
 							<label for="mllp-listen-ack-code">{tr('comm.listenAckCode')}</label>
-							<select id="mllp-listen-ack-code" bind:value={listenAckCode} class="input-method">
+							<select id="mllp-listen-ack-code" bind:value={listenAckCode}
+								style="min-width: 130px; padding: 4px 6px;">
 								<option value="AA">{tr('comm.listenAckAA')}</option>
 								<option value="AE">{tr('comm.listenAckAE')}</option>
 								<option value="AR">{tr('comm.listenAckAR')}</option>
