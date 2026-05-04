@@ -4,9 +4,9 @@ use tokio::net::{TcpListener, TcpStream};
 use std::time::{Duration, Instant};
 
 /// MLLP framing bytes
-const MLLP_START: u8 = 0x0B; // VT (vertical tab)
-const MLLP_END_1: u8 = 0x1C; // FS (file separator)
-const MLLP_END_2: u8 = 0x0D; // CR (carriage return)
+pub const MLLP_START: u8 = 0x0B; // VT (vertical tab)
+pub const MLLP_END_1: u8 = 0x1C; // FS (file separator)
+pub const MLLP_END_2: u8 = 0x0D; // CR (carriage return)
 
 /// Hard cap on how much ACK payload we'll buffer from the peer. Real HL7 ACKs
 /// fit in a few KB; anything past this means the peer is either misbehaving
