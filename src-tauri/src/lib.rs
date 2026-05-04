@@ -10,6 +10,7 @@ pub mod templates;
 pub mod utils;
 pub mod validation;
 
+use communication::mllp_listener::ListenerState;
 use database::Database;
 use message_store::MessageStore;
 use plugins::PluginRegistry;
@@ -28,6 +29,7 @@ pub fn run() {
         .manage(MessageStore::new())
         .manage(db)
         .manage(plugins)
+        .manage(ListenerState::new())
         .invoke_handler(tauri::generate_handler![
             commands::parser::parse_message,
             commands::parser::get_tree_children,
@@ -58,6 +60,9 @@ pub fn run() {
             commands::parser::collapse_all_fields,
             commands::communication::mllp_send,
             commands::communication::mllp_receive,
+            commands::communication::mllp_listen_start,
+            commands::communication::mllp_listen_stop,
+            commands::communication::mllp_listen_status,
             commands::communication::http_request,
             commands::communication::generate_ack,
             commands::communication::save_connection_profile,
