@@ -1,9 +1,12 @@
 <script lang="ts">
 	import {
-		mllpSend, mllpReceive, httpRequest,
+		mllpSend, httpRequest,
+		mllpListenStart, mllpListenStop, mllpListenStatus,
 		getRequestHistory, clearRequestHistory,
 		type MllpSendResult, type HttpResult, type HistoryEntry,
+		type ListenerStatus,
 	} from '$lib/ipc/communication';
+	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -25,9 +28,17 @@
 	let mllpTimeout = $state(30);
 	let mllpResult = $state<MllpSendResult | null>(null);
 	let mllpSending = $state(false);
-	let mllpListening = $state(false);
 	let mllpListenPort = $state(2576);
 	let mllpShowAdvanced = $state(false);
+
+	// Persistent listener state — driven by the backend via mllp:received events
+	let listenBindAddress = $state('0.0.0.0');
+	let listenAckCode = $state('AA');
+	let listenReadTimeout = $state(30);
+	let listenStatus = $state<ListenerStatus>({ running: false, port: null, bind_address: null });
+	let listenError = $state<string | null>(null);
+	let listenInboxCount = $state(0);
+	let listenShowSettings = $state(false);
 	// MLLP advanced options
 	let mllpResponseTimeout = $state(30);
 	let mllpAutoAck = $state(true);
@@ -75,24 +86,60 @@
 		loadHistory();
 	}
 
-	async function handleMllpListen() {
-		mllpListening = true;
-		mllpResult = null;
+	async function handleListenStart() {
+		listenError = null;
 		try {
-			const msg = await mllpReceive(mllpListenPort, 120, true);
-			mllpResult = {
-				success: true,
-				response: `Received from ${msg.source_addr} at ${msg.received_at}`,
-				response_time_ms: 0,
-				error: null,
-			};
-			onMessageReceived?.(msg.content);
+			listenStatus = await mllpListenStart({
+				port: mllpListenPort,
+				bind_address: listenBindAddress,
+				auto_ack: mllpAutoAck,
+				ack_code: listenAckCode,
+				read_timeout_secs: listenReadTimeout,
+			});
 		} catch (e) {
-			mllpResult = { success: false, response: '', response_time_ms: 0, error: String(e) };
+			listenError = String(e);
 		}
-		mllpListening = false;
-		loadHistory();
 	}
+
+	async function handleListenStop() {
+		try {
+			listenStatus = await mllpListenStop();
+		} catch (e) {
+			listenError = String(e);
+		}
+	}
+
+	// Subscribe to the backend event stream once. mllp:received fires for
+	// every successfully-decoded incoming message; mllp:listen_error for any
+	// per-connection or accept-loop failure (the listener itself stays up
+	// unless accept() fatally fails).
+	let unlistenReceived: UnlistenFn | null = null;
+	let unlistenError: UnlistenFn | null = null;
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		(async () => {
+			// Sync initial status (in case the listener was running before this
+			// component mounted, e.g. after a frontend reload with backend alive).
+			try { listenStatus = await mllpListenStatus(); } catch {}
+
+			unlistenReceived = await listen<{ content: string; source_addr: string; received_at: string }>(
+				'mllp:received',
+				(ev) => {
+					listenInboxCount += 1;
+					onMessageReceived?.(ev.payload.content);
+					loadHistory();
+				},
+			);
+			unlistenError = await listen<string>('mllp:listen_error', (ev) => {
+				listenError = ev.payload;
+			});
+		})();
+
+		return () => {
+			unlistenReceived?.();
+			unlistenError?.();
+		};
+	});
 
 	// --- HTTP ---
 	async function handleHttpSend() {
@@ -212,13 +259,63 @@
 					<button class="btn btn-primary" onclick={handleMllpSend} disabled={mllpSending || !hasMessage}>
 						{mllpSending ? 'Sending...' : 'Send via MLLP'}
 					</button>
-					<span class="separator">|</span>
-					<button class="btn" onclick={handleMllpListen} disabled={mllpListening}>
-						{mllpListening ? `Listening on :${mllpListenPort}...` : 'Listen for incoming'}
-					</button>
-					<label for="mllp-listen-port">Port</label>
-					<input id="mllp-listen-port" type="number" bind:value={mllpListenPort} class="input-sm" />
 				</div>
+
+				<div class="section-label">{tr('comm.listen')}</div>
+				<div class="form-row">
+					{#if !listenStatus.running}
+						<button class="btn" onclick={handleListenStart}>
+							{tr('comm.startListening')}
+						</button>
+						<label for="mllp-listen-port">{tr('comm.port')}</label>
+						<input id="mllp-listen-port" type="number" bind:value={mllpListenPort} class="input-sm" />
+						<label for="mllp-listen-bind">{tr('comm.bind')}</label>
+						<input id="mllp-listen-bind" type="text" bind:value={listenBindAddress} class="input-sm" placeholder="0.0.0.0" />
+						<button class="btn-link" onclick={() => listenShowSettings = !listenShowSettings}>
+							{listenShowSettings ? tr('comm.listenHideSettings') + ' ▲' : tr('comm.listenSettings') + ' ▼'}
+						</button>
+					{:else}
+						<button class="btn btn-danger" onclick={handleListenStop}>
+							{tr('comm.stopListening')}
+						</button>
+						<span class="status-pill running">
+							{tr('comm.listenStatus', {
+								addr: listenStatus.bind_address ?? '',
+								port: listenStatus.port ?? '',
+								count: listenInboxCount,
+							})}
+						</span>
+					{/if}
+				</div>
+
+				{#if listenShowSettings && !listenStatus.running}
+					<div class="advanced-options">
+						<div class="setting-row">
+							<label for="mllp-listen-ack-code">{tr('comm.listenAckCode')}</label>
+							<select id="mllp-listen-ack-code" bind:value={listenAckCode} class="input-xs">
+								<option value="AA">{tr('comm.listenAckAA')}</option>
+								<option value="AE">{tr('comm.listenAckAE')}</option>
+								<option value="AR">{tr('comm.listenAckAR')}</option>
+							</select>
+						</div>
+						<div class="setting-row">
+							<label for="mllp-listen-read-timeout">{tr('comm.listenReadTimeout')}</label>
+							<input id="mllp-listen-read-timeout" type="number" min={1} max={600}
+								bind:value={listenReadTimeout} class="input-xs" />
+							<span class="hint">s</span>
+						</div>
+						<div class="setting-check">
+							<label><input type="checkbox" bind:checked={mllpAutoAck} /> {tr('comm.listenAutoAck')}</label>
+						</div>
+					</div>
+				{/if}
+
+				{#if listenError}
+					<div class="result error">
+						<div class="result-header"><span>{tr('comm.listenError')}</span></div>
+						<div class="result-body">{listenError}</div>
+					</div>
+				{/if}
 
 				{#if mllpResult}
 					<div class="result" class:success={mllpResult.success} class:error={!mllpResult.success}>
