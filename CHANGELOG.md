@@ -2,6 +2,12 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [0.2.1] — 2026-04-30
+
+### Fixed
+- **Trial-expired banner now dismissable**: when the 7-day trial elapsed and the licence transitioned to `free` (community fallback, fully usable), the red banner stayed up and could not be closed. The × button is now shown for `free` and `trial` (non-urgent) states, and the dismissal persists across restarts (scoped to the current `license_type`, so the banner reappears on real state transitions). Only `expired` (a real Pro/Enterprise licence that lapsed) and `trial` with ≤3 days remaining stay non-dismissable.
+- **"Disattiva Licenza" no longer shown for Free users**: the button surfaced in the Activation modal even when the user had no licence to deactivate, doing nothing on click. Now it only appears for `professional` and `enterprise`. Free / Trial / Expired show the activation form instead.
+
 ## [0.2.0] — 2026-04-29
 
 ### Added
