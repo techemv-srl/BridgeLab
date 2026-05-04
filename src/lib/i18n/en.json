@@ -271,6 +271,8 @@
 	"act.daysRemaining": "{days} days remaining",
 	"act.hwHint": "Share this ID when requesting a license key.",
 	"act.keyPlaceholder": "Paste your license key here...",
+	"act.paste": "Paste",
+	"act.pasteFromClipboard": "Paste from clipboard",
 	"act.communityDesc": "HL7 v2 editor, parser, validation, basic MLLP/HTTP.",
 	"act.proDesc": "+ Listener, full HTTP, anonymization, export, FHIRPath, Bundle, unlimited plugins.",
 	"act.entDesc": "All Pro + SOAP, priority support.",
