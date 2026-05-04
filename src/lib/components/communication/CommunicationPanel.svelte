@@ -290,15 +290,15 @@
 
 				{#if listenShowSettings && !listenStatus.running}
 					<div class="advanced-options">
-						<div class="setting-row">
+						<div class="form-row">
 							<label for="mllp-listen-ack-code">{tr('comm.listenAckCode')}</label>
-							<select id="mllp-listen-ack-code" bind:value={listenAckCode} class="input-xs">
+							<select id="mllp-listen-ack-code" bind:value={listenAckCode} class="input-method">
 								<option value="AA">{tr('comm.listenAckAA')}</option>
 								<option value="AE">{tr('comm.listenAckAE')}</option>
 								<option value="AR">{tr('comm.listenAckAR')}</option>
 							</select>
 						</div>
-						<div class="setting-row">
+						<div class="form-row">
 							<label for="mllp-listen-read-timeout">{tr('comm.listenReadTimeout')}</label>
 							<input id="mllp-listen-read-timeout" type="number" min={1} max={600}
 								bind:value={listenReadTimeout} class="input-xs" />
