@@ -49,12 +49,19 @@
 	// Steal focus from Monaco when the dialog mounts. Without this the
 	// editor below keeps keyboard focus, so Ctrl+V on the licence textarea
 	// pastes into the active message tab instead of the licence input.
+	//
+	// .focus() alone wasn't enough on Windows when Monaco had a tab open:
+	// Monaco installs global keyboard handlers that intercept Ctrl+V before
+	// the textarea sees it. Explicitly blur the current activeElement first,
+	// then steal focus on the next animation frame so the dialog overlay
+	// is painted before we move keyboard control.
 	let keyTextarea = $state<HTMLTextAreaElement | null>(null);
 	$effect(() => {
 		if (keyTextarea) {
-			// requestAnimationFrame defers until after the modal is rendered
-			// and the dialog overlay has been painted; otherwise focus()
-			// fights the still-mounting dialog.
+			if (document.activeElement instanceof HTMLElement
+			    && document.activeElement !== keyTextarea) {
+				document.activeElement.blur();
+			}
 			requestAnimationFrame(() => keyTextarea?.focus());
 		}
 	});
