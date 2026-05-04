@@ -49,9 +49,9 @@ export interface HistoryEntry {
 // --- MLLP ---
 export async function mllpSend(
 	host: string, port: number, message: string,
-	timeoutSecs?: number, profileName?: string,
+	timeoutSecs?: number, encoding?: string, profileName?: string,
 ): Promise<MllpSendResult> {
-	return invoke('mllp_send', { host, port, message, timeoutSecs, profileName });
+	return invoke('mllp_send', { host, port, message, timeoutSecs, encoding, profileName });
 }
 
 export async function mllpReceive(
@@ -67,6 +67,7 @@ export interface ListenerConfig {
 	auto_ack: boolean;
 	ack_code: string;       // 'AA' | 'AE' | 'AR'
 	read_timeout_secs: number;
+	encoding: string;       // 'UTF-8' | 'ISO-8859-1' | 'windows-1252' | etc.
 }
 
 export interface ListenerStatus {

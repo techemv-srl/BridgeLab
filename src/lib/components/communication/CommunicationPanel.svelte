@@ -35,6 +35,7 @@
 	let listenBindAddress = $state('0.0.0.0');
 	let listenAckCode = $state('AA');
 	let listenReadTimeout = $state(30);
+	let listenEncoding = $state('UTF-8');
 	let listenStatus = $state<ListenerStatus>({ running: false, port: null, bind_address: null });
 	let listenError = $state<string | null>(null);
 	let listenInboxCount = $state(0);
@@ -78,7 +79,7 @@
 		mllpSending = true;
 		mllpResult = null;
 		try {
-			mllpResult = await mllpSend(mllpHost, mllpPort, currentMessage, mllpTimeout, activeTabLabel || undefined);
+			mllpResult = await mllpSend(mllpHost, mllpPort, currentMessage, mllpTimeout, mllpEncoding, activeTabLabel || undefined);
 		} catch (e) {
 			mllpResult = { success: false, response: '', response_time_ms: 0, error: String(e) };
 		}
@@ -95,6 +96,7 @@
 				auto_ack: mllpAutoAck,
 				ack_code: listenAckCode,
 				read_timeout_secs: listenReadTimeout,
+				encoding: listenEncoding,
 			});
 		} catch (e) {
 			listenError = String(e);
@@ -223,9 +225,17 @@
 							<label for="mllp-resptimeout">Response Timeout</label>
 							<input id="mllp-resptimeout" type="number" bind:value={mllpResponseTimeout} class="input-xs" />
 							<span class="hint">s</span>
-							<label for="mllp-encoding">Encoding</label>
-							<select id="mllp-encoding" bind:value={mllpEncoding} class="input-method">
-								<option>UTF-8</option><option>ISO-8859-1</option><option>ASCII</option><option>Windows-1252</option>
+							<label for="mllp-encoding">{tr('comm.encoding')}</label>
+							<select id="mllp-encoding" bind:value={mllpEncoding}
+								style="min-width: 150px; padding: 4px 6px;">
+								<option value="UTF-8">UTF-8 ({tr('comm.encUnicode')})</option>
+								<option value="ISO-8859-1">ISO-8859-1 ({tr('comm.encLatin1')})</option>
+								<option value="ISO-8859-2">ISO-8859-2 ({tr('comm.encLatin2')})</option>
+								<option value="ISO-8859-15">ISO-8859-15 ({tr('comm.encLatin9')})</option>
+								<option value="windows-1252">windows-1252 ({tr('comm.encWesternEU')})</option>
+								<option value="windows-1250">windows-1250 ({tr('comm.encCentralEU')})</option>
+								<option value="windows-1251">windows-1251 ({tr('comm.encCyrillic')})</option>
+								<option value="ASCII">ASCII (US)</option>
 							</select>
 						</div>
 						<div class="form-row">
@@ -297,6 +307,20 @@
 								<option value="AA">{tr('comm.listenAckAA')}</option>
 								<option value="AE">{tr('comm.listenAckAE')}</option>
 								<option value="AR">{tr('comm.listenAckAR')}</option>
+							</select>
+						</div>
+						<div class="form-row">
+							<label for="mllp-listen-encoding">{tr('comm.encoding')}</label>
+							<select id="mllp-listen-encoding" bind:value={listenEncoding}
+								style="min-width: 150px; padding: 4px 6px;">
+								<option value="UTF-8">UTF-8 ({tr('comm.encUnicode')})</option>
+								<option value="ISO-8859-1">ISO-8859-1 ({tr('comm.encLatin1')})</option>
+								<option value="ISO-8859-2">ISO-8859-2 ({tr('comm.encLatin2')})</option>
+								<option value="ISO-8859-15">ISO-8859-15 ({tr('comm.encLatin9')})</option>
+								<option value="windows-1252">windows-1252 ({tr('comm.encWesternEU')})</option>
+								<option value="windows-1250">windows-1250 ({tr('comm.encCentralEU')})</option>
+								<option value="windows-1251">windows-1251 ({tr('comm.encCyrillic')})</option>
+								<option value="ASCII">ASCII (US)</option>
 							</select>
 						</div>
 						<div class="form-row">

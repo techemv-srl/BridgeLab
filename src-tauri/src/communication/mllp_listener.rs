@@ -18,7 +18,9 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::communication::mllp::{mllp_frame, mllp_unframe, MLLP_END_1, MLLP_END_2};
+use crate::communication::mllp::{
+    decode_with_label, encode_with_label, MLLP_END_1, MLLP_END_2, MLLP_START,
+};
 
 // 10 MiB read cap matches the rest of the parser story.
 const MAX_MSG_BYTES: usize = 10 * 1024 * 1024;
@@ -40,6 +42,11 @@ pub struct ListenerConfig {
     /// Per-connection read timeout in seconds. Connections that go quiet
     /// past this are dropped — the listener itself stays up.
     pub read_timeout_secs: u64,
+    /// Character encoding label (encoding_rs spelling, e.g. "UTF-8",
+    /// "ISO-8859-1", "windows-1252", "windows-1250", "windows-1251").
+    /// Empty string falls back to UTF-8-with-Latin-1-failover.
+    #[serde(default)]
+    pub encoding: String,
 }
 
 impl Default for ListenerConfig {
@@ -50,6 +57,7 @@ impl Default for ListenerConfig {
             auto_ack: true,
             ack_code: "AA".into(),
             read_timeout_secs: 30,
+            encoding: String::new(),
         }
     }
 }
@@ -186,14 +194,31 @@ async fn handle_connection(
         Err(_) => return Err(format!("connection from {} idle past {}s", source_addr, cfg.read_timeout_secs)),
     }
 
-    let content = mllp_unframe(&buf).ok_or_else(|| "could not unframe MLLP payload".to_string())?;
+    // Strip MLLP framing bytes manually so we can decode the payload with
+    // the user-selected charset. Empty payload after stripping → reject.
+    let mut start_idx = 0usize;
+    let mut end_idx = buf.len();
+    if !buf.is_empty() && buf[0] == MLLP_START { start_idx = 1; }
+    if end_idx > start_idx && buf[end_idx - 1] == MLLP_END_2 { end_idx -= 1; }
+    if end_idx > start_idx && buf[end_idx - 1] == MLLP_END_1 { end_idx -= 1; }
+    if start_idx >= end_idx {
+        return Err("could not unframe MLLP payload".into());
+    }
+    let content = decode_with_label(&buf[start_idx..end_idx], &cfg.encoding);
 
     if cfg.auto_ack {
         use crate::parser::hl7::ack;
         let control_id = ack::extract_message_control_id(&content).unwrap_or_default();
         let sending_app = ack::extract_sending_app(&content).unwrap_or_default();
         let ack_msg = ack::generate_ack(&cfg.ack_code, &control_id, "BridgeLab", &sending_app, None);
-        let framed = mllp_frame(&ack_msg);
+        // Re-encode the ACK with the same charset so the peer doesn't see
+        // mojibake on its side.
+        let payload = encode_with_label(&ack_msg, &cfg.encoding);
+        let mut framed = Vec::with_capacity(payload.len() + 3);
+        framed.push(MLLP_START);
+        framed.extend_from_slice(&payload);
+        framed.push(MLLP_END_1);
+        framed.push(MLLP_END_2);
         let _ = stream.write_all(&framed).await;
     }
 
