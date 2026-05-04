@@ -170,7 +170,6 @@
 
 	.header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--color-border); }
 	.intro { font-size: 11px; color: var(--color-text-secondary); margin: 0; flex: 1; }
-	.intro kbd { background: var(--color-bg-tertiary); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--color-border); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
 
 	.category { margin-bottom: 12px; }
 	.category-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-secondary); padding: 4px 0; margin-bottom: 2px; border-bottom: 1px solid var(--color-border); }
