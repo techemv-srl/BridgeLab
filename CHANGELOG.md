@@ -2,6 +2,22 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [0.2.2] — 2026-05-01
+
+### Added
+- **Persistent MLLP listener** with Start / Stop. Replaces the previous fire-and-forget single-shot `Listen for incoming` button: now binds the port and keeps accepting connections until you click Stop. Each incoming message opens in a new tab labelled `Inbox HH:MM:SS` so the message you were editing isn't overwritten. Status pill shows `Listening on {addr}:{port} · {N} received`.
+- **Listener settings** (Settings collapsible): bind address (default `0.0.0.0`, switch to `127.0.0.1` to restrict to localhost), ACK code dropdown (AA / AE / AR for testing how the upstream system handles each ack class), per-connection read timeout, auto-ACK toggle.
+- **📋 Incolla button** in the Activation Licenza dialog. Click reads the license key directly from the clipboard via the Clipboard API, bypassing Monaco — necessary because Monaco's global keyboard listeners intercept Ctrl+V even when the textarea is focused, so the keyboard paste landed in the active message tab instead of the dialog.
+
+### Fixed
+- **macOS-Intel build no longer hangs** on the release workflow. `runs-on: macos-13` was deprecated by GitHub on 2024-12-04 and the runner image was removed on 2025-12-01 — jobs pinned to macos-13 sat in `Queued` indefinitely. Cross-compile to `x86_64-apple-darwin` from a `macos-14` Apple Silicon runner instead. Output is still a normal x86_64 `.dmg` for Intel Macs.
+- **Listener "ACK code" dropdown clipped** the localised options ("AA (accept)" rendered as "AA (accet"). Widened to fit the longest label.
+- **License paste lands in the dialog regardless of editor state** (see Added — the new explicit Paste button replaces the unreliable focus-shuffling).
+- **Activation modal focus** correctly steals from Monaco on mount via `blur()` + `requestAnimationFrame(focus())`, so Ctrl+V works at least when no Monaco tab is open. Clipboard button is the bullet-proof path for all other states.
+
+### Chore
+- Removed dead CSS rule `.intro kbd` in `ShortcutsEditor.svelte` — `svelte-check` warning count dropped from 20 to 19. No functional change.
+
 ## [0.2.1] — 2026-04-30
 
 ### Fixed
