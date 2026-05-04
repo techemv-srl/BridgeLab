@@ -3,6 +3,7 @@ use tauri::State;
 
 use crate::communication::http_client::{self, HttpMethod, HttpResult};
 use crate::communication::mllp::{self, MllpSendResult, MllpReceivedMessage};
+use crate::communication::mllp_listener::{ListenerConfig, ListenerState, ListenerStatus};
 use crate::communication::profiles::{ConnectionProfile, HistoryEntry};
 use crate::database::Database;
 use crate::licensing::feature_gate;
@@ -51,6 +52,37 @@ pub async fn mllp_receive(
     let timeout = timeout_secs.unwrap_or(60);
     let ack = auto_ack.unwrap_or(true);
     mllp::receive_one(port, timeout, ack).await
+}
+
+// --- Persistent MLLP listener (start / stop / status) -------------------------
+//
+// `mllp_receive` above is single-shot: bind, accept one, return. The persistent
+// listener below keeps accepting connections and emits a Tauri event
+// (`mllp:received`) for each incoming message until the user calls stop. This
+// is what the Communication panel's Listen / Stop button drives.
+
+#[tauri::command]
+pub async fn mllp_listen_start(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ListenerState>,
+    config: ListenerConfig,
+) -> Result<ListenerStatus, String> {
+    feature_gate::require("mllp_listen")?;
+    state.start(app, config).await
+}
+
+#[tauri::command]
+pub async fn mllp_listen_stop(
+    state: tauri::State<'_, ListenerState>,
+) -> Result<ListenerStatus, String> {
+    Ok(state.stop().await)
+}
+
+#[tauri::command]
+pub async fn mllp_listen_status(
+    state: tauri::State<'_, ListenerState>,
+) -> Result<ListenerStatus, String> {
+    Ok(state.status().await)
 }
 
 // --- HTTP Commands ---

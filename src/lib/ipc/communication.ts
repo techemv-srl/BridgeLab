@@ -60,6 +60,33 @@ export async function mllpReceive(
 	return invoke('mllp_receive', { port, timeoutSecs, autoAck });
 }
 
+// --- Persistent MLLP listener ---
+export interface ListenerConfig {
+	port: number;
+	bind_address: string;
+	auto_ack: boolean;
+	ack_code: string;       // 'AA' | 'AE' | 'AR'
+	read_timeout_secs: number;
+}
+
+export interface ListenerStatus {
+	running: boolean;
+	port: number | null;
+	bind_address: string | null;
+}
+
+export async function mllpListenStart(config: ListenerConfig): Promise<ListenerStatus> {
+	return invoke('mllp_listen_start', { config });
+}
+
+export async function mllpListenStop(): Promise<ListenerStatus> {
+	return invoke('mllp_listen_stop');
+}
+
+export async function mllpListenStatus(): Promise<ListenerStatus> {
+	return invoke('mllp_listen_status');
+}
+
 // --- HTTP ---
 export async function httpRequest(
 	url: string, method: string,
