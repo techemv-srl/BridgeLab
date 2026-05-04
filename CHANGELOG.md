@@ -2,6 +2,14 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [0.2.3] — 2026-05-04
+
+### Added
+- **User-selectable encoding for MLLP Send and Receive**. Both sides now expose a dropdown with the major encodings used in HL7 deployments — `UTF-8`, `ISO-8859-1` (Latin-1), `ISO-8859-2` (Central EU), `ISO-8859-15` (Latin-1 + €), `windows-1252`, `windows-1250`, `windows-1251`, `ASCII`. The listener decodes the inbound payload **and re-encodes the auto-ACK with the same charset**, so the peer doesn't see mojibake on its side. Send and Receive can be set independently. UI labels are localized in en/it/de/fr/es.
+
+### Fixed
+- **MLLP listener now accepts ISO-8859-1 payloads** (and other non-UTF-8 charsets) without the spurious `"could not unframe MLLP payload"` error that was firing whenever the upstream system used Latin-1 encoding.
+
 ## [0.2.2] — 2026-05-01
 
 ### Added
