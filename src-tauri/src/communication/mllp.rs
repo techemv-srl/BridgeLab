@@ -93,12 +93,50 @@ fn decode_payload(bytes: &[u8]) -> String {
     }
 }
 
-/// Send an HL7 message via MLLP to a remote host.
+/// Decode a byte slice using a named encoding (encoding_rs label, e.g.
+/// "UTF-8", "ISO-8859-1", "windows-1252", "windows-1250", "windows-1251",
+/// "ASCII"). Falls back to the UTF-8-or-Latin-1 strategy if the label is
+/// unknown — defensive default for older clients sending an empty/garbled
+/// MSH-18.
+pub fn decode_with_label(bytes: &[u8], label: &str) -> String {
+    if label.is_empty() {
+        return decode_payload(bytes);
+    }
+    match encoding_rs::Encoding::for_label(label.as_bytes()) {
+        Some(enc) => {
+            let (cow, _, _) = enc.decode(bytes);
+            cow.into_owned()
+        }
+        None => decode_payload(bytes),
+    }
+}
+
+/// Encode a UTF-8 String into the bytes for the named encoding, replacing
+/// unmappable codepoints with `?`. Used by the MLLP client when a non-UTF-8
+/// charset is selected (the in-memory message is always UTF-8 inside
+/// BridgeLab).
+pub fn encode_with_label(text: &str, label: &str) -> Vec<u8> {
+    if label.is_empty() || label.eq_ignore_ascii_case("UTF-8") {
+        return text.as_bytes().to_vec();
+    }
+    match encoding_rs::Encoding::for_label(label.as_bytes()) {
+        Some(enc) => {
+            let (cow, _, _had_errors) = enc.encode(text);
+            cow.into_owned()
+        }
+        None => text.as_bytes().to_vec(),
+    }
+}
+
+/// Send an HL7 message via MLLP to a remote host. `encoding` is an
+/// `encoding_rs` label (e.g. `"UTF-8"`, `"ISO-8859-1"`, `"windows-1252"`);
+/// pass an empty string for plain UTF-8.
 pub async fn send(
     host: &str,
     port: u16,
     message: &str,
     timeout_secs: u64,
+    encoding: &str,
 ) -> MllpSendResult {
     let start = Instant::now();
     let addr = format!("{}:{}", host, port);
@@ -129,8 +167,14 @@ pub async fn send(
         }
     };
 
-    // Send framed message
-    let framed = mllp_frame(message);
+    // Send framed message — re-encode to the user-selected charset before
+    // wrapping in MLLP framing bytes.
+    let payload = encode_with_label(message, encoding);
+    let mut framed = Vec::with_capacity(payload.len() + 3);
+    framed.push(MLLP_START);
+    framed.extend_from_slice(&payload);
+    framed.push(MLLP_END_1);
+    framed.push(MLLP_END_2);
     if let Err(e) = stream.write_all(&framed).await {
         return MllpSendResult {
             success: false,
@@ -177,7 +221,18 @@ pub async fn send(
     // ACK" symptom reported by receivers like HAPI / Mirth.
     let _ = stream.shutdown().await;
 
-    let response = mllp_unframe(&response_bytes).unwrap_or_default();
+    // Decode ACK bytes using the same encoding the user selected for send;
+    // the peer typically echoes back the same charset it received.
+    let response = if response_bytes.is_empty() {
+        String::new()
+    } else {
+        let mut start_idx = 0usize;
+        let mut end_idx = response_bytes.len();
+        if response_bytes[0] == MLLP_START { start_idx = 1; }
+        if end_idx > start_idx && response_bytes[end_idx - 1] == MLLP_END_2 { end_idx -= 1; }
+        if end_idx > start_idx && response_bytes[end_idx - 1] == MLLP_END_1 { end_idx -= 1; }
+        decode_with_label(&response_bytes[start_idx..end_idx], encoding)
+    };
     let response_time_ms = start.elapsed().as_millis() as u64;
 
     match read_status {
@@ -362,7 +417,7 @@ mod tests {
             stream.write_all(&response).await.unwrap();
         });
 
-        let result = send("127.0.0.1", port, msg, 5).await;
+        let result = send("127.0.0.1", port, msg, 5, "").await;
         assert!(result.success);
         assert!(result.response.contains("MSA|AA|MSG001"));
 
@@ -391,7 +446,7 @@ mod tests {
 
         // Client: framed send to localhost:port
         let msg = "MSH|^~\\&|Sender|Fac|Receiver|Fac|20260415120000||ADT^A01|UNIT001|P|2.5\rPID|||42";
-        let result = send("127.0.0.1", port, msg, 5).await;
+        let result = send("127.0.0.1", port, msg, 5, "").await;
         assert!(result.success, "client send failed: {:?}", result.error);
         // auto_ack should have returned an AA ACK referencing our control id
         assert!(result.response.contains("MSA|AA"),
@@ -440,7 +495,7 @@ mod tests {
         });
 
         let msg = "MSH|^~\\&|Send|SF|Recv|RF|20260423||ADT^A01|MSG999|P|2.5\rPID|||1";
-        let result = send("127.0.0.1", port, msg, 5).await;
+        let result = send("127.0.0.1", port, msg, 5, "").await;
 
         assert!(result.success, "send failed: {:?}", result.error);
         assert!(
@@ -475,7 +530,7 @@ mod tests {
         });
 
         let msg = "MSH|^~\\&|Send|SF|Recv|RF|20260423||ADT^A01|CAP001|P|2.5\rPID|||1";
-        let result = send("127.0.0.1", port, msg, 10).await;
+        let result = send("127.0.0.1", port, msg, 10, "").await;
 
         assert!(!result.success, "should abort, not succeed on unbounded stream");
         let err = result.error.expect("must have an error");
@@ -495,7 +550,7 @@ mod tests {
         let port = probe.local_addr().unwrap().port();
         drop(probe);
 
-        let result = send("127.0.0.1", port, "MSH|^~\\&|x", 2).await;
+        let result = send("127.0.0.1", port, "MSH|^~\\&|x", 2, "").await;
         assert!(!result.success);
         assert!(result.error.is_some());
     }
