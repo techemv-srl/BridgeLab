@@ -52,6 +52,13 @@ pub fn mllp_frame(message: &str) -> Vec<u8> {
 }
 
 /// Remove MLLP framing from received data.
+///
+/// HL7 v2 traffic in the wild is often Latin-1 / Windows-1252 (Italian
+/// hospitals, German patient names, French diacritics) — the standard
+/// declares the character set in MSH-18 but most senders never set it.
+/// We try UTF-8 first and fall back to Latin-1 (a lossless 1:1 byte→char
+/// mapping for the 0x00–0xFF range) so the listener doesn't reject
+/// otherwise-valid messages with `could not unframe MLLP payload`.
 pub fn mllp_unframe(data: &[u8]) -> Option<String> {
     if data.is_empty() {
         return None;
@@ -72,7 +79,18 @@ pub fn mllp_unframe(data: &[u8]) -> Option<String> {
         return None;
     }
 
-    String::from_utf8(data[start..end].to_vec()).ok()
+    let bytes = &data[start..end];
+    Some(decode_payload(bytes))
+}
+
+/// Decode a byte slice to a String. UTF-8 is preferred; on invalid UTF-8
+/// we fall back to Latin-1 (every byte maps to its codepoint), which never
+/// fails. Caller can re-encode if MSH-18 indicates something else.
+fn decode_payload(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => bytes.iter().map(|&b| b as char).collect(),
+    }
 }
 
 /// Send an HL7 message via MLLP to a remote host.
@@ -307,6 +325,23 @@ mod tests {
         let msg = b"MSH|^~\\&|test";
         let unframed = mllp_unframe(msg).unwrap();
         assert_eq!(unframed, "MSH|^~\\&|test");
+    }
+
+    /// Italian hospitals and many EU integration engines emit HL7 v2 in
+    /// ISO-8859-1 / Windows-1252 without setting MSH-18. The unframer must
+    /// not reject those messages — fallback to Latin-1 keeps the bytes
+    /// round-trippable as Unicode codepoints.
+    #[test]
+    fn test_mllp_unframe_latin1_fallback() {
+        // "Forlì" in Latin-1: 0x46 0x6F 0x72 0x6C 0xEC ('ì' is 0xEC in Latin-1
+        // but 0xC3 0xAC in UTF-8). 0xEC alone is invalid UTF-8.
+        let bytes = vec![
+            MLLP_START, b'P', b'I', b'D', b'|', b'|', b'|',
+            b'F', b'o', b'r', b'l', 0xEC,
+            MLLP_END_1, MLLP_END_2,
+        ];
+        let unframed = mllp_unframe(&bytes).expect("must not return None");
+        assert_eq!(unframed, "PID|||Forlì");
     }
 
     #[tokio::test]
