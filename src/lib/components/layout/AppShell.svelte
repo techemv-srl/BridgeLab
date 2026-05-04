@@ -1102,8 +1102,14 @@
 						currentMessage={activeTab?.content ?? ''}
 						activeTabLabel={activeTab?.label ?? ''}
 						onMessageReceived={(content) => {
-							if (messageStore.activeTabId) {
-								messageStore.updateContent(messageStore.activeTabId, content);
+							// Open each incoming MLLP message in a fresh tab so the
+							// user does not lose the message currently in the editor.
+							messageStore.newTab();
+							const t = messageStore.activeTab;
+							if (t) {
+								messageStore.updateContent(t.id, content);
+								const ts = new Date().toLocaleTimeString();
+								t.label = `Inbox ${ts}`;
 							}
 						}}
 					/>
