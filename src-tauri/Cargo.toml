@@ -1,6 +1,6 @@
 [package]
 name = "bridgelab"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "BridgeLab - HL7 made simple"
 authors = ["1warpengine"]
