@@ -47,6 +47,7 @@
 		onExportJson: () => void;
 		onExportCsv: () => void;
 		onExportXsd: () => void;
+		onCompareMessages: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowSettings: () => void;
@@ -86,6 +87,7 @@
 		onExportJson,
 		onExportCsv,
 		onExportXsd,
+		onCompareMessages,
 		onSetTheme,
 		onSetLanguage,
 		onShowSettings,
@@ -307,6 +309,9 @@
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onAnonymize)}>
 					<span>{tr('menu.tools.anonymize')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onCompareMessages)}>
+					<span>{tr('menu.tools.compare')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onCopyFull)}>
 					<span>{tr('menu.tools.copyFull')}</span>

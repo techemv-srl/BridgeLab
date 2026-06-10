@@ -68,6 +68,12 @@ pub struct ReceivedEvent {
     pub content: String,
     pub source_addr: String,
     pub received_at: String,
+    /// Payload size after MLLP unframing, in bytes.
+    pub bytes: usize,
+    /// ACK code sent back ("AA"/"AE"/"AR"), or None when auto-ACK is off.
+    pub ack_code: Option<String>,
+    /// Charset the payload was decoded with ("UTF-8" when unset).
+    pub encoding: String,
 }
 
 /// Snapshot of the current listener state, returned by status/start/stop so
@@ -204,8 +210,11 @@ async fn handle_connection(
     if start_idx >= end_idx {
         return Err("could not unframe MLLP payload".into());
     }
+    let payload_bytes = end_idx - start_idx;
     let content = decode_with_label(&buf[start_idx..end_idx], &cfg.encoding);
 
+    // ACK code actually written back, surfaced to the frontend console.
+    let mut ack_sent: Option<String> = None;
     if cfg.auto_ack {
         use crate::parser::hl7::ack;
         let control_id = ack::extract_message_control_id(&content).unwrap_or_default();
@@ -219,7 +228,9 @@ async fn handle_connection(
         framed.extend_from_slice(&payload);
         framed.push(MLLP_END_1);
         framed.push(MLLP_END_2);
-        let _ = stream.write_all(&framed).await;
+        if stream.write_all(&framed).await.is_ok() {
+            ack_sent = Some(cfg.ack_code.clone());
+        }
     }
 
     let _ = stream.shutdown().await;
@@ -228,6 +239,9 @@ async fn handle_connection(
         content,
         source_addr,
         received_at: chrono::Utc::now().to_rfc3339(),
+        bytes: payload_bytes,
+        ack_code: ack_sent,
+        encoding: if cfg.encoding.is_empty() { "UTF-8".into() } else { cfg.encoding.clone() },
     });
     Ok(())
 }
