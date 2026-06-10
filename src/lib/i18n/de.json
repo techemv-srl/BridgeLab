@@ -43,6 +43,14 @@
 	"menu.tools.exportJson": "Als JSON exportieren",
 	"menu.tools.exportCsv": "Als CSV exportieren",
 	"menu.tools.exportXsd": "Nachrichtenschema als XSD exportieren…",
+	"menu.tools.compare": "Nachrichten vergleichen…",
+
+	"diff.title": "Nachrichten vergleichen",
+	"diff.left": "Links (Original)",
+	"diff.right": "Rechts (geändert)",
+	"diff.swap": "Seiten tauschen",
+	"diff.sameTab": "Beide Seiten zeigen denselben Tab — wählen Sie zwei verschiedene Tabs zum Vergleichen.",
+	"diff.needTwoTabs": "Öffnen Sie mindestens zwei Tabs, um Nachrichten zu vergleichen.",
 
 	"xsd.title": "HL7-Nachrichtenschema als XSD exportieren",
 	"xsd.intro": "Wählen Sie eine HL7-Version und einen Nachrichtentyp. BridgeLab erzeugt ein eigenständiges XSD zum Speichern oder Kopieren in Ihre Integrations-Pipelines.",
