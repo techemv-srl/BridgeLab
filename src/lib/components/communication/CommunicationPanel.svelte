@@ -50,17 +50,35 @@
 		bytes?: number;
 		ack?: string | null;     // ACK code sent, null = auto-ACK off
 		encoding?: string;
-		content?: string;        // full message, for click-to-open
+		snippet?: string;        // first line, always retained
+		content?: string;        // full message for click-to-open; evicted by byte budget
 		text?: string;           // error text
 	}
 	const CONSOLE_CAP = 200;
+	// Total bytes of full message contents retained for click-to-open. The
+	// backend accepts payloads up to 10 MiB each, so an entry cap alone could
+	// pin gigabytes in renderer state during an unattended high-volume
+	// session. Oldest entries lose `content` first (snippet row stays).
+	const CONSOLE_CONTENT_BUDGET = 32 * 1024 * 1024;
 	let consoleEntries = $state<ConsoleEntry[]>([]);
 	let autoOpenReceived = $state(true);
 	let consoleNextId = 0;
 
 	function pushConsole(entry: Omit<ConsoleEntry, 'id'>) {
 		// Newest first; cap so an unattended listener can't grow unbounded.
-		consoleEntries = [{ ...entry, id: consoleNextId++ }, ...consoleEntries.slice(0, CONSOLE_CAP - 1)];
+		const entries = [{ ...entry, id: consoleNextId++ }, ...consoleEntries.slice(0, CONSOLE_CAP - 1)];
+		// Enforce the byte budget newest→oldest: once cumulative content size
+		// exceeds it, strip full contents from the older entries.
+		let retained = 0;
+		for (let i = 0; i < entries.length; i++) {
+			const e = entries[i];
+			if (!e.content) continue;
+			retained += e.bytes ?? e.content.length;
+			if (retained > CONSOLE_CONTENT_BUDGET && i > 0) {
+				entries[i] = { ...e, content: undefined };
+			}
+		}
+		consoleEntries = entries;
 	}
 
 	function clearConsole() {
@@ -171,6 +189,7 @@
 						bytes: ev.payload.bytes,
 						ack: ev.payload.ack_code,
 						encoding: ev.payload.encoding,
+						snippet: msgSnippet(ev.payload.content),
 						content: ev.payload.content,
 					});
 					if (autoOpenReceived) onMessageReceived?.(ev.payload.content);
@@ -413,7 +432,9 @@
 									{#if entry.kind === 'msg'}
 										<button
 											class="console-row"
-											title={tr('comm.consoleOpenHint')}
+											class:no-content={!entry.content}
+											disabled={!entry.content}
+											title={entry.content ? tr('comm.consoleOpenHint') : tr('comm.consoleEvicted')}
 											onclick={() => entry.content && onMessageReceived?.(entry.content)}
 										>
 											<span class="c-time">{entry.time}</span>
@@ -423,7 +444,7 @@
 												{entry.ack ?? '—'}
 											</span>
 											<span class="c-enc">{entry.encoding}</span>
-											<span class="c-snippet">{msgSnippet(entry.content ?? '')}</span>
+											<span class="c-snippet">{entry.snippet}</span>
 										</button>
 									{:else}
 										<div class="console-row console-error">
@@ -704,6 +725,7 @@
 	.c-ack.ack-err { color: var(--color-error); border-color: var(--color-error); }
 	.c-enc { flex-shrink: 0; color: var(--color-text-secondary); opacity: 0.7; }
 	.c-snippet { overflow: hidden; text-overflow: ellipsis; color: var(--color-text-secondary); }
+	.console-row.no-content { cursor: default; opacity: 0.55; }
 	.console-error { cursor: default; }
 	.c-err-text { color: var(--color-error); overflow: hidden; text-overflow: ellipsis; }
 
