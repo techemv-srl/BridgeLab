@@ -195,6 +195,7 @@
 	"comm.consoleEmpty": "Aucun message reçu pour l'instant",
 	"comm.consoleAutoOpen": "Ouvrir les messages reçus dans un nouvel onglet",
 	"comm.consoleOpenHint": "Cliquez pour ouvrir ce message dans un onglet",
+	"comm.consoleEvicted": "Contenu complet plus disponible (limite mémoire)",
 	"comm.encoding": "Encodage",
 	"comm.encUnicode": "Unicode",
 	"comm.encLatin1": "Latin-1, Europe occ.",
