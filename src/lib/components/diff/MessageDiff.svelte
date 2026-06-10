@@ -19,6 +19,13 @@
 
 	let containerEl: HTMLDivElement;
 	let diffEditor: any;
+	let models: { original: any; modified: any } | null = null;
+
+	function disposeModels() {
+		models?.original?.dispose();
+		models?.modified?.dispose();
+		models = null;
+	}
 
 	onMount(async () => {
 		const monaco = await import('monaco-editor');
@@ -34,27 +41,25 @@
 			automaticLayout: true,
 		});
 
-		const originalModel = monaco.editor.createModel(originalText, 'hl7v2');
-		const modifiedModel = monaco.editor.createModel(modifiedText, 'hl7v2');
-
-		diffEditor.setModel({
-			original: originalModel,
-			modified: modifiedModel,
-		});
+		models = {
+			original: monaco.editor.createModel(originalText, 'hl7v2'),
+			modified: monaco.editor.createModel(modifiedText, 'hl7v2'),
+		};
+		diffEditor.setModel(models);
 	});
 
 	onDestroy(() => {
 		diffEditor?.dispose();
+		disposeModels();
 	});
 
+	// Update in place when texts change (no model churn, keeps scroll position).
 	$effect(() => {
-		if (diffEditor) {
-			const monaco = (window as any).monaco;
-			if (monaco) {
-				const orig = monaco.editor.createModel(originalText, 'hl7v2');
-				const mod = monaco.editor.createModel(modifiedText, 'hl7v2');
-				diffEditor.setModel({ original: orig, modified: mod });
-			}
+		const orig = originalText;
+		const mod = modifiedText;
+		if (models) {
+			if (models.original.getValue() !== orig) models.original.setValue(orig);
+			if (models.modified.getValue() !== mod) models.modified.setValue(mod);
 		}
 	});
 </script>

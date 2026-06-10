@@ -34,6 +34,7 @@ pub fn run() {
             commands::parser::parse_message,
             commands::parser::get_tree_children,
             commands::parser::get_field_content,
+            commands::parser::search_message,
             commands::fileio::open_file,
             commands::fileio::save_file,
             commands::database::get_recent_files,
