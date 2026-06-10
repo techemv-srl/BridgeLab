@@ -25,6 +25,7 @@
 	import AnonymizeDialog from '$lib/components/anonymization/AnonymizeDialog.svelte';
 	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
 	import SchemaExportDialog from '$lib/components/layout/SchemaExportDialog.svelte';
+	import CompareDialog from '$lib/components/diff/CompareDialog.svelte';
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
 	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
 	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
@@ -51,6 +52,7 @@
 	let showAnonymize = $state(false);
 	let showSettings = $state(false);
 	let showSchemaExport = $state(false);
+	let showCompare = $state(false);
 	let showActivation = $state(false);
 	let showTemplates = $state(false);
 	let showBundleVisualizer = $state(false);
@@ -691,6 +693,14 @@
 		}
 	}
 
+	async function handleCompareMessages() {
+		if (messageStore.tabs.length < 2) {
+			await dialogStore.warning(t('diff.needTwoTabs'));
+			return;
+		}
+		showCompare = true;
+	}
+
 	async function handleCopyFull() {
 		if (!activeTab?.parseResult) return;
 		try {
@@ -938,6 +948,7 @@
 		onExportJson={handleExportJson}
 		onExportXsd={() => { showSchemaExport = true; }}
 		onExportCsv={handleExportCsv}
+		onCompareMessages={handleCompareMessages}
 		onToggleTree={handleToggleTree}
 		onToggleInspector={() => { showInspector = !showInspector; }}
 		onToggleSchemaFields={() => { showSchemaFields = !showSchemaFields; }}
@@ -979,6 +990,7 @@
 							messageId={activeTab.parseResult.message_id}
 							roots={activeTab.parseResult.tree_roots}
 							version={activeTab.parseResult.version}
+							format={activeTab.parseResult.format}
 							showSchemaFields={showSchemaFields}
 							onNodeSelect={handleNodeSelect}
 							onFieldExpand={handleFieldExpand}
@@ -1294,6 +1306,16 @@
 	<!-- Schema XSD export dialog -->
 	{#if showSchemaExport}
 		<SchemaExportDialog onClose={() => { showSchemaExport = false; }} />
+	{/if}
+
+	<!-- Compare messages (side-by-side diff of two open tabs) -->
+	{#if showCompare}
+		<CompareDialog
+			tabs={messageStore.tabs}
+			activeTabId={messageStore.activeTabId}
+			theme={theme === 'light' ? 'bridgelab-light' : 'bridgelab-dark'}
+			onClose={() => { showCompare = false; }}
+		/>
 	{/if}
 
 	<!-- In-app dialog (replaces native alert/confirm) -->

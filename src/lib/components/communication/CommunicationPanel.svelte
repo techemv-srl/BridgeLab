@@ -4,7 +4,7 @@
 		mllpListenStart, mllpListenStop, mllpListenStatus,
 		getRequestHistory, clearRequestHistory,
 		type MllpSendResult, type HttpResult, type HistoryEntry,
-		type ListenerStatus,
+		type ListenerStatus, type MllpReceivedEvent,
 	} from '$lib/ipc/communication';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { t, subscribeLocale } from '$lib/i18n';
@@ -40,6 +40,60 @@
 	let listenError = $state<string | null>(null);
 	let listenInboxCount = $state(0);
 	let listenShowSettings = $state(false);
+
+	// --- Listener console: rolling log of received messages and errors ---
+	interface ConsoleEntry {
+		id: number;
+		time: string;            // local HH:MM:SS
+		kind: 'msg' | 'error';
+		peer?: string;
+		bytes?: number;
+		ack?: string | null;     // ACK code sent, null = auto-ACK off
+		encoding?: string;
+		snippet?: string;        // first line, always retained
+		content?: string;        // full message for click-to-open; evicted by byte budget
+		text?: string;           // error text
+	}
+	const CONSOLE_CAP = 200;
+	// Total bytes of full message contents retained for click-to-open. The
+	// backend accepts payloads up to 10 MiB each, so an entry cap alone could
+	// pin gigabytes in renderer state during an unattended high-volume
+	// session. Oldest entries lose `content` first (snippet row stays).
+	const CONSOLE_CONTENT_BUDGET = 32 * 1024 * 1024;
+	let consoleEntries = $state<ConsoleEntry[]>([]);
+	let autoOpenReceived = $state(true);
+	let consoleNextId = 0;
+
+	function pushConsole(entry: Omit<ConsoleEntry, 'id'>) {
+		// Newest first; cap so an unattended listener can't grow unbounded.
+		const entries = [{ ...entry, id: consoleNextId++ }, ...consoleEntries.slice(0, CONSOLE_CAP - 1)];
+		// Enforce the byte budget newest→oldest: once cumulative content size
+		// exceeds it, strip full contents from the older entries.
+		let retained = 0;
+		for (let i = 0; i < entries.length; i++) {
+			const e = entries[i];
+			if (!e.content) continue;
+			retained += e.bytes ?? e.content.length;
+			if (retained > CONSOLE_CONTENT_BUDGET && i > 0) {
+				entries[i] = { ...e, content: undefined };
+			}
+		}
+		consoleEntries = entries;
+	}
+
+	function clearConsole() {
+		consoleEntries = [];
+		listenInboxCount = 0;
+	}
+
+	function localTime(iso: string): string {
+		try { return new Date(iso).toLocaleTimeString(); } catch { return iso; }
+	}
+
+	function msgSnippet(content: string): string {
+		const firstLine = content.split(/\r|\n/, 1)[0] ?? '';
+		return firstLine.substring(0, 80);
+	}
 	// MLLP advanced options
 	let mllpResponseTimeout = $state(30);
 	let mllpAutoAck = $state(true);
@@ -124,16 +178,31 @@
 			// component mounted, e.g. after a frontend reload with backend alive).
 			try { listenStatus = await mllpListenStatus(); } catch {}
 
-			unlistenReceived = await listen<{ content: string; source_addr: string; received_at: string }>(
+			unlistenReceived = await listen<MllpReceivedEvent>(
 				'mllp:received',
 				(ev) => {
 					listenInboxCount += 1;
-					onMessageReceived?.(ev.payload.content);
+					pushConsole({
+						time: localTime(ev.payload.received_at),
+						kind: 'msg',
+						peer: ev.payload.source_addr,
+						bytes: ev.payload.bytes,
+						ack: ev.payload.ack_code,
+						encoding: ev.payload.encoding,
+						snippet: msgSnippet(ev.payload.content),
+						content: ev.payload.content,
+					});
+					if (autoOpenReceived) onMessageReceived?.(ev.payload.content);
 					loadHistory();
 				},
 			);
 			unlistenError = await listen<string>('mllp:listen_error', (ev) => {
 				listenError = ev.payload;
+				pushConsole({
+					time: new Date().toLocaleTimeString(),
+					kind: 'error',
+					text: ev.payload,
+				});
 			});
 		})();
 
@@ -332,6 +401,9 @@
 						<div class="setting-check">
 							<label><input type="checkbox" bind:checked={mllpAutoAck} /> {tr('comm.listenAutoAck')}</label>
 						</div>
+						<div class="setting-check">
+							<label><input type="checkbox" bind:checked={autoOpenReceived} /> {tr('comm.consoleAutoOpen')}</label>
+						</div>
 					</div>
 				{/if}
 
@@ -339,6 +411,50 @@
 					<div class="result error">
 						<div class="result-header"><span>{tr('comm.listenError')}</span></div>
 						<div class="result-body">{listenError}</div>
+					</div>
+				{/if}
+
+				<!-- Listener console: live log of received messages / errors -->
+				{#if listenStatus.running || consoleEntries.length > 0}
+					<div class="console">
+						<div class="console-header">
+							<span class="console-title">{tr('comm.console')}</span>
+							<span class="console-count">{consoleEntries.length}</span>
+							<button class="btn btn-sm" onclick={clearConsole} disabled={consoleEntries.length === 0}>
+								{tr('comm.consoleClear')}
+							</button>
+						</div>
+						{#if consoleEntries.length === 0}
+							<div class="console-empty">{tr('comm.consoleEmpty')}</div>
+						{:else}
+							<div class="console-list">
+								{#each consoleEntries as entry (entry.id)}
+									{#if entry.kind === 'msg'}
+										<button
+											class="console-row"
+											class:no-content={!entry.content}
+											disabled={!entry.content}
+											title={entry.content ? tr('comm.consoleOpenHint') : tr('comm.consoleEvicted')}
+											onclick={() => entry.content && onMessageReceived?.(entry.content)}
+										>
+											<span class="c-time">{entry.time}</span>
+											<span class="c-peer">{entry.peer}</span>
+											<span class="c-bytes">{entry.bytes} B</span>
+											<span class="c-ack" class:ack-ok={entry.ack === 'AA'} class:ack-err={entry.ack === 'AE' || entry.ack === 'AR'}>
+												{entry.ack ?? '—'}
+											</span>
+											<span class="c-enc">{entry.encoding}</span>
+											<span class="c-snippet">{entry.snippet}</span>
+										</button>
+									{:else}
+										<div class="console-row console-error">
+											<span class="c-time">{entry.time}</span>
+											<span class="c-err-text">{entry.text}</span>
+										</div>
+									{/if}
+								{/each}
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -589,6 +705,29 @@
 	.dv { color: var(--color-text-primary); font-family: 'JetBrains Mono', monospace; }
 	.detail-body { font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-all; margin: 0; padding: 4px; background: var(--color-bg-primary); border-radius: 3px; max-height: 80px; overflow-y: auto; color: var(--color-text-primary); }
 	.comm-empty { padding: 16px; text-align: center; color: var(--color-text-secondary); font-style: italic; }
+
+	/* Listener console */
+	.console { margin-top: 6px; border: 1px solid var(--color-border); border-radius: 4px; overflow: hidden; }
+	.console-header { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--color-bg-tertiary); }
+	.console-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-secondary); }
+	.console-count { font-size: 10px; color: var(--color-text-secondary); background: var(--color-bg-primary); padding: 0 6px; border-radius: 8px; }
+	.console-header .btn-sm { margin-left: auto; }
+	.console-empty { padding: 10px; text-align: center; font-style: italic; font-size: 11px; color: var(--color-text-secondary); }
+	.console-list { max-height: 180px; overflow-y: auto; }
+	.console-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 8px; background: none; border: none; border-bottom: 1px solid var(--color-border); font-family: 'JetBrains Mono', monospace; font-size: 10px; text-align: left; cursor: pointer; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; }
+	.console-row:hover { background: var(--color-bg-tertiary); }
+	.console-row:last-child { border-bottom: none; }
+	.c-time { flex-shrink: 0; color: var(--color-text-secondary); }
+	.c-peer { flex-shrink: 0; color: var(--color-accent); min-width: 110px; }
+	.c-bytes { flex-shrink: 0; color: var(--color-text-secondary); min-width: 50px; text-align: right; }
+	.c-ack { flex-shrink: 0; min-width: 26px; text-align: center; font-weight: 700; color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: 3px; padding: 0 3px; }
+	.c-ack.ack-ok { color: var(--color-success); border-color: var(--color-success); }
+	.c-ack.ack-err { color: var(--color-error); border-color: var(--color-error); }
+	.c-enc { flex-shrink: 0; color: var(--color-text-secondary); opacity: 0.7; }
+	.c-snippet { overflow: hidden; text-overflow: ellipsis; color: var(--color-text-secondary); }
+	.console-row.no-content { cursor: default; opacity: 0.55; }
+	.console-error { cursor: default; }
+	.c-err-text { color: var(--color-error); overflow: hidden; text-overflow: ellipsis; }
 
 	/* Advanced toggle */
 	.toggle-advanced { background: none; border: none; color: var(--color-accent); font-size: 11px; font-family: inherit; cursor: pointer; padding: 3px 0; text-align: left; }
