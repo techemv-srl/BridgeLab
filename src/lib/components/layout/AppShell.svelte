@@ -979,6 +979,7 @@
 							messageId={activeTab.parseResult.message_id}
 							roots={activeTab.parseResult.tree_roots}
 							version={activeTab.parseResult.version}
+							format={activeTab.parseResult.format}
 							showSchemaFields={showSchemaFields}
 							onNodeSelect={handleNodeSelect}
 							onFieldExpand={handleFieldExpand}
