@@ -2,6 +2,13 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [0.2.4] — 2026-06-10
+
+### Added
+- **Search inside the message** (message tree panel). New sticky search bar: case-insensitive matching on segment type (`PID`), schema field name (`Patient Name`) and field value — including fields in segments the tree hasn't expanded yet. Enter / Shift+Enter cycle matches, Esc clears, Ctrl/Cmd+F focuses the box when the tree has focus. Match-kind badges (`=` value, `Aa` schema name, `§` segment); clicking a result expands the segment, selects the field and scrolls it into view. HL7 v2 tabs only (FHIR resources live in a separate store).
+- **Compare messages** (`Tools → Compare messages…`). Side-by-side read-only Monaco diff of any two open tabs with HL7 syntax highlighting: pick left/right, swap-sides button, Esc closes. Warns when fewer than two tabs are open.
+- **Listener console** (Communication → MLLP). Rolling live log (newest first, 200 entries) of everything the MLLP listener receives: local time, peer address, payload bytes, ACK badge (green `AA` / red `AE`-`AR` / `—` when auto-ACK off), encoding used, first-line snippet. Click a row to re-open that message in a tab. Listener errors appear inline as red rows. New "Open received messages in a new tab" toggle (default on) lets you disable tab-spam during high-volume tests and cherry-pick from the console instead. Full message contents retained for click-to-open are capped at a 32 MiB rolling budget so unattended sessions can't exhaust renderer memory.
+
 ## [0.2.3] — 2026-05-04
 
 ### Added
