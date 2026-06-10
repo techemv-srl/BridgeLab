@@ -43,6 +43,14 @@
 	"menu.tools.exportJson": "Exporter JSON",
 	"menu.tools.exportCsv": "Exporter CSV",
 	"menu.tools.exportXsd": "Exporter le schéma du message au format XSD…",
+	"menu.tools.compare": "Comparer les messages…",
+
+	"diff.title": "Comparer les messages",
+	"diff.left": "Gauche (original)",
+	"diff.right": "Droite (modifié)",
+	"diff.swap": "Inverser les côtés",
+	"diff.sameTab": "Les deux côtés affichent le même onglet — choisissez deux onglets différents à comparer.",
+	"diff.needTwoTabs": "Ouvrez au moins deux onglets pour comparer les messages.",
 
 	"xsd.title": "Exporter le schéma du message HL7 au format XSD",
 	"xsd.intro": "Choisissez une version HL7 et un type de message. BridgeLab génère un XSD autonome à enregistrer ou copier pour vos pipelines d'intégration.",
