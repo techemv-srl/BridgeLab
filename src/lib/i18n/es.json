@@ -64,6 +64,10 @@
 	"tree.empty": "Abre un archivo HL7 o pega un mensaje para comenzar.",
 	"tree.shortcutHint": "Ctrl+O para abrir un archivo",
 	"tree.noMessage": "Ningún mensaje cargado",
+	"tree.searchPlaceholder": "Buscar campo, nombre o valor…",
+	"tree.searchClear": "Borrar búsqueda",
+	"tree.searchResults": "{count} coincidencias",
+	"tree.searchNoResults": "Sin coincidencias",
 
 	"editor.header": "Editor",
 	"editor.untitled": "Sin título",
