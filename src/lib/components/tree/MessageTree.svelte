@@ -21,6 +21,10 @@
 		version?: string;
 		/** When true, inject placeholder rows for schema-defined fields that are absent from the message */
 		showSchemaFields?: boolean;
+		/** Parse format ("HL7v2", "FHIR JSON", "FHIR XML"). Search is HL7-only:
+		 *  search_message looks up the HL7 store, FHIR resources live in a
+		 *  separate store, so the box would always report no matches. */
+		format?: string;
 	}
 
 	let {
@@ -32,7 +36,10 @@
 		onNavigateToEditor,
 		version = '',
 		showSchemaFields = false,
+		format = 'HL7v2',
 	}: Props = $props();
+
+	const searchEnabled = $derived(format === 'HL7v2');
 
 	type VNode = TreeNode & { _children?: TreeNode[]; _expanded?: boolean; _isPlaceholder?: boolean };
 
@@ -48,13 +55,19 @@
 	let activeHitIdx = $state(-1);
 	let searchInputEl: HTMLInputElement | undefined = $state();
 	let searchDebounce: ReturnType<typeof setTimeout> | null = null;
+	// Monotonic token: a response is applied only if no newer search (or a
+	// clear, or a message switch) started after it. Prevents a slow response
+	// from repopulating results for a query no longer in the input.
+	let searchToken = 0;
 
 	// Debounced backend search. Searches the parsed message in the store, so
 	// it finds fields even in segments the tree hasn't lazily expanded yet.
 	$effect(() => {
 		const q = searchQuery.trim();
+		const msgId = messageId;
 		if (searchDebounce) clearTimeout(searchDebounce);
-		if (!q) {
+		const token = ++searchToken;
+		if (!q || !searchEnabled) {
 			searchHits = [];
 			searchActive = false;
 			searchPending = false;
@@ -63,14 +76,16 @@
 		}
 		searchPending = true;
 		searchDebounce = setTimeout(async () => {
+			let hits: SearchHit[] = [];
 			try {
-				searchHits = await searchMessage(messageId, q);
-				searchActive = true;
-				activeHitIdx = -1;
+				hits = await searchMessage(msgId, q);
 			} catch {
-				searchHits = [];
-				searchActive = true;
+				hits = [];
 			}
+			if (token !== searchToken) return; // stale response
+			searchHits = hits;
+			searchActive = true;
+			activeHitIdx = -1;
 			searchPending = false;
 		}, 250);
 	});
@@ -304,6 +319,7 @@
 	{#if visibleNodes.length === 0}
 		<div class="tree-empty">No message loaded</div>
 	{:else}
+		{#if searchEnabled}
 		<div class="tree-search">
 			<div class="search-row">
 				<span class="search-icon">&#128269;</span>
@@ -351,6 +367,7 @@
 				{/if}
 			{/if}
 		</div>
+		{/if}
 		<div class="tree-list" role="tree">
 			{#each visibleNodes as node (node.id)}
 				<TreeNodeRow
