@@ -64,6 +64,10 @@
 	"tree.empty": "Öffnen Sie eine HL7-Datei oder fügen Sie eine Nachricht ein.",
 	"tree.shortcutHint": "Strg+O zum Öffnen einer Datei",
 	"tree.noMessage": "Keine Nachricht geladen",
+	"tree.searchPlaceholder": "Feld, Name oder Wert suchen…",
+	"tree.searchClear": "Suche löschen",
+	"tree.searchResults": "{count} Treffer",
+	"tree.searchNoResults": "Keine Treffer",
 
 	"editor.header": "Editor",
 	"editor.untitled": "Unbenannt",
