@@ -76,6 +76,19 @@ export interface ListenerStatus {
 	bind_address: string | null;
 }
 
+/** Payload of the `mllp:received` Tauri event. */
+export interface MllpReceivedEvent {
+	content: string;
+	source_addr: string;
+	received_at: string;
+	/** Payload size after MLLP unframing, in bytes. */
+	bytes: number;
+	/** ACK code sent back ("AA"/"AE"/"AR"), or null when auto-ACK is off. */
+	ack_code: string | null;
+	/** Charset the payload was decoded with. */
+	encoding: string;
+}
+
 export async function mllpListenStart(config: ListenerConfig): Promise<ListenerStatus> {
 	return invoke('mllp_listen_start', { config });
 }
