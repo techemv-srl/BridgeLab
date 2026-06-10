@@ -195,6 +195,7 @@
 	"comm.consoleEmpty": "Nessun messaggio ricevuto",
 	"comm.consoleAutoOpen": "Apri i messaggi ricevuti in un nuovo tab",
 	"comm.consoleOpenHint": "Clicca per aprire questo messaggio in un tab",
+	"comm.consoleEvicted": "Contenuto completo non più disponibile (limite memoria)",
 	"comm.encoding": "Codifica",
 	"comm.encUnicode": "Unicode",
 	"comm.encLatin1": "Latin-1, Europa occ.",
