@@ -11,6 +11,21 @@ export async function getTreeChildren(messageId: string, nodeId: string): Promis
 	return invoke<TreeNode[]>('get_tree_children', { messageId, nodeId });
 }
 
+/** A single search match. node_id follows the tree scheme ("seg3", "seg3.f5"). */
+export interface SearchHit {
+	node_id: string;
+	segment_idx: number;
+	field_position: number | null;
+	label: string;
+	snippet: string;
+	match_kind: 'segment' | 'name' | 'value';
+}
+
+/** Case-insensitive search across segment types, schema field names and field values. */
+export async function searchMessage(messageId: string, query: string): Promise<SearchHit[]> {
+	return invoke<SearchHit[]>('search_message', { messageId, query });
+}
+
 /** Get full content of a specific field (for expanding truncated fields) */
 export async function getFieldContent(
 	messageId: string,

@@ -200,6 +200,107 @@ pub fn get_tree_children(
     }
 }
 
+/// A single match returned by `search_message`. `node_id` follows the same
+/// scheme as the tree ("seg{N}" / "seg{N}.f{P}") so the frontend can reuse
+/// the existing expand-and-scroll navigation.
+#[derive(Debug, Serialize)]
+pub struct SearchHit {
+    pub node_id: String,
+    pub segment_idx: usize,
+    pub field_position: Option<usize>,
+    pub label: String,
+    pub snippet: String,
+    /// "segment" | "name" | "value" — what part of the node matched.
+    pub match_kind: String,
+}
+
+/// Maximum hits returned; beyond this the query is too broad to be useful
+/// and the UI would choke rendering thousands of rows.
+const MAX_SEARCH_HITS: usize = 200;
+/// Per-field scan cap. Truncated fields can hold multi-MB base64 blobs;
+/// matches that deep in a blob aren't navigable anyway.
+const MAX_FIELD_SCAN_CHARS: usize = 10_000;
+
+/// Case-insensitive search across segment types, schema field names and
+/// field values. Searches the *parsed* message in the store, so it finds
+/// fields the tree hasn't lazily loaded yet.
+#[tauri::command]
+pub fn search_message(
+    message_id: String,
+    query: String,
+    store: State<'_, MessageStore>,
+) -> Result<Vec<SearchHit>, BridgeLabError> {
+    let msg = store
+        .get(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id))?;
+    Ok(search_in_message(&msg, &query))
+}
+
+fn search_in_message(
+    msg: &crate::parser::hl7::message::Hl7Message,
+    query: &str,
+) -> Vec<SearchHit> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Vec::new();
+    }
+
+    let mut hits: Vec<SearchHit> = Vec::new();
+
+    'segments: for (seg_idx, segment) in msg.segments.iter().enumerate() {
+        if segment.segment_type.to_lowercase().contains(&q) {
+            let preview: String = segment.span.as_str(&msg.raw).chars().take(60).collect();
+            hits.push(SearchHit {
+                node_id: format!("seg{}", seg_idx),
+                segment_idx: seg_idx,
+                field_position: None,
+                label: format!("{} ({})", segment.segment_type, seg_idx),
+                snippet: preview,
+                match_kind: "segment".into(),
+            });
+            if hits.len() >= MAX_SEARCH_HITS {
+                break 'segments;
+            }
+        }
+
+        for field in &segment.fields {
+            let value = field.span.as_str(&msg.raw);
+            let scan: String = value.chars().take(MAX_FIELD_SCAN_CHARS).collect::<String>().to_lowercase();
+            let value_match = scan.contains(&q);
+
+            let field_name = crate::parser::hl7::tables::get_field_info(
+                &segment.segment_type,
+                field.position,
+                &msg.version,
+            )
+            .map(|i| i.name)
+            .unwrap_or_default();
+            let name_match = !field_name.is_empty() && field_name.to_lowercase().contains(&q);
+
+            if value_match || name_match {
+                let label = if field_name.is_empty() {
+                    format!("{}-{}", segment.segment_type, field.position)
+                } else {
+                    format!("{}-{} {}", segment.segment_type, field.position, field_name)
+                };
+                hits.push(SearchHit {
+                    node_id: format!("seg{}.f{}", seg_idx, field.position),
+                    segment_idx: seg_idx,
+                    field_position: Some(field.position),
+                    label,
+                    snippet: value.chars().take(60).collect(),
+                    match_kind: if value_match { "value".into() } else { "name".into() },
+                });
+                if hits.len() >= MAX_SEARCH_HITS {
+                    break 'segments;
+                }
+            }
+        }
+    }
+
+    hits
+}
+
 /// Get full content of a specific field (for expanding truncated fields).
 #[tauri::command]
 pub fn get_field_content(
@@ -489,4 +590,70 @@ pub fn get_fhir_bundle_entry(
 
     serde_json::to_string_pretty(entry)
         .map_err(|e| BridgeLabError::ParseError(format!("Serialize failed: {}", e)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::hl7::lexer::Hl7Lexer;
+
+    fn sample_msg() -> crate::parser::hl7::message::Hl7Message {
+        let raw = "MSH|^~\\&|SENDAPP|SENDFAC|RECVAPP|RECVFAC|20260101120000||ADT^A01|MSG001|P|2.5\rPID|1||12345^^^HOSP^MR||ROSSI^MARIO||19800101|M|||VIA ROMA 1^^MILANO^^20100^IT\rPV1|1|I|WARD^101^A".to_string();
+        Hl7Lexer::new().parse(raw.into_bytes()).unwrap()
+    }
+
+    #[test]
+    fn test_search_by_value() {
+        let msg = sample_msg();
+        let hits = search_in_message(&msg, "rossi");
+        assert!(!hits.is_empty());
+        let hit = hits.iter().find(|h| h.node_id == "seg1.f5").expect("PID-5 hit");
+        assert_eq!(hit.match_kind, "value");
+        assert!(hit.snippet.contains("ROSSI"));
+        assert_eq!(hit.segment_idx, 1);
+        assert_eq!(hit.field_position, Some(5));
+    }
+
+    #[test]
+    fn test_search_by_segment_type() {
+        let msg = sample_msg();
+        let hits = search_in_message(&msg, "PV1");
+        assert!(hits.iter().any(|h| h.node_id == "seg2" && h.match_kind == "segment"));
+    }
+
+    #[test]
+    fn test_search_by_schema_field_name() {
+        let msg = sample_msg();
+        // "Patient Name" is the schema name for PID-5; the literal string
+        // does not appear in the message body.
+        let hits = search_in_message(&msg, "patient name");
+        assert!(hits.iter().any(|h| h.node_id == "seg1.f5" && h.match_kind == "name"));
+    }
+
+    #[test]
+    fn test_search_empty_query_returns_nothing() {
+        let msg = sample_msg();
+        assert!(search_in_message(&msg, "   ").is_empty());
+    }
+
+    #[test]
+    fn test_search_case_insensitive() {
+        let msg = sample_msg();
+        let lower = search_in_message(&msg, "milano");
+        let upper = search_in_message(&msg, "MILANO");
+        assert_eq!(lower.len(), upper.len());
+        assert!(!lower.is_empty());
+    }
+
+    #[test]
+    fn test_search_caps_results() {
+        // A query matching every field of every segment must not exceed the cap.
+        let mut raw = String::from("MSH|^~\\&|A|A|A|A|20260101||ADT^A01|M1|P|2.5");
+        for _ in 0..300 {
+            raw.push_str("\rNTE|1||AAAA");
+        }
+        let msg = Hl7Lexer::new().parse(raw.into_bytes()).unwrap();
+        let hits = search_in_message(&msg, "a");
+        assert!(hits.len() <= MAX_SEARCH_HITS);
+    }
 }
