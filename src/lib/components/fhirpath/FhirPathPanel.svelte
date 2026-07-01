@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { evaluateFhirPath, type FhirPathResult } from '$lib/ipc/fhirpath';
+	import { parseUpgradeError } from '$lib/ipc/licensing';
+	import { t } from '$lib/i18n';
 
 	interface Props {
 		messageId: string;
@@ -33,7 +35,11 @@
 				history = [expression, ...history.slice(0, 9)];
 			}
 		} catch (e) {
-			result = { expression, results: [], count: 0, error: String(e) };
+			const up = parseUpgradeError(e);
+			result = {
+				expression, results: [], count: 0,
+				error: up ? t('upgrade.required', { tier: up.tier }) : String(e),
+			};
 		}
 		evaluating = false;
 	}

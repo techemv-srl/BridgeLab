@@ -88,7 +88,13 @@
 		<button onclick={() => { onCloseTab(contextMenuTabId!); closeContextMenu(); }}>
 			{tr('tabs.closeTab')}
 		</button>
-		<button onclick={() => { closeContextMenu(); }}>
+		<button onclick={() => {
+			const keep = contextMenuTabId;
+			closeContextMenu();
+			// Per-tab close goes through the host's handler so unsaved-changes
+			// prompts still fire (the dialog store queues them).
+			for (const t of tabs.filter((t) => t.id !== keep)) onCloseTab(t.id);
+		}}>
 			{tr('tabs.closeOthers')}
 		</button>
 	</div>

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { analyzeFhirBundle, getFhirBundleEntry, type BundleAnalysis, type BundleEntry } from '$lib/ipc/bundle';
+	import { parseUpgradeError } from '$lib/ipc/licensing';
+	import { t } from '$lib/i18n';
 
 	interface Props {
 		messageId: string;
@@ -32,7 +34,8 @@
 				await selectEntry(0);
 			}
 		} catch (e) {
-			error = String(e);
+			const up = parseUpgradeError(e);
+			error = up ? t('upgrade.required', { tier: up.tier }) : String(e);
 		}
 		loading = false;
 	}
