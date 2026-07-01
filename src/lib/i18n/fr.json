@@ -215,7 +215,7 @@
 	"upgrade.required": "Cette fonctionnalité nécessite une licence {tier}. Activez via Aide → Activation ou contactez info@techemv.it.",
 	"settings.clearSession": "Effacer la session enregistrée",
 	"settings.sessionCleared": "Session effacée",
-	"settings.clearSessionHint": "Supprime les onglets enregistrés ; le prochain démarrage sera vide.",
+	"settings.clearSessionHint": "Supprime les onglets enregistrés et désactive la restauration de session ; le prochain démarrage sera vide.",
 	"comm.console": "Console listener",
 	"comm.consoleClear": "Effacer",
 	"comm.consoleEmpty": "Aucun message reçu pour l'instant",

@@ -1291,6 +1291,7 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
 				<SettingsModal
+				onRestoreSessionChange={(enabled) => { restoreSession = enabled; }}
 					{theme}
 					onClose={() => { showSettings = false; }}
 					onThemeChange={handleSetTheme}

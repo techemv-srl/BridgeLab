@@ -215,7 +215,7 @@
 	"upgrade.required": "Diese Funktion erfordert eine {tier}-Lizenz. Aktivierung über Hilfe → Aktivierung oder info@techemv.it kontaktieren.",
 	"settings.clearSession": "Gespeicherte Sitzung löschen",
 	"settings.sessionCleared": "Sitzung gelöscht",
-	"settings.clearSessionHint": "Entfernt die gespeicherten Tabs; der nächste Start beginnt leer.",
+	"settings.clearSessionHint": "Entfernt die gespeicherten Tabs und deaktiviert die Sitzungswiederherstellung; der nächste Start beginnt leer.",
 	"comm.console": "Listener-Konsole",
 	"comm.consoleClear": "Leeren",
 	"comm.consoleEmpty": "Noch keine Nachrichten empfangen",

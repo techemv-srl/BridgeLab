@@ -215,10 +215,14 @@
 		mllpResult = null;
 
 		// Retries: 0 = single attempt. Each retry waits mllpRetryDelay seconds.
-		const attempts = 1 + Math.max(0, Math.min(10, mllpRetries));
+		// A cleared number input binds as undefined/NaN — coerce so Send never
+		// silently does nothing because `attempt < NaN` is false.
+		const retries = Number.isFinite(mllpRetries) ? Math.max(0, Math.min(10, Math.trunc(mllpRetries))) : 0;
+		const retryDelaySecs = Number.isFinite(mllpRetryDelay) ? Math.max(1, mllpRetryDelay) : 1;
+		const attempts = 1 + retries;
 		for (let attempt = 0; attempt < attempts; attempt++) {
 			if (attempt > 0) {
-				await new Promise((r) => setTimeout(r, Math.max(1, mllpRetryDelay) * 1000));
+				await new Promise((r) => setTimeout(r, retryDelaySecs * 1000));
 			}
 			try {
 				mllpResult = await mllpSend(mllpHost, mllpPort, currentMessage, {
