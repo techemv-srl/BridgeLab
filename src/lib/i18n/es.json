@@ -215,7 +215,7 @@
 	"upgrade.required": "Esta función requiere una licencia {tier}. Activa en Ayuda → Activación o contacta info@techemv.it.",
 	"settings.clearSession": "Borrar sesión guardada",
 	"settings.sessionCleared": "Sesión borrada",
-	"settings.clearSessionHint": "Elimina las pestañas guardadas; el próximo inicio comenzará vacío.",
+	"settings.clearSessionHint": "Elimina las pestañas guardadas y desactiva la restauración de sesión; el próximo inicio comenzará vacío.",
 	"comm.console": "Consola del listener",
 	"comm.consoleClear": "Limpiar",
 	"comm.consoleEmpty": "Aún no se han recibido mensajes",
