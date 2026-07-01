@@ -33,6 +33,39 @@ pub struct MllpSendResult {
     pub error: Option<String>,
 }
 
+/// Options for an MLLP send. `Default` gives standard MLLP framing
+/// (VT / FS CR), 30s timeouts and the UTF-8-with-Latin-1-failover charset.
+/// Non-standard framing bytes exist in the wild on legacy interfaces —
+/// that's why they're tunable at all.
+#[derive(Debug, Clone)]
+pub struct SendOptions {
+    /// Timeout for the TCP connect phase.
+    pub connect_timeout_secs: u64,
+    /// Timeout for reading the ACK after the message has been written.
+    pub response_timeout_secs: u64,
+    /// encoding_rs label ("UTF-8", "ISO-8859-1", ...); empty = failover default.
+    pub encoding: String,
+    /// Start-of-block byte (standard: 0x0B VT).
+    pub start_byte: u8,
+    /// First end-of-block byte (standard: 0x1C FS).
+    pub end_byte_1: u8,
+    /// Second end-of-block byte (standard: 0x0D CR).
+    pub end_byte_2: u8,
+}
+
+impl Default for SendOptions {
+    fn default() -> Self {
+        Self {
+            connect_timeout_secs: 30,
+            response_timeout_secs: 30,
+            encoding: String::new(),
+            start_byte: MLLP_START,
+            end_byte_1: MLLP_END_1,
+            end_byte_2: MLLP_END_2,
+        }
+    }
+}
+
 /// Result of an MLLP receive operation (single message).
 #[derive(Debug, Clone, Serialize)]
 pub struct MllpReceivedMessage {
@@ -128,9 +161,9 @@ pub fn encode_with_label(text: &str, label: &str) -> Vec<u8> {
     }
 }
 
-/// Send an HL7 message via MLLP to a remote host. `encoding` is an
-/// `encoding_rs` label (e.g. `"UTF-8"`, `"ISO-8859-1"`, `"windows-1252"`);
-/// pass an empty string for plain UTF-8.
+/// Send an HL7 message via MLLP to a remote host with default options
+/// (standard framing, `timeout_secs` for both connect and response).
+/// `encoding` is an `encoding_rs` label; empty string = UTF-8 failover.
 pub async fn send(
     host: &str,
     port: u16,
@@ -138,11 +171,30 @@ pub async fn send(
     timeout_secs: u64,
     encoding: &str,
 ) -> MllpSendResult {
+    send_with_options(host, port, message, &SendOptions {
+        connect_timeout_secs: timeout_secs,
+        response_timeout_secs: timeout_secs,
+        encoding: encoding.to_string(),
+        ..SendOptions::default()
+    })
+    .await
+}
+
+/// Send an HL7 message via MLLP with full control over timeouts, charset
+/// and framing bytes. This is what the `mllp_send` IPC command drives —
+/// the UI exposes every knob in "Advanced MLLP Settings".
+pub async fn send_with_options(
+    host: &str,
+    port: u16,
+    message: &str,
+    opts: &SendOptions,
+) -> MllpSendResult {
     let start = Instant::now();
     let addr = format!("{}:{}", host, port);
+    let encoding = opts.encoding.as_str();
 
     let connect_result = tokio::time::timeout(
-        Duration::from_secs(timeout_secs),
+        Duration::from_secs(opts.connect_timeout_secs),
         TcpStream::connect(&addr),
     )
     .await;
@@ -168,13 +220,13 @@ pub async fn send(
     };
 
     // Send framed message — re-encode to the user-selected charset before
-    // wrapping in MLLP framing bytes.
+    // wrapping in the (possibly non-standard) framing bytes.
     let payload = encode_with_label(message, encoding);
     let mut framed = Vec::with_capacity(payload.len() + 3);
-    framed.push(MLLP_START);
+    framed.push(opts.start_byte);
     framed.extend_from_slice(&payload);
-    framed.push(MLLP_END_1);
-    framed.push(MLLP_END_2);
+    framed.push(opts.end_byte_1);
+    framed.push(opts.end_byte_2);
     if let Err(e) = stream.write_all(&framed).await {
         return MllpSendResult {
             success: false,
@@ -193,7 +245,7 @@ pub async fn send(
     let mut response_bytes: Vec<u8> = Vec::with_capacity(4096);
     let mut chunk = [0u8; 4096];
 
-    let read_status = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
+    let read_status = tokio::time::timeout(Duration::from_secs(opts.response_timeout_secs), async {
         loop {
             match stream.read(&mut chunk).await {
                 Ok(0) => return Ok::<ReadOutcome, std::io::Error>(ReadOutcome::Eof),
@@ -201,8 +253,8 @@ pub async fn send(
                     response_bytes.extend_from_slice(&chunk[..n]);
                     let len = response_bytes.len();
                     if len >= 2
-                        && response_bytes[len - 2] == MLLP_END_1
-                        && response_bytes[len - 1] == MLLP_END_2
+                        && response_bytes[len - 2] == opts.end_byte_1
+                        && response_bytes[len - 1] == opts.end_byte_2
                     {
                         return Ok(ReadOutcome::Terminator);
                     }
@@ -228,9 +280,9 @@ pub async fn send(
     } else {
         let mut start_idx = 0usize;
         let mut end_idx = response_bytes.len();
-        if response_bytes[0] == MLLP_START { start_idx = 1; }
-        if end_idx > start_idx && response_bytes[end_idx - 1] == MLLP_END_2 { end_idx -= 1; }
-        if end_idx > start_idx && response_bytes[end_idx - 1] == MLLP_END_1 { end_idx -= 1; }
+        if response_bytes[0] == opts.start_byte { start_idx = 1; }
+        if end_idx > start_idx && response_bytes[end_idx - 1] == opts.end_byte_2 { end_idx -= 1; }
+        if end_idx > start_idx && response_bytes[end_idx - 1] == opts.end_byte_1 { end_idx -= 1; }
         decode_with_label(&response_bytes[start_idx..end_idx], encoding)
     };
     let response_time_ms = start.elapsed().as_millis() as u64;
@@ -539,6 +591,81 @@ mod tests {
             "expected cap-exceeded error, got: {}",
             err
         );
+    }
+
+    /// Non-standard framing bytes (legacy interfaces): client must frame the
+    /// outbound message with the configured bytes and detect the ACK
+    /// terminator using the same bytes.
+    #[tokio::test]
+    async fn test_mllp_send_custom_framing() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        const START: u8 = 0x02; // STX
+        const END1: u8 = 0x03; // ETX
+        const END2: u8 = 0x0A; // LF
+
+        let _peer = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).await.unwrap();
+            // Verify the client framed with the custom bytes
+            assert_eq!(buf[0], START, "client must use custom start byte");
+            assert_eq!(buf[n - 2], END1, "client must use custom end byte 1");
+            assert_eq!(buf[n - 1], END2, "client must use custom end byte 2");
+
+            let ack_body = "MSH|^~\\&|Recv||Send||20260610||ACK|CF01|P|2.5\rMSA|AA|CF01";
+            let mut framed = Vec::new();
+            framed.push(START);
+            framed.extend_from_slice(ack_body.as_bytes());
+            framed.push(END1);
+            framed.push(END2);
+            stream.write_all(&framed).await.unwrap();
+            let _ = stream.read(&mut buf).await;
+        });
+
+        let opts = SendOptions {
+            connect_timeout_secs: 5,
+            response_timeout_secs: 5,
+            start_byte: START,
+            end_byte_1: END1,
+            end_byte_2: END2,
+            ..SendOptions::default()
+        };
+        let msg = "MSH|^~\\&|Send|SF|Recv|RF|20260610||ADT^A01|CF01|P|2.5\rPID|||1";
+        let result = send_with_options("127.0.0.1", port, msg, &opts).await;
+
+        assert!(result.success, "send failed: {:?}", result.error);
+        assert!(result.response.contains("MSA|AA|CF01"), "got: {}", result.response);
+    }
+
+    /// The response timeout is independent from the connect timeout: a peer
+    /// that accepts but never answers must trip the response timeout.
+    #[tokio::test]
+    async fn test_mllp_send_response_timeout_independent() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Peer accepts, reads, then stays silent.
+        let _peer = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        });
+
+        let opts = SendOptions {
+            connect_timeout_secs: 5,
+            response_timeout_secs: 1, // must trip well before the peer's 10s
+            ..SendOptions::default()
+        };
+        let started = Instant::now();
+        let result = send_with_options("127.0.0.1", port, "MSH|^~\\&|x", &opts).await;
+
+        assert!(!result.success);
+        assert_eq!(result.error.as_deref(), Some("Response timed out"));
+        assert!(started.elapsed() < Duration::from_secs(4),
+                "response timeout should trip at ~1s, took {:?}", started.elapsed());
     }
 
     /// BL-MLLP-08 equivalent: connection to a closed port fails fast with an

@@ -667,10 +667,7 @@
 	async function handleUpgradeError(err: unknown): Promise<boolean> {
 		const upgrade = parseUpgradeError(err);
 		if (upgrade) {
-			await dialogStore.info(
-				`This feature requires a ${upgrade.tier} license.\n\n` +
-				`Upgrade via Settings → Activation or contact info@techemv.it.`
-			);
+			await dialogStore.info(t('upgrade.required', { tier: upgrade.tier }));
 			return true;
 		}
 		return false;
