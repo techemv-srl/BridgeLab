@@ -47,11 +47,33 @@ export interface HistoryEntry {
 }
 
 // --- MLLP ---
+export interface MllpSendOptions {
+	/** TCP connect timeout (seconds). */
+	timeoutSecs?: number;
+	/** ACK read timeout (seconds); defaults to timeoutSecs backend-side. */
+	responseTimeoutSecs?: number;
+	encoding?: string;
+	/** Framing byte overrides as hex strings ("0x0B"); invalid values fall back to standard MLLP. */
+	startChar?: string;
+	endChar1?: string;
+	endChar2?: string;
+	profileName?: string;
+}
+
 export async function mllpSend(
 	host: string, port: number, message: string,
-	timeoutSecs?: number, encoding?: string, profileName?: string,
+	opts: MllpSendOptions = {},
 ): Promise<MllpSendResult> {
-	return invoke('mllp_send', { host, port, message, timeoutSecs, encoding, profileName });
+	return invoke('mllp_send', {
+		host, port, message,
+		timeoutSecs: opts.timeoutSecs,
+		responseTimeoutSecs: opts.responseTimeoutSecs,
+		encoding: opts.encoding,
+		startChar: opts.startChar,
+		endChar1: opts.endChar1,
+		endChar2: opts.endChar2,
+		profileName: opts.profileName,
+	});
 }
 
 export async function mllpReceive(
@@ -105,9 +127,9 @@ export async function mllpListenStatus(): Promise<ListenerStatus> {
 export async function httpRequest(
 	url: string, method: string,
 	headers?: Record<string, string>, body?: string,
-	timeoutSecs?: number, profileName?: string,
+	timeoutSecs?: number, followRedirects?: boolean, profileName?: string,
 ): Promise<HttpResult> {
-	return invoke('http_request', { url, method, headers, body, timeoutSecs, profileName });
+	return invoke('http_request', { url, method, headers, body, timeoutSecs, followRedirects, profileName });
 }
 
 // --- ACK ---

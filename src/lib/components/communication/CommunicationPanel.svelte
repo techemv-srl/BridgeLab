@@ -3,9 +3,11 @@
 		mllpSend, httpRequest,
 		mllpListenStart, mllpListenStop, mllpListenStatus,
 		getRequestHistory, clearRequestHistory,
+		saveConnectionProfile, getConnectionProfiles, deleteConnectionProfile,
 		type MllpSendResult, type HttpResult, type HistoryEntry,
-		type ListenerStatus, type MllpReceivedEvent,
+		type ListenerStatus, type MllpReceivedEvent, type ConnectionProfile,
 	} from '$lib/ipc/communication';
+	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
@@ -123,19 +125,116 @@
 	let history = $state<HistoryEntry[]>([]);
 	let selectedHistoryId = $state<string | null>(null);
 
+	// --- Connection profiles ---
+	// The backend (DB table + save/get/delete commands) predates this UI;
+	// until now the feature was documented in the manual but unreachable.
+	let profiles = $state<ConnectionProfile[]>([]);
+	let mllpProfileId = $state('');
+	let httpProfileId = $state('');
+	let mllpProfileName = $state('');
+	let httpProfileName = $state('');
+
+	let mllpProfiles = $derived(profiles.filter((p) => p.profile_type === 'mllp'));
+	let httpProfiles = $derived(profiles.filter((p) => p.profile_type === 'http'));
+
+	async function loadProfiles() {
+		try { profiles = await getConnectionProfiles(); } catch { /* web mode */ }
+	}
+	$effect(() => { loadProfiles(); });
+
+	function applyMllpProfile(id: string) {
+		const p = profiles.find((pp) => pp.id === id);
+		if (!p) return;
+		mllpHost = p.host;
+		mllpPort = p.port;
+		mllpTimeout = p.timeout_secs;
+		mllpAutoAck = p.auto_ack;
+	}
+
+	function applyHttpProfile(id: string) {
+		const p = profiles.find((pp) => pp.id === id);
+		if (!p) return;
+		if (p.url) httpUrl = p.url;
+		if (p.headers) httpHeadersText = p.headers;
+		httpTimeout = p.timeout_secs;
+	}
+
+	async function saveProfile(kind: 'mllp' | 'http') {
+		const name = (kind === 'mllp' ? mllpProfileName : httpProfileName).trim();
+		if (!name) return;
+		// Same name + type overwrites (upsert) instead of piling up duplicates.
+		const existing = profiles.find((p) => p.name === name && p.profile_type === kind);
+		const profile: ConnectionProfile = kind === 'mllp'
+			? {
+				id: existing?.id ?? crypto.randomUUID(),
+				name, profile_type: 'mllp',
+				host: mllpHost, port: mllpPort, timeout_secs: mllpTimeout,
+				url: null, headers: null, auto_ack: mllpAutoAck,
+			}
+			: {
+				id: existing?.id ?? crypto.randomUUID(),
+				name, profile_type: 'http',
+				host: '', port: 0, timeout_secs: httpTimeout,
+				url: httpUrl, headers: httpHeadersText, auto_ack: false,
+			};
+		try {
+			await saveConnectionProfile(profile);
+			await loadProfiles();
+			if (kind === 'mllp') { mllpProfileId = profile.id; mllpProfileName = ''; }
+			else { httpProfileId = profile.id; httpProfileName = ''; }
+		} catch { /* web mode */ }
+	}
+
+	async function deleteProfile(kind: 'mllp' | 'http') {
+		const id = kind === 'mllp' ? mllpProfileId : httpProfileId;
+		if (!id) return;
+		try {
+			await deleteConnectionProfile(id);
+			if (kind === 'mllp') mllpProfileId = '';
+			else httpProfileId = '';
+			await loadProfiles();
+		} catch { /* web mode */ }
+	}
+
 	// Derived
 	let hasMessage = $derived(currentMessage.trim().length > 0);
 	let messagePreview = $derived(currentMessage.trim().substring(0, 60) + (currentMessage.length > 60 ? '...' : ''));
+
+	/** Turn a raw IPC error into a user-facing message; feature-gate errors
+	 *  become the localized upgrade prompt instead of the raw
+	 *  "UPGRADE_REQUIRED:feature:tier:..." string. */
+	function friendlyError(e: unknown): string {
+		const upgrade = parseUpgradeError(e);
+		return upgrade ? tr('upgrade.required', { tier: upgrade.tier }) : String(e);
+	}
 
 	// --- MLLP ---
 	async function handleMllpSend() {
 		if (!hasMessage) return;
 		mllpSending = true;
 		mllpResult = null;
-		try {
-			mllpResult = await mllpSend(mllpHost, mllpPort, currentMessage, mllpTimeout, mllpEncoding, activeTabLabel || undefined);
-		} catch (e) {
-			mllpResult = { success: false, response: '', response_time_ms: 0, error: String(e) };
+
+		// Retries: 0 = single attempt. Each retry waits mllpRetryDelay seconds.
+		const attempts = 1 + Math.max(0, Math.min(10, mllpRetries));
+		for (let attempt = 0; attempt < attempts; attempt++) {
+			if (attempt > 0) {
+				await new Promise((r) => setTimeout(r, Math.max(1, mllpRetryDelay) * 1000));
+			}
+			try {
+				mllpResult = await mllpSend(mllpHost, mllpPort, currentMessage, {
+					timeoutSecs: mllpTimeout,
+					responseTimeoutSecs: mllpResponseTimeout,
+					encoding: mllpEncoding,
+					startChar: mllpStartChar,
+					endChar1: mllpEndChar1,
+					endChar2: mllpEndChar2,
+					profileName: activeTabLabel || undefined,
+				});
+			} catch (e) {
+				mllpResult = { success: false, response: '', response_time_ms: 0, error: friendlyError(e) };
+				if (parseUpgradeError(e)) break; // retrying won't change the license
+			}
+			if (mllpResult?.success) break;
 		}
 		mllpSending = false;
 		loadHistory();
@@ -153,7 +252,7 @@
 				encoding: listenEncoding,
 			});
 		} catch (e) {
-			listenError = String(e);
+			listenError = friendlyError(e);
 		}
 	}
 
@@ -222,10 +321,23 @@
 				const idx = line.indexOf(':');
 				if (idx > 0) headers[line.substring(0, idx).trim()] = line.substring(idx + 1).trim();
 			}
+			// Authentication from Advanced settings. An explicit Authorization
+			// header in the Headers box wins over the dropdown.
+			const hasExplicitAuth = Object.keys(headers).some((k) => k.toLowerCase() === 'authorization');
+			if (!hasExplicitAuth) {
+				if (httpAuth === 'basic' && httpAuthUser) {
+					headers['Authorization'] = 'Basic ' + btoa(`${httpAuthUser}:${httpAuthPass}`);
+				} else if (httpAuth === 'bearer' && httpAuthUser) {
+					headers['Authorization'] = 'Bearer ' + httpAuthUser;
+				}
+			}
 			const body = httpBody.trim() || currentMessage || undefined;
-			httpResult = await httpRequest(httpUrl, httpMethod, headers, body, 30, activeTabLabel || undefined);
+			httpResult = await httpRequest(
+				httpUrl, httpMethod, headers, body,
+				httpTimeout, httpFollowRedirects, activeTabLabel || undefined,
+			);
 		} catch (e) {
-			httpResult = { success: false, status_code: 0, status_text: '', headers: {}, body: '', response_time_ms: 0, error: String(e) };
+			httpResult = { success: false, status_code: 0, status_text: '', headers: {}, body: '', response_time_ms: 0, error: friendlyError(e) };
 		}
 		httpSending = false;
 		loadHistory();
@@ -256,7 +368,7 @@
 		<button class="comm-tab" class:active={activeSubTab === 'mllp'} onclick={() => { activeSubTab = 'mllp'; }}>MLLP</button>
 		<button class="comm-tab" class:active={activeSubTab === 'http'} onclick={() => { activeSubTab = 'http'; }}>HTTP</button>
 		<button class="comm-tab" class:active={activeSubTab === 'history'} onclick={() => { activeSubTab = 'history'; loadHistory(); }}>
-			History {history.length > 0 ? `(${history.length})` : ''}
+			{tr('comm.history')} {history.length > 0 ? `(${history.length})` : ''}
 		</button>
 		<!-- Active message indicator -->
 		<div class="tab-message-info">
@@ -265,7 +377,7 @@
 					{activeTabLabel || 'Untitled'}
 				</span>
 			{:else}
-				<span class="msg-indicator empty">No message</span>
+				<span class="msg-indicator empty">{tr('comm.noMessageShort')}</span>
 			{/if}
 		</div>
 	</div>
@@ -274,25 +386,44 @@
 		<!-- ==================== MLLP ==================== -->
 		{#if activeSubTab === 'mllp'}
 			<div class="comm-form">
-				<div class="section-label">Connection</div>
+				<div class="section-label">{tr('comm.connection')}</div>
 				<div class="form-row">
-					<label for="mllp-host">Host</label>
+					<label for="mllp-host">{tr('comm.host')}</label>
 					<input id="mllp-host" bind:value={mllpHost} placeholder="localhost" class="input-grow" />
-					<label for="mllp-port">Port</label>
+					<label for="mllp-port">{tr('comm.port')}</label>
 					<input id="mllp-port" type="number" bind:value={mllpPort} class="input-sm" />
-					<label for="mllp-timeout">Connect Timeout</label>
+					<label for="mllp-timeout">{tr('comm.connectTimeout')}</label>
 					<input id="mllp-timeout" type="number" bind:value={mllpTimeout} class="input-xs" />
 					<span class="hint">s</span>
 				</div>
+				<div class="form-row">
+					<label for="mllp-profile">{tr('comm.profile')}</label>
+					<select id="mllp-profile" bind:value={mllpProfileId}
+						onchange={() => applyMllpProfile(mllpProfileId)}
+						style="min-width: 130px; padding: 4px 6px;">
+						<option value="">\u2014</option>
+						{#each mllpProfiles as p (p.id)}
+							<option value={p.id}>{p.name}</option>
+						{/each}
+					</select>
+					{#if mllpProfileId}
+						<button class="btn btn-sm" onclick={() => deleteProfile('mllp')}>{tr('comm.profileDelete')}</button>
+					{/if}
+					<input class="input-grow" bind:value={mllpProfileName}
+						placeholder={tr('comm.profileNamePlaceholder')} />
+					<button class="btn btn-sm" onclick={() => saveProfile('mllp')} disabled={!mllpProfileName.trim()}>
+						{tr('comm.profileSave')}
+					</button>
+				</div>
 
 				<button class="toggle-advanced" onclick={() => { mllpShowAdvanced = !mllpShowAdvanced; }}>
-					{mllpShowAdvanced ? '\u25BC' : '\u25B6'} Advanced MLLP Settings
+					{mllpShowAdvanced ? '\u25BC' : '\u25B6'} {tr('comm.advancedMllp')}
 				</button>
 				{#if mllpShowAdvanced}
 					<div class="advanced-section">
 						<div class="form-row">
-							<label for="mllp-resptimeout">Response Timeout</label>
-							<input id="mllp-resptimeout" type="number" bind:value={mllpResponseTimeout} class="input-xs" />
+							<label for="mllp-resptimeout">{tr('comm.responseTimeout')}</label>
+							<input id="mllp-resptimeout" type="number" min={1} max={600} bind:value={mllpResponseTimeout} class="input-xs" />
 							<span class="hint">s</span>
 							<label for="mllp-encoding">{tr('comm.encoding')}</label>
 							<select id="mllp-encoding" bind:value={mllpEncoding}
@@ -308,35 +439,35 @@
 							</select>
 						</div>
 						<div class="form-row">
-							<label for="mllp-startchar">Start Block</label>
+							<label for="mllp-startchar">{tr('comm.startBlock')}</label>
 							<input id="mllp-startchar" bind:value={mllpStartChar} class="input-sm" title="MLLP start byte (VT = 0x0B)" />
-							<label for="mllp-endchar1">End Block</label>
+							<label for="mllp-endchar1">{tr('comm.endBlock')}</label>
 							<input id="mllp-endchar1" bind:value={mllpEndChar1} class="input-sm" title="MLLP end byte 1 (FS = 0x1C)" />
-							<label for="mllp-endchar2">End CR</label>
+							<label for="mllp-endchar2">{tr('comm.endCr')}</label>
 							<input id="mllp-endchar2" bind:value={mllpEndChar2} class="input-sm" title="MLLP end byte 2 (CR = 0x0D)" />
 						</div>
 						<div class="form-row">
-							<label for="mllp-retries">Retries</label>
+							<label for="mllp-retries">{tr('comm.retries')}</label>
 							<input id="mllp-retries" type="number" min={0} max={10} bind:value={mllpRetries} class="input-xs" />
-							<label for="mllp-retrydelay">Retry Delay</label>
+							<label for="mllp-retrydelay">{tr('comm.retryDelay')}</label>
 							<input id="mllp-retrydelay" type="number" min={1} max={60} bind:value={mllpRetryDelay} class="input-xs" />
 							<span class="hint">s</span>
 						</div>
 						<div class="setting-check">
-							<label><input type="checkbox" bind:checked={mllpAutoAck} /> Auto-generate ACK on receive</label>
+							<label><input type="checkbox" bind:checked={mllpAutoAck} /> {tr('comm.listenAutoAck')}</label>
 						</div>
 					</div>
 				{/if}
 
-				<div class="section-label">Send</div>
+				<div class="section-label">{tr('comm.send')}</div>
 				{#if !hasMessage}
-					<div class="info-box">No message in active tab to send. Open or paste an HL7 message first.</div>
+					<div class="info-box">{tr('comm.noMessage')}</div>
 				{:else}
-					<div class="info-box ok">Will send message from tab: <strong>{activeTabLabel || 'Untitled'}</strong> ({currentMessage.length} bytes)</div>
+					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: currentMessage.length })}</div>
 				{/if}
 				<div class="form-actions">
 					<button class="btn btn-primary" onclick={handleMllpSend} disabled={mllpSending || !hasMessage}>
-						{mllpSending ? 'Sending...' : 'Send via MLLP'}
+						{mllpSending ? tr('comm.sending') : tr('comm.sendViaMllp')}
 					</button>
 				</div>
 
@@ -489,65 +620,84 @@
 		<!-- ==================== HTTP ==================== -->
 		{:else if activeSubTab === 'http'}
 			<div class="comm-form">
-				<div class="section-label">Request</div>
+				<div class="section-label">{tr('comm.request')}</div>
 				<div class="form-row">
 					<select id="http-method" bind:value={httpMethod} class="input-method">
 						<option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option><option>PATCH</option>
 					</select>
 					<input bind:value={httpUrl} placeholder="https://server/fhir/Patient" class="input-grow" />
 				</div>
+				<div class="form-row">
+					<label for="http-profile">{tr('comm.profile')}</label>
+					<select id="http-profile" bind:value={httpProfileId}
+						onchange={() => applyHttpProfile(httpProfileId)}
+						style="min-width: 130px; padding: 4px 6px;">
+						<option value="">\u2014</option>
+						{#each httpProfiles as p (p.id)}
+							<option value={p.id}>{p.name}</option>
+						{/each}
+					</select>
+					{#if httpProfileId}
+						<button class="btn btn-sm" onclick={() => deleteProfile('http')}>{tr('comm.profileDelete')}</button>
+					{/if}
+					<input class="input-grow" bind:value={httpProfileName}
+						placeholder={tr('comm.profileNamePlaceholder')} />
+					<button class="btn btn-sm" onclick={() => saveProfile('http')} disabled={!httpProfileName.trim()}>
+						{tr('comm.profileSave')}
+					</button>
+				</div>
 
 				<button class="toggle-advanced" onclick={() => { httpShowAdvanced = !httpShowAdvanced; }}>
-					{httpShowAdvanced ? '\u25BC' : '\u25B6'} Advanced HTTP Settings
+					{httpShowAdvanced ? '\u25BC' : '\u25B6'} {tr('comm.advancedHttp')}
 				</button>
 				{#if httpShowAdvanced}
 					<div class="advanced-section">
 						<div class="form-row">
-							<label for="http-timeout">Timeout</label>
+							<label for="http-timeout">{tr('comm.timeout')}</label>
 							<input id="http-timeout" type="number" min={1} max={300} bind:value={httpTimeout} class="input-xs" />
 							<span class="hint">s</span>
 						</div>
 						<div class="setting-check">
-							<label><input type="checkbox" bind:checked={httpFollowRedirects} /> Follow Redirects</label>
+							<label><input type="checkbox" bind:checked={httpFollowRedirects} /> {tr('comm.followRedirects')}</label>
 						</div>
 						<div class="form-row">
-							<label for="http-auth">Authentication</label>
+							<label for="http-auth">{tr('comm.auth')}</label>
 							<select id="http-auth" bind:value={httpAuth} class="input-method">
-								<option value="none">None</option>
-								<option value="basic">Basic Auth</option>
-								<option value="bearer">Bearer Token</option>
+								<option value="none">{tr('comm.authNone')}</option>
+								<option value="basic">{tr('comm.authBasic')}</option>
+								<option value="bearer">{tr('comm.authBearer')}</option>
 							</select>
 						</div>
 						{#if httpAuth === 'basic'}
 							<div class="form-row">
-								<label for="http-user">Username</label>
+								<label for="http-user">{tr('comm.username')}</label>
 								<input id="http-user" bind:value={httpAuthUser} class="input-grow" />
-								<label for="http-pass">Password</label>
+								<label for="http-pass">{tr('comm.password')}</label>
 								<input id="http-pass" type="password" bind:value={httpAuthPass} class="input-grow" />
 							</div>
 						{:else if httpAuth === 'bearer'}
 							<div class="form-row">
-								<label for="http-token">Token</label>
+								<label for="http-token">{tr('comm.token')}</label>
 								<input id="http-token" bind:value={httpAuthUser} placeholder="Bearer token" class="input-grow" />
 							</div>
 						{/if}
 					</div>
 				{/if}
 
-				<div class="section-label">Headers</div>
+				<div class="section-label">{tr('comm.headers')}</div>
 				<textarea bind:value={httpHeadersText} rows={2} placeholder="Content-Type: application/json" class="input-area"></textarea>
-				<div class="section-label">Body <span class="hint">(leave empty to send active message)</span></div>
-				<textarea bind:value={httpBody} rows={2} placeholder="Custom body, or leave empty to use current tab message" class="input-area"></textarea>
+				<div class="section-label">{tr('comm.body')} <span class="hint">{tr('comm.bodyHint')}</span></div>
+				<textarea bind:value={httpBody} rows={2} placeholder={tr('comm.bodyPlaceholder')} class="input-area"></textarea>
 
 				{#if !httpBody.trim() && hasMessage}
-					<div class="info-box ok">Will send body from tab: <strong>{activeTabLabel || 'Untitled'}</strong> ({currentMessage.length} bytes)</div>
+					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: currentMessage.length })}</div>
 				{:else if !httpBody.trim() && !hasMessage}
-					<div class="info-box">No body and no active message. Enter a body or open a message.</div>
+					<div class="info-box">{tr('comm.noBodyNoMessage')}</div>
 				{/if}
 
 				<div class="form-actions">
 					<button class="btn btn-primary" onclick={handleHttpSend} disabled={httpSending}>
-						{httpSending ? 'Sending...' : `${httpMethod} Request`}
+						{httpSending ? tr('comm.sending') : `${httpMethod} ${tr('comm.request')}`}
 					</button>
 				</div>
 
@@ -582,11 +732,11 @@
 			<div class="history-container">
 				<div class="history-list">
 					{#if history.length === 0}
-						<div class="comm-empty">No request history yet</div>
+						<div class="comm-empty">{tr('comm.noHistory')}</div>
 					{:else}
 						<div class="history-toolbar">
-							<span class="history-count">{history.length} entries</span>
-							<button class="btn btn-sm" onclick={handleClearHistory}>Clear All</button>
+							<span class="history-count">{tr('comm.entries', { count: history.length })}</span>
+							<button class="btn btn-sm" onclick={handleClearHistory}>{tr('comm.clearHistory')}</button>
 						</div>
 						{#each history as entry (entry.id)}
 							<button
@@ -606,16 +756,16 @@
 				</div>
 				{#if selectedHistory}
 					<div class="history-detail">
-						<div class="detail-header">Request Detail</div>
+						<div class="detail-header">{tr('comm.requestDetail')}</div>
 						<div class="detail-grid">
-							<span class="dl">Protocol</span><span class="dv">{selectedHistory.profile_type.toUpperCase()}</span>
-							<span class="dl">Direction</span><span class="dv">{selectedHistory.direction === 'send' ? 'Outgoing' : 'Incoming'}</span>
-							<span class="dl">Target</span><span class="dv">{selectedHistory.profile_name}</span>
-							<span class="dl">Status</span><span class="dv">{selectedHistory.status}</span>
-							<span class="dl">Response Time</span><span class="dv">{selectedHistory.response_time_ms}ms</span>
-							<span class="dl">Timestamp</span><span class="dv">{formatTimestamp(selectedHistory.timestamp)}</span>
+							<span class="dl">{tr('comm.protocol')}</span><span class="dv">{selectedHistory.profile_type.toUpperCase()}</span>
+							<span class="dl">{tr('comm.direction')}</span><span class="dv">{selectedHistory.direction === 'send' ? tr('comm.outgoing') : tr('comm.incoming')}</span>
+							<span class="dl">{tr('comm.target')}</span><span class="dv">{selectedHistory.profile_name}</span>
+							<span class="dl">{tr('comm.status')}</span><span class="dv">{selectedHistory.status}</span>
+							<span class="dl">{tr('comm.responseTime')}</span><span class="dv">{selectedHistory.response_time_ms}ms</span>
+							<span class="dl">{tr('comm.timestamp')}</span><span class="dv">{formatTimestamp(selectedHistory.timestamp)}</span>
 						</div>
-						<div class="detail-header">Content Preview</div>
+						<div class="detail-header">{tr('comm.contentPreview')}</div>
 						<pre class="detail-body">{selectedHistory.content_preview}</pre>
 					</div>
 				{/if}

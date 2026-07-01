@@ -10,21 +10,47 @@ use crate::licensing::feature_gate;
 
 // --- MLLP Commands ---
 
+/// Parse a framing-byte override like "0x0B" / "0B" (hex). Anything
+/// unparsable falls back to the standard MLLP byte, so a typo in the
+/// advanced settings can't silently produce unframeable traffic.
+fn parse_framing_byte(input: &Option<String>, default: u8) -> u8 {
+    input
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| {
+            let hex = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+            u8::from_str_radix(hex, 16).ok()
+        })
+        .unwrap_or(default)
+}
+
 #[tauri::command]
 pub async fn mllp_send(
     host: String,
     port: u16,
     message: String,
     timeout_secs: Option<u64>,
+    response_timeout_secs: Option<u64>,
     encoding: Option<String>,
+    start_char: Option<String>,
+    end_char1: Option<String>,
+    end_char2: Option<String>,
     profile_name: Option<String>,
     db: State<'_, Database>,
 ) -> Result<MllpSendResult, String> {
     feature_gate::require("mllp_send")?;
 
-    let timeout = timeout_secs.unwrap_or(30);
-    let enc = encoding.unwrap_or_default();
-    let result = mllp::send(&host, port, &message, timeout, &enc).await;
+    let connect_timeout = timeout_secs.unwrap_or(30);
+    let opts = mllp::SendOptions {
+        connect_timeout_secs: connect_timeout,
+        response_timeout_secs: response_timeout_secs.unwrap_or(connect_timeout),
+        encoding: encoding.unwrap_or_default(),
+        start_byte: parse_framing_byte(&start_char, mllp::MLLP_START),
+        end_byte_1: parse_framing_byte(&end_char1, mllp::MLLP_END_1),
+        end_byte_2: parse_framing_byte(&end_char2, mllp::MLLP_END_2),
+    };
+    let result = mllp::send_with_options(&host, port, &message, &opts).await;
 
     let preview: String = message.chars().take(100).collect();
     let status = if result.success { "OK" } else { "FAILED" };
@@ -96,6 +122,7 @@ pub async fn http_request(
     headers: Option<HashMap<String, String>>,
     body: Option<String>,
     timeout_secs: Option<u64>,
+    follow_redirects: Option<bool>,
     profile_name: Option<String>,
     db: State<'_, Database>,
 ) -> Result<HttpResult, String> {
@@ -121,6 +148,7 @@ pub async fn http_request(
         &hdrs,
         body.as_deref(),
         timeout,
+        follow_redirects.unwrap_or(true),
     ).await;
 
     let preview: String = body.as_deref().unwrap_or("").chars().take(100).collect();
