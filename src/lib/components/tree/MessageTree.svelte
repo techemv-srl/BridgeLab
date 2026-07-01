@@ -317,7 +317,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="tree-container" onkeydown={handleTreeKeydown}>
 	{#if visibleNodes.length === 0}
-		<div class="tree-empty">No message loaded</div>
+		<div class="tree-empty">{tr('tree.noMessage')}</div>
 	{:else}
 		{#if searchEnabled}
 		<div class="tree-search">

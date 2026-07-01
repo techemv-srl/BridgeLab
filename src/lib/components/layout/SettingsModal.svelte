@@ -17,9 +17,12 @@
 		onClose: () => void;
 		onThemeChange: (theme: string) => void;
 		onShowActivation?: () => void;
+		/** Keeps the host's session-autosave gate in sync — without this the
+		 *  shell keeps (or stops) autosaving based on the stale startup value. */
+		onRestoreSessionChange?: (enabled: boolean) => void;
 	}
 
-	let { theme, onClose, onThemeChange, onShowActivation }: Props = $props();
+	let { theme, onClose, onThemeChange, onShowActivation, onRestoreSessionChange }: Props = $props();
 
 	let activeSection = $state('editor');
 
@@ -101,9 +104,26 @@
 			await setPreference('theme', currentTheme);
 			await setPreference('language', currentLocale);
 		} catch { /* web mode */ }
+		onRestoreSessionChange?.(restoreSession);
 		if (currentTheme !== theme) onThemeChange(currentTheme);
 		if (currentLocale !== getLocale()) setLocale(currentLocale);
 		onClose();
+	}
+
+	// Session cleanup — wipes the saved tab set (backend command existed but
+	// was unreachable from the UI until this button). Also switches restore
+	// off (locally, in prefs, and in the host shell): with restore enabled
+	// the debounced autosave would immediately recreate what we just wiped.
+	let sessionCleared = $state(false);
+	async function handleClearSession() {
+		try {
+			const { clearSession } = await import('$lib/ipc/database');
+			await clearSession();
+			restoreSession = false;
+			await setPreference('restore_session', 'false');
+			onRestoreSessionChange?.(false);
+			sessionCleared = true;
+		} catch { /* web mode */ }
 	}
 
 	// License state
@@ -366,6 +386,15 @@
 					</label>
 					<div class="hint">
 						{tr('settings.restoreSessionHint')}
+					</div>
+				</div>
+
+				<div class="setting-check">
+					<button class="btn" onclick={handleClearSession} disabled={sessionCleared}>
+						{sessionCleared ? tr('settings.sessionCleared') : tr('settings.clearSession')}
+					</button>
+					<div class="hint">
+						{tr('settings.clearSessionHint')}
 					</div>
 				</div>
 
