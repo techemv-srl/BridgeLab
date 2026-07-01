@@ -215,7 +215,7 @@
 	"upgrade.required": "Questa funzione richiede una licenza {tier}. Attiva da Aiuto → Attivazione o contatta info@techemv.it.",
 	"settings.clearSession": "Cancella sessione salvata",
 	"settings.sessionCleared": "Sessione cancellata",
-	"settings.clearSessionHint": "Rimuove i tab salvati: al prossimo avvio l'app partirà vuota.",
+	"settings.clearSessionHint": "Rimuove i tab salvati e disattiva il ripristino sessione: al prossimo avvio l'app partirà vuota.",
 	"comm.console": "Console listener",
 	"comm.consoleClear": "Pulisci",
 	"comm.consoleEmpty": "Nessun messaggio ricevuto",

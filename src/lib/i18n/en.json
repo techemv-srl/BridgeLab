@@ -215,7 +215,7 @@
 	"upgrade.required": "This feature requires a {tier} license. Upgrade via Help → Activation or contact info@techemv.it.",
 	"settings.clearSession": "Clear saved session",
 	"settings.sessionCleared": "Session cleared",
-	"settings.clearSessionHint": "Removes the saved tab set so the next launch starts empty.",
+	"settings.clearSessionHint": "Removes the saved tab set and turns off session restore, so the next launch starts empty.",
 	"comm.console": "Listener console",
 	"comm.consoleClear": "Clear",
 	"comm.consoleEmpty": "No messages received yet",
