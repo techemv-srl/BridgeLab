@@ -106,6 +106,17 @@
 		onClose();
 	}
 
+	// Session cleanup — wipes the saved tab set (backend command existed but
+	// was unreachable from the UI until this button).
+	let sessionCleared = $state(false);
+	async function handleClearSession() {
+		try {
+			const { clearSession } = await import('$lib/ipc/database');
+			await clearSession();
+			sessionCleared = true;
+		} catch { /* web mode */ }
+	}
+
 	// License state
 	let licenseStatus = $state<LicenseStatus | null>(null);
 	let hardwareId = $state('');
@@ -366,6 +377,15 @@
 					</label>
 					<div class="hint">
 						{tr('settings.restoreSessionHint')}
+					</div>
+				</div>
+
+				<div class="setting-check">
+					<button class="btn" onclick={handleClearSession} disabled={sessionCleared}>
+						{sessionCleared ? tr('settings.sessionCleared') : tr('settings.clearSession')}
+					</button>
+					<div class="hint">
+						{tr('settings.clearSessionHint')}
 					</div>
 				</div>
 
