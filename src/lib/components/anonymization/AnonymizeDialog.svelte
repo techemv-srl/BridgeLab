@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { detectPhi, anonymizeMessage, type PhiLocation, type AnonymizeResult } from '$lib/ipc/anonymization';
+	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -17,6 +18,12 @@
 	let loading = $state(true);
 	let anonymizing = $state(false);
 	let result = $state<AnonymizeResult | null>(null);
+	let errorMsg = $state('');
+
+	function friendlyError(e: unknown): string {
+		const up = parseUpgradeError(e);
+		return up ? tr('upgrade.required', { tier: up.tier }) : String(e);
+	}
 
 	$effect(() => {
 		loadPhi();
@@ -24,20 +31,22 @@
 
 	async function loadPhi() {
 		loading = true;
+		errorMsg = '';
 		try {
 			phiLocations = await detectPhi(messageId);
 		} catch (e) {
-			console.error('PHI detection failed:', e);
+			errorMsg = friendlyError(e);
 		}
 		loading = false;
 	}
 
 	async function handleAnonymize() {
 		anonymizing = true;
+		errorMsg = '';
 		try {
 			result = await anonymizeMessage(messageId);
 		} catch (e) {
-			console.error('Anonymization failed:', e);
+			errorMsg = friendlyError(e);
 		}
 		anonymizing = false;
 	}
@@ -71,13 +80,16 @@
 	</div>
 
 	<div class="anon-body">
+		{#if errorMsg}
+			<div class="anon-error">{errorMsg}</div>
+		{/if}
 		{#if loading}
-			<div class="anon-loading">Detecting PHI fields...</div>
+			<div class="anon-loading">{tr('anonymize.detecting')}</div>
 		{:else if phiLocations.length === 0}
-			<div class="anon-empty">No PHI fields detected in this message.</div>
+			<div class="anon-empty">{tr('anonymize.noPhi')}</div>
 		{:else}
 			<div class="phi-summary">
-				Found <strong>{phiLocations.length}</strong> PHI fields:
+				{tr('anonymize.found', { count: phiLocations.length })}
 			</div>
 			<div class="phi-list">
 				{#each phiLocations as phi}
@@ -93,7 +105,7 @@
 
 		{#if result}
 			<div class="anon-result">
-				<div class="result-header">Anonymized ({result.phi_fields_masked} fields masked)</div>
+				<div class="result-header">{tr('anonymize.masked', { count: result.phi_fields_masked })}</div>
 				<pre class="result-preview">{result.anonymized_text.substring(0, 1000)}{result.anonymized_text.length > 1000 ? '...' : ''}</pre>
 			</div>
 		{/if}
@@ -102,11 +114,11 @@
 	<div class="anon-footer">
 		{#if !result}
 			<button class="btn btn-primary" onclick={handleAnonymize} disabled={anonymizing || phiLocations.length === 0}>
-				{anonymizing ? 'Anonymizing...' : 'Anonymize'}
+				{anonymizing ? tr('anonymize.anonymizing') : tr('anonymize.run')}
 			</button>
 		{:else}
-			<button class="btn btn-primary" onclick={handleApply}>Open in New Tab</button>
-			<button class="btn" onclick={handleCopyAnonymized}>Copy to Clipboard</button>
+			<button class="btn btn-primary" onclick={handleApply}>{tr('anonymize.openNew')}</button>
+			<button class="btn" onclick={handleCopyAnonymized}>{tr('anonymize.copyClipboard')}</button>
 		{/if}
 		<button class="btn" onclick={onClose}>{tr('dialog.cancel')}</button>
 	</div>
@@ -118,6 +130,7 @@
 	.close-btn { background: none; border: none; color: var(--color-text-secondary); cursor: pointer; font-size: 20px; }
 	.anon-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
 	.anon-loading, .anon-empty { text-align: center; color: var(--color-text-secondary); padding: 20px; font-style: italic; }
+	.anon-error { margin-bottom: 8px; padding: 6px 10px; border: 1px solid var(--color-error); border-radius: 4px; color: var(--color-error); font-size: 12px; }
 	.phi-summary { margin-bottom: 8px; font-size: 13px; }
 	.phi-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
 	.phi-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--color-border); font-size: 12px; }

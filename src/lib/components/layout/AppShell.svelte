@@ -667,10 +667,7 @@
 	async function handleUpgradeError(err: unknown): Promise<boolean> {
 		const upgrade = parseUpgradeError(err);
 		if (upgrade) {
-			await dialogStore.info(
-				`This feature requires a ${upgrade.tier} license.\n\n` +
-				`Upgrade via Settings → Activation or contact info@techemv.it.`
-			);
+			await dialogStore.info(t('upgrade.required', { tier: upgrade.tier }));
 			return true;
 		}
 		return false;
@@ -1294,6 +1291,7 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
 				<SettingsModal
+				onRestoreSessionChange={(enabled) => { restoreSession = enabled; }}
 					{theme}
 					onClose={() => { showSettings = false; }}
 					onThemeChange={handleSetTheme}
