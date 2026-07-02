@@ -28,7 +28,7 @@
 - **Export** - JSON, CSV, structured representations
 - **XSD schema export** - Generate HL7 v2.xml compatible XSD files for any supported message type (4 common messages in v2.5 free, full catalogue in Pro). Useful for integration engines that accept hand-authored schemas (Astraia, BizTalk, XMLSpy…).
 - **5 Languages** - English, Italian, French, Spanish, German
-- **Licensing** - Ed25519-signed offline license verification, hardware binding, 30-day trial
+- **Licensing** - Ed25519-signed offline license verification, hardware binding, 7-day trial
 - **Field Inspector** - Side panel showing HL7 standard metadata (name, type, required, max length, description) for the selected tree node
 - **Schema-aware Tree** - Optional view that injects placeholder rows for every field defined by the standard so you see what _could_ be populated
 - **Precise Editor ↔ Tree navigation** - Right-click a field in the editor to highlight it in the tree, or right-click a tree node to select the matching range in Monaco
