@@ -37,18 +37,28 @@ impl HttpMethod {
     }
 }
 
-/// Send an HTTP request.
+/// Send an HTTP request. `follow_redirects: false` returns the 3xx
+/// response as-is (useful to inspect Location headers of integration
+/// endpoints); `true` follows up to reqwest's default of 10 hops.
 pub async fn send_request(
     url: &str,
     method: HttpMethod,
     headers: &HashMap<String, String>,
     body: Option<&str>,
     timeout_secs: u64,
+    follow_redirects: bool,
 ) -> HttpResult {
     let start = Instant::now();
 
+    let redirect_policy = if follow_redirects {
+        reqwest::redirect::Policy::default()
+    } else {
+        reqwest::redirect::Policy::none()
+    };
+
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
+        .redirect(redirect_policy)
         .danger_accept_invalid_certs(false)
         .build()
     {
@@ -195,7 +205,7 @@ mod tests {
 
         let headers = HashMap::new();
         let url = format!("http://127.0.0.1:{}/ping", port);
-        let res = send_request(&url, HttpMethod::Get, &headers, None, 5).await;
+        let res = send_request(&url, HttpMethod::Get, &headers, None, 5, true).await;
         server.await.unwrap();
 
         assert!(res.success, "GET failed: {:?}", res.error);
@@ -216,7 +226,7 @@ mod tests {
         headers.insert("X-Test".to_string(), "bridgelab".to_string());
 
         let url = format!("http://127.0.0.1:{}/submit", port);
-        let res = send_request(&url, HttpMethod::Post, &headers, Some(payload), 5).await;
+        let res = send_request(&url, HttpMethod::Post, &headers, Some(payload), 5, true).await;
         server.await.unwrap();
 
         assert!(res.success, "POST failed: {:?}", res.error);
@@ -230,7 +240,7 @@ mod tests {
         let port = pick_free_port();
         let headers = HashMap::new();
         let url = format!("http://127.0.0.1:{}/nobody-home", port);
-        let res = send_request(&url, HttpMethod::Get, &headers, None, 2).await;
+        let res = send_request(&url, HttpMethod::Get, &headers, None, 2, true).await;
         assert!(!res.success);
         assert!(res.error.is_some());
     }
