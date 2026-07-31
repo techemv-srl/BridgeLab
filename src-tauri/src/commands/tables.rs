@@ -13,3 +13,9 @@ pub fn get_field_info(
 ) -> Result<Option<FieldInfo>, String> {
     Ok(tables::get_field_info(&segment_type, field_position, &version))
 }
+
+/// Return the values of an HL7 value table (e.g. "0001" Administrative Sex).
+#[tauri::command]
+pub fn get_hl7_table(table_id: String) -> Option<crate::parser::hl7::value_tables::ValueTable> {
+    crate::parser::hl7::value_tables::get_table(&table_id)
+}

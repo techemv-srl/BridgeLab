@@ -151,6 +151,15 @@ affiancato di due tab aperti con evidenziazione HL7. Scegli
 sinistra/destra dai menu, usa il pulsante ⇆ per scambiare i lati,
 <kbd>Esc</kbd> per chiudere. Servono almeno due tab aperti.</p>
 
+<h3>Valori ammessi per i campi codificati</h3>
+<p>Quando il campo selezionato è associato a una tabella valori HL7
+(PID-8 Sesso, PV1-2 Classe paziente, MSA-1 Codice ACK, ORC-1 Order
+Control, OBX-11 Stato risultato, …), l'ispettore elenca i
+<strong>valori ammessi</strong> con il loro significato ed evidenzia
+quello presente nel messaggio. Se il valore corrente non è nella
+tabella compare un avviso — un modo rapido per scovare codici non
+standard prima che il sistema ricevente li rifiuti.</p>
+
 <h3>Tree consapevole dello schema</h3>
 <p><strong>Visualizza → Mostra campi dello standard</strong> inserisce
 righe placeholder per ogni campo definito dallo standard HL7 ma
