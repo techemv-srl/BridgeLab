@@ -68,7 +68,13 @@
 
 	async function exportCsv() {
 		if (results.length === 0) return;
-		const esc = (s: string) => '"' + s.replaceAll('"', '""') + '"';
+		// Quote AND neutralize formula-leading characters (=, +, -, @, tab, CR):
+		// filenames or MSH-9 values are untrusted input for the spreadsheet
+		// that will open this CSV.
+		const esc = (s: string) => {
+			const neutralized = /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+			return '"' + neutralized.replaceAll('"', '""') + '"';
+		};
 		const rows = [
 			['file', 'path', 'message_type', 'version', 'segments', 'errors', 'warnings', 'status'].join(','),
 			...results.map((r) => [
