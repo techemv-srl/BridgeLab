@@ -39,6 +39,27 @@ riga del problema per saltare al segmento nell'editor.</p>
 <code>&lt;config&gt;/BridgeLab/plugins/validation/</code> per aggiungere
 controlli tuoi senza ricompilare. Vedi <em>Plugin</em> più sotto.</p>
 
+<h3>Validazione batch (Pro)</h3>
+<p><strong>Strumenti → Validazione batch…</strong> valida in un colpo
+solo un'intera cartella (o una selezione) di file
+<code>.hl7</code>/<code>.txt</code>/<code>.dat</code>: una riga per
+file con tipo di messaggio, versione, numero di segmenti e totale
+errori/avvisi. Filtra i soli falliti, clicca una riga per aprire il
+file nell'editor ed esporta la tabella in CSV per il ticket di
+revisione. I file sono elaborati in memoria — nulla viene aggiunto ai
+tuoi tab.</p>
+
+<h3>Generatore di messaggi di test</h3>
+<p><strong>Strumenti → Genera messaggi di test…</strong> crea messaggi
+ADT/ORU/ORM sintatticamente validi con dati paziente
+<em>sintetici</em> plausibili — nomi, date di nascita, MRN, indirizzi e
+pannelli di laboratorio con range di riferimento (una quota realistica
+di risultati è volutamente fuori range e flaggata). Nessun PHI reale.
+Con un <strong>seed</strong> il set è riproducibile; poi apri i
+messaggi in tab o salvali in cartella come file <code>.hl7</code>
+numerati — fixture di regressione istantanee per la validazione batch
+qui sopra.</p>
+
 <h3>Validazione da CLI</h3>
 <p>Il tool <code>bridgelab-cli</code> offre lo stesso validator per uso
 headless (pipeline CI, screening batch):</p>
