@@ -18,6 +18,15 @@
 	let filterSeverity = $state<string>('all');
 	let sortField = $state<string>('severity');
 
+	// If a re-validate clears the last issue of the filtered severity, the
+	// badge disappears while the filter stays active — dead-ending on
+	// "no issues match the filter". Fall back to All automatically.
+	$effect(() => {
+		if (filterSeverity !== 'all' && !issues.some((i) => i.severity === filterSeverity)) {
+			filterSeverity = 'all';
+		}
+	});
+
 	let filteredIssues = $derived.by(() => {
 		let filtered = filterSeverity === 'all'
 			? issues
@@ -53,7 +62,7 @@
 				class:active={filterSeverity === 'all'}
 				onclick={() => { filterSeverity = 'all'; }}
 			>
-				{tr('validation.all') || 'All'} ({issues.length})
+				{tr('validation.all')} ({issues.length})
 			</button>
 			{#if errorCount > 0}
 				<button
@@ -97,11 +106,11 @@
 				{#if issues.length === 0}
 					{tr('validation.noIssues')}
 				{:else}
-					{tr('validation.noMatch') || 'No issues match the current filter'}
+					{tr('validation.noMatch')}
 				{/if}
 			</div>
 		{:else}
-			{#each filteredIssues as issue (issue.rule_id + (issue.segment_idx ?? '') + (issue.field_position ?? ''))}
+			{#each filteredIssues as issue, i (issue.rule_id + '|' + (issue.segment_idx ?? '') + '|' + (issue.field_position ?? '') + '|' + i)}
 				<button
 					class="issue-row {issue.severity}"
 					onclick={() => onIssueClick?.(issue)}
@@ -114,8 +123,8 @@
 							—
 						{/if}
 					</span>
-					<span class="issue-message">{issue.message}</span>
-					<span class="issue-rule">{issue.rule_id}</span>
+					<span class="issue-message" title={issue.message}>{issue.message}</span>
+					<span class="issue-rule" title={issue.rule_id}>{issue.rule_id}</span>
 				</button>
 			{/each}
 		{/if}

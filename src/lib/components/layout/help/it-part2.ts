@@ -72,10 +72,41 @@ ${mockupCommunication}
 </ol>
 
 <h3>Listener MLLP (Pro)</h3>
-<p>Clicca <strong>Ascolta</strong> per avviare un server sulla porta
-selezionata. I messaggi in arrivo si aprono in un nuovo tab e viene
-inviato un auto-ACK (disattivabile nelle opzioni avanzate). Utile per
-validare rapidamente cosa emette il sistema a monte.</p>
+<p>Clicca <strong>Avvia ascolto</strong> per avviare un server sulla
+porta selezionata. I messaggi in arrivo si aprono in un nuovo tab
+(disattivabile, vedi sotto) e viene inviato un auto-ACK con il codice
+configurato (AA/AE/AR). Utile per validare rapidamente cosa emette il
+sistema a monte.</p>
+
+<h3>Console del listener</h3>
+<p>Mentre il listener è attivo, ogni messaggio ricevuto compare come
+riga nella console: ora locale, indirizzo del peer, dimensione del
+payload, il codice ACK effettivamente inviato (<code>AA</code> verde,
+<code>AE</code>/<code>AR</code> rosso, — se auto-ACK è spento), la
+codifica caratteri usata e la prima riga del messaggio. <strong>Clicca
+una riga per riaprire quel messaggio in un tab.</strong> Gli errori del
+listener compaiono come righe rosse.</p>
+<p>Il toggle <em>"Apri i messaggi ricevuti in un nuovo tab"</em> (attivo
+di default) può essere spento nei test ad alto volume: i messaggi
+finiscono solo nella console e scegli tu quali aprire.</p>
+<p class="note">I contenuti completi conservati per il click-to-open
+hanno un budget scorrevole di 32&nbsp;MB. Nelle sessioni lunghe senza
+supervisione le righe più vecchie perdono il contenuto completo
+(appaiono attenuate) — la riga coi metadati resta, e nulla è andato
+"perso": è stata rilasciata solo la copia in memoria per il
+click-to-open.</p>
+
+<h3>Codifica caratteri</h3>
+<p>Sia l'invio sia il listener hanno un selettore
+<strong>Codifica</strong> con i charset dei deployment reali:
+<code>UTF-8</code>, <code>ISO-8859-1</code> (Latin-1),
+<code>ISO-8859-2</code>, <code>ISO-8859-15</code>,
+<code>windows-1252</code>, <code>windows-1250</code>,
+<code>windows-1251</code> e <code>ASCII</code>. Il default è UTF-8 con
+fallback automatico Latin-1, che accetta la maggior parte del traffico
+legacy anche con MSH-18 vuoto. Il listener ri-codifica l'ACK con lo
+stesso charset, così il peer non vede mai caratteri corrotti. Le
+codifiche di invio e ricezione sono indipendenti.</p>
 
 <h3>HTTP</h3>
 <p>Le richieste GET sono disponibili in Community. POST/PUT/DELETE,
@@ -90,9 +121,13 @@ tra un riavvio e l'altro; clicca una riga per vedere la richiesta e
 risposta complete.</p>
 
 <h3>Profili di connessione</h3>
-<p>Salva endpoint usati di frequente (Host + Porta + Timeout + auto-ACK)
-come profili nominati. Appaiono nel menu profili accanto al pulsante
-Invia.</p>
+<p>Salva gli endpoint usati di frequente come profili nominati dalla
+riga <strong>Profilo</strong>: digita un nome e clicca <em>Salva</em>. I
+profili MLLP memorizzano host, porta, timeout e auto-ACK; quelli HTTP
+memorizzano URL, header e timeout. Selezionare un profilo lo applica al
+form; salvare con un nome esistente lo sovrascrive; <em>Elimina</em>
+rimuove quello selezionato. I profili sono salvati nel database locale e
+sopravvivono ai riavvii.</p>
 `,
 },
 {

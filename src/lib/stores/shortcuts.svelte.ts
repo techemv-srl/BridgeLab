@@ -51,6 +51,11 @@ export const SHORTCUTS: ShortcutDef[] = [
 	{ id: 'editor.commandPalette', label: 'Command Palette', category: 'editor', defaultKeys: 'F1', isMonaco: true },
 ];
 
+/** Global flag: true while the ShortcutsEditor is capturing a key combo.
+ *  The app-level keydown handler must stand down during capture, or pressing
+ *  Ctrl+O to *assign* it also opens the file picker. */
+export const shortcutCapture = $state({ active: false });
+
 /** Reactive current shortcut map. Svelte 5 $state. */
 class ShortcutStore {
 	map = $state<ShortcutMap>(this.buildDefault());
