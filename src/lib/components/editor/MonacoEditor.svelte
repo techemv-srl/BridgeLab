@@ -12,7 +12,7 @@
 	export interface EditorOptions {
 		fontSize?: number;
 		fontFamily?: string;
-		wordWrap?: 'on' | 'off';
+		wordWrap?: 'on' | 'off' | 'wordWrapColumn' | 'bounded';
 		minimap?: boolean;
 		lineNumbers?: boolean;
 		tabSize?: number;

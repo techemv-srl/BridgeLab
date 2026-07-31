@@ -40,13 +40,20 @@
 	let dragOff = { x: 0, y: 0 };
 
 	let popupPollTimer: ReturnType<typeof setInterval> | null = null;
+	// Set when the 2s fallback gives up on the Tauri window: a late
+	// tauri://created must then close that window instead of adopting it,
+	// or the user ends up with the fallback AND a zombie manual window.
+	let tauriAbandoned = false;
 
 	$effect(() => {
 		// If neither tauri://created nor tauri://error fires (slow or wedged
 		// webview), the user pressed F1 and sees nothing. Fall back to the
 		// popup path after 2s instead of staying 'pending' forever.
 		const pendingFallback = setTimeout(() => {
-			if (mode === 'pending') tryPopup();
+			if (mode === 'pending') {
+				tauriAbandoned = true;
+				tryPopup();
+			}
 		}, 2000);
 
 		(async () => {
@@ -71,14 +78,22 @@
 					resizable: true,
 					center: true,
 				});
-				win.once('tauri://created', () => { mode = 'tauri'; });
+				win.once('tauri://created', () => {
+					if (tauriAbandoned) {
+						// Fallback already shown — discard the late window.
+						void win.close().catch(() => { /* ignore */ });
+						URL.revokeObjectURL(url);
+						return;
+					}
+					mode = 'tauri';
+				});
 				win.once('tauri://destroyed', () => {
 					URL.revokeObjectURL(url);
-					onClose();
+					if (!tauriAbandoned) onClose();
 				});
 				win.once('tauri://error', () => {
 					URL.revokeObjectURL(url);
-					tryPopup();
+					if (!tauriAbandoned) tryPopup();
 				});
 				return;
 			} catch {
