@@ -38,6 +38,8 @@ export interface TableValue {
 export interface ValueTable {
 	id: string;
 	name: string;
+	/** False for deliberately partial tables (e.g. 0076): absence of a value is not evidence it is non-standard. */
+	exhaustive: boolean;
 	values: TableValue[];
 }
 
