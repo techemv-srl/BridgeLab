@@ -34,6 +34,25 @@ to jump to the offending segment in the editor.</p>
 <p>Drop a JSON file under <code>&lt;config&gt;/BridgeLab/plugins/validation/</code>
 to add your own checks without recompiling. See <em>Plugins</em> below.</p>
 
+<h3>Batch validation (Pro)</h3>
+<p><strong>Tools → Batch validation…</strong> validates a whole folder
+(or a hand-picked set) of <code>.hl7</code>/<code>.txt</code>/<code>.dat</code>
+files in one pass: one row per file with message type, version, segment
+count and error/warning totals. Filter to failures only, click a row to
+open that file in the editor, and export the whole table as CSV for the
+change-review ticket. Files are processed in memory — nothing is added
+to your tabs.</p>
+
+<h3>Test-message generator</h3>
+<p><strong>Tools → Generate test messages…</strong> creates syntactically
+valid ADT/ORU/ORM messages with plausible <em>synthetic</em> patient
+data — names, birth dates, MRNs, addresses, and lab panels with
+reference ranges (a realistic share of results is deliberately abnormal
+and flagged). No real PHI is ever used. Provide a <strong>seed</strong>
+to make a set reproducible, then open the messages in tabs or save them
+to a folder as numbered <code>.hl7</code> files — instant regression
+fixtures for the batch validator above.</p>
+
 <h3>CLI validation</h3>
 <p>The <code>bridgelab-cli</code> companion offers the same validator for
 headless usage (CI pipelines, batch screening):</p>
@@ -168,5 +187,40 @@ into analytics tools (Power BI, Excel, pandas).</p>
 <div class="warn">Anonymization replaces values <em>in the editor</em>.
 Always keep your original source file as the canonical record - the
 anonymized copy is for sharing, not for long-term storage.</div>
+`,
+};
+
+export const testCasesSection: ManualSection = {
+	id: 'testcases',
+	heading: 'Test Case Library',
+	body: `
+<p>The Test Case Library (<kbd>Ctrl</kbd>+<kbd>L</kbd>) stores reusable
+messages with a name, category, tags and description. Use
+<strong>Save Current Message</strong> to capture the active tab, or
+create cases from scratch. Cases persist in the local database and can
+be searched by any of their fields.</p>
+
+<h3>Expected outcomes</h3>
+<p>Each case can declare an <strong>expected message type</strong>
+(<code>ADT</code> matches any ADT event, <code>ADT^A01</code> is exact)
+and an <strong>expected validation result</strong> (valid / invalid).
+That turns a snippet into a test.</p>
+
+<h3>Running checks</h3>
+<p><strong>Run check</strong> parses and validates a single case for
+real — HL7 v2 or FHIR, detected automatically — and compares the
+outcome against its expectations. <strong>Run all</strong> does the
+same for every case matching the current search, with a pass/fail
+badge per row and a passed/total summary in the toolbar. After an
+interface change, one click tells you which of your reference messages
+broke. Editing a case clears its stored result until the next run.</p>
+
+<h3>Session restore</h3>
+<p>BridgeLab saves your open tabs (including unsaved edits) and reopens
+them on the next launch, Notepad++-style. Control this under
+<strong>Settings → Session</strong>: toggle <em>Restore open tabs on
+startup</em>, or use <em>Clear saved session</em> to wipe the stored
+tab set (this also turns restore off, so the next launch starts on the
+welcome screen).</p>
 `,
 };

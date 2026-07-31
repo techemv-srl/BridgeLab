@@ -26,6 +26,8 @@
 	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
 	import SchemaExportDialog from '$lib/components/layout/SchemaExportDialog.svelte';
 	import CompareDialog from '$lib/components/diff/CompareDialog.svelte';
+	import BatchValidateDialog from '$lib/components/batch/BatchValidateDialog.svelte';
+	import GenerateDialog from '$lib/components/generator/GenerateDialog.svelte';
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
 	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
 	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
@@ -54,6 +56,8 @@
 	let settingsSection = $state('editor');
 	let showSchemaExport = $state(false);
 	let showCompare = $state(false);
+	let showBatch = $state(false);
+	let showGenerate = $state(false);
 	let showActivation = $state(false);
 	let showTemplates = $state(false);
 	let showBundleVisualizer = $state(false);
@@ -456,17 +460,25 @@
 				const result = await parseFhirMessage(trimmed);
 				skipNextAutoParse = true;
 				messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
-				// TODO: run FHIR-specific validation rules
+				// Real FHIR validation (resourceType, id, per-resource field
+				// rules) — mapped into the panel's HL7-shaped report, using
+				// the JSON path where a segment reference would go.
+				const { validateFhir } = await import('$lib/ipc/validation');
+				const fhirReport = await validateFhir(trimmed);
 				validationReport = {
-					issues: [{
-						severity: 'info',
-						rule_id: 'FHIR-OK',
+					issues: fhirReport.issues.map((i) => ({
+						severity: (['error', 'warning', 'info'].includes(i.severity)
+							? i.severity
+							: 'info') as 'error' | 'warning' | 'info',
+						rule_id: 'FHIR',
 						segment_idx: null,
-						segment_type: null,
+						segment_type: i.path || null,
 						field_position: null,
-						message: `FHIR ${result.message_type} parsed successfully`,
-					}],
-					error_count: 0, warning_count: 0, info_count: 1,
+						message: i.message,
+					})),
+					error_count: fhirReport.error_count,
+					warning_count: fhirReport.warning_count,
+					info_count: fhirReport.info_count,
 				};
 			} catch (e) {
 				validationReport = buildSyntheticReport(content, String(e));
@@ -1002,6 +1014,8 @@
 		onExportXsd={() => { showSchemaExport = true; }}
 		onExportCsv={handleExportCsv}
 		onCompareMessages={handleCompareMessages}
+		onBatchValidate={() => { showBatch = true; }}
+		onGenerateMessages={() => { showGenerate = true; }}
 		onToggleTree={handleToggleTree}
 		onToggleInspector={() => { showInspector = !showInspector; }}
 		onToggleSchemaFields={() => { showSchemaFields = !showSchemaFields; }}
@@ -1403,6 +1417,39 @@
 	<!-- Schema XSD export dialog -->
 	{#if showSchemaExport}
 		<SchemaExportDialog onClose={() => { showSchemaExport = false; }} />
+	{/if}
+
+	{#if showBatch}
+		<BatchValidateDialog
+			onClose={() => { showBatch = false; }}
+			onOpenFile={(path) => { showBatch = false; void handleOpenRecentFile(path); }}
+		/>
+	{/if}
+
+	{#if showGenerate}
+		<GenerateDialog
+			onClose={() => { showGenerate = false; }}
+			onOpenMessage={(content, label) => {
+				messageStore.newTab();
+				const tab = messageStore.activeTab;
+				if (tab) {
+					const tabId = tab.id;
+					messageStore.updateContent(tabId, content);
+					tab.label = label;
+					// Parse bound to THIS tab id — autoParse resolves the
+					// active tab after the IPC returns, and when opening many
+					// messages in a loop that would misattribute results to
+					// whichever tab ended up active.
+					void (async () => {
+						try {
+							const result = await parseMessage(content);
+							skipNextAutoParse = true;
+							messageStore.updateParseResult(tabId, result);
+						} catch { /* leave unparsed */ }
+					})();
+				}
+			}}
+		/>
 	{/if}
 
 	<!-- Compare messages (side-by-side diff of two open tabs) -->
