@@ -14,7 +14,22 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use serde_json::{Map, Value};
 
-/// Insert honoring FHIR's repeated-element = array rule.
+/// FHIR properties that are arrays in JSON even with a single occurrence.
+/// A generic converter cannot know cardinality without the full FHIR
+/// schema; this curated set covers the properties our consumers rely on
+/// (Bundle analysis, FHIRPath indexing, validation).
+const ALWAYS_ARRAY: &[&str] = &[
+    "entry", "name", "given", "prefix", "suffix", "identifier", "telecom",
+    "address", "line", "extension", "modifierExtension", "coding", "contact",
+    "communication", "link", "item", "component", "performer", "category",
+    "note", "contained", "author", "result", "diagnosis", "participant",
+    "reaction", "dosage", "instantiates", "basedOn", "partOf",
+];
+
+/// Insert honoring FHIR's repeated-element = array rule. Known repeating
+/// properties become arrays on the FIRST occurrence: a Bundle with one
+/// `<entry>` must still produce `entry: [...]` or analyze_bundle sees no
+/// entries and `Patient.name[0]` stops matching for XML resources.
 fn insert_multi(map: &mut Map<String, Value>, key: String, val: Value) {
     match map.get_mut(&key) {
         Some(Value::Array(arr)) => arr.push(val),
@@ -23,7 +38,11 @@ fn insert_multi(map: &mut Map<String, Value>, key: String, val: Value) {
             *existing = Value::Array(vec![prev, val]);
         }
         None => {
-            map.insert(key, val);
+            if ALWAYS_ARRAY.contains(&key.as_str()) {
+                map.insert(key, Value::Array(vec![val]));
+            } else {
+                map.insert(key, val);
+            }
         }
     }
 }
@@ -59,16 +78,60 @@ fn frame_from_start(
     Ok(Frame { name, children, value_attr })
 }
 
-fn frame_to_value(f: Frame) -> Value {
-    match (f.children.is_empty(), f.value_attr) {
+/// Emit a completed frame into its parent (or as the document root).
+/// Handles three FHIR-specific encodings beyond plain nesting:
+/// * `<resource>`/`<contained>` wrap a full resource whose element name is
+///   the resource type — promote it to a `resourceType` field, or Bundle
+///   entries all analyze as "Unknown".
+/// * A primitive with BOTH a value attribute and child elements (primitive
+///   extension) splits into `key: value` + `_key: {extensions}` per the
+///   canonical JSON mapping — otherwise `gender` becomes an object and the
+///   value-set check silently skips it.
+fn emit(frame: Frame, stack: &mut Vec<Frame>, root: &mut Option<(String, Value)>) {
+    let name = frame.name.clone();
+
+    // Primitive extension split: value + children → two inserts.
+    if frame.value_attr.is_some() && !frame.children.is_empty() {
+        if let Some(parent) = stack.last_mut() {
+            insert_multi(&mut parent.children, name.clone(), Value::String(frame.value_attr.unwrap()));
+            insert_multi(&mut parent.children, format!("_{}", name), Value::Object(frame.children));
+            return;
+        }
+    }
+
+    let mut value = match (frame.children.is_empty(), frame.value_attr) {
         (true, Some(v)) => Value::String(v),
         (false, Some(v)) => {
-            let mut m = f.children;
+            // unreachable with a parent (handled above); root fallback
+            let mut m = frame.children;
             m.insert("value".into(), Value::String(v));
             Value::Object(m)
         }
         (true, None) => Value::Object(Map::new()),
-        (false, None) => Value::Object(f.children),
+        (false, None) => Value::Object(frame.children),
+    };
+
+    // Resource container promotion: {resource: {Patient: {...}}} →
+    // {resource: {resourceType: "Patient", ...}}.
+    if name == "resource" || name == "contained" {
+        if let Value::Object(m) = &value {
+            if m.len() == 1 {
+                let (inner_name, inner_val) = m.iter().next().unwrap();
+                if inner_name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+                    if let Value::Object(inner_map) = inner_val {
+                        let mut promoted = inner_map.clone();
+                        promoted.insert("resourceType".into(), Value::String(inner_name.clone()));
+                        value = Value::Object(promoted);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(parent) = stack.last_mut() {
+        insert_multi(&mut parent.children, name, value);
+    } else {
+        *root = Some((name, value));
     }
 }
 
@@ -101,25 +164,17 @@ pub fn fhir_xml_to_json(xml: &str) -> Result<(String, Value), String> {
                 stack.push(frame);
             }
             Ok(Event::Empty(e)) => {
+                // A self-closing element with no parent is a valid (minimal)
+                // document root: <Patient xmlns="..."/> must still validate.
                 let frame = frame_from_start(&e)?;
-                let name = frame.name.clone();
-                let value = frame_to_value(frame);
-                if let Some(parent) = stack.last_mut() {
-                    insert_multi(&mut parent.children, name, value);
-                }
+                emit(frame, &mut stack, &mut root);
             }
             Ok(Event::End(_)) => {
                 let frame = match stack.pop() {
                     Some(f) => f,
                     None => return Err("Unbalanced XML end tag".into()),
                 };
-                let name = frame.name.clone();
-                let value = frame_to_value(frame);
-                if let Some(parent) = stack.last_mut() {
-                    insert_multi(&mut parent.children, name, value);
-                } else {
-                    root = Some((name, value));
-                }
+                emit(frame, &mut stack, &mut root);
             }
             // FHIR data lives in value attributes; free text only occurs
             // inside <div>, which is skipped above.
@@ -169,13 +224,69 @@ mod tests {
         assert_eq!(json["id"], "pat-1");
         assert_eq!(json["gender"], "male");
         assert_eq!(json["birthDate"], "1980-01-01");
-        // repeated <given> → array
-        assert_eq!(json["name"]["given"][0], "Mario");
-        assert_eq!(json["name"]["given"][1], "Giuseppe");
-        // nested object
-        assert_eq!(json["identifier"]["value"], "RSSMRA80A01F205X");
+        // Known repeating properties are arrays even with one occurrence
+        assert!(json["name"].is_array(), "name must be an array");
+        assert_eq!(json["name"][0]["given"][0], "Mario");
+        assert_eq!(json["name"][0]["given"][1], "Giuseppe");
+        assert!(json["identifier"].is_array(), "identifier must be an array");
+        assert_eq!(json["identifier"][0]["value"], "RSSMRA80A01F205X");
         // narrative collapsed, not exploded into xhtml structure
         assert_eq!(json["text"]["div"], "[xhtml narrative]");
+    }
+
+    /// A Bundle with ONE entry must still produce entry: [...] and the
+    /// <resource><Patient>…</Patient></resource> container must promote the
+    /// inner element to resourceType — or analyze_bundle sees zero entries
+    /// of type "Unknown".
+    #[test]
+    fn test_single_entry_bundle() {
+        let xml = r#"<Bundle xmlns="http://hl7.org/fhir">
+  <type value="collection"/>
+  <entry>
+    <resource>
+      <Patient>
+        <id value="p1"/>
+        <gender value="female"/>
+      </Patient>
+    </resource>
+  </entry>
+</Bundle>"#;
+        let (rt, json) = fhir_xml_to_json(xml).unwrap();
+        assert_eq!(rt, "Bundle");
+        assert!(json["entry"].is_array(), "single entry must still be an array");
+        let resource = &json["entry"][0]["resource"];
+        assert_eq!(resource["resourceType"], "Patient", "container must promote resourceType");
+        assert_eq!(resource["id"], "p1");
+        assert_eq!(resource["gender"], "female");
+    }
+
+    /// Primitive with value + extension splits into key + _key per the
+    /// canonical JSON mapping — the value-set check must still see the
+    /// plain string.
+    #[test]
+    fn test_primitive_extension_split() {
+        let xml = r#"<Patient xmlns="http://hl7.org/fhir">
+  <gender value="banana"><extension url="http://x"><valueString value="y"/></extension></gender>
+</Patient>"#;
+        let (_, json) = fhir_xml_to_json(xml).unwrap();
+        assert_eq!(json["gender"], "banana", "primitive must stay a string");
+        assert!(json["_gender"]["extension"].is_array(), "extensions land under _gender");
+
+        use crate::parser::fhir::{parse_fhir_xml, validate_fhir_json};
+        let resource = parse_fhir_xml(xml).unwrap();
+        let issues = validate_fhir_json(&resource);
+        assert!(
+            issues.iter().any(|i| i.path == "gender"),
+            "invalid gender with extension must still be flagged"
+        );
+    }
+
+    /// A self-closing root is a valid minimal document.
+    #[test]
+    fn test_self_closing_root() {
+        let (rt, json) = fhir_xml_to_json(r#"<Patient xmlns="http://hl7.org/fhir"/>"#).unwrap();
+        assert_eq!(rt, "Patient");
+        assert_eq!(json["resourceType"], "Patient");
     }
 
     #[test]
