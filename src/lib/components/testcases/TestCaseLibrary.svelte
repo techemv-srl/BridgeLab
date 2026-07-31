@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getTestCases, saveTestCase, deleteTestCase, type TestCase } from '$lib/ipc/testcases';
 	import { parseMessage } from '$lib/ipc/parser';
-	import { validateMessage } from '$lib/ipc/validation';
+	import { validateMessage, validateFhir, parseFhirMessage } from '$lib/ipc/validation';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 
@@ -150,6 +150,12 @@
 				expected_message_type: formExpectedType.trim(),
 				expected_validation_result: formExpectedResult,
 			});
+			// A stored check result now describes the previous content /
+			// expectations — drop it so the badge doesn't lie.
+			if (mode === 'edit' && selectedId && selectedId in checkResults) {
+				const { [selectedId]: _stale, ...rest } = checkResults;
+				checkResults = rest;
+			}
 			await load();
 			mode = 'list';
 		} catch (e) {
@@ -162,6 +168,13 @@
 	let checkResults = $state<Record<string, CheckResult>>({});
 	let runningAll = $state(false);
 
+	/** True when the content is a FHIR resource rather than HL7 v2 —
+	 *  the library accepts both, so the runner must route accordingly. */
+	function isFhirContent(content: string): boolean {
+		const t = content.trim();
+		return (t.startsWith('{') && t.includes('"resourceType"')) || t.startsWith('<');
+	}
+
 	/** Parse + validate a case's content and compare against its
 	 *  expectations. Parse failure counts as an invalid message. */
 	async function runCheck(tc: TestCase): Promise<CheckResult> {
@@ -169,10 +182,17 @@
 		let errorCount: number | null = null;
 		let parseError = '';
 		try {
-			const parsed = await parseMessage(tc.content);
-			messageType = parsed.message_type ?? '';
-			const report = await validateMessage(parsed.message_id);
-			errorCount = report.error_count;
+			if (isFhirContent(tc.content)) {
+				const parsed = await parseFhirMessage(tc.content);
+				messageType = parsed.message_type ?? ''; // resource type, e.g. "Patient"
+				const report = await validateFhir(tc.content);
+				errorCount = report.error_count;
+			} else {
+				const parsed = await parseMessage(tc.content);
+				messageType = parsed.message_type ?? '';
+				const report = await validateMessage(parsed.message_id);
+				errorCount = report.error_count;
+			}
 		} catch (e) {
 			parseError = String(e);
 		}
