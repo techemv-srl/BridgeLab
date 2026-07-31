@@ -2,6 +2,12 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [0.5.0] — 2026-07-31
+
+### Added
+- **Full HL7 v2.5 message catalogue**. The XSD export now covers the entire v2.5 standard — **248 message structures, 149 segments, 78 composite data types** (was 4/32/49) — imported from the MIT-licensed hl7-dictionary via the new official converter in `tools/hl7-schema-importer`. Nested groups and choice blocks (e.g. ORM order detail) are fully represented. Free tier unchanged (ADT^A01, ADT^A40, ORM^O01, ORU^R01); the remaining 244 messages are the Pro tier's catalogue.
+- **FHIR XML validation**. XML resources are now converted to the canonical JSON model (value attributes, repeated-element arrays, Bundle resource containers, primitive extensions, XHTML narrative handling) and validated with the same rule set as JSON — closing the "JSON only" limitation noted in v0.4.0. Bundle analysis and FHIRPath work on XML resources too.
+
 ## [0.4.0] — 2026-07-31
 
 ### Added
