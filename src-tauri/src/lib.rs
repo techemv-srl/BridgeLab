@@ -49,6 +49,7 @@ pub fn run() {
             commands::database::clear_session,
             commands::tables::get_segment_info,
             commands::tables::get_field_info,
+            commands::tables::get_hl7_table,
             commands::validation::validate_message,
             commands::validation::validate_fhir,
             commands::parser::parse_fhir_message,

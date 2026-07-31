@@ -26,6 +26,24 @@ export interface FieldInfo {
 	required: boolean;
 	repeating: boolean;
 	description: string;
+	/** HL7 value table backing this coded field (e.g. "0001" for PID-8). */
+	table_id: string | null;
+}
+
+export interface TableValue {
+	code: string;
+	description: string;
+}
+
+export interface ValueTable {
+	id: string;
+	name: string;
+	values: TableValue[];
+}
+
+/** Fetch the values of an HL7 value table (e.g. "0001" Administrative Sex). */
+export async function getHl7Table(tableId: string): Promise<ValueTable | null> {
+	return invoke('get_hl7_table', { tableId });
 }
 
 export async function getSegmentInfo(
