@@ -9,7 +9,7 @@
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
 	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
-	import { shortcutStore, matchesKeys } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, shortcutCapture, matchesKeys } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import AppDialog from '$lib/components/shared/AppDialog.svelte';
@@ -51,6 +51,7 @@
 	let showAbout = $state(false);
 	let showAnonymize = $state(false);
 	let showSettings = $state(false);
+	let settingsSection = $state('editor');
 	let showSchemaExport = $state(false);
 	let showCompare = $state(false);
 	let showActivation = $state(false);
@@ -79,12 +80,56 @@
 	// Validation state
 	let validationReport = $state<ValidationReport | null>(null);
 
+	// The report is global while tabs are per-message: switching tab would
+	// otherwise show (and open) the previous tab's results as if they were
+	// the current tab's. Reset on switch; F6 re-validates the new tab.
+	let lastValidatedTabId = $state<string | null>(null);
+	$effect(() => {
+		const id = messageStore.activeTabId;
+		if (lastValidatedTabId !== null && id !== lastValidatedTabId) {
+			validationReport = null;
+			showValidation = false;
+		}
+		lastValidatedTabId = id;
+	});
+
+	// Editor options loaded from preferences. Until v0.2.5 these prefs were
+	// saved by Settings but read by nobody — Monaco hardcoded everything.
+	let editorOptions = $state<import('$lib/components/editor/MonacoEditor.svelte').EditorOptions>({});
+
+	async function loadEditorOptions() {
+		try {
+			const [fs, ff, ww, mm, ln, ts, rw] = await Promise.all([
+				getPreference('editor_font_size'),
+				getPreference('editor_font_family'),
+				getPreference('editor_word_wrap'),
+				getPreference('editor_minimap'),
+				getPreference('editor_line_numbers'),
+				getPreference('editor_tab_size'),
+				getPreference('editor_render_whitespace'),
+			]);
+			editorOptions = {
+				...(fs && { fontSize: parseInt(fs) || 13 }),
+				...(ff && { fontFamily: ff }),
+				...(ww && { wordWrap: ww as 'on' | 'off' | 'wordWrapColumn' | 'bounded' }),
+				...(mm !== null && { minimap: mm !== 'false' }),
+				...(ln !== null && { lineNumbers: ln !== 'false' }),
+				...(ts && { tabSize: parseInt(ts) || 4 }),
+				...(rw && { renderWhitespace: rw as 'none' | 'boundary' | 'all' }),
+			};
+		} catch { /* web mode */ }
+	}
+
 	// Reactive references to the active tab
 	let activeTab = $derived(messageStore.activeTab);
 
 	// Initialize app (using $effect instead of onMount which is a server no-op)
 	let appInitialized = false;
 	let restoreSession = $state(true);
+	// Welcome screen must not render (and accept input) until the async
+	// startup — including session restore — has finished, or a tab created
+	// meanwhile would be clobbered by restoreSession().
+	let startupComplete = $state(false);
 	$effect(() => {
 		if (appInitialized || typeof window === 'undefined') return;
 		appInitialized = true;
@@ -109,6 +154,7 @@
 				const savedRestore = await getPreference('restore_session');
 				if (savedRestore !== null) restoreSession = savedRestore !== 'false';
 				recentFiles = await getRecentFiles(20);
+				await loadEditorOptions();
 
 				// Apply plugin enable/disable overrides (stored as plugin_enabled:<id>)
 				try {
@@ -127,11 +173,13 @@
 					}
 				} catch { /* web mode */ }
 
-				// Notepad++-style tab restore
-				if (restoreSession) {
+				// Notepad++-style tab restore. Skip if the user already created
+				// a tab while startup I/O was in flight — restoreSession()
+				// replaces the whole tabs array and would discard their work.
+				if (restoreSession && messageStore.tabs.length === 0) {
 					const { loadSession } = await import('$lib/ipc/database');
 					const sessionTabs = await loadSession();
-					if (sessionTabs && sessionTabs.length > 0) {
+					if (sessionTabs && sessionTabs.length > 0 && messageStore.tabs.length === 0) {
 						sessionRestored = messageStore.restoreSession(sessionTabs);
 						// Re-parse any HL7/FHIR content so tree + inspector populate
 						for (const tab of messageStore.tabs) {
@@ -143,10 +191,11 @@
 				// Running in web-only mode without Tauri backend
 			}
 
-			// Fallback: empty tab if no session restored
-			if (!sessionRestored && messageStore.tabs.length === 0) {
-				messageStore.newTab();
-			}
+			// No session restored → leave zero tabs so the welcome screen
+			// renders (first-run onboarding). Any welcome action, paste, or
+			// the + button creates the first tab.
+			void sessionRestored;
+			startupComplete = true;
 
 			try {
 				licenseStatus = await checkLicense();
@@ -843,7 +892,11 @@
 		if (isMonacoFocused) return; // Let Monaco handle it
 
 		const text = e.clipboardData?.getData('text/plain');
-		if (!text || !messageStore.activeTabId) return;
+		if (!text) return;
+		// Paste with zero tabs (welcome screen): create the first tab so
+		// paste-to-start works as the onboarding promises.
+		if (!messageStore.activeTabId) messageStore.newTab();
+		if (!messageStore.activeTabId) return;
 
 		e.preventDefault();
 		messageStore.updateContent(messageStore.activeTabId, text);
@@ -872,6 +925,9 @@
 	};
 
 	function handleKeydown(e: KeyboardEvent) {
+		// Stand down while the ShortcutsEditor is capturing a combo — pressing
+		// Ctrl+O to *assign* it must not also open the file picker.
+		if (shortcutCapture.active) return;
 		if (e.key === 'F1') {
 			e.preventDefault();
 			showHelp = !showHelp;
@@ -951,7 +1007,8 @@
 		onToggleSchemaFields={() => { showSchemaFields = !showSchemaFields; }}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
-		onShowSettings={() => { showSettings = true; }}
+		onShowSettings={() => { settingsSection = 'editor'; showSettings = true; }}
+		onShowShortcuts={() => { settingsSection = 'shortcuts'; showSettings = true; }}
 		onCheckUpdates={handleCheckUpdates}
 		onShowHelp={() => { showHelp = true; }}
 		onShowActivation={() => { showActivation = true; }}
@@ -1056,6 +1113,10 @@
 					<MonacoEditor
 						content={activeTab.content}
 						theme={theme === 'light' ? 'bridgelab-light' : 'bridgelab-dark'}
+						language={activeTab.parseResult?.format?.startsWith('FHIR JSON') ? 'json'
+							: activeTab.parseResult?.format?.startsWith('FHIR XML') ? 'xml'
+							: 'hl7v2'}
+						options={editorOptions}
 						onContentChange={handleContentChange}
 						onCursorChange={handleCursorChange}
 						onExpandTruncated={handleEditorExpandTruncated}
@@ -1066,9 +1127,45 @@
 						onCopyTruncatedMessage={handleCopyTruncated}
 						navigation={editorNavigation}
 					/>
-				{:else}
-					<div class="editor-empty">
-						<p>{tr('tree.empty')}</p>
+				{:else if startupComplete}
+					<div class="welcome">
+						<div class="welcome-card">
+							<div class="welcome-title">{tr('welcome.title')}</div>
+							<div class="welcome-subtitle">{tr('welcome.subtitle')}</div>
+							<div class="welcome-actions">
+								<button class="welcome-action" onclick={handleOpenFile}>
+									<span class="wa-label">{tr('welcome.open')}</span>
+									<kbd>{shortcutStore.get('file.open') || 'Ctrl+O'}</kbd>
+								</button>
+								<button class="welcome-action" onclick={() => { showTemplates = true; }}>
+									<span class="wa-label">{tr('welcome.template')}</span>
+									<kbd>{shortcutStore.get('file.newFromTemplate') || 'Ctrl+N'}</kbd>
+								</button>
+								<button class="welcome-action" onclick={() => { showTestCases = true; }}>
+									<span class="wa-label">{tr('welcome.testCases')}</span>
+									<kbd>{shortcutStore.get('file.testCases') || 'Ctrl+L'}</kbd>
+								</button>
+								<button class="welcome-action" onclick={() => { showHelp = true; }}>
+									<span class="wa-label">{tr('welcome.manual')}</span>
+									<kbd>F1</kbd>
+								</button>
+								<button class="welcome-action" onclick={handleNewTab}>
+									<span class="wa-label">{tr('welcome.blank')}</span>
+								</button>
+							</div>
+							<div class="welcome-paste-hint">{tr('welcome.pasteHint')}</div>
+							{#if recentFiles.length > 0}
+								<div class="welcome-recent">
+									<div class="welcome-recent-title">{tr('menu.file.recent')}</div>
+									{#each recentFiles.slice(0, 6) as rf (rf.path)}
+										<button class="welcome-recent-item" onclick={() => handleOpenRecentFile(rf.path)} title={rf.path}>
+											{rf.path.split(/[\\/]/).pop()}
+											<span class="wr-path">{rf.path}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -1291,7 +1388,9 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
 				<SettingsModal
+				initialSection={settingsSection}
 				onRestoreSessionChange={(enabled) => { restoreSession = enabled; }}
+				onEditorOptionsChange={() => { void loadEditorOptions(); }}
 					{theme}
 					onClose={() => { showSettings = false; }}
 					onThemeChange={handleSetTheme}
@@ -1333,6 +1432,11 @@
 		truncationCount={activeTab?.parseResult?.truncation_count}
 		cursorLine={activeTab?.cursorLine}
 		cursorColumn={activeTab?.cursorColumn}
+		isModified={activeTab?.isModified ?? false}
+		errorCount={validationReport ? validationReport.error_count : null}
+		warningCount={validationReport ? validationReport.warning_count : null}
+		onShowValidation={() => { showValidation = true; }}
+		onExpandAll={handleExpandAll}
 	/>
 </div>
 
@@ -1460,14 +1564,77 @@
 		color: var(--color-error);
 	}
 
-	.editor-empty {
+	.welcome {
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		height: 100%;
-		color: var(--color-text-secondary);
-		font-size: 14px;
+		overflow-y: auto;
+		background: var(--color-bg-primary);
 	}
+
+	.welcome-card {
+		max-width: 460px;
+		width: 100%;
+		padding: 32px;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	.welcome-title { font-size: 22px; font-weight: 700; color: var(--color-text-primary); }
+	.welcome-subtitle { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 6px; }
+
+	.welcome-actions { display: flex; flex-direction: column; gap: 6px; }
+	.welcome-action {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 9px 14px;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: var(--color-bg-secondary);
+		color: var(--color-text-primary);
+		font-size: 13px;
+		font-family: inherit;
+		cursor: pointer;
+		text-align: left;
+	}
+	.welcome-action:hover { background: var(--color-bg-tertiary); border-color: var(--color-accent); }
+	.welcome-action kbd {
+		padding: 1px 8px;
+		border: 1px solid var(--color-border);
+		border-bottom-width: 2px;
+		border-radius: 4px;
+		background: var(--color-bg-tertiary);
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 10px;
+		color: var(--color-text-secondary);
+	}
+
+	.welcome-paste-hint { font-size: 11px; color: var(--color-text-secondary); font-style: italic; text-align: center; }
+
+	.welcome-recent { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+	.welcome-recent-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-secondary); margin-bottom: 4px; }
+	.welcome-recent-item {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1px;
+		padding: 5px 10px;
+		border: none;
+		border-radius: 4px;
+		background: none;
+		color: var(--color-accent);
+		font-size: 12px;
+		font-family: inherit;
+		cursor: pointer;
+		text-align: left;
+		overflow: hidden;
+	}
+	.welcome-recent-item:hover { background: var(--color-bg-tertiary); }
+	.wr-path { font-size: 10px; color: var(--color-text-secondary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 	.panel-header {
 		display: flex;

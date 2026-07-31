@@ -51,6 +51,7 @@
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowSettings: () => void;
+		onShowShortcuts: () => void;
 		onCheckUpdates: () => void;
 		onShowHelp: () => void;
 		onShowActivation: () => void;
@@ -91,6 +92,7 @@
 		onSetTheme,
 		onSetLanguage,
 		onShowSettings,
+		onShowShortcuts,
 		onCheckUpdates,
 		onShowHelp,
 		onShowActivation,
@@ -348,6 +350,9 @@
 				<button class="menu-item" onclick={() => menuAction(onShowHelp)}>
 					<span>{tr('menu.help.manual')}</span>
 					<span class="shortcut">F1</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onShowShortcuts)}>
+					<span>{tr('menu.help.shortcuts')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onShowActivation)}>
 					<span>{tr('act.activate')}</span>

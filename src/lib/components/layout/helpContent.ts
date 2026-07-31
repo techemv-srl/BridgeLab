@@ -13,7 +13,7 @@ export interface ManualSection {
 	body: string; // HTML string (already sanitized / authored by us)
 }
 
-const TITLES: Record<string, string> = {
+export const TITLES: Record<string, string> = {
 	en: 'BridgeLab User Manual',
 	it: 'Manuale Utente BridgeLab',
 	fr: 'Manuel Utilisateur BridgeLab',
@@ -36,10 +36,43 @@ function getSections(locale: string): ManualSection[] {
 	}
 }
 
-export function generateManualHtml(locale: string): string {
+/** Render <kbd> markup for a key combo string like "Ctrl+Shift+S". */
+function kbd(keys: string): string {
+	return keys.split('+').map((k) => `<kbd>${k}</kbd>`).join('+');
+}
+
+/**
+ * The hand-written defaults table in the shortcuts section drifts from the
+ * real bindings the moment anything changes (or the user rebinds). When the
+ * caller passes the live bindings, the <table> in that section is replaced
+ * with one generated from them.
+ */
+function injectLiveShortcuts(
+	sections: ManualSection[],
+	bindings: { label: string; keys: string }[],
+): ManualSection[] {
+	const rows = bindings
+		.filter((b) => b.keys)
+		.map((b) => `\t<tr><td>${kbd(b.keys)}</td><td>${b.label}</td></tr>`)
+		.join('\n');
+	const table = `<table>\n${rows}\n</table>`;
+	return sections.map((s) =>
+		s.id === 'shortcuts'
+			? { ...s, body: s.body.replace(/<table>[\s\S]*?<\/table>/, table) }
+			: s,
+	);
+}
+
+export function generateManualHtml(
+	locale: string,
+	liveShortcuts?: { label: string; keys: string }[],
+): string {
 	const title = TITLES[locale] ?? TITLES.en;
 	const contents = CONTENTS_LABEL[locale] ?? CONTENTS_LABEL.en;
-	const sections = getSections(locale);
+	let sections = getSections(locale);
+	if (liveShortcuts?.length) {
+		sections = injectLiveShortcuts(sections, liveShortcuts);
+	}
 
 	const toc = sections.map(s =>
 		`<li><a href="#${s.id}">${s.heading}</a></li>`

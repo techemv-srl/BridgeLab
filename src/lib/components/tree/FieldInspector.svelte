@@ -3,6 +3,7 @@
 	import type { FieldInfo, SegmentInfo } from '$lib/ipc/tables';
 	import { getFieldInfo, getSegmentInfo } from '$lib/ipc/tables';
 	import { getFieldContent } from '$lib/ipc/parser';
+	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 
 	interface Props {
@@ -44,8 +45,6 @@
 		return { segmentIdx, fieldPosition, componentIdx };
 	}
 
-	let parsedId = $derived(selectedNode ? parseNodeId(selectedNode.id) : null);
-
 	// Fetch schema info when selection changes
 	$effect(() => {
 		segmentInfo = null;
@@ -68,7 +67,7 @@
 	});
 
 	// Current raw value length (from node preview if not truncated, else ask backend)
-	let currentLength = $derived(() => {
+	let currentLength = $derived.by(() => {
 		if (!selectedNode) return null;
 		if (selectedNode.is_truncated) return null; // unknown without full fetch
 		return selectedNode.value_preview?.length ?? 0;
@@ -81,7 +80,14 @@
 		try {
 			const res = await getFieldContent(messageId, p.segmentIdx, p.fieldPosition);
 			onViewFullValue?.(res.full_text);
-		} catch (e) { console.error('Fetch full value failed:', e); }
+		} catch (e) {
+			await dialogStore.error(tr('inspector.viewFull'), undefined, String(e));
+		}
+	}
+
+	async function copyValue() {
+		if (!selectedNode?.value_preview) return;
+		try { await navigator.clipboard.writeText(selectedNode.value_preview); } catch { /* non-secure ctx */ }
 	}
 </script>
 
@@ -108,6 +114,9 @@
 			<!-- Schema-derived fields -->
 			{#if fieldInfo}
 				<dl class="kv">
+					<dt>{tr('inspector.position')}</dt>
+					<dd>{fieldInfo.segment_code}-{fieldInfo.position}</dd>
+
 					<dt>{tr('inspector.name')}</dt>
 					<dd>{fieldInfo.name}</dd>
 
@@ -119,7 +128,7 @@
 
 					<dt>{tr('inspector.required')}</dt>
 					<dd class:yes={fieldInfo.required} class:no={!fieldInfo.required}>
-						{fieldInfo.required ? tr('inspector.yes') : tr('inspector.no')}
+						{fieldInfo.required ? tr('inspector.yes') : tr('inspector.optional')}
 					</dd>
 
 					<dt>{tr('inspector.repeating')}</dt>
@@ -143,6 +152,8 @@
 				</dl>
 			{:else if schemaLookupDone}
 				<div class="schema-unknown">{tr('inspector.schemaUnknown')}</div>
+			{:else}
+				<div class="schema-unknown">{tr('xsd.loading')}</div>
 			{/if}
 
 			<!-- Current value -->
@@ -153,14 +164,17 @@
 						{#if selectedNode.is_truncated}
 							<span class="badge-warn">{tr('inspector.truncated')}</span>
 						{/if}
+						{#if selectedNode.value_preview && !selectedNode.is_truncated}
+							<button class="copy-btn" onclick={copyValue} title={tr('modal.copy')}>⧉</button>
+						{/if}
 					</div>
 					<pre class="value-box">{selectedNode.value_preview || ''}</pre>
 					{#if selectedNode.is_truncated}
 						<button class="view-full-btn" onclick={handleViewFull}>
 							{tr('inspector.viewFull')}
 						</button>
-					{:else if currentLength() !== null}
-						<div class="value-meta">{tr('inspector.currentLength')}: {currentLength()}</div>
+					{:else if currentLength !== null}
+						<div class="value-meta">{tr('inspector.currentLength')}: {currentLength}</div>
 					{/if}
 				</div>
 			{/if}
@@ -300,6 +314,22 @@
 		font-size: 11px;
 		color: var(--color-text-secondary);
 		margin-top: 4px;
+	}
+
+	.copy-btn {
+		margin-left: auto;
+		background: none;
+		border: 1px solid var(--color-border);
+		border-radius: 3px;
+		color: var(--color-text-secondary);
+		font-size: 11px;
+		padding: 0 6px;
+		cursor: pointer;
+	}
+
+	.copy-btn:hover {
+		color: var(--color-text-primary);
+		background: var(--color-bg-tertiary);
 	}
 
 	.view-full-btn {
