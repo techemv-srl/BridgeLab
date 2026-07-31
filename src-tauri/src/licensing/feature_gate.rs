@@ -27,6 +27,7 @@
 //! | test_cases_unlimited| ✗        | ✓   | ✓          |
 //! | xsd_export_community| ✓ (2)    | ✓   | ✓          |
 //! | xsd_export_full    | ✗         | ✓   | ✓          |
+//! | batch_validate     | ✗         | ✓   | ✓          |
 //! | soap               | ✗         | ✗   | ✓          |
 //! | priority_support   | ✗         | ✗   | ✓          |
 //!
@@ -51,6 +52,7 @@ const COMMUNITY_FEATURES: &[&str] = &[
 
 /// Additional features unlocked by Pro.
 const PRO_FEATURES: &[&str] = &[
+    "batch_validate",
     "mllp_listen",
     "http_mutate",
     "http_auth",
