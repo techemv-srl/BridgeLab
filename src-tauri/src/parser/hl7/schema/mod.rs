@@ -255,31 +255,42 @@ mod tests {
     /// the bootstrap JSON and as a sanity check that the importer tool
     /// (when it later replaces v2_5.rs as the data source) hasn't drifted.
     #[test]
-    fn loader_matches_hand_coded_schema_v2_5() {
+    fn loaded_v2_5_is_superset_of_bootstrap() {
+        // The shipped JSON is now the FULL v2.5 catalogue imported from
+        // hl7-dictionary; the hand-coded v2_5::schema() remains only as the
+        // historical bootstrap. The loaded schema must be a superset: every
+        // bootstrap message code still present, and the catalogue at least
+        // as large on every axis.
         let loaded = load(Hl7Version::V2_5);
         let direct = v2_5::schema();
-        assert_eq!(loaded.messages.len(), direct.messages.len());
-        assert_eq!(loaded.segments.len(), direct.segments.len());
-        assert_eq!(loaded.composites.len(), direct.composites.len());
-        assert_eq!(loaded.primitives.len(), direct.primitives.len());
 
-        // Spot-check deep equality via JSON round-trip (simpler than deriving
-        // PartialEq on every struct).
-        let loaded_hydrated = HydratedSchema {
-            messages: loaded.messages,
-            segments: loaded.segments,
-            composites: loaded.composites,
-            primitives: loaded.primitives,
-        };
-        let direct_hydrated = HydratedSchema {
-            messages: direct.messages,
-            segments: direct.segments,
-            composites: direct.composites,
-            primitives: direct.primitives,
-        };
-        let a = serde_json::to_string(&loaded_hydrated).unwrap();
-        let b = serde_json::to_string(&direct_hydrated).unwrap();
-        assert_eq!(a, b, "loaded schema drifts from hand-coded v2_5::schema()");
+        for m in &direct.messages {
+            assert!(
+                loaded.messages.iter().any(|lm| lm.code == m.code),
+                "bootstrap message {} missing from loaded catalogue",
+                m.code
+            );
+        }
+        assert!(loaded.messages.len() >= direct.messages.len());
+        assert!(loaded.segments.len() >= direct.segments.len());
+        assert!(loaded.composites.len() >= direct.composites.len());
+        assert!(loaded.primitives.len() >= direct.primitives.len());
+
+        // Full-catalogue sanity: the dictionary import brings the complete
+        // v2.5 set, not another bootstrap.
+        assert!(loaded.messages.len() >= 200, "expected full catalogue, got {}", loaded.messages.len());
+        assert!(loaded.segments.len() >= 100, "expected full segment set, got {}", loaded.segments.len());
+
+        // Every segment referenced by every message must be defined.
+        let seg_codes: std::collections::HashSet<_> =
+            loaded.segments.iter().map(|s| s.code.clone()).collect();
+        for m in &loaded.messages {
+            let mut refs = std::collections::BTreeSet::new();
+            collect_segments(&m.elements, &mut refs);
+            for r in refs {
+                assert!(seg_codes.contains(&r), "{} references undefined segment {}", m.code, r);
+            }
+        }
     }
 
     #[test]

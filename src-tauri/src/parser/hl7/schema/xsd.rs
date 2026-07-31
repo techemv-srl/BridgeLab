@@ -280,3 +280,36 @@ mod tests {
         assert_eq!(out.matches("<xsd:choice").count(), out.matches("</xsd:choice>").count());
     }
 }
+
+#[cfg(test)]
+mod full_catalogue_tests {
+    use super::*;
+    use crate::parser::hl7::schema::{load, Hl7Version};
+
+    /// The full hl7-dictionary catalogue must export cleanly for messages
+    /// far outside the original 4-message bootstrap — including one with
+    /// nested groups (SIU scheduling) and one with a choice block (ORM).
+    #[test]
+    fn exports_catalogue_only_messages() {
+        let schema = load(Hl7Version::V2_5);
+        for code in ["SIU_S12", "ORM_O01", "MDM_T02", "VXU_V04", "QBP_Q11"] {
+            let out = generate_xsd(&schema, code)
+                .unwrap_or_else(|e| panic!("XSD export failed for {}: {}", code, e));
+            assert!(out.contains(&format!(r#"<xsd:element name="{}">"#, code)),
+                    "{} root element missing", code);
+            assert!(out.contains("xsd:schema"), "{} not a schema", code);
+        }
+    }
+
+    /// Every message in the catalogue must export without errors — the
+    /// importer guarantees referential integrity, this guarantees the
+    /// generator holds up across all 248 structures.
+    #[test]
+    fn exports_every_catalogue_message() {
+        let schema = load(Hl7Version::V2_5);
+        for m in &schema.messages {
+            generate_xsd(&schema, &m.code)
+                .unwrap_or_else(|e| panic!("XSD export failed for {}: {}", m.code, e));
+        }
+    }
+}

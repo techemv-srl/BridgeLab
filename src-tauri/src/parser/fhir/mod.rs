@@ -1,4 +1,5 @@
 pub mod bundle;
+pub mod xml;
 pub mod fhirpath;
 
 use serde::Serialize;
@@ -108,16 +109,23 @@ pub fn parse_fhir_json(content: &str) -> Result<FhirResource, String> {
 pub fn parse_fhir_xml(content: &str) -> Result<FhirResource, String> {
     let trimmed = content.trim();
 
-    // Extract resource type from root element
-    let resource_type = extract_xml_root_element(trimmed)
-        .ok_or_else(|| "Could not detect FHIR resource type from XML".to_string())?;
+    // Full XML -> JSON conversion so validation and tree building work on
+    // XML resources exactly like on JSON ones.
+    let (resource_type, json) = xml::fhir_xml_to_json(trimmed)?;
+
+    let fhir_version = json
+        .get("meta")
+        .and_then(|m| m.get("versionId"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     Ok(FhirResource {
         raw: content.to_string(),
         format: FhirFormat::Xml,
         resource_type,
-        fhir_version: String::new(),
-        json_value: None,
+        fhir_version,
+        json_value: Some(json),
     })
 }
 
