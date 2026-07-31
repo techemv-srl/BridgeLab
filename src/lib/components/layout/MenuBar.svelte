@@ -48,6 +48,8 @@
 		onExportCsv: () => void;
 		onExportXsd: () => void;
 		onCompareMessages: () => void;
+		onBatchValidate: () => void;
+		onGenerateMessages: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
 		onShowSettings: () => void;
@@ -89,6 +91,8 @@
 		onExportCsv,
 		onExportXsd,
 		onCompareMessages,
+		onBatchValidate,
+		onGenerateMessages,
 		onSetTheme,
 		onSetLanguage,
 		onShowSettings,
@@ -314,6 +318,12 @@
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onCompareMessages)}>
 					<span>{tr('menu.tools.compare')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onBatchValidate)}>
+					<span>{tr('menu.tools.batchValidate')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onGenerateMessages)}>
+					<span>{tr('menu.tools.generate')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onCopyFull)}>
 					<span>{tr('menu.tools.copyFull')}</span>
