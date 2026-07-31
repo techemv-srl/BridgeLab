@@ -143,6 +143,15 @@ of any two open tabs with HL7 syntax highlighting. Pick left/right from
 the dropdowns, use the ⇆ button to swap sides, press <kbd>Esc</kbd> to
 close. At least two tabs must be open.</p>
 
+<h3>Allowed values for coded fields</h3>
+<p>When the selected field is backed by an HL7 value table (PID-8
+Administrative Sex, PV1-2 Patient Class, MSA-1 Acknowledgment Code,
+ORC-1 Order Control, OBX-11 Result Status, …), the inspector lists the
+<strong>allowed values</strong> with their meanings and highlights the
+one currently in the message. If the current value is not in the table,
+a warning appears — a quick way to spot non-standard codes before the
+receiving system rejects them.</p>
+
 <h3>Schema-aware tree</h3>
 <p><strong>View → Show Schema Fields</strong> injects placeholder rows
 for every field defined by the HL7 standard that is <em>absent</em> from
