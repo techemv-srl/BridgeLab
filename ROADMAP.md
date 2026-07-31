@@ -137,7 +137,8 @@ BridgeLab already ships features that are missing or weak in competitors:
 - [ ] Git integration (save messages to repo, diff across commits)
 - [ ] SOAP client with WSDL parsing (Enterprise feature)
 - [x] Message generator with realistic fake data (v0.4.0 — seeded, ADT/ORU/ORM)
-- [x] Batch operations — batch validation GUI with CSV report (v0.4.0; transform still open)
+- [x] Batch validation GUI with CSV report (v0.4.0)
+- [ ] Batch transformation (anonymize/convert 1000+ messages in one pass)
 
 ### Q1 2027 - Collaboration (v1.3)
 
