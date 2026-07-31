@@ -2,6 +2,12 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [0.3.0] — 2026-07-31
+
+### Added
+- **HL7 value tables in the Field Inspector**. Selecting a coded field (PID-8 Administrative Sex, PV1-2 Patient Class, MSA-1 Acknowledgment Code, ORC-1 Order Control, OBX-11 Observation Result Status, MSH-9/11, PID-16/24/30, PV1-4, ORC-5, OBR-25, AL1-2, DG1-6) now shows the **allowed values with their meanings**, highlights the value currently in the message and warns when the current value is not in the table — non-standard codes surface at a glance before the receiving system rejects them. Deliberately partial tables (0076 Message Type) never produce false warnings.
+- **Runnable test cases**. The Test Case Library gains "Expected message type" and "Expected validation" (valid/invalid) fields plus **Run check** per case and **Run all** on the filtered list: each case's content is parsed and validated for real (HL7 v2 or FHIR, auto-detected) and compared against its expectations. Pass/fail badge per row, failure detail in the case view, passed/total summary in the toolbar — the library is now a regression-test tool for interface changes, not just a snippet store.
+
 ## [0.2.5] — 2026-07-31
 
 ### Added
