@@ -1,6 +1,6 @@
 import type { ManualSection } from '../helpContent';
 import { getStarted, editorSection, treeSection } from './en-part1';
-import { validationSection, communicationSection, anonymizationSection } from './en-part2';
+import { validationSection, communicationSection, anonymizationSection, testCasesSection } from './en-part2';
 import { schemaExportSection, fhirSection, pluginsSection, licensingSection, shortcutsSection } from './en-part3';
 
 export const enSections: ManualSection[] = [
@@ -10,6 +10,7 @@ export const enSections: ManualSection[] = [
 	validationSection,
 	communicationSection,
 	anonymizationSection,
+	testCasesSection,
 	schemaExportSection,
 	fhirSection,
 	pluginsSection,
