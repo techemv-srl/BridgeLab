@@ -192,27 +192,18 @@ fn ingest_bridgelab_json(dir: &std::path::Path, version: &str) -> Result<Hydrate
 // ---------- hl7-dictionary ingestor -----------------------------------------
 
 fn ingest_hl7_dictionary(_dir: &std::path::Path, _version: &str) -> Result<HydratedSchema> {
-    // TODO (F2): parse hl7-dictionary's lib/<version>/{messages,segments,fields,dataTypes}.js
-    // The files are CommonJS exports of plain JS objects with a well-known
-    // shape; stripping the `module.exports =` prefix and trailing `;` yields
-    // valid JSON that we can deserialize and map into our model.
+    // hl7-dictionary ships CommonJS modules (real JS, not JSON), so the
+    // conversion is implemented in Node: scripts/convert-hl7-dictionary.mjs.
+    // Run that first, then validate its output through this tool:
     //
-    // Implementation sketch:
-    //   1. read messages.js -> HashMap<StructureCode, Vec<JsElement>>
-    //      where JsElement is { name, min, max, items? }
-    //   2. read segments.js -> HashMap<SegmentCode, { description, fields[] }>
-    //      where fields[] is a list of { name, type, len, usage, rep_max, datatype }
-    //   3. read fields.js + dataTypes.js -> composite and primitive tables
-    //   4. translate into HydratedSchema, preserving 1-based positions and
-    //      mapping "R"/"O" to required=true/false, rep_max>1 to repeats=true,
-    //      and detecting groups vs. choices from the shape.
-    //
-    // Once implemented this is the primary path for F2 (full v2.5) and F3
-    // (all other v2.x versions hl7-dictionary ships).
+    //   npm pack hl7-dictionary && tar xzf hl7-dictionary-*.tgz
+    //   node scripts/convert-hl7-dictionary.mjs ./package 2.5 /tmp/v2_5.json
+    //   hl7-schema-importer --format bridgelab-json --source-dir /tmp \
+    //       --hl7-version 2.5 --output ../../src-tauri/resources/hl7/v2_5.json
     bail!(
-        "hl7-dictionary ingestor not yet implemented. \
-         Clone https://github.com/Ensighten/hl7-dictionary and use \
-         `--format bridgelab-json` with a pre-converted file for now."
+        "hl7-dictionary is JavaScript, not JSON: convert it with \
+         scripts/convert-hl7-dictionary.mjs first, then validate the result \
+         with --format bridgelab-json (see the script header for the exact steps)."
     )
 }
 
