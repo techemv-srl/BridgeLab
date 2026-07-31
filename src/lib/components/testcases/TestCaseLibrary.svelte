@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { getTestCases, saveTestCase, deleteTestCase, type TestCase } from '$lib/ipc/testcases';
+	import { parseMessage } from '$lib/ipc/parser';
+	import { validateMessage, validateFhir, parseFhirMessage } from '$lib/ipc/validation';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 
@@ -31,11 +33,13 @@
 	let formCategory = $state('general');
 	let formTags = $state('');
 	let formContent = $state('');
+	let formExpectedType = $state('');
+	let formExpectedResult = $state('valid');
 	// Snapshot taken when the form opens; Cancel with unsaved changes confirms.
 	let formSnapshot = '';
 
 	let formDirty = $derived(
-		JSON.stringify([formName, formDescription, formCategory, formTags, formContent]) !== formSnapshot
+		JSON.stringify([formName, formDescription, formCategory, formTags, formContent, formExpectedType, formExpectedResult]) !== formSnapshot
 	);
 
 	let loaded = false;
@@ -88,7 +92,7 @@
 	let selected = $derived(cases.find(c => c.id === selectedId));
 
 	function snapshotForm() {
-		formSnapshot = JSON.stringify([formName, formDescription, formCategory, formTags, formContent]);
+		formSnapshot = JSON.stringify([formName, formDescription, formCategory, formTags, formContent, formExpectedType, formExpectedResult]);
 	}
 
 	function startNew() {
@@ -97,6 +101,8 @@
 		formCategory = 'general';
 		formTags = '';
 		formContent = currentContent;
+		formExpectedType = '';
+		formExpectedResult = 'valid';
 		snapshotForm();
 		mode = 'new';
 	}
@@ -107,6 +113,8 @@
 		formCategory = tc.category;
 		formTags = tc.tags;
 		formContent = tc.content;
+		formExpectedType = tc.expected_message_type;
+		formExpectedResult = tc.expected_validation_result || 'valid';
 		selectedId = tc.id;
 		snapshotForm();
 		mode = 'edit';
@@ -139,13 +147,99 @@
 				category: formCategory || 'general',
 				tags: formTags,
 				content: formContent,
+				expected_message_type: formExpectedType.trim(),
+				expected_validation_result: formExpectedResult,
 			});
+			// A stored check result now describes the previous content /
+			// expectations — drop it so the badge doesn't lie.
+			if (mode === 'edit' && selectedId && selectedId in checkResults) {
+				const { [selectedId]: _stale, ...rest } = checkResults;
+				checkResults = rest;
+			}
 			await load();
 			mode = 'list';
 		} catch (e) {
 			await dialogStore.error(tr('dialog.saveFailed'), undefined, String(e));
 		}
 	}
+
+	// --- Expected-outcome checks: the "test" part of the test case library ---
+	interface CheckResult { pass: boolean; detail: string; }
+	let checkResults = $state<Record<string, CheckResult>>({});
+	let runningAll = $state(false);
+
+	/** True when the content is a FHIR resource rather than HL7 v2 —
+	 *  the library accepts both, so the runner must route accordingly. */
+	function isFhirContent(content: string): boolean {
+		const t = content.trim();
+		return (t.startsWith('{') && t.includes('"resourceType"')) || t.startsWith('<');
+	}
+
+	/** Parse + validate a case's content and compare against its
+	 *  expectations. Parse failure counts as an invalid message. */
+	async function runCheck(tc: TestCase): Promise<CheckResult> {
+		let messageType = '';
+		let errorCount: number | null = null;
+		let parseError = '';
+		try {
+			if (isFhirContent(tc.content)) {
+				const parsed = await parseFhirMessage(tc.content);
+				messageType = parsed.message_type ?? ''; // resource type, e.g. "Patient"
+				const report = await validateFhir(tc.content);
+				errorCount = report.error_count;
+			} else {
+				const parsed = await parseMessage(tc.content);
+				messageType = parsed.message_type ?? '';
+				const report = await validateMessage(parsed.message_id);
+				errorCount = report.error_count;
+			}
+		} catch (e) {
+			parseError = String(e);
+		}
+
+		const problems: string[] = [];
+		const expType = tc.expected_message_type.trim().toUpperCase();
+		if (expType) {
+			const actual = messageType.toUpperCase();
+			// "ADT" matches "ADT^A01"; "ADT^A01" requires the full type.
+			const ok = expType.includes('^')
+				? actual === expType
+				: actual === expType || actual.startsWith(expType + '^');
+			if (!ok) problems.push(tr('tc.checkTypeMismatch', { expected: tc.expected_message_type, actual: messageType || '—' }));
+		}
+		const expResult = tc.expected_validation_result || 'valid';
+		const isValid = parseError === '' && errorCount === 0;
+		if (expResult === 'valid' && !isValid) {
+			problems.push(parseError
+				? tr('tc.checkParseFailed', { error: parseError })
+				: tr('tc.checkUnexpectedErrors', { count: errorCount ?? 0 }));
+		} else if (expResult === 'invalid' && isValid) {
+			problems.push(tr('tc.checkUnexpectedlyValid'));
+		}
+
+		return problems.length === 0
+			? { pass: true, detail: tr('tc.checkPass') }
+			: { pass: false, detail: problems.join(' · ') };
+	}
+
+	async function handleRunCheck(tc: TestCase) {
+		checkResults = { ...checkResults, [tc.id]: await runCheck(tc) };
+	}
+
+	async function handleRunAll() {
+		runningAll = true;
+		for (const tc of filtered) {
+			checkResults = { ...checkResults, [tc.id]: await runCheck(tc) };
+		}
+		runningAll = false;
+	}
+
+	let runSummary = $derived.by(() => {
+		const ids = filtered.map((c) => c.id).filter((id) => id in checkResults);
+		if (ids.length === 0) return null;
+		const passed = ids.filter((id) => checkResults[id].pass).length;
+		return { passed, total: ids.length };
+	});
 
 	async function handleDelete(tc: TestCase) {
 		if (!(await dialogStore.confirm(tr('dialog.deleteConfirm', { name: tc.name })))) return;
@@ -177,6 +271,14 @@
 	{#if mode === 'list'}
 		<div class="tc-search">
 			<input bind:this={searchInputEl} bind:value={search} placeholder={tr('tc.search')} class="search-input" />
+			<button class="btn" onclick={handleRunAll} disabled={runningAll || filtered.length === 0}>
+				{runningAll ? tr('tc.running') : tr('tc.runAll')}
+			</button>
+			{#if runSummary}
+				<span class="run-summary" class:all-pass={runSummary.passed === runSummary.total}>
+					{tr('tc.runSummary', { passed: runSummary.passed, total: runSummary.total })}
+				</span>
+			{/if}
 		</div>
 
 		<div class="tc-body">
@@ -206,7 +308,15 @@
 								class:selected={selectedId === tc.id}
 								onclick={() => { selectedId = tc.id; }}
 							>
-								<div class="tc-name">{tc.name}</div>
+								<div class="tc-name">
+									{tc.name}
+									{#if checkResults[tc.id]}
+										<span class="check-badge" class:pass={checkResults[tc.id].pass} class:fail={!checkResults[tc.id].pass}
+											title={checkResults[tc.id].detail}>
+											{checkResults[tc.id].pass ? '✓' : '✖'}
+										</span>
+									{/if}
+								</div>
 								{#if tc.description}
 									<div class="tc-desc">{tc.description}</div>
 								{/if}
@@ -228,6 +338,7 @@
 					<div class="detail-header">
 						<h3>{selected.name}</h3>
 						<div class="detail-actions">
+							<button class="btn" onclick={() => handleRunCheck(selected)}>{tr('tc.runCheck')}</button>
 							<button class="btn btn-primary" onclick={() => onLoad(selected)}>{tr('tc.loadInEditor')}</button>
 							<button class="btn" onclick={() => startEdit(selected)}>{tr('tc.edit')}</button>
 							<button class="btn btn-danger" onclick={() => handleDelete(selected)}>{tr('tc.delete')}</button>
@@ -239,7 +350,16 @@
 					<div class="detail-meta">
 						<span class="meta-item">{tr('tc.category')}: <strong>{selected.category}</strong></span>
 						<span class="meta-item">{tr('tc.updated')}: {new Date(selected.updated_at).toLocaleString()}</span>
+						{#if selected.expected_message_type}
+							<span class="meta-item">{tr('tc.expectedType')}: <strong>{selected.expected_message_type}</strong></span>
+						{/if}
+						<span class="meta-item">{tr('tc.expectedResult')}: <strong>{selected.expected_validation_result === 'invalid' ? tr('tc.resultInvalid') : tr('tc.resultValid')}</strong></span>
 					</div>
+					{#if checkResults[selected.id]}
+						<div class="check-detail" class:pass={checkResults[selected.id].pass} class:fail={!checkResults[selected.id].pass}>
+							{checkResults[selected.id].pass ? '✓' : '✖'} {checkResults[selected.id].detail}
+						</div>
+					{/if}
 					<pre class="detail-content">{selected.content}</pre>
 				{:else}
 					<div class="empty">{tr('tc.selectPrompt')}</div>
@@ -270,6 +390,19 @@
 					<input id="tc-tags" bind:value={formTags} placeholder={tr('tc.tagsPlaceholder')} class="form-input" />
 				</div>
 			</div>
+			<div class="form-grid">
+				<div class="form-row">
+					<label for="tc-exp-type">{tr('tc.expectedType')}</label>
+					<input id="tc-exp-type" bind:value={formExpectedType} placeholder="ADT^A01" class="form-input" />
+				</div>
+				<div class="form-row">
+					<label for="tc-exp-result">{tr('tc.expectedResult')}</label>
+					<select id="tc-exp-result" bind:value={formExpectedResult} class="form-input">
+						<option value="valid">{tr('tc.resultValid')}</option>
+						<option value="invalid">{tr('tc.resultInvalid')}</option>
+					</select>
+				</div>
+			</div>
 			<div class="form-row">
 				<label for="tc-content">{tr('tc.contentRequired')}</label>
 				<textarea id="tc-content" bind:value={formContent} rows={10} class="form-input mono"></textarea>
@@ -290,8 +423,16 @@
 	.header-actions { display: flex; align-items: center; gap: 8px; }
 	.close-btn { background: none; border: none; color: var(--color-text-secondary); font-size: 20px; cursor: pointer; }
 
-	.tc-search { padding: 8px 12px; border-bottom: 1px solid var(--color-border); flex-shrink: 0; }
-	.search-input { width: 100%; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-bg-tertiary); color: var(--color-text-primary); font-size: 12px; font-family: inherit; }
+	.tc-search { padding: 8px 12px; border-bottom: 1px solid var(--color-border); flex-shrink: 0; display: flex; gap: 8px; align-items: center; }
+	.run-summary { font-size: 11px; font-weight: 700; color: var(--color-error); white-space: nowrap; }
+	.run-summary.all-pass { color: var(--color-success); }
+	.check-badge { margin-left: 6px; font-size: 11px; font-weight: 700; }
+	.check-badge.pass { color: var(--color-success); }
+	.check-badge.fail { color: var(--color-error); }
+	.check-detail { padding: 6px 10px; border-radius: 4px; font-size: 12px; border: 1px solid; }
+	.check-detail.pass { color: var(--color-success); border-color: var(--color-success); }
+	.check-detail.fail { color: var(--color-error); border-color: var(--color-error); }
+	.search-input { flex: 1; width: auto; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-bg-tertiary); color: var(--color-text-primary); font-size: 12px; font-family: inherit; }
 
 	.tc-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 	.tc-list { width: 40%; overflow-y: auto; border-right: 1px solid var(--color-border); padding: 4px 0; }
