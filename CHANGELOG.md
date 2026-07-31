@@ -7,7 +7,7 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
 ### Added
 - **Batch validation** (`Tools → Batch validation…`, Pro). Validate a whole folder (or a picked set) of `.hl7`/`.txt`/`.dat` files in one pass: one row per file with message type, version, segment count and error/warning totals — active plugin rules included, same pipeline as interactive validation. Only-failures filter, passed/failed summary, spreadsheet-safe CSV export, click a row to open the file in the editor. Files are processed in memory; caps at 5000 files and 10 MB per file.
 - **Test-message generator** (`Tools → Generate test messages…`). Creates syntactically valid ADT^A01/A08, ORU^R01, ORM^O01 (or mixed) messages with plausible synthetic patient data — names, birth dates, MRNs, addresses and lab panels with reference ranges, including a realistic share of flagged abnormal results. No real PHI. Seeded runs are reproducible; open the results in tabs or save them to a folder as numbered `.hl7` files.
-- **Real FHIR validation**. `Validate` (F6) on a FHIR resource now runs the actual FHIR rule set (resourceType, id, per-resource field checks) and lists the findings in the validation panel with their JSON paths — replacing the previous "parsed successfully" stub.
+- **Real FHIR validation (JSON)**. `Validate` (F6) on a FHIR JSON resource now runs the actual FHIR rule set (resourceType, id, per-resource field checks) and lists the findings in the validation panel with their JSON paths — replacing the previous "parsed successfully" stub. FHIR XML validation is planned; XML resources currently parse and display but are not rule-checked.
 
 ## [0.3.0] — 2026-07-31
 

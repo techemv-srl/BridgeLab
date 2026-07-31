@@ -205,4 +205,40 @@ riferimento canonico - la copia anonimizzata è per la condivisione,
 non per lo storage di lungo periodo.</div>
 `,
 },
+{
+	id: 'testcases',
+	heading: 'Libreria Test Case',
+	body: `
+<p>La Libreria Test Case (<kbd>Ctrl</kbd>+<kbd>L</kbd>) conserva
+messaggi riusabili con nome, categoria, tag e descrizione. Usa
+<strong>Salva messaggio corrente</strong> per catturare il tab attivo,
+oppure crea casi da zero. I casi persistono nel database locale e sono
+ricercabili su tutti i campi.</p>
+
+<h3>Esiti attesi</h3>
+<p>Ogni caso può dichiarare un <strong>tipo di messaggio atteso</strong>
+(<code>ADT</code> accetta qualsiasi evento ADT, <code>ADT^A01</code> è
+esatto) e una <strong>validazione attesa</strong> (valido / non
+valido). Così uno snippet diventa un test.</p>
+
+<h3>Eseguire le verifiche</h3>
+<p><strong>Verifica</strong> analizza e valida davvero un singolo caso
+— HL7 v2 o FHIR, rilevato automaticamente — e confronta l'esito con le
+attese. <strong>Esegui tutti</strong> fa lo stesso per ogni caso che
+corrisponde alla ricerca corrente, con badge pass/fail per riga e
+riepilogo superati/totale nella toolbar. Dopo una modifica
+all'interfaccia, un click ti dice quali dei tuoi messaggi di
+riferimento si sono rotti. Modificare un caso azzera il suo esito fino
+alla verifica successiva.</p>
+
+<h3>Ripristino sessione</h3>
+<p>BridgeLab salva i tab aperti (incluse le modifiche non salvate) e li
+riapre al prossimo avvio, in stile Notepad++. Controlli tutto da
+<strong>Impostazioni → Sessione</strong>: attiva/disattiva
+<em>Ripristina i tab all'avvio</em>, oppure usa <em>Cancella sessione
+salvata</em> per azzerare i tab memorizzati (disattiva anche il
+ripristino, così il prossimo avvio parte dalla schermata di
+benvenuto).</p>
+`,
+},
 ];
