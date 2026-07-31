@@ -52,7 +52,7 @@
 <section class="hero">
 	<div class="wrap">
 		<div class="hero-copy">
-			<span class="eyebrow">v0.2.2 &middot; Open Core &middot; MIT</span>
+			<span class="eyebrow"><span id="version-badge">v0.5.0</span> &middot; Open Core &middot; MIT</span>
 			<h1>HL7/FHIR <span class="grad">made simple.</span></h1>
 			<p class="lede">
 				A modern message editor for healthcare integration. Handles
@@ -453,5 +453,18 @@
 	</div>
 </footer>
 
+<script>
+// Keep the version badge in sync with the latest GitHub release so the
+// landing page can never drift behind the binaries again. The static
+// text above is the graceful fallback (rate limit / offline).
+fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
+	.then((r) => (r.ok ? r.json() : null))
+	.then((rel) => {
+		if (rel && rel.tag_name) {
+			document.getElementById('version-badge').textContent = rel.tag_name;
+		}
+	})
+	.catch(() => {});
+</script>
 </body>
 </html>
