@@ -22,11 +22,14 @@ hl7-schema-importer \
     --hl7-version 2.5 \
     --output /tmp/v2_5_reformatted.json
 
-# Ingest from hl7-dictionary (requires a local clone — MIT licensed):
-git clone https://github.com/Ensighten/hl7-dictionary ~/hl7-dictionary
+# Ingest from hl7-dictionary (npm, MIT licensed). The dictionary ships
+# CommonJS modules, so the conversion runs in Node; this tool then
+# validates the output (referential integrity) before it ships:
+npm pack hl7-dictionary && tar xzf hl7-dictionary-*.tgz
+node scripts/convert-hl7-dictionary.mjs ./package 2.5 /tmp/v2_5.json
 hl7-schema-importer \
-    --format hl7-dictionary \
-    --source-dir ~/hl7-dictionary \
+    --format bridgelab-json \
+    --source-dir /tmp \
     --hl7-version 2.5 \
     --output ../../src-tauri/resources/hl7/v2_5.json
 ```
@@ -48,6 +51,7 @@ are always internally consistent.
 ## Roadmap
 
 - [x] `bridgelab-json` round-trip (useful to re-format / validate existing files).
+- [x] hl7-dictionary conversion via `scripts/convert-hl7-dictionary.mjs` (F2: full v2.5 catalogue shipped — 248 messages, 149 segments, 78 composites).
 - [ ] `hl7-dictionary` ingestor: parse `lib/<version>/{messages,segments,fields,dataTypes}.js`.
 - [ ] `hapi-conf` ingestor: parse HAPI's `.conf` XML bundles.
 - [ ] Validation: flag composites/segments whose children reference each
