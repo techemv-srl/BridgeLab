@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { getTemplatesGrouped, type MessageTemplate } from '$lib/ipc/templates';
+	import { t, subscribeLocale } from '$lib/i18n';
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
 	interface Props {
 		onSelect: (template: MessageTemplate) => void;
@@ -11,16 +15,24 @@
 	let groups = $state<[string, MessageTemplate[]][]>([]);
 	let selectedId = $state<string | null>(null);
 	let search = $state('');
+	let loading = $state(true);
+	let searchInputEl: HTMLInputElement | undefined = $state();
 
-	// Builtin templates (fallback when no backend)
-	const builtinTemplates: MessageTemplate[] = [
-		{
-			id: 'adt-a01', name: 'ADT^A01 - Patient Admission', message_type: 'ADT',
-			category: 'Admission / Discharge / Transfer',
-			description: 'Patient admission / visit notification',
-			content: 'MSH|^~\\&|SENDING_APP|SENDING_FAC|RECEIVING_APP|RECEIVING_FAC|{NOW}||ADT^A01|{MSGID}|P|2.5\rEVN|A01|{NOW}\rPID|1||MRN001^^^HOSPITAL^MR||DOE^JOHN||19800101|M\rPV1|1|I|WARD01^101^A\r',
-		},
-	];
+	/** Builtin fallback for web mode / backend failure. The Rust backend
+	 *  substitutes {now}/{msg_id}; here we must do it ourselves or the user
+	 *  gets literal placeholders that fail parse + validation. */
+	function builtinTemplates(): MessageTemplate[] {
+		const now = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+		const msgId = 'MSG' + now;
+		return [
+			{
+				id: 'adt-a01', name: 'ADT^A01 - Patient Admission', message_type: 'ADT',
+				category: 'Admission / Discharge / Transfer',
+				description: 'Patient admission / visit notification',
+				content: `MSH|^~\\&|SENDING_APP|SENDING_FAC|RECEIVING_APP|RECEIVING_FAC|${now}||ADT^A01|${msgId}|P|2.5\rEVN|A01|${now}\rPID|1||MRN001^^^HOSPITAL^MR||DOE^JOHN||19800101|M\rPV1|1|I|WARD01^101^A\r`,
+			},
+		];
+	}
 
 	let loaded = false;
 	$effect(() => {
@@ -29,12 +41,20 @@
 		loadTemplates();
 	});
 
+	// Focus the search box as soon as it renders
+	$effect(() => {
+		searchInputEl?.focus();
+	});
+
 	async function loadTemplates() {
+		loading = true;
 		try {
 			groups = await getTemplatesGrouped();
 		} catch {
 			// Web mode fallback
-			groups = [['Built-in', builtinTemplates]];
+			groups = [['Built-in', builtinTemplates()]];
+		} finally {
+			loading = false;
 		}
 	}
 
@@ -54,8 +74,10 @@
 			.filter(([, items]) => items.length > 0);
 	});
 
+	// Resolve against the FILTERED list: a search that hides the selected
+	// template must not leave "Create" enabled for an invisible item.
 	let selectedTemplate = $derived(
-		groups.flatMap(([, items]) => items).find((t) => t.id === selectedId)
+		filtered.flatMap(([, items]) => items).find((t) => t.id === selectedId)
 	);
 
 	function handleSelect() {
@@ -63,27 +85,39 @@
 			onSelect(selectedTemplate);
 		}
 	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+		else if (e.key === 'Enter' && selectedTemplate) { e.preventDefault(); handleSelect(); }
+	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="tmpl-dialog">
 	<div class="tmpl-header">
-		<span>New Message from Template</span>
+		<span>{tr('tmpl.title')}</span>
 		<button class="close-btn" onclick={onClose}>&times;</button>
 	</div>
 
 	<div class="tmpl-search">
 		<input
 			type="text"
+			bind:this={searchInputEl}
 			bind:value={search}
-			placeholder="Search templates..."
+			placeholder={tr('tmpl.search')}
 			class="search-input"
 		/>
 	</div>
 
 	<div class="tmpl-body">
 		<div class="tmpl-list">
-			{#if filtered.length === 0}
-				<div class="tmpl-empty">No templates match your search</div>
+			{#if loading}
+				<div class="tmpl-empty">{tr('xsd.loading')}</div>
+			{:else if groups.length === 0}
+				<div class="tmpl-empty">{tr('tmpl.none')}</div>
+			{:else if filtered.length === 0}
+				<div class="tmpl-empty">{tr('tmpl.empty')}</div>
 			{:else}
 				{#each filtered as [category, items]}
 					<div class="tmpl-category">{category}</div>
@@ -104,18 +138,18 @@
 
 		<div class="tmpl-preview">
 			{#if selectedTemplate}
-				<div class="preview-label">Preview</div>
+				<div class="preview-label">{tr('tmpl.preview')}</div>
 				<pre class="preview-content">{selectedTemplate.content}</pre>
 			{:else}
-				<div class="preview-empty">Select a template to preview</div>
+				<div class="preview-empty">{tr('tmpl.previewPrompt')}</div>
 			{/if}
 		</div>
 	</div>
 
 	<div class="tmpl-footer">
-		<button class="btn" onclick={onClose}>Cancel</button>
+		<button class="btn" onclick={onClose}>{tr('dialog.cancel')}</button>
 		<button class="btn btn-primary" onclick={handleSelect} disabled={!selectedTemplate}>
-			Create Message
+			{tr('tmpl.create')}
 		</button>
 	</div>
 </div>

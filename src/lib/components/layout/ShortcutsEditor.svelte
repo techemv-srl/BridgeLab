@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { shortcutStore, SHORTCUTS, eventToKeys, type ShortcutDef } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, shortcutCapture, SHORTCUTS, eventToKeys, type ShortcutDef } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 
@@ -17,12 +17,16 @@
 		if (loaded || typeof window === 'undefined') return;
 		loaded = true;
 		shortcutStore.loadFromPrefs();
+		// Safety net: never leave the global handler disarmed if this
+		// component unmounts mid-capture (e.g. modal closed with the mouse).
+		return () => { shortcutCapture.active = false; };
 	});
 
 	function startCapture(id: string) {
 		capturingId = id;
 		capturedKeys = shortcutStore.get(id);
 		conflictWarning = '';
+		shortcutCapture.active = true;
 	}
 
 	function handleCaptureKeydown(e: KeyboardEvent) {
@@ -34,6 +38,7 @@
 			capturingId = null;
 			capturedKeys = '';
 			conflictWarning = '';
+			shortcutCapture.active = false;
 			return;
 		}
 		if (e.key === 'Backspace' || e.key === 'Delete') {
@@ -49,9 +54,9 @@
 		const existing = shortcutStore.findByKeys(keys, capturingId);
 		const monacoConflict = shortcutStore.findMonacoConflict(keys);
 		if (existing) {
-			conflictWarning = `Already assigned to "${existing.label}" - will be reassigned.`;
+			conflictWarning = tr('shortcuts.conflictApp', { label: tr('shortcut.' + existing.id) });
 		} else if (monacoConflict) {
-			conflictWarning = `Will override editor shortcut "${monacoConflict.label}" inside the editor.`;
+			conflictWarning = tr('shortcuts.conflictMonaco', { label: tr('shortcut.' + monacoConflict.id) });
 		} else {
 			conflictWarning = '';
 		}
@@ -72,12 +77,14 @@
 		capturingId = null;
 		capturedKeys = '';
 		conflictWarning = '';
+		shortcutCapture.active = false;
 	}
 
 	function cancelCapture() {
 		capturingId = null;
 		capturedKeys = '';
 		conflictWarning = '';
+		shortcutCapture.active = false;
 	}
 
 	async function resetToDefault(id: string) {
@@ -110,7 +117,7 @@
 		edit: tr('menu.edit'),
 		view: tr('menu.view'),
 		tools: tr('menu.tools'),
-		editor: 'Editor (Monaco)',
+		editor: tr('shortcuts.editorGroup'),
 	};
 	});
 </script>
@@ -131,7 +138,7 @@
 			{#each items as s (s.id)}
 				<div class="shortcut-row">
 					<span class="shortcut-label">
-						{s.label}
+						{tr('shortcut.' + s.id)}
 						{#if s.isMonaco}
 							<span class="monaco-tag">Monaco</span>
 						{/if}
@@ -144,7 +151,7 @@
 							{#if conflictWarning}
 								<span class="conflict">{conflictWarning}</span>
 							{/if}
-							<button class="btn-xs btn-primary" onclick={applyCapture} disabled={!capturedKeys}>OK</button>
+							<button class="btn-xs btn-primary" onclick={applyCapture} disabled={!capturedKeys}>{conflictWarning ? tr('shortcuts.reassign') : tr('dialog.ok')}</button>
 							<button class="btn-xs" onclick={cancelCapture}>{tr('dialog.cancel')}</button>
 						</div>
 					{:else}
@@ -153,7 +160,7 @@
 								{shortcutStore.get(s.id) || tr('shortcuts.none')}
 							</button>
 							{#if shortcutStore.get(s.id) !== s.defaultKeys}
-								<button class="btn-xs reset-btn" onclick={() => resetToDefault(s.id)} title="Reset to default ({s.defaultKeys})">
+								<button class="btn-xs reset-btn" onclick={() => resetToDefault(s.id)} title={tr('shortcuts.resetOne', { keys: s.defaultKeys })}>
 									&#8634;
 								</button>
 							{/if}

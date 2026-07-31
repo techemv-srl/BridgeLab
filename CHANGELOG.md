@@ -2,6 +2,21 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [0.2.5] — 2026-07-31
+
+### Added
+- **Welcome screen**: with no restored session the app now opens on an onboarding card — Open file (Ctrl+O), New from template (Ctrl+N), Test case library (Ctrl+L), User manual (F1), blank tab — with live shortcut hints and the recent-files list. Pasting an HL7 message anywhere creates the first tab.
+- **Live status bar**: clickable validation summary (✖ errors / ⚠ warnings opens the panel, scoped to the active tab), modified-file dot, truncation badge click expands all truncated fields, "not parsed" hint when idle.
+- **Keyboard-shortcuts cheat-sheet**: Help → Keyboard Shortcuts opens Settings directly on the Shortcuts section; the manual's shortcut table is now generated from the live bindings, so customizations show up and it can never drift again.
+- **Manual (EN + IT)**: new sections for tree search, message compare, the listener console (including the 32 MB retained-content budget), character encoding; the connection-profiles section rewritten to match the shipped UI.
+
+### Fixed
+- **Editor settings now actually apply**: font size/family, word wrap (incl. "At Column"), minimap, line numbers, tab size and whitespace rendering were saved but never read — Monaco hardcoded everything. They now load at startup and apply live when Settings closes.
+- **Rebinding a shortcut no longer triggers it**: pressing Ctrl+O to assign it used to also open the file picker.
+- **Monaco robustness**: an initialization failure now shows an error panel with a Retry button instead of a permanently blank editor; FHIR tabs get JSON/XML syntax highlighting; the right-click menu follows language changes without a restart.
+- **Validation panel**: fixed a possible crash with duplicate issues on the same rule/field, a filter dead-end when the last issue of the selected severity was fixed, and missing tooltips on long messages.
+- **Dialog polish**: template picker and test-case library gained loading states, visible errors with Retry, Esc/Enter handling, autofocus, an unsaved-changes confirm on Cancel and a category auto-complete; the field inspector gained the position row, a copy button and visible errors; templates and test cases are now fully translated in all 5 languages (their translations existed but were never wired).
+
 ## [0.2.4] — 2026-06-10
 
 ### Added

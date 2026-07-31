@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { getLocale, subscribeLocale } from '$lib/i18n';
-	import { generateManualHtml } from './helpContent';
+	import { getLocale, subscribeLocale, t } from '$lib/i18n';
+	import { generateManualHtml, TITLES } from './helpContent';
+	import { shortcutStore, SHORTCUTS } from '$lib/stores/shortcuts.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -20,7 +21,13 @@
 	let mode = $state<'tauri' | 'popup' | 'modal' | 'pending'>('pending');
 	let helpHtml = $derived.by(() => {
 		void localeVersion;
-		return generateManualHtml(getLocale());
+		// Feed the LIVE bindings so the manual's shortcut table reflects
+		// user customization instead of a drifting hand-written copy.
+		const live = SHORTCUTS.map((s) => ({
+			label: t('shortcut.' + s.id),
+			keys: shortcutStore.get(s.id),
+		}));
+		return generateManualHtml(getLocale(), live);
 	});
 
 	// Modal fallback state
@@ -32,7 +39,23 @@
 	let resizing = false;
 	let dragOff = { x: 0, y: 0 };
 
+	let popupPollTimer: ReturnType<typeof setInterval> | null = null;
+	// Set when the 2s fallback gives up on the Tauri window: a late
+	// tauri://created must then close that window instead of adopting it,
+	// or the user ends up with the fallback AND a zombie manual window.
+	let tauriAbandoned = false;
+
 	$effect(() => {
+		// If neither tauri://created nor tauri://error fires (slow or wedged
+		// webview), the user pressed F1 and sees nothing. Fall back to the
+		// popup path after 2s instead of staying 'pending' forever.
+		const pendingFallback = setTimeout(() => {
+			if (mode === 'pending') {
+				tauriAbandoned = true;
+				tryPopup();
+			}
+		}, 2000);
+
 		(async () => {
 			// Try Tauri WebviewWindow first
 			try {
@@ -47,7 +70,7 @@
 				const url = URL.createObjectURL(blob);
 				const win = new mod.WebviewWindow(label, {
 					url,
-					title: 'BridgeLab - User Manual',
+					title: TITLES[getLocale()] ?? TITLES.en,
 					width: 860,
 					height: 680,
 					minWidth: 500,
@@ -55,30 +78,47 @@
 					resizable: true,
 					center: true,
 				});
-				win.once('tauri://created', () => { mode = 'tauri'; });
+				win.once('tauri://created', () => {
+					if (tauriAbandoned) {
+						// Fallback already shown — discard the late window.
+						void win.close().catch(() => { /* ignore */ });
+						URL.revokeObjectURL(url);
+						return;
+					}
+					mode = 'tauri';
+				});
 				win.once('tauri://destroyed', () => {
 					URL.revokeObjectURL(url);
-					onClose();
+					if (!tauriAbandoned) onClose();
 				});
-				win.once('tauri://error', () => { tryPopup(); });
+				win.once('tauri://error', () => {
+					URL.revokeObjectURL(url);
+					if (!tauriAbandoned) tryPopup();
+				});
 				return;
 			} catch {
 				/* not Tauri - fall through to popup */
 			}
 			tryPopup();
 		})();
+
+		return () => {
+			clearTimeout(pendingFallback);
+			if (popupPollTimer) clearInterval(popupPollTimer);
+		};
 	});
 
 	function tryPopup() {
+		if (mode === 'popup' || mode === 'modal') return; // already resolved
 		try {
 			const blob = new Blob([helpHtml], { type: 'text/html;charset=utf-8' });
 			const url = URL.createObjectURL(blob);
 			const w2 = window.open(url, 'bridgelab-help', 'width=860,height=680,menubar=no,toolbar=no');
 			if (w2) {
 				mode = 'popup';
-				const t = setInterval(() => {
+				popupPollTimer = setInterval(() => {
 					if (w2.closed) {
-						clearInterval(t);
+						if (popupPollTimer) clearInterval(popupPollTimer);
 						URL.revokeObjectURL(url);
 						onClose();
 					}
@@ -115,7 +155,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div class="hw-title" onmousedown={startDrag}>
-			<span>BridgeLab - User Manual</span>
+			<span>{TITLES[getLocale()] ?? TITLES.en}</span>
 			<button class="hw-close" onclick={onClose} aria-label="Close">&times;</button>
 		</div>
 		<iframe class="hw-frame" srcdoc={helpHtml} title="Manual"></iframe>
