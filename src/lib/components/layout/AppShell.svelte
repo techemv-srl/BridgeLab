@@ -422,7 +422,10 @@
 				// Background parse while user is typing: update parseResult only,
 				// do NOT replace editor content (would reset cursor to 1:1).
 				messageStore.updateParseResult(messageStore.activeTabId!, result);
-			} else if (trimmed.startsWith('{') && trimmed.includes('"resourceType"')) {
+			} else if (
+				(trimmed.startsWith('{') && trimmed.includes('"resourceType"')) ||
+				trimmed.startsWith('<')
+			) {
 				const result = await parseFhirMessage(value);
 				messageStore.updateParseResult(messageStore.activeTabId!, result);
 			}
@@ -454,8 +457,9 @@
 		const content = activeTab.content;
 		const trimmed = content.trim();
 
-		// FHIR branch
-		if (trimmed.startsWith('{') && trimmed.includes('"resourceType"')) {
+		// FHIR branch (JSON or XML — the backend routes each to its parser
+		// and runs the same rule set on both)
+		if ((trimmed.startsWith('{') && trimmed.includes('"resourceType"')) || trimmed.startsWith('<')) {
 			try {
 				const result = await parseFhirMessage(trimmed);
 				skipNextAutoParse = true;

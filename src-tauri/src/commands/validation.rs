@@ -50,7 +50,14 @@ pub fn validate_message(
 /// Validate a FHIR JSON resource.
 #[tauri::command]
 pub fn validate_fhir(content: String) -> Result<FhirValidationReport, String> {
-    let resource = fhir::parse_fhir_json(&content)?;
+    // Route by encoding: XML resources go through the XML->JSON converter,
+    // then the same rule set runs on both.
+    let trimmed = content.trim_start();
+    let resource = if trimmed.starts_with('<') {
+        fhir::parse_fhir_xml(&content)?
+    } else {
+        fhir::parse_fhir_json(&content)?
+    };
     let issues = fhir::validate_fhir_json(&resource);
 
     let error_count = issues.iter().filter(|i| i.severity == "error").count();
