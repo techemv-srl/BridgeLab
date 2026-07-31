@@ -1433,9 +1433,20 @@
 				messageStore.newTab();
 				const tab = messageStore.activeTab;
 				if (tab) {
-					messageStore.updateContent(tab.id, content);
+					const tabId = tab.id;
+					messageStore.updateContent(tabId, content);
 					tab.label = label;
-					void autoParse(content);
+					// Parse bound to THIS tab id — autoParse resolves the
+					// active tab after the IPC returns, and when opening many
+					// messages in a loop that would misattribute results to
+					// whichever tab ended up active.
+					void (async () => {
+						try {
+							const result = await parseMessage(content);
+							skipNextAutoParse = true;
+							messageStore.updateParseResult(tabId, result);
+						} catch { /* leave unparsed */ }
+					})();
 				}
 			}}
 		/>

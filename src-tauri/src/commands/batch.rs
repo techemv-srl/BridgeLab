@@ -5,10 +5,12 @@
 //! messages?).
 
 use serde::Serialize;
+use tauri::State;
 
 use crate::licensing::feature_gate;
 use crate::parser::hl7::lexer::Hl7Lexer;
-use crate::validation::validate_hl7_message;
+use crate::plugins::{self, PluginRegistry, ValidationRule};
+use crate::validation::{validate_hl7_message, Severity};
 
 /// Safety caps: a directory pick must not OOM the app.
 const MAX_FILES: usize = 5000;
@@ -76,7 +78,7 @@ async fn expand_paths(paths: Vec<String>) -> (Vec<std::path::PathBuf>, usize) {
     (files, skipped)
 }
 
-async fn process_file(path: &std::path::Path) -> BatchFileResult {
+async fn process_file(path: &std::path::Path, plugin_rules: &[ValidationRule]) -> BatchFileResult {
     let path_str = path.display().to_string();
     let file_name = path
         .file_name()
@@ -118,7 +120,19 @@ async fn process_file(path: &std::path::Path) -> BatchFileResult {
         Err(e) => return BatchFileResult { parse_error: Some(e), ..base },
     };
 
-    let report = validate_hl7_message(&msg);
+    let mut report = validate_hl7_message(&msg);
+    // Same pipeline as the interactive validate_message command: active
+    // plugin rules count toward the totals, or a file failing an
+    // organization's custom rules would be reported green here.
+    if !plugin_rules.is_empty() {
+        for issue in plugins::run_custom_validations(&msg, plugin_rules) {
+            match issue.severity {
+                Severity::Error => report.error_count += 1,
+                Severity::Warning => report.warning_count += 1,
+                Severity::Info => report.info_count += 1,
+            }
+        }
+    }
     BatchFileResult {
         message_type: msg.message_type.clone(),
         version: msg.version.clone(),
@@ -134,13 +148,17 @@ async fn process_file(path: &std::path::Path) -> BatchFileResult {
 /// Messages are parsed and validated in memory only — nothing is added
 /// to the tab store.
 #[tauri::command]
-pub async fn batch_validate(paths: Vec<String>) -> Result<BatchReport, String> {
+pub async fn batch_validate(
+    paths: Vec<String>,
+    registry: State<'_, PluginRegistry>,
+) -> Result<BatchReport, String> {
     feature_gate::require("batch_validate")?;
 
+    let plugin_rules = registry.active_validation_rules();
     let (files, skipped) = expand_paths(paths).await;
     let mut results = Vec::with_capacity(files.len());
     for f in &files {
-        results.push(process_file(f).await);
+        results.push(process_file(f, &plugin_rules).await);
     }
     Ok(BatchReport { results, skipped })
 }
@@ -176,13 +194,13 @@ mod tests {
             "MSH|^~\\&|A|B|C|D|20260731120000||ADT^A01|M1|P|2.5\rPID|1||42^^^H^MR||ROSSI^MARIO||19800101|M");
         let bad = write_tmp(&dir, "bad.hl7", "not an hl7 message at all");
 
-        let g = process_file(&good).await;
+        let g = process_file(&good, &[]).await;
         assert!(g.parse_error.is_none(), "unexpected parse error: {:?}", g.parse_error);
         assert_eq!(g.message_type, "ADT^A01");
         assert_eq!(g.version, "2.5");
         assert!(g.segment_count >= 2);
 
-        let b = process_file(&bad).await;
+        let b = process_file(&bad, &[]).await;
         assert!(b.parse_error.is_some(), "garbage must fail parse");
         std::fs::remove_dir_all(&dir).ok();
     }
