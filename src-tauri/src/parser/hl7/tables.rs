@@ -182,6 +182,8 @@ fn build_table(version: &str) -> Hl7Table {
             field(18, "Patient Account Number", "CX", Some(250), false, false, "Patient account number"),
             field(19, "SSN Number", "ST", Some(16), false, false, "Social security number"),
             field(20, "Driver's License Number", "DLN", Some(25), false, false, "Driver's license number"),
+            field(24, "Multiple Birth Indicator", "ID", Some(1), false, false, "Y if the patient is part of a multiple birth"),
+            field(30, "Patient Death Indicator", "ID", Some(1), false, false, "Y if the patient is deceased"),
         ],
     });
 

@@ -91,15 +91,31 @@
 		}
 	}
 
+	/** The table belongs to the FIELD; a selected component node carries only
+	 *  its own value (MSH-9.2 is "A01", not "ADT"). Match codes only for the
+	 *  field itself or its first component — otherwise show the table without
+	 *  highlight or warning. */
+	let selectedComponentIdx = $derived.by(() => {
+		if (!selectedNode) return null;
+		return parseNodeId(selectedNode.id).componentIdx;
+	});
+
+	let codeCheckApplies = $derived(
+		selectedComponentIdx === null || selectedComponentIdx === 1
+	);
+
 	/** First component of the current value, for matching against table codes
 	 *  (MSH-9 carries "ADT^A01"; table 0076 codes are the "ADT" part). */
 	let currentCode = $derived.by(() => {
+		if (!codeCheckApplies) return '';
 		const v = selectedNode?.value_preview ?? '';
 		return v.split('^')[0].trim();
 	});
 
 	let codeInTable = $derived.by(() => {
-		if (!valueTable || !currentCode) return null;
+		// Non-exhaustive tables (0076 Message Type) list only common values —
+		// absence there is not evidence of a non-standard code.
+		if (!valueTable || !currentCode || !valueTable.exhaustive) return null;
 		return valueTable.values.some((tv) => tv.code === currentCode);
 	});
 

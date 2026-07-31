@@ -21,6 +21,9 @@ pub struct TableValue {
 pub struct ValueTable {
     pub id: String,
     pub name: &'static str,
+    /// False for deliberately partial tables (e.g. 0076 Message Type):
+    /// the UI must not flag absent values as non-standard.
+    pub exhaustive: bool,
     pub values: Vec<TableValue>,
 }
 
@@ -139,7 +142,10 @@ pub fn get_table(id: &str) -> Option<ValueTable> {
         ]),
         _ => return None,
     };
-    Some(ValueTable { id: id.to_string(), name, values })
+    // 0076 lists only the common message types, not the full standard —
+    // absence there is not evidence of a non-standard value.
+    let exhaustive = id != "0076";
+    Some(ValueTable { id: id.to_string(), name, exhaustive, values })
 }
 
 #[cfg(test)]
