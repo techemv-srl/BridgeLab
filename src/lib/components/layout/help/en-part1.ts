@@ -124,6 +124,25 @@ for the currently selected node:</p>
 <p>Unknown segments (Z-segments or custom codes not in the standard)
 display <em>Not in HL7 standard</em> but remain fully editable.</p>
 
+<h3>Searching the tree</h3>
+<p>The search box at the top of the tree matches on <strong>segment
+type</strong> (<code>PID</code>), <strong>schema field name</strong>
+(<code>Patient Name</code>) and <strong>field value</strong> — including
+fields inside segments you have not expanded yet. Press
+<kbd>Enter</kbd>/<kbd>Shift</kbd>+<kbd>Enter</kbd> to cycle through
+matches, <kbd>Esc</kbd> to clear, and <kbd>Ctrl</kbd>+<kbd>F</kbd> while
+the tree has focus to jump to the box. Clicking a result expands the
+segment, selects the field and scrolls it into view.</p>
+<p class="note">Tree search works on HL7 v2 messages. For FHIR
+resources use the Bundle visualizer's own filter or the editor's
+<kbd>Ctrl</kbd>+<kbd>F</kbd>.</p>
+
+<h3>Comparing two messages</h3>
+<p><strong>Tools → Compare messages…</strong> opens a side-by-side diff
+of any two open tabs with HL7 syntax highlighting. Pick left/right from
+the dropdowns, use the ⇆ button to swap sides, press <kbd>Esc</kbd> to
+close. At least two tabs must be open.</p>
+
 <h3>Schema-aware tree</h3>
 <p><strong>View → Show Schema Fields</strong> injects placeholder rows
 for every field defined by the HL7 standard that is <em>absent</em> from
