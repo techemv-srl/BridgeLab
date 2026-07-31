@@ -107,8 +107,8 @@ BridgeLab already ships features that are missing or weak in competitors:
 - [ ] Fix critical bugs from field testing
 - [ ] Polish: keyboard shortcut customization, theme editor
 - [x] **XSD schema export** — Tools → Export message schema as XSD…; covers ADT^A01 / ADT^A40 / ORM^O01 / ORU^R01 in v2.5 (Community), full message catalogue and other versions gated behind Pro
-- [ ] Full v2.5 message catalogue via `hl7-schema-importer` (data-driven schema loader in place; importer for `hl7-dictionary` source pending)
-- [ ] Additional HL7 versions (v2.3, v2.4, v2.6, v2.7, v2.8) via the same importer
+- [x] Full v2.5 message catalogue via `hl7-schema-importer` — 248 messages, 149 segments, 78 composites imported from hl7-dictionary (v0.5.0)
+- [ ] Additional HL7 versions (v2.3, v2.4, v2.6, v2.7, v2.8) via the same importer — converter ready, per-version runs pending (F3)
 - [ ] Open-source the HL7 parser core as separate crate on crates.io
 - [ ] Launch on GitHub, Product Hunt, Hacker News, Reddit r/healthIT
 - [ ] Documentation site (bridgelab.dev)
@@ -123,7 +123,7 @@ BridgeLab already ships features that are missing or weak in competitors:
   - Click references to navigate contained resources
   - Graph view of Bundle dependencies
   - Inline resource inspector
-- [ ] FHIRPath evaluator panel
+- [x] FHIRPath evaluator panel (shipped)
 - [ ] FHIR profile validation (via HL7 official validator)
 - [ ] Custom FHIR validation rules builder (P2 #7)
 - [ ] FHIR resource templates (Patient, Observation, Bundle examples)
@@ -136,8 +136,8 @@ BridgeLab already ships features that are missing or weak in competitors:
 - [ ] Test case library (store reusable HL7/FHIR scenarios)
 - [ ] Git integration (save messages to repo, diff across commits)
 - [ ] SOAP client with WSDL parsing (Enterprise feature)
-- [ ] Message generator with realistic fake data (P3 #11)
-- [ ] Batch operations (validate/transform 1000+ messages)
+- [x] Message generator with realistic fake data (v0.4.0 — seeded, ADT/ORU/ORM)
+- [x] Batch operations — batch validation GUI with CSV report (v0.4.0; transform still open)
 
 ### Q1 2027 - Collaboration (v1.3)
 
