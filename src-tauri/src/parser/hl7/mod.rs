@@ -4,3 +4,4 @@ pub mod lexer;
 pub mod message;
 pub mod schema;
 pub mod tables;
+pub mod value_tables;

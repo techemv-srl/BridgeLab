@@ -61,6 +61,9 @@ pub struct FieldInfo {
     pub required: bool,
     pub repeating: bool,
     pub description: String,
+    /// HL7 value table backing this coded field (e.g. "0001" for PID-8),
+    /// resolvable via the `get_hl7_table` command. None for free-text fields.
+    pub table_id: Option<String>,
 }
 
 // Global table cache
@@ -122,6 +125,8 @@ pub fn get_field_info(segment_type: &str, field_position: usize, version: &str) 
         required: field_def.required,
         repeating: field_def.repeating,
         description: field_def.description.clone(),
+        table_id: super::value_tables::table_for_field(segment_type, field_position)
+            .map(str::to_string),
     })
 }
 
@@ -177,6 +182,8 @@ fn build_table(version: &str) -> Hl7Table {
             field(18, "Patient Account Number", "CX", Some(250), false, false, "Patient account number"),
             field(19, "SSN Number", "ST", Some(16), false, false, "Social security number"),
             field(20, "Driver's License Number", "DLN", Some(25), false, false, "Driver's license number"),
+            field(24, "Multiple Birth Indicator", "ID", Some(1), false, false, "Y if the patient is part of a multiple birth"),
+            field(30, "Patient Death Indicator", "ID", Some(1), false, false, "Y if the patient is deceased"),
         ],
     });
 
