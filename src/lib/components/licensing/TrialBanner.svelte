@@ -59,7 +59,7 @@
 			{tr('activate')}
 		</button>
 		{#if !urgent}
-			<button class="banner-dismiss" onclick={dismiss} aria-label="Dismiss">&times;</button>
+			<button class="banner-dismiss" onclick={dismiss} aria-label={tr('modal.close')}>&times;</button>
 		{/if}
 	</div>
 {/if}

@@ -65,10 +65,39 @@ ${mockupCommunication}
 </ol>
 
 <h3>MLLP listener (Pro)</h3>
-<p>Click <strong>Listen</strong> to start a server on the selected port.
-Incoming messages open in a new tab and an auto-ACK is sent back (you
-can disable auto-ACK in the advanced options). Use this to quickly
-validate what your upstream system is emitting.</p>
+<p>Click <strong>Start listening</strong> to run a server on the selected
+port. Incoming messages open in a new tab (toggleable, see below) and an
+auto-ACK is sent back with the configured code (AA/AE/AR). Use this to
+quickly validate what your upstream system is emitting.</p>
+
+<h3>Listener console</h3>
+<p>While the listener runs, every received message appears as a row in
+the console: local time, peer address, payload size, the ACK code that
+was actually written back (green <code>AA</code>, red
+<code>AE</code>/<code>AR</code>, — when auto-ACK is off), the character
+encoding used, and the first line of the message. <strong>Click a row to
+re-open that message in a tab.</strong> Listener errors appear inline as
+red rows.</p>
+<p>The <em>"Open received messages in a new tab"</em> toggle (on by
+default) can be disabled during high-volume tests: messages then land
+only in the console and you cherry-pick the ones you need.</p>
+<p class="note">Full message contents kept for click-to-open are capped
+at a 32&nbsp;MB rolling budget. In long unattended sessions the oldest
+rows lose their full content (they appear dimmed) — the metadata row
+stays, and nothing was "lost": only the click-to-open copy was released
+to keep memory bounded.</p>
+
+<h3>Character encoding</h3>
+<p>Both the sender and the listener have an <strong>Encoding</strong>
+selector covering the charsets seen in real deployments:
+<code>UTF-8</code>, <code>ISO-8859-1</code> (Latin-1),
+<code>ISO-8859-2</code>, <code>ISO-8859-15</code>,
+<code>windows-1252</code>, <code>windows-1250</code>,
+<code>windows-1251</code> and <code>ASCII</code>. The default is UTF-8
+with an automatic Latin-1 fallback, which accepts most legacy traffic
+even when MSH-18 is empty. The listener re-encodes its ACK with the same
+charset so the peer never sees mojibake. Send and Receive encodings are
+independent.</p>
 
 <h3>HTTP</h3>
 <p>GET requests are available in the Community tier. POST/PUT/DELETE,
@@ -82,9 +111,13 @@ round-trip time). The last 100 entries are persisted between restarts;
 click any row to see the full request and response.</p>
 
 <h3>Connection profiles</h3>
-<p>Save frequently-used endpoints (Host + Port + Timeout + auto-ACK
-preferences) as named profiles. They appear in the profile dropdown
-next to the Send button.</p>
+<p>Save frequently-used endpoints as named profiles from the
+<strong>Profile</strong> row: type a name and click <em>Save</em>. MLLP
+profiles store host, port, timeout and auto-ACK; HTTP profiles store
+URL, headers and timeout. Selecting a profile applies it to the form;
+saving with an existing name overwrites it; <em>Delete</em> removes the
+selected one. Profiles are stored in the local database and survive
+restarts.</p>
 `,
 };
 

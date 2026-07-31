@@ -20,6 +20,10 @@
 	let selectedId = $state<string | null>(null);
 	let search = $state('');
 	let mode = $state<'list' | 'edit' | 'new'>('list');
+	let loading = $state(true);
+	let loadError = $state('');
+	let searchInputEl: HTMLInputElement | undefined = $state();
+	let nameInputEl: HTMLInputElement | undefined = $state();
 
 	// Edit/new form state
 	let formName = $state('');
@@ -27,6 +31,12 @@
 	let formCategory = $state('general');
 	let formTags = $state('');
 	let formContent = $state('');
+	// Snapshot taken when the form opens; Cancel with unsaved changes confirms.
+	let formSnapshot = '';
+
+	let formDirty = $derived(
+		JSON.stringify([formName, formDescription, formCategory, formTags, formContent]) !== formSnapshot
+	);
 
 	let loaded = false;
 	$effect(() => {
@@ -35,8 +45,24 @@
 		load();
 	});
 
+	// Autofocus: search box in list mode, name field in the form
+	$effect(() => {
+		if (mode === 'list') searchInputEl?.focus();
+		else nameInputEl?.focus();
+	});
+
 	async function load() {
-		try { cases = await getTestCases(); } catch { cases = []; }
+		loading = true;
+		loadError = '';
+		try {
+			cases = await getTestCases();
+		} catch (e) {
+			// Don't masquerade a backend error as an empty library
+			cases = [];
+			loadError = String(e);
+		} finally {
+			loading = false;
+		}
 	}
 
 	let filtered = $derived.by(() => {
@@ -61,12 +87,17 @@
 
 	let selected = $derived(cases.find(c => c.id === selectedId));
 
+	function snapshotForm() {
+		formSnapshot = JSON.stringify([formName, formDescription, formCategory, formTags, formContent]);
+	}
+
 	function startNew() {
 		formName = currentLabel || '';
 		formDescription = '';
 		formCategory = 'general';
 		formTags = '';
 		formContent = currentContent;
+		snapshotForm();
 		mode = 'new';
 	}
 
@@ -77,8 +108,26 @@
 		formTags = tc.tags;
 		formContent = tc.content;
 		selectedId = tc.id;
+		snapshotForm();
 		mode = 'edit';
 	}
+
+	async function cancelForm() {
+		if (formDirty && !(await dialogStore.confirm(tr('dialog.unsavedChanges')))) return;
+		mode = 'list';
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			if (mode === 'list') onClose();
+			else void cancelForm();
+		}
+	}
+
+	// Existing categories for the datalist — free text otherwise silently
+	// splits "orders" and "Orders" into two groups.
+	let existingCategories = $derived([...new Set(cases.map((c) => c.category).filter(Boolean))].sort());
 
 	async function handleSave() {
 		if (!formName.trim() || !formContent.trim()) return;
@@ -110,13 +159,15 @@
 	}
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 <div class="tc-library">
 	<div class="tc-header">
-		<span>Test Case Library</span>
+		<span>{tr('tc.title')}</span>
 		<div class="header-actions">
 			{#if mode === 'list'}
 				<button class="btn btn-primary" onclick={startNew}>
-					{currentContent ? '+ Save Current Message' : '+ New Test Case'}
+					{currentContent ? tr('tc.saveCurrent') : tr('tc.newCase')}
 				</button>
 			{/if}
 			<button class="close-btn" onclick={onClose}>&times;</button>
@@ -125,20 +176,27 @@
 
 	{#if mode === 'list'}
 		<div class="tc-search">
-			<input bind:value={search} placeholder="Search test cases..." class="search-input" />
+			<input bind:this={searchInputEl} bind:value={search} placeholder={tr('tc.search')} class="search-input" />
 		</div>
 
 		<div class="tc-body">
 			<div class="tc-list">
-				{#if cases.length === 0}
+				{#if loading}
+					<div class="empty">{tr('xsd.loading')}</div>
+				{:else if loadError}
+					<div class="empty load-error">
+						<p>{loadError}</p>
+						<button class="btn" onclick={load}>{tr('tc.retry')}</button>
+					</div>
+				{:else if cases.length === 0}
 					<div class="empty">
-						<p>No test cases saved yet.</p>
+						<p>{tr('tc.empty')}</p>
 						{#if currentContent}
-							<p>Click "Save Current Message" to add this message as a test case.</p>
+							<p>{tr('tc.emptyHint')}</p>
 						{/if}
 					</div>
 				{:else if filtered.length === 0}
-					<div class="empty">No test cases match your search</div>
+					<div class="empty">{tr('tc.noMatch')}</div>
 				{:else}
 					{#each byCategory as [category, items]}
 						<div class="tc-category">{category}</div>
@@ -170,21 +228,21 @@
 					<div class="detail-header">
 						<h3>{selected.name}</h3>
 						<div class="detail-actions">
-							<button class="btn btn-primary" onclick={() => onLoad(selected)}>Load in Editor</button>
-							<button class="btn" onclick={() => startEdit(selected)}>Edit</button>
-							<button class="btn btn-danger" onclick={() => handleDelete(selected)}>Delete</button>
+							<button class="btn btn-primary" onclick={() => onLoad(selected)}>{tr('tc.loadInEditor')}</button>
+							<button class="btn" onclick={() => startEdit(selected)}>{tr('tc.edit')}</button>
+							<button class="btn btn-danger" onclick={() => handleDelete(selected)}>{tr('tc.delete')}</button>
 						</div>
 					</div>
 					{#if selected.description}
 						<div class="detail-desc">{selected.description}</div>
 					{/if}
 					<div class="detail-meta">
-						<span class="meta-item">Category: <strong>{selected.category}</strong></span>
-						<span class="meta-item">Updated: {new Date(selected.updated_at).toLocaleString()}</span>
+						<span class="meta-item">{tr('tc.category')}: <strong>{selected.category}</strong></span>
+						<span class="meta-item">{tr('tc.updated')}: {new Date(selected.updated_at).toLocaleString()}</span>
 					</div>
 					<pre class="detail-content">{selected.content}</pre>
 				{:else}
-					<div class="empty">Select a test case to view details</div>
+					<div class="empty">{tr('tc.selectPrompt')}</div>
 				{/if}
 			</div>
 		</div>
@@ -192,31 +250,34 @@
 		<!-- Edit / New form -->
 		<div class="tc-form">
 			<div class="form-row">
-				<label for="tc-name">Name *</label>
-				<input id="tc-name" bind:value={formName} placeholder="e.g. ADT^A01 admission test" class="form-input" />
+				<label for="tc-name">{tr('tc.nameRequired')}</label>
+				<input id="tc-name" bind:this={nameInputEl} bind:value={formName} placeholder="e.g. ADT^A01 admission test" class="form-input" />
 			</div>
 			<div class="form-row">
-				<label for="tc-desc">Description</label>
+				<label for="tc-desc">{tr('tc.description')}</label>
 				<textarea id="tc-desc" bind:value={formDescription} rows={2} placeholder="When to use this test case..." class="form-input"></textarea>
 			</div>
 			<div class="form-grid">
 				<div class="form-row">
-					<label for="tc-cat">Category</label>
-					<input id="tc-cat" bind:value={formCategory} placeholder="admission, orders, ..." class="form-input" />
+					<label for="tc-cat">{tr('tc.category')}</label>
+					<input id="tc-cat" bind:value={formCategory} list="tc-cats" placeholder="admission, orders, ..." class="form-input" />
+					<datalist id="tc-cats">
+						{#each existingCategories as cat}<option value={cat}></option>{/each}
+					</datalist>
 				</div>
 				<div class="form-row">
-					<label for="tc-tags">Tags (comma separated)</label>
-					<input id="tc-tags" bind:value={formTags} placeholder="adt, inpatient, regression" class="form-input" />
+					<label for="tc-tags">{tr('tc.tags')}</label>
+					<input id="tc-tags" bind:value={formTags} placeholder={tr('tc.tagsPlaceholder')} class="form-input" />
 				</div>
 			</div>
 			<div class="form-row">
-				<label for="tc-content">Message Content *</label>
+				<label for="tc-content">{tr('tc.contentRequired')}</label>
 				<textarea id="tc-content" bind:value={formContent} rows={10} class="form-input mono"></textarea>
 			</div>
 			<div class="form-actions">
-				<button class="btn" onclick={() => { mode = 'list'; }}>Cancel</button>
+				<button class="btn" onclick={cancelForm}>{tr('dialog.cancel')}</button>
 				<button class="btn btn-primary" onclick={handleSave} disabled={!formName.trim() || !formContent.trim()}>
-					{mode === 'edit' ? 'Save Changes' : 'Save Test Case'}
+					{mode === 'edit' ? tr('tc.saveChanges') : tr('tc.saveNew')}
 				</button>
 			</div>
 		</div>
@@ -259,6 +320,7 @@
 	.form-input.mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
 	.form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 
+	.load-error { color: var(--color-error); font-style: normal; display: flex; flex-direction: column; gap: 8px; align-items: center; }
 	.empty { padding: 24px; text-align: center; color: var(--color-text-secondary); font-style: italic; font-size: 12px; }
 
 	.btn { padding: 5px 14px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-bg-tertiary); color: var(--color-text-primary); font-size: 12px; font-family: inherit; cursor: pointer; }
