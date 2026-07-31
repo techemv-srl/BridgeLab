@@ -80,6 +80,19 @@
 	// Validation state
 	let validationReport = $state<ValidationReport | null>(null);
 
+	// The report is global while tabs are per-message: switching tab would
+	// otherwise show (and open) the previous tab's results as if they were
+	// the current tab's. Reset on switch; F6 re-validates the new tab.
+	let lastValidatedTabId = $state<string | null>(null);
+	$effect(() => {
+		const id = messageStore.activeTabId;
+		if (lastValidatedTabId !== null && id !== lastValidatedTabId) {
+			validationReport = null;
+			showValidation = false;
+		}
+		lastValidatedTabId = id;
+	});
+
 	// Editor options loaded from preferences. Until v0.2.5 these prefs were
 	// saved by Settings but read by nobody — Monaco hardcoded everything.
 	let editorOptions = $state<import('$lib/components/editor/MonacoEditor.svelte').EditorOptions>({});
@@ -98,7 +111,7 @@
 			editorOptions = {
 				...(fs && { fontSize: parseInt(fs) || 13 }),
 				...(ff && { fontFamily: ff }),
-				...(ww && { wordWrap: (ww === 'off' ? 'off' : 'on') as 'on' | 'off' }),
+				...(ww && { wordWrap: ww as 'on' | 'off' | 'wordWrapColumn' | 'bounded' }),
 				...(mm !== null && { minimap: mm !== 'false' }),
 				...(ln !== null && { lineNumbers: ln !== 'false' }),
 				...(ts && { tabSize: parseInt(ts) || 4 }),
@@ -113,6 +126,10 @@
 	// Initialize app (using $effect instead of onMount which is a server no-op)
 	let appInitialized = false;
 	let restoreSession = $state(true);
+	// Welcome screen must not render (and accept input) until the async
+	// startup — including session restore — has finished, or a tab created
+	// meanwhile would be clobbered by restoreSession().
+	let startupComplete = $state(false);
 	$effect(() => {
 		if (appInitialized || typeof window === 'undefined') return;
 		appInitialized = true;
@@ -156,11 +173,13 @@
 					}
 				} catch { /* web mode */ }
 
-				// Notepad++-style tab restore
-				if (restoreSession) {
+				// Notepad++-style tab restore. Skip if the user already created
+				// a tab while startup I/O was in flight — restoreSession()
+				// replaces the whole tabs array and would discard their work.
+				if (restoreSession && messageStore.tabs.length === 0) {
 					const { loadSession } = await import('$lib/ipc/database');
 					const sessionTabs = await loadSession();
-					if (sessionTabs && sessionTabs.length > 0) {
+					if (sessionTabs && sessionTabs.length > 0 && messageStore.tabs.length === 0) {
 						sessionRestored = messageStore.restoreSession(sessionTabs);
 						// Re-parse any HL7/FHIR content so tree + inspector populate
 						for (const tab of messageStore.tabs) {
@@ -176,6 +195,7 @@
 			// renders (first-run onboarding). Any welcome action, paste, or
 			// the + button creates the first tab.
 			void sessionRestored;
+			startupComplete = true;
 
 			try {
 				licenseStatus = await checkLicense();
@@ -1107,7 +1127,7 @@
 						onCopyTruncatedMessage={handleCopyTruncated}
 						navigation={editorNavigation}
 					/>
-				{:else}
+				{:else if startupComplete}
 					<div class="welcome">
 						<div class="welcome-card">
 							<div class="welcome-title">{tr('welcome.title')}</div>
