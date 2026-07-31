@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { TreeNode } from '$lib/types/hl7';
 	import type { FieldInfo, SegmentInfo } from '$lib/ipc/tables';
-	import { getFieldInfo, getSegmentInfo } from '$lib/ipc/tables';
+	import { getFieldInfo, getSegmentInfo, getHl7Table, type ValueTable } from '$lib/ipc/tables';
 	import { getFieldContent } from '$lib/ipc/parser';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
@@ -30,6 +30,7 @@
 	let segmentInfo = $state<SegmentInfo | null>(null);
 	let fieldInfo = $state<FieldInfo | null>(null);
 	let schemaLookupDone = $state(false);
+	let valueTable = $state<ValueTable | null>(null);
 
 	// Parse node id to extract seg/field indices
 	function parseNodeId(id: string): { segmentIdx: number | null; fieldPosition: number | null; componentIdx: number | null } {
@@ -49,6 +50,7 @@
 	$effect(() => {
 		segmentInfo = null;
 		fieldInfo = null;
+		valueTable = null;
 		schemaLookupDone = false;
 
 		if (!selectedNode || !segmentType) return;
@@ -58,6 +60,10 @@
 			try {
 				if (p.fieldPosition !== null) {
 					fieldInfo = await getFieldInfo(segmentType, p.fieldPosition, version);
+					// Coded field? Load its HL7 value table for the allowed-values list.
+					valueTable = fieldInfo?.table_id
+						? await getHl7Table(fieldInfo.table_id).catch(() => null)
+						: null;
 				} else if (selectedNode.node_type === 'segment') {
 					segmentInfo = await getSegmentInfo(segmentType, version);
 				}
@@ -84,6 +90,34 @@
 			await dialogStore.error(tr('inspector.viewFull'), undefined, String(e));
 		}
 	}
+
+	/** The table belongs to the FIELD; a selected component node carries only
+	 *  its own value (MSH-9.2 is "A01", not "ADT"). Match codes only for the
+	 *  field itself or its first component — otherwise show the table without
+	 *  highlight or warning. */
+	let selectedComponentIdx = $derived.by(() => {
+		if (!selectedNode) return null;
+		return parseNodeId(selectedNode.id).componentIdx;
+	});
+
+	let codeCheckApplies = $derived(
+		selectedComponentIdx === null || selectedComponentIdx === 1
+	);
+
+	/** First component of the current value, for matching against table codes
+	 *  (MSH-9 carries "ADT^A01"; table 0076 codes are the "ADT" part). */
+	let currentCode = $derived.by(() => {
+		if (!codeCheckApplies) return '';
+		const v = selectedNode?.value_preview ?? '';
+		return v.split('^')[0].trim();
+	});
+
+	let codeInTable = $derived.by(() => {
+		// Non-exhaustive tables (0076 Message Type) list only common values —
+		// absence there is not evidence of a non-standard code.
+		if (!valueTable || !currentCode || !valueTable.exhaustive) return null;
+		return valueTable.values.some((tv) => tv.code === currentCode);
+	});
 
 	async function copyValue() {
 		if (!selectedNode?.value_preview) return;
@@ -157,6 +191,26 @@
 			{/if}
 
 			<!-- Current value -->
+			{#if valueTable}
+				<div class="table-section">
+					<div class="value-label">
+						{tr('inspector.tableValues')}
+						<span class="table-id">HL7 {valueTable.id} — {valueTable.name}</span>
+					</div>
+					{#if codeInTable === false}
+						<div class="table-warn">{tr('inspector.valueNotInTable')}</div>
+					{/if}
+					<div class="table-values">
+						{#each valueTable.values as tv (tv.code)}
+							<div class="tv-row" class:current={tv.code === currentCode}>
+								<code class="tv-code">{tv.code}</code>
+								<span class="tv-desc">{tv.description}</span>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			{#if selectedNode.value_preview || selectedNode.is_truncated}
 				<div class="value-section">
 					<div class="value-label">
@@ -269,6 +323,70 @@
 		color: var(--color-text-secondary);
 		padding: 6px 0;
 		font-size: 11px;
+	}
+
+	.table-section {
+		margin-top: 8px;
+		padding-top: 10px;
+		border-top: 1px dashed var(--color-border);
+	}
+
+	.table-id {
+		font-weight: 400;
+		font-size: 10px;
+		opacity: 0.8;
+	}
+
+	.table-warn {
+		margin: 4px 0;
+		padding: 4px 8px;
+		border: 1px solid var(--color-warning, #d68000);
+		border-radius: 3px;
+		color: var(--color-warning, #d68000);
+		font-size: 11px;
+	}
+
+	.table-values {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		max-height: 160px;
+		overflow-y: auto;
+		border: 1px solid var(--color-border);
+		border-radius: 3px;
+		padding: 2px;
+	}
+
+	.tv-row {
+		display: flex;
+		gap: 8px;
+		align-items: baseline;
+		padding: 2px 6px;
+		border-radius: 2px;
+		font-size: 11px;
+	}
+
+	.tv-row.current {
+		background: var(--color-bg-tertiary);
+		outline: 1px solid var(--color-accent);
+	}
+
+	.tv-code {
+		font-family: 'JetBrains Mono', monospace;
+		background: var(--color-bg-tertiary);
+		padding: 0 5px;
+		border-radius: 3px;
+		min-width: 26px;
+		text-align: center;
+		color: var(--color-accent);
+	}
+
+	.tv-row.current .tv-code {
+		font-weight: 700;
+	}
+
+	.tv-desc {
+		color: var(--color-text-secondary);
 	}
 
 	.value-section {
