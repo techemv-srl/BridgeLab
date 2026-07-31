@@ -131,6 +131,26 @@ metadati dello schema per il nodo selezionato:</p>
 mostrano <em>Non nello standard HL7</em> ma restano perfettamente
 modificabili.</p>
 
+<h3>Ricerca nell'albero</h3>
+<p>La casella di ricerca in cima all'albero cerca per <strong>tipo di
+segmento</strong> (<code>PID</code>), <strong>nome campo dello
+schema</strong> (<code>Patient Name</code>) e <strong>valore del
+campo</strong> — inclusi i campi nei segmenti non ancora espansi. Premi
+<kbd>Invio</kbd>/<kbd>Shift</kbd>+<kbd>Invio</kbd> per scorrere i
+risultati, <kbd>Esc</kbd> per cancellare, <kbd>Ctrl</kbd>+<kbd>F</kbd>
+con il focus sull'albero per saltare alla casella. Cliccando un
+risultato il segmento si espande, il campo viene selezionato e portato
+in vista.</p>
+<p class="note">La ricerca nell'albero funziona sui messaggi HL7 v2. Per
+le risorse FHIR usa il filtro del visualizzatore Bundle o il
+<kbd>Ctrl</kbd>+<kbd>F</kbd> dell'editor.</p>
+
+<h3>Confrontare due messaggi</h3>
+<p><strong>Strumenti → Confronta messaggi…</strong> apre un diff
+affiancato di due tab aperti con evidenziazione HL7. Scegli
+sinistra/destra dai menu, usa il pulsante ⇆ per scambiare i lati,
+<kbd>Esc</kbd> per chiudere. Servono almeno due tab aperti.</p>
+
 <h3>Tree consapevole dello schema</h3>
 <p><strong>Visualizza → Mostra campi dello standard</strong> inserisce
 righe placeholder per ogni campo definito dallo standard HL7 ma

@@ -20,11 +20,17 @@
 		/** Keeps the host's session-autosave gate in sync — without this the
 		 *  shell keeps (or stops) autosaving based on the stale startup value. */
 		onRestoreSessionChange?: (enabled: boolean) => void;
+		/** Fired after editor preferences are persisted so the host reloads
+		 *  them into Monaco (live, no tab reopen needed). */
+		onEditorOptionsChange?: () => void;
+		/** Section to open on (e.g. 'shortcuts' from Help → Keyboard Shortcuts). */
+		initialSection?: string;
 	}
 
-	let { theme, onClose, onThemeChange, onShowActivation, onRestoreSessionChange }: Props = $props();
+	let { theme, onClose, onThemeChange, onShowActivation, onRestoreSessionChange, onEditorOptionsChange, initialSection }: Props = $props();
 
-	let activeSection = $state('editor');
+	// svelte-ignore state_referenced_locally
+	let activeSection = $state(initialSection ?? 'editor');
 
 	// Editor settings
 	let fontSize = $state(13);
@@ -105,6 +111,7 @@
 			await setPreference('language', currentLocale);
 		} catch { /* web mode */ }
 		onRestoreSessionChange?.(restoreSession);
+		onEditorOptionsChange?.();
 		if (currentTheme !== theme) onThemeChange(currentTheme);
 		if (currentLocale !== getLocale()) setLocale(currentLocale);
 		onClose();
