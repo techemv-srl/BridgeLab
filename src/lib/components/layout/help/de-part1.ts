@@ -1,5 +1,5 @@
 import type { ManualSection } from '../helpContent';
-import { mockupAppShell, mockupContextMenu } from './mockups';
+import { mockupAppShellDe as mockupAppShell, mockupContextMenuDe as mockupContextMenu } from './mockups';
 
 export const getStarted: ManualSection = {
 	id: 'getting-started',
