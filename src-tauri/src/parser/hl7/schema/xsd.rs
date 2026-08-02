@@ -45,6 +45,123 @@ pub fn generate_xsd(schema: &Hl7Schema, message_code: &str) -> Result<String, St
 
 // ---------- message + groups ------------------------------------------------
 
+/// Make a name a valid XSD `NCName`: replace every character outside
+/// `[A-Za-z0-9_.-]` with `_` (hl7-dictionary group names can contain `/`,
+/// e.g. v2.7 "Observation/Result_Group"), and guard the first character.
+fn ncname(name: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-' { c } else { '_' })
+        .collect();
+    if !out.chars().next().map(|c| c.is_ascii_alphabetic() || c == '_').unwrap_or(false) {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// One particle of a (possibly rewritten) sequence content model.
+enum Particle<'a> {
+    Plain(&'a MessageElement),
+    /// A span of particles whose original layout violates XSD's Unique
+    /// Particle Attribution rule (same-named particle reachable twice through
+    /// an all-optional window, e.g. v2.3 ADT_A06 `[DRG] [OBX*] [AL1*] [DG1*] [DRG]`).
+    /// Emitted as an unordered, repeating choice — a strict superset of the
+    /// original model — so the schema compiles under standard processors.
+    Relaxed(Vec<&'a MessageElement>),
+}
+
+/// Element names a particle can start with / match (used for UPA analysis).
+fn particle_names(e: &MessageElement, msg_code: &str) -> Vec<String> {
+    match e {
+        MessageElement::Segment { code, .. } => vec![code.clone()],
+        MessageElement::Group { name, .. } => vec![format!("{}.{}", msg_code, ncname(name))],
+        MessageElement::Choice { segments, .. } => segments.clone(),
+    }
+}
+
+fn is_nullable(e: &MessageElement) -> bool {
+    match e {
+        MessageElement::Segment { required, .. }
+        | MessageElement::Group { required, .. }
+        | MessageElement::Choice { required, .. } => !required,
+    }
+}
+
+fn is_repeating(e: &MessageElement) -> bool {
+    match e {
+        MessageElement::Segment { repeats, .. }
+        | MessageElement::Group { repeats, .. }
+        | MessageElement::Choice { repeats, .. } => *repeats,
+    }
+}
+
+/// Rewrite a sequence so it satisfies Unique Particle Attribution: any pair of
+/// particles that can match the same element name, where the first is optional
+/// or repeating and everything between them is optional, is merged (inclusive)
+/// into one `Particle::Relaxed` span. Iterates to a fixpoint so overlapping
+/// spans (e.g. NMR_N01 with three ambiguous NTE positions) collapse into one.
+fn relax_upa<'a>(elements: &'a [MessageElement], msg_code: &str) -> Vec<Particle<'a>> {
+    struct P<'a> {
+        names: Vec<String>,
+        nullable: bool,
+        conflicts: bool, // optional or repeating → can clash with a later twin
+        inner: Vec<&'a MessageElement>,
+    }
+    let mut parts: Vec<P<'a>> = elements
+        .iter()
+        .map(|e| P {
+            names: particle_names(e, msg_code),
+            nullable: is_nullable(e),
+            conflicts: is_nullable(e) || is_repeating(e),
+            inner: vec![e],
+        })
+        .collect();
+
+    loop {
+        let mut merge: Option<(usize, usize)> = None;
+        'search: for i in 0..parts.len() {
+            if !parts[i].conflicts {
+                continue;
+            }
+            for j in (i + 1)..parts.len() {
+                let clash = parts[i].names.iter().any(|n| parts[j].names.contains(n));
+                let window_nullable = (i + 1..j).all(|k| parts[k].nullable);
+                if clash && window_nullable {
+                    merge = Some((i, j));
+                    break 'search;
+                }
+                if !window_nullable && j > i + 1 {
+                    break; // a required particle closes the ambiguity window
+                }
+            }
+        }
+        let Some((i, j)) = merge else { break };
+        let merged: Vec<P<'a>> = parts.drain(i..=j).collect();
+        let mut names = Vec::new();
+        let mut inner = Vec::new();
+        for p in merged {
+            for n in p.names {
+                if !names.contains(&n) {
+                    names.push(n);
+                }
+            }
+            inner.extend(p.inner);
+        }
+        parts.insert(i, P { names, nullable: true, conflicts: true, inner });
+    }
+
+    parts
+        .into_iter()
+        .map(|p| {
+            if p.inner.len() == 1 {
+                Particle::Plain(p.inner[0])
+            } else {
+                Particle::Relaxed(p.inner)
+            }
+        })
+        .collect()
+}
+
 fn emit_message(out: &mut String, message: &MessageStructure) {
     let indent = "    ";
     writeln!(out, r#"    <xsd:element name="{}">"#, message.code).unwrap();
@@ -58,7 +175,66 @@ fn emit_message(out: &mut String, message: &MessageStructure) {
 
 fn emit_elements(out: &mut String, elements: &[MessageElement], msg_code: &str, depth: usize) {
     let indent = "    ".repeat(depth);
-    for e in elements {
+    for particle in relax_upa(elements, msg_code) {
+        match particle {
+            Particle::Relaxed(span) => emit_relaxed_span(out, &span, msg_code, depth),
+            Particle::Plain(e) => emit_element(out, e, msg_code, depth, &indent),
+        }
+    }
+}
+
+/// Emit a UPA-ambiguous span as an unordered repeating choice (see
+/// [`Particle::Relaxed`]). Each distinct element name appears exactly once.
+fn emit_relaxed_span(out: &mut String, span: &[&MessageElement], msg_code: &str, depth: usize) {
+    let indent = "    ".repeat(depth);
+    writeln!(out, r#"{}<xsd:choice minOccurs="0" maxOccurs="unbounded">"#, indent).unwrap();
+    writeln!(out, "{}    <xsd:annotation>", indent).unwrap();
+    writeln!(
+        out,
+        "{}        <xsd:documentation>Relaxed content model: the HL7 definition repeats a segment across an optional-only window, which violates XSD Unique Particle Attribution. This choice accepts every message the original model accepts.</xsd:documentation>",
+        indent
+    )
+    .unwrap();
+    writeln!(out, "{}    </xsd:annotation>", indent).unwrap();
+
+    let mut seen: Vec<String> = Vec::new();
+    let inner_indent = format!("{}    ", indent);
+    for e in span {
+        match e {
+            MessageElement::Segment { code, .. } => {
+                if !seen.contains(code) {
+                    seen.push(code.clone());
+                    writeln!(out, r#"{}<xsd:element name="{}" type="{}"/>"#, inner_indent, code, code).unwrap();
+                }
+            }
+            MessageElement::Group { name, elements: inner, .. } => {
+                let group_full = format!("{}.{}", msg_code, ncname(name));
+                if !seen.contains(&group_full) {
+                    seen.push(group_full.clone());
+                    writeln!(out, r#"{}<xsd:element name="{}">"#, inner_indent, group_full).unwrap();
+                    writeln!(out, "{}    <xsd:complexType>", inner_indent).unwrap();
+                    writeln!(out, "{}        <xsd:sequence>", inner_indent).unwrap();
+                    emit_elements(out, inner, msg_code, depth + 4);
+                    writeln!(out, "{}        </xsd:sequence>", inner_indent).unwrap();
+                    writeln!(out, "{}    </xsd:complexType>", inner_indent).unwrap();
+                    writeln!(out, "{}</xsd:element>", inner_indent).unwrap();
+                }
+            }
+            MessageElement::Choice { segments, .. } => {
+                for s in segments {
+                    if !seen.contains(s) {
+                        seen.push(s.clone());
+                        writeln!(out, r#"{}<xsd:element name="{}" type="{}"/>"#, inner_indent, s, s).unwrap();
+                    }
+                }
+            }
+        }
+    }
+    writeln!(out, "{}</xsd:choice>", indent).unwrap();
+}
+
+fn emit_element(out: &mut String, e: &MessageElement, msg_code: &str, depth: usize, indent: &str) {
+    {
         match e {
             MessageElement::Segment { code, required, repeats } => {
                 let min = if *required { 1 } else { 0 };
@@ -76,7 +252,7 @@ fn emit_elements(out: &mut String, elements: &[MessageElement], msg_code: &str, 
                 writeln!(out, "/>").unwrap();
             }
             MessageElement::Group { name, required, repeats, elements: inner } => {
-                let group_full = format!("{}.{}", msg_code, name);
+                let group_full = format!("{}.{}", msg_code, ncname(name));
                 let min = if *required { 1 } else { 0 };
                 let max = if *repeats { "unbounded".to_string() } else { "1".to_string() };
                 write!(out, r#"{}<xsd:element name="{}""#, indent, group_full).unwrap();
@@ -311,5 +487,100 @@ mod full_catalogue_tests {
             generate_xsd(&schema, &m.code)
                 .unwrap_or_else(|e| panic!("XSD export failed for {}: {}", m.code, e));
         }
+    }
+
+    /// Same guarantee for every other shipped version: each catalogue loads
+    /// and every one of its message structures exports without error — and
+    /// every emitted name/type attribute is a valid XSD NCName (v2.7 group
+    /// names like "Observation/Result_Group" must be sanitized).
+    #[test]
+    fn exports_every_message_of_every_version() {
+        fn is_ncname(s: &str) -> bool {
+            let mut chars = s.chars();
+            matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+        }
+        for v in Hl7Version::ALL {
+            let schema = load(*v);
+            assert!(
+                schema.messages.len() >= 170,
+                "{:?}: suspiciously small catalogue ({} messages)",
+                v,
+                schema.messages.len()
+            );
+            assert!(
+                schema.message("ADT_A01").is_some(),
+                "{:?}: ADT_A01 missing from catalogue",
+                v
+            );
+            for m in &schema.messages {
+                let xsd = generate_xsd(&schema, &m.code)
+                    .unwrap_or_else(|e| panic!("{:?}: XSD export failed for {}: {}", v, m.code, e));
+                // Dev hook: BL_XSD_DUMP=<dir> writes every export to disk so an
+                // external schema compiler (e.g. python-lxml) can verify them.
+                if let Ok(dir) = std::env::var("BL_XSD_DUMP") {
+                    std::fs::write(format!("{}/{}_{}.xsd", dir, v.as_str(), m.code), &xsd).ok();
+                }
+                for attr in ["name=\"", "type=\""] {
+                    for chunk in xsd.split(attr).skip(1) {
+                        let val = chunk.split('"').next().unwrap_or("");
+                        if val.starts_with("xsd:") {
+                            continue;
+                        }
+                        assert!(
+                            is_ncname(val),
+                            "{:?} {}: invalid NCName in {}{}\"",
+                            v, m.code, attr, val
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// UPA regression (Codex review, PR #85): structures that repeat a segment
+    /// across an all-optional window (v2.3 ADT_A06 double DRG, v2.5 DFT_P03
+    /// double ROL, v2.6 ADT_A60 double ARV) must emit the relaxed choice, and
+    /// the ambiguous element name must appear exactly once as a declaration.
+    #[test]
+    fn upa_ambiguous_spans_are_relaxed() {
+        for (version, msg) in [
+            (Hl7Version::V2_3, "ADT_A06"),
+            (Hl7Version::V2_3, "ADT_A07"),
+            (Hl7Version::V2_5, "DFT_P03"),
+            (Hl7Version::V2_6, "ADT_A60"),
+            (Hl7Version::V2_7, "OSM_R26"),
+        ] {
+            let schema = load(version);
+            let xsd = generate_xsd(&schema, msg).unwrap();
+            assert!(
+                xsd.contains("Relaxed content model"),
+                "{:?} {}: expected relaxed-choice annotation",
+                version, msg
+            );
+        }
+        // ADT_A06 v2.3: DRG appears nowhere else in the message, so after
+        // relaxation it must be declared exactly once (was twice, ambiguous).
+        let xsd = generate_xsd(&load(Hl7Version::V2_3), "ADT_A06").unwrap();
+        assert_eq!(xsd.matches(r#"name="DRG" type="DRG""#).count(), 1);
+    }
+
+    /// Sequences without ambiguity keep their strict ordered model.
+    #[test]
+    fn unambiguous_messages_stay_strict() {
+        let schema = load(Hl7Version::V2_5);
+        // ADT_A01 has two top-level ROL positions, but a required PV1 sits
+        // between them — no ambiguity, both stay declared (plus more ROLs in
+        // other scopes, e.g. the PROCEDURE group).
+        let xsd = generate_xsd(&schema, "ADT_A01").unwrap();
+        assert!(!xsd.contains("Relaxed content model"), "ADT_A01 must not be relaxed");
+        assert!(xsd.matches(r#"name="ROL" type="ROL""#).count() >= 2);
+    }
+
+    #[test]
+    fn ncname_sanitizes_slashes() {
+        assert_eq!(ncname("Observation/Result_Group"), "Observation_Result_Group");
+        assert_eq!(ncname("PLAIN_NAME"), "PLAIN_NAME");
+        assert_eq!(ncname("1BAD"), "_1BAD");
     }
 }

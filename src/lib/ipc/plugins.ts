@@ -7,6 +7,8 @@ export interface PluginInfo {
 	author: string;
 	version: string;
 	enabled: boolean;
+	/** Enabled but inactive: beyond the Community cap on active plugins. */
+	gated: boolean;
 	kind: 'validation' | 'anonymization';
 	path: string;
 	rule_count: number;
