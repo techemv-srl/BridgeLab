@@ -163,6 +163,7 @@
 	"comm.listenAckCode": "ACK code",
 	"comm.ackGen": "ACK generator",
 	"comm.ackGenerate": "Generate ACK from current message",
+	"comm.ackNoControlId": "No Message Control ID (MSH-10) found in the current message — an ACK cannot be correlated.",
 	"comm.listenAckAA": "AA (accept)",
 	"comm.listenAckAE": "AE (error)",
 	"comm.listenAckAR": "AR (reject)",
