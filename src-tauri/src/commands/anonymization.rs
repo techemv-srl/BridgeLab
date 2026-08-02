@@ -7,7 +7,7 @@ use crate::message_store::MessageStore;
 use crate::parser::truncation;
 use crate::plugins::{self, PluginRegistry};
 
-fn plugin_phi_rules(registry: &PluginRegistry) -> Vec<ExtraPhiField> {
+pub(crate) fn plugin_phi_rules(registry: &PluginRegistry) -> Vec<ExtraPhiField> {
     registry.active_phi_rules(feature_gate::active_plugin_limit()).into_iter().map(|r| ExtraPhiField {
         segment: r.segment,
         field: r.field,

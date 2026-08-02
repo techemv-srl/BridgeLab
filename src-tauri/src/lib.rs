@@ -97,6 +97,7 @@ pub fn run() {
             commands::schema_export::hl7_schema_list_messages,
             commands::schema_export::hl7_schema_export_xsd,
             commands::batch::batch_validate,
+            commands::batch::batch_anonymize,
             commands::generator::generate_test_messages,
         ])
         .run(tauri::generate_context!())
