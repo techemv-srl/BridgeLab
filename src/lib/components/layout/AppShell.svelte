@@ -9,6 +9,7 @@
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
 	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
+	import { editorOptionsStore } from '$lib/stores/editor-options.svelte';
 	import { shortcutStore, shortcutCapture, matchesKeys } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
@@ -97,33 +98,6 @@
 		lastValidatedTabId = id;
 	});
 
-	// Editor options loaded from preferences. Until v0.2.5 these prefs were
-	// saved by Settings but read by nobody — Monaco hardcoded everything.
-	let editorOptions = $state<import('$lib/components/editor/MonacoEditor.svelte').EditorOptions>({});
-
-	async function loadEditorOptions() {
-		try {
-			const [fs, ff, ww, mm, ln, ts, rw] = await Promise.all([
-				getPreference('editor_font_size'),
-				getPreference('editor_font_family'),
-				getPreference('editor_word_wrap'),
-				getPreference('editor_minimap'),
-				getPreference('editor_line_numbers'),
-				getPreference('editor_tab_size'),
-				getPreference('editor_render_whitespace'),
-			]);
-			editorOptions = {
-				...(fs && { fontSize: parseInt(fs) || 13 }),
-				...(ff && { fontFamily: ff }),
-				...(ww && { wordWrap: ww as 'on' | 'off' | 'wordWrapColumn' | 'bounded' }),
-				...(mm !== null && { minimap: mm !== 'false' }),
-				...(ln !== null && { lineNumbers: ln !== 'false' }),
-				...(ts && { tabSize: parseInt(ts) || 4 }),
-				...(rw && { renderWhitespace: rw as 'none' | 'boundary' | 'all' }),
-			};
-		} catch { /* web mode */ }
-	}
-
 	// Reactive references to the active tab
 	let activeTab = $derived(messageStore.activeTab);
 
@@ -158,7 +132,7 @@
 				const savedRestore = await getPreference('restore_session');
 				if (savedRestore !== null) restoreSession = savedRestore !== 'false';
 				recentFiles = await getRecentFiles(20);
-				await loadEditorOptions();
+				await editorOptionsStore.loadFromPrefs();
 
 				// Apply plugin enable/disable overrides (stored as plugin_enabled:<id>)
 				try {
@@ -1134,7 +1108,7 @@
 						language={activeTab.parseResult?.format?.startsWith('FHIR JSON') ? 'json'
 							: activeTab.parseResult?.format?.startsWith('FHIR XML') ? 'xml'
 							: 'hl7v2'}
-						options={editorOptions}
+						options={editorOptionsStore.options}
 						onContentChange={handleContentChange}
 						onCursorChange={handleCursorChange}
 						onExpandTruncated={handleEditorExpandTruncated}
@@ -1408,7 +1382,7 @@
 				<SettingsModal
 				initialSection={settingsSection}
 				onRestoreSessionChange={(enabled) => { restoreSession = enabled; }}
-				onEditorOptionsChange={() => { void loadEditorOptions(); }}
+				onEditorOptionsChange={() => { void editorOptionsStore.loadFromPrefs(); }}
 					{theme}
 					onClose={() => { showSettings = false; }}
 					onThemeChange={handleSetTheme}
