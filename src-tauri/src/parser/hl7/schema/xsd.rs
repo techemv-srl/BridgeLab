@@ -312,4 +312,28 @@ mod full_catalogue_tests {
                 .unwrap_or_else(|e| panic!("XSD export failed for {}: {}", m.code, e));
         }
     }
+
+    /// Same guarantee for every other shipped version: each catalogue loads
+    /// and every one of its message structures exports without error.
+    #[test]
+    fn exports_every_message_of_every_version() {
+        for v in Hl7Version::ALL {
+            let schema = load(*v);
+            assert!(
+                schema.messages.len() >= 170,
+                "{:?}: suspiciously small catalogue ({} messages)",
+                v,
+                schema.messages.len()
+            );
+            assert!(
+                schema.message("ADT_A01").is_some(),
+                "{:?}: ADT_A01 missing from catalogue",
+                v
+            );
+            for m in &schema.messages {
+                generate_xsd(&schema, &m.code)
+                    .unwrap_or_else(|e| panic!("{:?}: XSD export failed for {}: {}", v, m.code, e));
+            }
+        }
+    }
 }
