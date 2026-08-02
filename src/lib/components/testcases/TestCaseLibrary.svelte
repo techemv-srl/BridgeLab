@@ -3,6 +3,7 @@
 	import { parseMessage } from '$lib/ipc/parser';
 	import { validateMessage, validateFhir, parseFhirMessage } from '$lib/ipc/validation';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
+	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { t, subscribeLocale } from '$lib/i18n';
 
 	let localeVersion = $state(0);
@@ -159,7 +160,15 @@
 			await load();
 			mode = 'list';
 		} catch (e) {
-			await dialogStore.error(tr('dialog.saveFailed'), undefined, String(e));
+			const up = parseUpgradeError(e);
+			if (up) {
+				await dialogStore.error(
+					tr('tc.limitTitle'),
+					tr('upgrade.required', { tier: up.tier }),
+				);
+			} else {
+				await dialogStore.error(tr('dialog.saveFailed'), undefined, String(e));
+			}
 		}
 	}
 
