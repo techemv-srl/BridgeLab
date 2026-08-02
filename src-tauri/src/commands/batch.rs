@@ -188,6 +188,7 @@ async fn anonymize_file(
     path: &std::path::Path,
     out_dir: &std::path::Path,
     out_name: &str,
+    sources: &std::collections::HashSet<std::path::PathBuf>,
     extra: &[crate::anonymization::ExtraPhiField],
 ) -> BatchAnonFileResult {
     let path_str = path.display().to_string();
@@ -205,15 +206,12 @@ async fn anonymize_file(
     };
 
     let out_path = out_dir.join(out_name);
-    // Never overwrite the source: writing the mask over the only copy of the
-    // original defeats the point of "anonymized copies in a separate folder".
-    let same_file = match (tokio::fs::canonicalize(path).await, tokio::fs::canonicalize(&out_path).await) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => path == out_path,
-    };
-    if same_file {
+    // Never overwrite ANY selected source (not just this one): if another
+    // selected file lives inside the output folder, writing over it would
+    // destroy an original and let its later row read already-masked content.
+    if sources.contains(&out_path) {
         return BatchAnonFileResult {
-            error: Some("output would overwrite the source file — pick a different output folder".into()),
+            error: Some("output would overwrite a selected source file — pick a different output folder".into()),
             ..base
         };
     }
@@ -273,28 +271,51 @@ pub async fn batch_anonymize(
     let extra = crate::commands::anonymization::plugin_phi_rules(&registry);
     let (files, skipped) = expand_paths(paths).await;
 
-    // Two inputs with the same file name (different folders) must not clobber
-    // each other in the flat output folder — later ones get a numeric suffix.
-    let mut used_names: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let mut results = Vec::with_capacity(files.len());
+    // Canonical paths of every selected source, compared (in canonical space)
+    // against each destination before any write happens.
+    let canon_out_dir = tokio::fs::canonicalize(&out_dir)
+        .await
+        .unwrap_or_else(|_| out_dir.clone());
+    let mut sources: std::collections::HashSet<std::path::PathBuf> =
+        std::collections::HashSet::with_capacity(files.len());
     for f in &files {
-        let original = f
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "message.hl7".into());
-        let n = used_names.entry(original.clone()).or_insert(0);
-        *n += 1;
-        let out_name = if *n == 1 {
-            original
-        } else {
-            match original.rsplit_once('.') {
-                Some((stem, ext)) => format!("{}_{}.{}", stem, n, ext),
-                None => format!("{}_{}", original, n),
-            }
-        };
-        results.push(anonymize_file(f, &out_dir, &out_name, &extra).await);
+        sources.insert(tokio::fs::canonicalize(f).await.unwrap_or_else(|_| f.clone()));
+    }
+
+    let out_names = assign_output_names(&files);
+    let mut results = Vec::with_capacity(files.len());
+    for (f, out_name) in files.iter().zip(out_names.iter()) {
+        results.push(anonymize_file(f, &canon_out_dir, out_name, &sources, &extra).await);
     }
     Ok(BatchAnonReport { results, skipped, output_dir })
+}
+
+/// Assign one output file name per input. Same-named inputs (from different
+/// folders) get numeric suffixes, and every generated candidate is checked
+/// against ALL names already reserved — `a/msg.hl7`, `b/msg.hl7`, `c/msg_2.hl7`
+/// must yield three distinct names, not two `msg_2.hl7`.
+fn assign_output_names(files: &[std::path::PathBuf]) -> Vec<String> {
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    files
+        .iter()
+        .map(|f| {
+            let original = f
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "message.hl7".into());
+            let mut candidate = original.clone();
+            let mut n = 1;
+            while used.contains(&candidate) {
+                n += 1;
+                candidate = match original.rsplit_once('.') {
+                    Some((stem, ext)) => format!("{}_{}.{}", stem, n, ext),
+                    None => format!("{}_{}", original, n),
+                };
+            }
+            used.insert(candidate.clone());
+            candidate
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -348,7 +369,8 @@ mod tests {
         std::fs::create_dir_all(&out).unwrap();
         let src = write_tmp(&dir, "pat.hl7", SAMPLE);
 
-        let r = anonymize_file(&src, &out, "pat.hl7", &[]).await;
+        let sources = std::collections::HashSet::from([std::fs::canonicalize(&src).unwrap()]);
+        let r = anonymize_file(&src, &std::fs::canonicalize(&out).unwrap(), "pat.hl7", &sources, &[]).await;
         assert!(r.error.is_none(), "unexpected error: {:?}", r.error);
         assert!(r.phi_fields_masked > 0, "PID demographics must be detected");
         let written = std::fs::read_to_string(&r.output_path).unwrap();
@@ -364,7 +386,8 @@ mod tests {
         let src = write_tmp(&dir, "same.hl7", SAMPLE);
 
         // Output folder == source folder, same name → must refuse
-        let r = anonymize_file(&src, &dir, "same.hl7", &[]).await;
+        let sources = std::collections::HashSet::from([std::fs::canonicalize(&src).unwrap()]);
+        let r = anonymize_file(&src, &std::fs::canonicalize(&dir).unwrap(), "same.hl7", &sources, &[]).await;
         assert!(r.error.as_deref().unwrap_or("").contains("overwrite"));
         let untouched = std::fs::read_to_string(&src).unwrap();
         assert!(untouched.contains("ROSSI"), "source must stay untouched");
@@ -378,9 +401,51 @@ mod tests {
         std::fs::create_dir_all(&out).unwrap();
         let bad = write_tmp(&dir, "junk.hl7", "definitely not hl7");
 
-        let r = anonymize_file(&bad, &out, "junk.hl7", &[]).await;
+        let sources = std::collections::HashSet::from([std::fs::canonicalize(&bad).unwrap()]);
+        let r = anonymize_file(&bad, &std::fs::canonicalize(&out).unwrap(), "junk.hl7", &sources, &[]).await;
         assert!(r.error.is_some(), "junk must fail");
         assert!(!out.join("junk.hl7").exists(), "no output for failed files");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Codex P1: generated suffix names must not collide with other inputs'
+    /// original names — a/msg.hl7, b/msg.hl7, c/msg_2.hl7 need 3 distinct outputs.
+    #[test]
+    fn test_output_names_reserved_globally() {
+        let files = vec![
+            std::path::PathBuf::from("/a/msg.hl7"),
+            std::path::PathBuf::from("/b/msg.hl7"),
+            std::path::PathBuf::from("/c/msg_2.hl7"),
+        ];
+        let names = assign_output_names(&files);
+        let unique: std::collections::HashSet<&String> = names.iter().collect();
+        assert_eq!(unique.len(), 3, "all output names must be distinct: {:?}", names);
+        assert_eq!(names[0], "msg.hl7");
+        assert_eq!(names[1], "msg_2.hl7");
+        assert_ne!(names[2], "msg_2.hl7");
+    }
+
+    /// Codex P1: a DIFFERENT selected source living inside the output folder
+    /// must not be overwritten by an earlier file's output.
+    #[tokio::test]
+    async fn test_never_overwrites_any_selected_source() {
+        let dir = std::env::temp_dir().join(format!("bl_anon4_{}", std::process::id()));
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let _a = write_tmp(&dir, "msg.hl7", SAMPLE);
+        // Second selected source lives IN the output folder with the same name
+        let b = write_tmp(&out, "msg.hl7", SAMPLE);
+
+        let canon_out = std::fs::canonicalize(&out).unwrap();
+        let sources = std::collections::HashSet::from([
+            std::fs::canonicalize(dir.join("msg.hl7")).unwrap(),
+            std::fs::canonicalize(&b).unwrap(),
+        ]);
+        // Writing a's output as out/msg.hl7 would destroy source b → refuse
+        let r = anonymize_file(&dir.join("msg.hl7"), &canon_out, "msg.hl7", &sources, &[]).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("overwrite"), "got: {:?}", r.error);
+        let untouched = std::fs::read_to_string(&b).unwrap();
+        assert!(untouched.contains("ROSSI"), "the other selected source must stay untouched");
         std::fs::remove_dir_all(&dir).ok();
     }
 }
