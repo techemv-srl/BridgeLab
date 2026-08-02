@@ -10,6 +10,7 @@
 	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
 	import { editorOptionsStore } from '$lib/stores/editor-options.svelte';
+	import { sessionStore } from '$lib/stores/session.svelte';
 	import { shortcutStore, shortcutCapture, matchesKeys } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
@@ -103,11 +104,6 @@
 
 	// Initialize app (using $effect instead of onMount which is a server no-op)
 	let appInitialized = false;
-	let restoreSession = $state(true);
-	// Welcome screen must not render (and accept input) until the async
-	// startup — including session restore — has finished, or a tab created
-	// meanwhile would be clobbered by restoreSession().
-	let startupComplete = $state(false);
 	$effect(() => {
 		if (appInitialized || typeof window === 'undefined') return;
 		appInitialized = true;
@@ -130,7 +126,7 @@
 				const savedInspectorHeight = await getPreference('inspector_height');
 				if (savedInspectorHeight) inspectorHeight = parseInt(savedInspectorHeight) || 260;
 				const savedRestore = await getPreference('restore_session');
-				if (savedRestore !== null) restoreSession = savedRestore !== 'false';
+				if (savedRestore !== null) sessionStore.restoreEnabled = savedRestore !== 'false';
 				recentFiles = await getRecentFiles(20);
 				await editorOptionsStore.loadFromPrefs();
 
@@ -151,20 +147,10 @@
 					}
 				} catch { /* web mode */ }
 
-				// Notepad++-style tab restore. Skip if the user already created
-				// a tab while startup I/O was in flight — restoreSession()
-				// replaces the whole tabs array and would discard their work.
-				if (restoreSession && messageStore.tabs.length === 0) {
-					const { loadSession } = await import('$lib/ipc/database');
-					const sessionTabs = await loadSession();
-					if (sessionTabs && sessionTabs.length > 0 && messageStore.tabs.length === 0) {
-						sessionRestored = messageStore.restoreSession(sessionTabs);
-						// Re-parse any HL7/FHIR content so tree + inspector populate
-						for (const tab of messageStore.tabs) {
-							void autoParse(tab.content);
-						}
-					}
-				}
+				// Notepad++-style tab restore (skip conditions live in the store)
+				sessionRestored = await sessionStore.restoreFromDisk((content) => {
+					void autoParse(content);
+				});
 			} catch {
 				// Running in web-only mode without Tauri backend
 			}
@@ -173,7 +159,7 @@
 			// renders (first-run onboarding). Any welcome action, paste, or
 			// the + button creates the first tab.
 			void sessionRestored;
-			startupComplete = true;
+			sessionStore.startupComplete = true;
 
 			try {
 				licenseStatus = await checkLicense();
@@ -185,10 +171,9 @@
 	});
 
 	// Session autosave: persist open tabs whenever they change, debounced.
-	let sessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
 		if (!appInitialized || typeof window === 'undefined') return;
-		if (!restoreSession) return;
+		if (!sessionStore.restoreEnabled) return;
 		// Track tabs + active id as dependencies
 		void messageStore.tabs;
 		void messageStore.activeTabId;
@@ -198,15 +183,7 @@
 			void t.filePath;
 			void t.isModified;
 		}
-		if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
-		sessionSaveTimer = setTimeout(async () => {
-			try {
-				const { saveSession } = await import('$lib/ipc/database');
-				await saveSession(messageStore.serializeSession());
-			} catch {
-				// web mode or backend unavailable - ignore
-			}
-		}, 800);
+		sessionStore.scheduleAutosave();
 	});
 
 	function handleTestCaseLoaded(tc: TestCase) {
@@ -1119,7 +1096,7 @@
 						onCopyTruncatedMessage={handleCopyTruncated}
 						navigation={editorNavigation}
 					/>
-				{:else if startupComplete}
+				{:else if sessionStore.startupComplete}
 					<div class="welcome">
 						<div class="welcome-card">
 							<div class="welcome-title">{tr('welcome.title')}</div>
@@ -1381,7 +1358,7 @@
 			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
 				<SettingsModal
 				initialSection={settingsSection}
-				onRestoreSessionChange={(enabled) => { restoreSession = enabled; }}
+				onRestoreSessionChange={(enabled) => { sessionStore.restoreEnabled = enabled; }}
 				onEditorOptionsChange={() => { void editorOptionsStore.loadFromPrefs(); }}
 					{theme}
 					onClose={() => { showSettings = false; }}
