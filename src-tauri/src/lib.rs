@@ -61,7 +61,6 @@ pub fn run() {
             commands::parser::expand_all_fields,
             commands::parser::collapse_all_fields,
             commands::communication::mllp_send,
-            commands::communication::mllp_receive,
             commands::communication::mllp_listen_start,
             commands::communication::mllp_listen_stop,
             commands::communication::mllp_listen_status,

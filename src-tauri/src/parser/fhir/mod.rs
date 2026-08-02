@@ -129,32 +129,6 @@ pub fn parse_fhir_xml(content: &str) -> Result<FhirResource, String> {
     })
 }
 
-/// Extract the root element name from XML content.
-fn extract_xml_root_element(xml: &str) -> Option<String> {
-    // Skip XML declaration if present
-    let content = if xml.starts_with("<?xml") {
-        xml.find("?>").map(|i| &xml[i + 2..]).unwrap_or(xml)
-    } else {
-        xml
-    };
-
-    // Find first element
-    let trimmed = content.trim();
-    if !trimmed.starts_with('<') {
-        return None;
-    }
-
-    let end = trimmed[1..]
-        .find(|c: char| c.is_whitespace() || c == '>' || c == '/')
-        .map(|i| i + 1)?;
-
-    let element_name = &trimmed[1..end];
-    if element_name.is_empty() || element_name.starts_with('!') || element_name.starts_with('?') {
-        return None;
-    }
-
-    Some(element_name.to_string())
-}
 
 /// Build tree nodes from a FHIR JSON resource.
 pub fn build_fhir_tree_nodes(resource: &FhirResource) -> Vec<TreeNode> {
