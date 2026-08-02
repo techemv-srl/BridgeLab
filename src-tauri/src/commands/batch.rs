@@ -184,11 +184,20 @@ pub struct BatchAnonReport {
     pub output_dir: String,
 }
 
+/// Case-insensitive path key: Windows and default macOS filesystems treat
+/// `REPORT.hl7` and `report.hl7` as the same file, so every collision check
+/// compares lowercased canonical paths. On case-sensitive filesystems this is
+/// merely more conservative (a would-be REPORT/report pair still gets a
+/// suffix / a refusal instead of two entries).
+fn path_key(p: &std::path::Path) -> String {
+    p.to_string_lossy().to_lowercase()
+}
+
 async fn anonymize_file(
     path: &std::path::Path,
     out_dir: &std::path::Path,
     out_name: &str,
-    sources: &std::collections::HashSet<std::path::PathBuf>,
+    sources: &std::collections::HashSet<String>,
     extra: &[crate::anonymization::ExtraPhiField],
 ) -> BatchAnonFileResult {
     let path_str = path.display().to_string();
@@ -209,7 +218,7 @@ async fn anonymize_file(
     // Never overwrite ANY selected source (not just this one): if another
     // selected file lives inside the output folder, writing over it would
     // destroy an original and let its later row read already-masked content.
-    if sources.contains(&out_path) {
+    if sources.contains(&path_key(&out_path)) {
         return BatchAnonFileResult {
             error: Some("output would overwrite a selected source file — pick a different output folder".into()),
             ..base
@@ -276,10 +285,11 @@ pub async fn batch_anonymize(
     let canon_out_dir = tokio::fs::canonicalize(&out_dir)
         .await
         .unwrap_or_else(|_| out_dir.clone());
-    let mut sources: std::collections::HashSet<std::path::PathBuf> =
+    let mut sources: std::collections::HashSet<String> =
         std::collections::HashSet::with_capacity(files.len());
     for f in &files {
-        sources.insert(tokio::fs::canonicalize(f).await.unwrap_or_else(|_| f.clone()));
+        let canon = tokio::fs::canonicalize(f).await.unwrap_or_else(|_| f.clone());
+        sources.insert(path_key(&canon));
     }
 
     let out_names = assign_output_names(&files);
@@ -305,14 +315,16 @@ fn assign_output_names(files: &[std::path::PathBuf]) -> Vec<String> {
                 .unwrap_or_else(|| "message.hl7".into());
             let mut candidate = original.clone();
             let mut n = 1;
-            while used.contains(&candidate) {
+            // Reservation is case-insensitive: REPORT.hl7 and report.hl7 are
+            // the same file on Windows / default macOS filesystems.
+            while used.contains(&candidate.to_lowercase()) {
                 n += 1;
                 candidate = match original.rsplit_once('.') {
                     Some((stem, ext)) => format!("{}_{}.{}", stem, n, ext),
                     None => format!("{}_{}", original, n),
                 };
             }
-            used.insert(candidate.clone());
+            used.insert(candidate.to_lowercase());
             candidate
         })
         .collect()
@@ -369,7 +381,7 @@ mod tests {
         std::fs::create_dir_all(&out).unwrap();
         let src = write_tmp(&dir, "pat.hl7", SAMPLE);
 
-        let sources = std::collections::HashSet::from([std::fs::canonicalize(&src).unwrap()]);
+        let sources = std::collections::HashSet::from([path_key(&std::fs::canonicalize(&src).unwrap())]);
         let r = anonymize_file(&src, &std::fs::canonicalize(&out).unwrap(), "pat.hl7", &sources, &[]).await;
         assert!(r.error.is_none(), "unexpected error: {:?}", r.error);
         assert!(r.phi_fields_masked > 0, "PID demographics must be detected");
@@ -386,7 +398,7 @@ mod tests {
         let src = write_tmp(&dir, "same.hl7", SAMPLE);
 
         // Output folder == source folder, same name → must refuse
-        let sources = std::collections::HashSet::from([std::fs::canonicalize(&src).unwrap()]);
+        let sources = std::collections::HashSet::from([path_key(&std::fs::canonicalize(&src).unwrap())]);
         let r = anonymize_file(&src, &std::fs::canonicalize(&dir).unwrap(), "same.hl7", &sources, &[]).await;
         assert!(r.error.as_deref().unwrap_or("").contains("overwrite"));
         let untouched = std::fs::read_to_string(&src).unwrap();
@@ -401,7 +413,7 @@ mod tests {
         std::fs::create_dir_all(&out).unwrap();
         let bad = write_tmp(&dir, "junk.hl7", "definitely not hl7");
 
-        let sources = std::collections::HashSet::from([std::fs::canonicalize(&bad).unwrap()]);
+        let sources = std::collections::HashSet::from([path_key(&std::fs::canonicalize(&bad).unwrap())]);
         let r = anonymize_file(&bad, &std::fs::canonicalize(&out).unwrap(), "junk.hl7", &sources, &[]).await;
         assert!(r.error.is_some(), "junk must fail");
         assert!(!out.join("junk.hl7").exists(), "no output for failed files");
@@ -425,6 +437,46 @@ mod tests {
         assert_ne!(names[2], "msg_2.hl7");
     }
 
+    /// Codex P2 (1.0.0 review): Windows / default macOS filesystems are
+    /// case-insensitive — REPORT.hl7 and report.hl7 must not share an output.
+    #[test]
+    fn test_output_names_reserved_case_insensitively() {
+        let files = vec![
+            std::path::PathBuf::from("/a/REPORT.hl7"),
+            std::path::PathBuf::from("/b/report.hl7"),
+        ];
+        let names = assign_output_names(&files);
+        assert_eq!(names[0], "REPORT.hl7");
+        assert_ne!(
+            names[1].to_lowercase(),
+            "report.hl7",
+            "case-colliding input must get a suffix: {:?}",
+            names
+        );
+    }
+
+    /// Same guarantee for the source-protection check: writing REPORT.hl7
+    /// over an existing selected source report.hl7 must be refused.
+    #[tokio::test]
+    async fn test_source_protection_is_case_insensitive() {
+        let dir = std::env::temp_dir().join(format!("bl_anon5_{}", std::process::id()));
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let _a = write_tmp(&dir, "REPORT.hl7", SAMPLE);
+        let b = write_tmp(&out, "report.hl7", SAMPLE);
+
+        let canon_out = std::fs::canonicalize(&out).unwrap();
+        let sources = std::collections::HashSet::from([
+            path_key(&std::fs::canonicalize(dir.join("REPORT.hl7")).unwrap()),
+            path_key(&std::fs::canonicalize(&b).unwrap()),
+        ]);
+        let r = anonymize_file(&dir.join("REPORT.hl7"), &canon_out, "REPORT.hl7", &sources, &[]).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("overwrite"), "got: {:?}", r.error);
+        let untouched = std::fs::read_to_string(&b).unwrap();
+        assert!(untouched.contains("ROSSI"), "case-colliding source must stay untouched");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     /// Codex P1: a DIFFERENT selected source living inside the output folder
     /// must not be overwritten by an earlier file's output.
     #[tokio::test]
@@ -438,8 +490,8 @@ mod tests {
 
         let canon_out = std::fs::canonicalize(&out).unwrap();
         let sources = std::collections::HashSet::from([
-            std::fs::canonicalize(dir.join("msg.hl7")).unwrap(),
-            std::fs::canonicalize(&b).unwrap(),
+            path_key(&std::fs::canonicalize(dir.join("msg.hl7")).unwrap()),
+            path_key(&std::fs::canonicalize(&b).unwrap()),
         ]);
         // Writing a's output as out/msg.hl7 would destroy source b → refuse
         let r = anonymize_file(&dir.join("msg.hl7"), &canon_out, "msg.hl7", &sources, &[]).await;
