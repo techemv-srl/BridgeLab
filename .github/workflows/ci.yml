@@ -63,5 +63,8 @@ jobs:
       - name: Svelte check (0 errors required, warnings allowed)
         run: pnpm exec svelte-check --threshold error --output human
 
+      - name: Unit tests (Vitest)
+        run: pnpm test
+
       - name: Build frontend
         run: pnpm build
