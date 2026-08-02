@@ -30,9 +30,17 @@
 
 	async function handleGenerateAck() {
 		ackGenError = '';
-		// MSH-10 (Message Control ID) = 10th pipe-delimited field of MSH
 		const firstLine = currentMessage.split(/[\r\n]/)[0] ?? '';
-		const controlId = firstLine.split('|')[9]?.trim() || 'UNKNOWN';
+		// MSH-1 (the field separator) is the 4th character of MSH — messages
+		// may legitimately use a separator other than '|'.
+		const sep = firstLine.length > 3 ? firstLine[3] : '|';
+		const controlId = firstLine.startsWith('MSH')
+			? firstLine.split(sep)[9]?.trim() ?? ''
+			: '';
+		if (!controlId) {
+			ackGenError = tr('comm.ackNoControlId');
+			return;
+		}
 		try {
 			const ack = await generateAck(ackGenCode, controlId);
 			onOpenGenerated?.(ack, `ACK ${controlId}`);
