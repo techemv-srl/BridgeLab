@@ -9,6 +9,7 @@
 	import SchemaExportDialog from '$lib/components/layout/SchemaExportDialog.svelte';
 	import CompareDialog from '$lib/components/diff/CompareDialog.svelte';
 	import BatchValidateDialog from '$lib/components/batch/BatchValidateDialog.svelte';
+	import BatchAnonymizeDialog from '$lib/components/batch/BatchAnonymizeDialog.svelte';
 	import GenerateDialog from '$lib/components/generator/GenerateDialog.svelte';
 	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
 	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
@@ -45,6 +46,7 @@
 		showSettings: boolean;
 		showSchemaExport: boolean;
 		showBatch: boolean;
+		showBatchAnon: boolean;
 		showGenerate: boolean;
 		showCompare: boolean;
 		showHelp: boolean;
@@ -70,6 +72,7 @@
 		showSettings = $bindable(),
 		showSchemaExport = $bindable(),
 		showBatch = $bindable(),
+		showBatchAnon = $bindable(),
 		showGenerate = $bindable(),
 		showCompare = $bindable(),
 		showHelp = $bindable(),
@@ -267,6 +270,10 @@
 		onClose={() => { showBatch = false; }}
 		onOpenFile={(path) => { showBatch = false; onOpenRecentFile(path); }}
 	/>
+{/if}
+
+{#if showBatchAnon}
+	<BatchAnonymizeDialog onClose={() => { showBatchAnon = false; }} />
 {/if}
 
 {#if showGenerate}
