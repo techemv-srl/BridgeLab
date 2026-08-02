@@ -1,6 +1,6 @@
 <script lang="ts">
 	import {
-		mllpSend, httpRequest,
+		mllpSend, httpRequest, generateAck,
 		mllpListenStart, mllpListenStop, mllpListenStatus,
 		getRequestHistory, clearRequestHistory,
 		saveConnectionProfile, getConnectionProfiles, deleteConnectionProfile,
@@ -18,9 +18,36 @@
 		currentMessage?: string;
 		activeTabLabel?: string;
 		onMessageReceived?: (content: string) => void;
+		/** Open generated content (e.g. an ACK) in a new tab with a label. */
+		onOpenGenerated?: (content: string, label: string) => void;
 	}
 
-	let { currentMessage = '', activeTabLabel = '', onMessageReceived }: Props = $props();
+	let { currentMessage = '', activeTabLabel = '', onMessageReceived, onOpenGenerated }: Props = $props();
+
+	// --- ACK generator (for the message currently in the editor) ---
+	let ackGenCode = $state('AA');
+	let ackGenError = $state('');
+
+	async function handleGenerateAck() {
+		ackGenError = '';
+		const firstLine = currentMessage.split(/[\r\n]/)[0] ?? '';
+		// MSH-1 (the field separator) is the 4th character of MSH — messages
+		// may legitimately use a separator other than '|'.
+		const sep = firstLine.length > 3 ? firstLine[3] : '|';
+		const controlId = firstLine.startsWith('MSH')
+			? firstLine.split(sep)[9]?.trim() ?? ''
+			: '';
+		if (!controlId) {
+			ackGenError = tr('comm.ackNoControlId');
+			return;
+		}
+		try {
+			const ack = await generateAck(ackGenCode, controlId);
+			onOpenGenerated?.(ack, `ACK ${controlId}`);
+		} catch (e) {
+			ackGenError = String(e);
+		}
+	}
 
 	let activeSubTab = $state<'mllp' | 'http' | 'history'>('mllp');
 
@@ -475,6 +502,23 @@
 					</button>
 				</div>
 
+				<div class="section-label">{tr('comm.ackGen')}</div>
+				<div class="form-row">
+					<label for="mllp-ackgen-code">{tr('comm.listenAckCode')}</label>
+					<select id="mllp-ackgen-code" bind:value={ackGenCode}
+						style="min-width: 130px; padding: 4px 6px;">
+						<option value="AA">{tr('comm.listenAckAA')}</option>
+						<option value="AE">{tr('comm.listenAckAE')}</option>
+						<option value="AR">{tr('comm.listenAckAR')}</option>
+					</select>
+					<button class="btn" onclick={handleGenerateAck} disabled={!hasMessage}>
+						{tr('comm.ackGenerate')}
+					</button>
+				</div>
+				{#if ackGenError}
+					<div class="info-box error">{ackGenError}</div>
+				{/if}
+
 				<div class="section-label">{tr('comm.listen')}</div>
 				<div class="form-row">
 					{#if !listenStatus.running}
@@ -806,6 +850,7 @@
 	.input-area { width: 100%; resize: vertical; font-size: 11px; }
 	.info-box { padding: 4px 8px; border-radius: 3px; font-size: 11px; background: var(--color-bg-tertiary); color: var(--color-text-secondary); border-left: 3px solid var(--color-border); }
 	.info-box.ok { border-left-color: var(--color-success); color: var(--color-text-primary); }
+	.info-box.error { border-left-color: var(--color-error); color: var(--color-error); }
 	.form-actions { display: flex; gap: 6px; align-items: center; margin-top: 2px; }
 	.separator { color: var(--color-border); margin: 0 2px; }
 

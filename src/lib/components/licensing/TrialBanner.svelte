@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { LicenseStatus } from '$lib/ipc/licensing';
+	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { t, subscribeLocale } from '$lib/i18n';
 
 	let localeVersion = $state(0);
@@ -13,13 +14,32 @@
 
 	let { status, onActivate }: Props = $props();
 
+	const PLANS_URL = 'https://techemv-srl.github.io/BridgeLab/';
+	const DISMISS_KEY = 'trial_banner_dismissed_for';
+
 	// Persist dismissal across restarts, scoped to the current license_type
 	// so the banner reappears if the user transitions trial→free→expired etc.
-	let dismissedFor = $state<string | null>(
-		typeof window !== 'undefined'
-			? localStorage.getItem('trial_banner_dismissed_for')
-			: null
-	);
+	// Stored in the preferences DB (portable with the profile); reads migrate
+	// any pre-0.7 localStorage value, and web mode falls back to localStorage.
+	let dismissedFor = $state<string | null>(null);
+	let dismissLoaded = $state(false);
+	if (typeof window !== 'undefined') {
+		(async () => {
+			try {
+				dismissedFor = await getPreference(DISMISS_KEY);
+				if (dismissedFor === null) {
+					const legacy = localStorage.getItem(DISMISS_KEY);
+					if (legacy) {
+						dismissedFor = legacy;
+						void setPreference(DISMISS_KEY, legacy);
+					}
+				}
+			} catch {
+				dismissedFor = localStorage.getItem(DISMISS_KEY);
+			}
+			dismissLoaded = true;
+		})();
+	}
 
 	// Urgent = banner cannot be dismissed:
 	// - expired Pro/Enterprise license (must reactivate to regain features)
@@ -33,14 +53,22 @@
 	let visible = $derived.by(() => {
 		if (status.license_type === 'professional' || status.license_type === 'enterprise') return false;
 		if (urgent) return true;
+		// Don't flash the banner before the persisted dismissal is known
+		if (!dismissLoaded) return false;
 		return dismissedFor !== status.license_type;
 	});
 
 	function dismiss() {
 		dismissedFor = status.license_type;
 		if (typeof window !== 'undefined') {
-			localStorage.setItem('trial_banner_dismissed_for', status.license_type);
+			setPreference(DISMISS_KEY, status.license_type).catch(() => {
+				localStorage.setItem(DISMISS_KEY, status.license_type);
+			});
 		}
+	}
+
+	function openPlans() {
+		window.open(PLANS_URL, '_blank');
 	}
 </script>
 
@@ -57,6 +85,9 @@
 		</span>
 		<button class="banner-btn" onclick={onActivate}>
 			{tr('activate')}
+		</button>
+		<button class="banner-btn banner-btn-ghost" onclick={openPlans}>
+			{tr('banner.comparePlans')}
 		</button>
 		{#if !urgent}
 			<button class="banner-dismiss" onclick={dismiss} aria-label={tr('modal.close')}>&times;</button>
@@ -97,6 +128,12 @@
 
 	.banner-btn:hover {
 		background: rgba(0, 0, 0, 0.15);
+	}
+
+	.banner-btn-ghost {
+		border-color: transparent;
+		opacity: 0.85;
+		font-weight: 500;
 	}
 
 	.banner-dismiss {

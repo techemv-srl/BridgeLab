@@ -50,6 +50,7 @@
 	let showSchemaExport = $state(false);
 	let showCompare = $state(false);
 	let showBatch = $state(false);
+	let showBatchAnon = $state(false);
 	let showGenerate = $state(false);
 	let showActivation = $state(false);
 	let showTemplates = $state(false);
@@ -896,6 +897,7 @@
 		onExportCsv={handleExportCsv}
 		onCompareMessages={handleCompareMessages}
 		onBatchValidate={() => { showBatch = true; }}
+		onBatchAnonymize={() => { showBatchAnon = true; }}
 		onGenerateMessages={() => { showGenerate = true; }}
 		onToggleTree={handleToggleTree}
 		onToggleInspector={() => { showInspector = !showInspector; }}
@@ -1082,6 +1084,7 @@
 								t.label = `Inbox ${ts}`;
 							}
 						}}
+						onOpenGenerated={handleOpenGenerated}
 					/>
 				</div>
 			{/if}
@@ -1109,6 +1112,7 @@
 		bind:showSettings
 		bind:showSchemaExport
 		bind:showBatch
+		bind:showBatchAnon
 		bind:showGenerate
 		bind:showCompare
 		bind:showHelp

@@ -6,6 +6,9 @@
 
 import { enSections } from './help/en';
 import { itSections } from './help/it';
+import { frSections } from './help/fr';
+import { esSections } from './help/es';
+import { deSections } from './help/de';
 
 export interface ManualSection {
 	id: string;
@@ -32,6 +35,9 @@ const CONTENTS_LABEL: Record<string, string> = {
 function getSections(locale: string): ManualSection[] {
 	switch (locale) {
 		case 'it': return itSections;
+		case 'fr': return frSections;
+		case 'es': return esSections;
+		case 'de': return deSections;
 		default:   return enSections;
 	}
 }

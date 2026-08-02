@@ -7,12 +7,6 @@ export interface MllpSendResult {
 	error: string | null;
 }
 
-export interface MllpReceivedMessage {
-	content: string;
-	source_addr: string;
-	received_at: string;
-}
-
 export interface HttpResult {
 	success: boolean;
 	status_code: number;
@@ -74,12 +68,6 @@ export async function mllpSend(
 		endChar2: opts.endChar2,
 		profileName: opts.profileName,
 	});
-}
-
-export async function mllpReceive(
-	port: number, timeoutSecs?: number, autoAck?: boolean,
-): Promise<MllpReceivedMessage> {
-	return invoke('mllp_receive', { port, timeoutSecs, autoAck });
 }
 
 // --- Persistent MLLP listener ---
