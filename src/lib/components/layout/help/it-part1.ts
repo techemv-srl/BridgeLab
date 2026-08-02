@@ -1,5 +1,5 @@
 import type { ManualSection } from '../helpContent';
-import { mockupAppShell, mockupContextMenu } from './mockups';
+import { mockupAppShellIt as mockupAppShell, mockupContextMenuIt as mockupContextMenu } from './mockups';
 
 export const itPart1: ManualSection[] = [
 {
