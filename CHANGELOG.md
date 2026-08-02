@@ -2,10 +2,28 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [1.0.0] — 2026-08-02
+
+### Added
+- **Batch anonymization** (`Tools → Batch anonymize…`, Pro). Mask a whole folder of `.hl7`/`.txt`/`.dat` files in one pass with the same pipeline as the interactive dialog (built-in PHI catalogue + active plugin rules), written as copies into an output folder. Originals are never touched: the tool refuses to overwrite any selected source, and same-named inputs from different folders get numeric suffixes. Per-file masked-PHI counts and errors; same 5000-file / 10 MB caps as batch validation.
+- **Bundle reference graph**. The FHIR Bundle visualizer gains a List / Graph toggle: entries become nodes colored by resource type, references become directed arrows, clicking a node drives the detail pane. Available up to 150 entries.
+- **FHIR templates**. `File → New from template` includes a FHIR category: minimal Patient, blood-pressure Observation with components, and a transaction Bundle wired via `urn:uuid` references (real RFC 4122 UUIDs).
+- **ACK generator**. The Communication panel builds an ACK for the current message: pick AA/AE/AR, the control ID is read from MSH-10 (honoring a custom MSH-1 separator), the result opens in a new tab. Messages without MSH-10 are refused instead of producing an uncorrelatable ACK.
+- **User manual in five languages**. The in-app manual (F1) is fully translated into French, Spanish and German alongside English and Italian — previously those languages showed English content — including localized UI mockups. All five manuals document every feature through 1.0.
+- **`meta.profile` awareness**. FHIR validation lists declared canonical profile URIs (all URI schemes accepted) as info findings and flags malformed declarations; profile conformance itself is intentionally not claimed.
+
+### Changed
+- Trial banner: new "Compare plans" link; dismissal now persists in the preferences profile (migrating any previous browser-storage value).
+
+### Fixed
+- Release builds compile warning-free (three Windows build warnings eliminated).
+- Removed the dead single-shot MLLP receive command and 52 unused translation keys.
+- Batch anonymization hardening from review: destinations are checked against all selected sources and output names are reserved globally — no scenario can silently overwrite an original or a previous result.
+
 ## [0.6.0] — 2026-08-02
 
 ### Added
-- **Six more HL7 versions in the XSD export**: complete catalogues for **v2.3, 2.3.1, 2.4, 2.6, 2.7 and 2.7.1** join the existing 2.5 — **1,916 message structures** across the seven supported versions, generated from the MIT-licensed hl7-dictionary with referential-integrity validation. Pick the version in the export dialog; v2.5 remains the free tier (ADT^A01, ADT^A40, ORM^O01, ORU^R01), the other versions are Pro.
+- **Six more HL7 versions in the XSD export**: complete catalogues for **v2.3, 2.3.1, 2.4, 2.6, 2.7 and 2.7.1** join the existing 2.5 — **1,964 message structures** across the seven supported versions, generated from the MIT-licensed hl7-dictionary with referential-integrity validation. Pick the version in the export dialog; v2.5 remains the free tier (ADT^A01, ADT^A40, ORM^O01, ORU^R01), the other versions are Pro.
 
 ### Changed
 - **Community plan limits are now enforced**: the free tier keeps up to **3 active validation/anonymization plugins** and **10 saved test cases**. Nothing is ever locked or deleted — test cases saved beyond the limit (e.g. during a trial) stay visible, editable and runnable; only *new* saves and plugin activations beyond the cap ask for an upgrade. Plugins over the limit show an explanatory badge in Settings → Plugins, and disabling one frees the slot immediately. Trial and Pro/Enterprise remain unlimited.
