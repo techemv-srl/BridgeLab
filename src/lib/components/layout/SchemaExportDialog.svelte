@@ -24,7 +24,9 @@
 			try {
 				versions = await listVersions();
 				if (versions.length > 0) {
-					selectedVersion = versions[0].key;
+					// Default to the free-tier version (2.5) so Community users
+					// don't land on a Pro-only catalogue.
+					selectedVersion = (versions.find((v) => v.tier === 'free') ?? versions[0]).key;
 					await reloadMessages();
 				}
 			} catch (e) {
@@ -118,7 +120,7 @@
 					<span>{tr('xsd.version')}</span>
 					<select bind:value={selectedVersion} onchange={onVersionChange}>
 						{#each versions as v (v.key)}
-							<option value={v.key}>HL7 v{v.label}</option>
+							<option value={v.key}>HL7 v{v.label}{v.tier === 'pro' ? ' (PRO)' : ''}</option>
 						{/each}
 					</select>
 				</label>
