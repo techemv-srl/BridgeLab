@@ -187,7 +187,7 @@ pub fn get_builtin_templates() -> Vec<MessageTemplate> {
   "type": "transaction",
   "entry": [
     {
-      "fullUrl": "urn:uuid:patient-1",
+      "fullUrl": "urn:uuid:61ebe359-bfdc-4613-8bf2-c5e300945f0a",
       "resource": {
         "resourceType": "Patient",
         "name": [{ "family": "Doe", "given": ["John"] }],
@@ -197,23 +197,23 @@ pub fn get_builtin_templates() -> Vec<MessageTemplate> {
       "request": { "method": "POST", "url": "Patient" }
     },
     {
-      "fullUrl": "urn:uuid:obs-1",
+      "fullUrl": "urn:uuid:3f2504e0-4f89-41d3-9a0c-0305e82c3301",
       "resource": {
         "resourceType": "Observation",
         "status": "final",
         "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4", "display": "Heart rate" }] },
-        "subject": { "reference": "urn:uuid:patient-1" },
+        "subject": { "reference": "urn:uuid:61ebe359-bfdc-4613-8bf2-c5e300945f0a" },
         "valueQuantity": { "value": 72, "unit": "beats/minute" }
       },
       "request": { "method": "POST", "url": "Observation" }
     },
     {
-      "fullUrl": "urn:uuid:obs-2",
+      "fullUrl": "urn:uuid:9c47a2c8-2d1e-4d8a-9f3b-6a1e5b2c7d90",
       "resource": {
         "resourceType": "Observation",
         "status": "final",
         "code": { "coding": [{ "system": "http://loinc.org", "code": "8310-5", "display": "Body temperature" }] },
-        "subject": { "reference": "urn:uuid:patient-1" },
+        "subject": { "reference": "urn:uuid:61ebe359-bfdc-4613-8bf2-c5e300945f0a" },
         "valueQuantity": { "value": 36.8, "unit": "Cel" }
       },
       "request": { "method": "POST", "url": "Observation" }
@@ -267,6 +267,29 @@ mod tests {
                 "Template {} must declare resourceType",
                 t.id
             );
+            // urn:uuid fullUrls must carry real RFC 4122 UUIDs — servers
+            // that validate URNs reject placeholders like urn:uuid:patient-1
+            if let Some(entries) = v.get("entry").and_then(|e| e.as_array()) {
+                for entry in entries {
+                    if let Some(full_url) = entry.get("fullUrl").and_then(|u| u.as_str()) {
+                        if let Some(uuid) = full_url.strip_prefix("urn:uuid:") {
+                            let parts: Vec<usize> =
+                                uuid.split('-').map(|p| p.len()).collect();
+                            assert_eq!(
+                                parts,
+                                vec![8, 4, 4, 4, 12],
+                                "Template {}: '{}' is not a valid UUID URN",
+                                t.id, full_url
+                            );
+                            assert!(
+                                uuid.chars().all(|c| c.is_ascii_hexdigit() || c == '-'),
+                                "Template {}: '{}' contains non-hex characters",
+                                t.id, full_url
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 
