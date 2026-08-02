@@ -1082,6 +1082,7 @@
 								t.label = `Inbox ${ts}`;
 							}
 						}}
+						onOpenGenerated={handleOpenGenerated}
 					/>
 				</div>
 			{/if}
