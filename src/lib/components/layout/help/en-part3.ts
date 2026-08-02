@@ -31,6 +31,9 @@ convention:</p>
 		<code>MESSAGE.GROUP</code> naming convention; HL7-defined choice
 		blocks (<code>OBR | RQD | RQ1 | RXO | ODS | ODT</code>) emitted
 		as <code>xsd:choice</code>.</li>
+	<li>Guaranteed to compile under strict schema processors — the few
+		HL7 structures whose definition violates XSD's Unique Particle
+		Attribution rule are emitted as an annotated relaxed choice.</li>
 </ul>
 
 <h3>Actions</h3>
@@ -42,6 +45,9 @@ convention:</p>
 </ul>
 
 <h3>Coverage and tiers</h3>
+<p>Seven HL7 versions ship complete: <strong>2.3, 2.3.1, 2.4, 2.5, 2.6,
+2.7 and 2.7.1</strong> — 1,964 message structures in total, selectable
+from the version dropdown.</p>
 <p>The free tier exports four high-use message types in HL7 v2.5 so the
 typical MLLP-debugging workflow is fully covered:</p>
 <ul>
@@ -103,6 +109,11 @@ view when the active message is a Bundle:</p>
 </ul>
 <p><strong>Dangling references</strong> (pointing to entries not present
 in the Bundle) are flagged with a red badge.</p>
+<p>The <strong>List / Graph</strong> toggle switches to a reference
+graph: every entry is a node (colored by resource type), every
+<code>reference</code> a directed arrow. Click a node to select it — the
+detail pane follows. Available up to 150 entries; larger bundles use the
+list.</p>
 
 <h3>FHIRPath Evaluator (Pro)</h3>
 <p><kbd>Ctrl</kbd>+<kbd>P</kbd> or <strong>Tools → FHIRPath Evaluator</strong>
@@ -125,7 +136,17 @@ against the current resource. Supported operators include:</p>
 <h3>FHIR validation</h3>
 <p>F6 also works for FHIR resources. Errors highlight missing required
 fields (e.g. <code>Patient.identifier</code>), invalid data types
-(gender not in the value set), and structural issues.</p>
+(gender not in the value set), and structural issues. Declared
+<code>meta.profile</code> canonical URLs are listed as info findings
+(profile conformance itself is not checked); malformed entries are
+flagged as warnings.</p>
+
+<h3>FHIR templates</h3>
+<p><strong>File → New from template</strong> includes a FHIR category: a
+minimal Patient, a blood-pressure Observation with components, and a
+transaction Bundle whose entries reference each other via
+<code>urn:uuid</code> — open it and try the Bundle visualizer's graph
+view.</p>
 `,
 };
 
@@ -209,6 +230,11 @@ choice is persisted), click <em>Reload</em> after editing a file, or
 <div class="note">Files that fail to parse appear with a red error
 banner but do not break the registry - the rest of your packs keep
 working.</div>
+
+<p class="note">On the Community tier up to <strong>3 packs</strong> are
+active at once: extra enabled packs show an "inactive" badge and don't
+contribute rules until a slot frees up (disable another pack, or
+upgrade).</p>
 `,
 };
 
@@ -248,6 +274,12 @@ hospitals.</p>
 	<tr><td>SOAP + priority support</td>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>
+
+<p class="note">Community keeps up to <strong>3 active plugin packs</strong>
+and <strong>10 saved test cases</strong>. Nothing is ever locked or
+deleted: items saved beyond the cap (e.g. during a trial) stay visible,
+editable and runnable — only new saves and activations beyond the limit
+ask for an upgrade, and freeing a slot re-enables them immediately.</p>
 
 <h3>Trial</h3>
 <p>First launch starts a <strong>7-day Pro trial</strong> with every Pro

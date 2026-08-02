@@ -61,7 +61,6 @@ pub fn run() {
             commands::parser::expand_all_fields,
             commands::parser::collapse_all_fields,
             commands::communication::mllp_send,
-            commands::communication::mllp_receive,
             commands::communication::mllp_listen_start,
             commands::communication::mllp_listen_stop,
             commands::communication::mllp_listen_status,
@@ -98,6 +97,7 @@ pub fn run() {
             commands::schema_export::hl7_schema_list_messages,
             commands::schema_export::hl7_schema_export_xsd,
             commands::batch::batch_validate,
+            commands::batch::batch_anonymize,
             commands::generator::generate_test_messages,
         ])
         .run(tauri::generate_context!())
