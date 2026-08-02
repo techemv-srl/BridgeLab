@@ -53,7 +53,7 @@ HL7 v2.xml:</p>
 
 <h3>Abdeckung und Stufen</h3>
 <p>Sieben HL7-Versionen sind vollständig enthalten: <strong>2.3,
-2.3.1, 2.4, 2.5, 2.6, 2.7 und 2.7.1</strong> — insgesamt 1.916
+2.3.1, 2.4, 2.5, 2.6, 2.7 und 2.7.1</strong> — insgesamt 1.964
 Nachrichtenstrukturen, wählbar über das Versions-Dropdown.</p>
 <p>Die kostenlose Stufe exportiert vier häufig genutzte
 Nachrichtentypen in HL7 v2.5, womit der typische

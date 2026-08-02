@@ -1,5 +1,5 @@
 import type { ManualSection } from '../helpContent';
-import { mockupValidation, mockupCommunication } from './mockups';
+import { mockupValidationEs as mockupValidation, mockupCommunicationEs as mockupCommunication } from './mockups';
 
 export const validationSection: ManualSection = {
 	id: 'validation',

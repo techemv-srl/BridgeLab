@@ -49,7 +49,7 @@ v2.xml :</p>
 
 <h3>Couverture et éditions</h3>
 <p>Sept versions HL7 sont livrées complètes : <strong>2.3, 2.3.1, 2.4,
-2.5, 2.6, 2.7 et 2.7.1</strong> — 1&nbsp;916 structures de message au
+2.5, 2.6, 2.7 et 2.7.1</strong> — 1&nbsp;964 structures de message au
 total, sélectionnables dans la liste déroulante des versions.</p>
 <p>L'édition gratuite exporte quatre types de message très utilisés en
 HL7 v2.5, couvrant entièrement le workflow typique de débogage MLLP :</p>

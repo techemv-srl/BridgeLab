@@ -46,7 +46,7 @@ convention:</p>
 
 <h3>Coverage and tiers</h3>
 <p>Seven HL7 versions ship complete: <strong>2.3, 2.3.1, 2.4, 2.5, 2.6,
-2.7 and 2.7.1</strong> — 1,916 message structures in total, selectable
+2.7 and 2.7.1</strong> — 1,964 message structures in total, selectable
 from the version dropdown.</p>
 <p>The free tier exports four high-use message types in HL7 v2.5 so the
 typical MLLP-debugging workflow is fully covered:</p>
