@@ -17,15 +17,38 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Hl7Version {
+    V2_3,
+    V2_3_1,
+    V2_4,
     V2_5,
+    V2_6,
+    V2_7,
+    V2_7_1,
 }
 
 impl Hl7Version {
     pub fn as_str(&self) -> &'static str {
         match self {
+            Hl7Version::V2_3 => "2.3",
+            Hl7Version::V2_3_1 => "2.3.1",
+            Hl7Version::V2_4 => "2.4",
             Hl7Version::V2_5 => "2.5",
+            Hl7Version::V2_6 => "2.6",
+            Hl7Version::V2_7 => "2.7",
+            Hl7Version::V2_7_1 => "2.7.1",
         }
     }
+
+    /// All shipped versions, oldest first.
+    pub const ALL: &'static [Hl7Version] = &[
+        Hl7Version::V2_3,
+        Hl7Version::V2_3_1,
+        Hl7Version::V2_4,
+        Hl7Version::V2_5,
+        Hl7Version::V2_6,
+        Hl7Version::V2_7,
+        Hl7Version::V2_7_1,
+    ];
 }
 
 /// Structural element inside a message definition. Supports both sequences
@@ -227,11 +250,23 @@ fn collect_segments(elements: &[MessageElement], out: &mut BTreeSet<String>) {
 /// These files are bootstrapped from `v2_5::schema()` via the `dump_v25`
 /// example binary; the importer tool in `tools/hl7-schema-importer/` will
 /// eventually take over production of these files (F2, F3).
+const V2_3_JSON: &str = include_str!("../../../../resources/hl7/v2_3.json");
+const V2_3_1_JSON: &str = include_str!("../../../../resources/hl7/v2_3_1.json");
+const V2_4_JSON: &str = include_str!("../../../../resources/hl7/v2_4.json");
 const V2_5_JSON: &str = include_str!("../../../../resources/hl7/v2_5.json");
+const V2_6_JSON: &str = include_str!("../../../../resources/hl7/v2_6.json");
+const V2_7_JSON: &str = include_str!("../../../../resources/hl7/v2_7.json");
+const V2_7_1_JSON: &str = include_str!("../../../../resources/hl7/v2_7_1.json");
 
 pub fn load(version: Hl7Version) -> Hl7Schema {
     let json = match version {
+        Hl7Version::V2_3 => V2_3_JSON,
+        Hl7Version::V2_3_1 => V2_3_1_JSON,
+        Hl7Version::V2_4 => V2_4_JSON,
         Hl7Version::V2_5 => V2_5_JSON,
+        Hl7Version::V2_6 => V2_6_JSON,
+        Hl7Version::V2_7 => V2_7_JSON,
+        Hl7Version::V2_7_1 => V2_7_1_JSON,
     };
     let hydrated: HydratedSchema = serde_json::from_str(json)
         .expect("shipped HL7 schema JSON is malformed — this is a build bug");
