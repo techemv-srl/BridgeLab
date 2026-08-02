@@ -83,6 +83,15 @@ ${mockupCommunication}
 		(AR) are all displayed with the original <code>MSA|AA|{control-id}</code>.</li>
 </ol>
 
+<h3>ACK generator</h3>
+<p>The <strong>ACK generator</strong> row in the MLLP tab builds an
+acknowledgment for the message currently in the editor: pick the code
+(AA accept, AE error, AR reject) and click <strong>Generate ACK</strong>.
+The Message Control ID is read from MSH-10 (honoring the field separator
+declared in MSH-1) and the resulting ACK opens in a new tab — ready to
+send back or to keep as a fixture. If the current message has no MSH-10
+the generator refuses instead of producing an uncorrelatable ACK.</p>
+
 <h3>MLLP listener (Pro)</h3>
 <p>Click <strong>Start listening</strong> to run a server on the selected
 port. Incoming messages open in a new tab (toggleable, see below) and an
@@ -179,6 +188,17 @@ ID, internal Z-segment fields) can extend the catalogue by dropping a
 JSON file under
 <code>&lt;config&gt;/BridgeLab/plugins/anonymization/</code>.</p>
 
+<h3>Batch anonymization (Pro)</h3>
+<p><strong>Tools → Batch anonymize…</strong> masks a whole folder in one
+pass: pick source files or a folder, pick an output folder, run. Every
+message goes through the same pipeline as the interactive dialog
+(built-in PHI catalogue + active plugin rules) and is written as a copy
+into the output folder — <strong>originals are never touched</strong>:
+the tool refuses to overwrite any selected source file, and same-named
+inputs from different folders get numeric suffixes instead of clobbering
+each other. One row per file reports the masked-PHI count or the error;
+the same 5000-file / 10&nbsp;MB caps as batch validation apply.</p>
+
 <h3>Export</h3>
 <p>Pro users can export the structured message as JSON or CSV via
 <strong>Tools → Export JSON / CSV</strong>. Useful for loading HL7 data
@@ -199,6 +219,10 @@ messages with a name, category, tags and description. Use
 <strong>Save Current Message</strong> to capture the active tab, or
 create cases from scratch. Cases persist in the local database and can
 be searched by any of their fields.</p>
+
+<p class="note">The Community tier keeps up to 10 saved test cases —
+existing cases always stay visible, editable and runnable; only new
+saves beyond the cap ask for an upgrade.</p>
 
 <h3>Expected outcomes</h3>
 <p>Each case can declare an <strong>expected message type</strong>
