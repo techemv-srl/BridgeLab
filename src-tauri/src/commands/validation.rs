@@ -30,8 +30,9 @@ pub fn validate_message(
 
     let mut report = validation::validate_hl7_message(&msg);
 
-    // Append plugin rules (if any are installed + enabled)
-    let plugin_rules = registry.active_validation_rules();
+    // Append plugin rules (if any are installed + enabled + within the cap)
+    let plugin_rules =
+        registry.active_validation_rules(crate::licensing::feature_gate::active_plugin_limit());
     if !plugin_rules.is_empty() {
         let extra = plugins::run_custom_validations(&msg, &plugin_rules);
         for issue in extra {

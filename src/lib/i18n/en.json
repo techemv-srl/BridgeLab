@@ -114,6 +114,7 @@
 	"plugins.parseError": "Parse error: {error}",
 	"plugins.enabled": "Enabled",
 	"plugins.disabled": "Disabled",
+	"plugins.gated": "Inactive — the Community tier allows up to 3 active plugins.",
 
 	"view.schemaFields": "Show Schema Fields",
 	"view.schemaFieldsHint": "Empty fields from standard",
@@ -358,6 +359,7 @@
 	"comm.bodyPlaceholder": "Custom body, or leave empty to use current tab message",
 
 	"tc.title": "Test Case Library",
+	"tc.limitTitle": "Test case limit reached",
 	"tc.search": "Search test cases...",
 	"tc.saveCurrent": "+ Save Current Message",
 	"tc.newCase": "+ New Test Case",

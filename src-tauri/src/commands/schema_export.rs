@@ -30,11 +30,15 @@ pub struct MessageOption {
 
 #[tauri::command]
 pub fn hl7_schema_list_versions() -> Vec<VersionOption> {
-    vec![VersionOption {
-        key: "V2_5".into(),
-        label: "2.5".into(),
-        tier: "free".into(),
-    }]
+    Hl7Version::ALL
+        .iter()
+        .map(|v| VersionOption {
+            key: version_key(*v).into(),
+            label: v.as_str().into(),
+            // v2.5 carries the free whitelist; every other version is Pro-only
+            tier: if *v == Hl7Version::V2_5 { "free" } else { "pro" }.into(),
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -80,11 +84,24 @@ pub fn hl7_schema_export_xsd(version_key: String, message_code: String) -> Resul
     schema::xsd::generate_xsd(&s, &message_code)
 }
 
-fn parse_version(key: &str) -> Result<Hl7Version, String> {
-    match key {
-        "V2_5" => Ok(Hl7Version::V2_5),
-        other => Err(format!("Unsupported HL7 version: {}", other)),
+fn version_key(v: Hl7Version) -> &'static str {
+    match v {
+        Hl7Version::V2_3 => "V2_3",
+        Hl7Version::V2_3_1 => "V2_3_1",
+        Hl7Version::V2_4 => "V2_4",
+        Hl7Version::V2_5 => "V2_5",
+        Hl7Version::V2_6 => "V2_6",
+        Hl7Version::V2_7 => "V2_7",
+        Hl7Version::V2_7_1 => "V2_7_1",
     }
+}
+
+fn parse_version(key: &str) -> Result<Hl7Version, String> {
+    Hl7Version::ALL
+        .iter()
+        .copied()
+        .find(|v| version_key(*v) == key)
+        .ok_or_else(|| format!("Unsupported HL7 version: {}", key))
 }
 
 fn tier_for(version: Hl7Version, message_code: &str) -> &'static str {
@@ -108,6 +125,30 @@ mod tests {
     #[test]
     fn unknown_message_is_pro() {
         assert_eq!(tier_for(Hl7Version::V2_5, "SIU_S12"), "pro");
+    }
+
+    #[test]
+    fn non_v25_versions_are_pro_even_for_whitelisted_codes() {
+        for v in Hl7Version::ALL {
+            if *v == Hl7Version::V2_5 { continue; }
+            assert_eq!(tier_for(*v, "ADT_A01"), "pro", "{:?} must be Pro-only", v);
+        }
+    }
+
+    #[test]
+    fn all_versions_round_trip_through_key() {
+        for v in Hl7Version::ALL {
+            assert_eq!(parse_version(version_key(*v)).unwrap(), *v);
+        }
+        assert!(parse_version("V9_9").is_err());
+    }
+
+    #[test]
+    fn list_versions_matches_shipped_catalogues() {
+        let versions = hl7_schema_list_versions();
+        assert_eq!(versions.len(), Hl7Version::ALL.len());
+        assert!(versions.iter().any(|v| v.label == "2.5" && v.tier == "free"));
+        assert!(versions.iter().filter(|v| v.tier == "pro").count() == versions.len() - 1);
     }
 
     /// Regression for PR #47 review: an unknown message code must return
