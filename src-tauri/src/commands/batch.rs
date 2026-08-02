@@ -154,7 +154,7 @@ pub async fn batch_validate(
 ) -> Result<BatchReport, String> {
     feature_gate::require("batch_validate")?;
 
-    let plugin_rules = registry.active_validation_rules();
+    let plugin_rules = registry.active_validation_rules(feature_gate::active_plugin_limit());
     let (files, skipped) = expand_paths(paths).await;
     let mut results = Vec::with_capacity(files.len());
     for f in &files {

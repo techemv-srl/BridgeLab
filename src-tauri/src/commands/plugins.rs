@@ -3,31 +3,47 @@ use std::path::PathBuf;
 
 use tauri::State;
 
+use crate::licensing::feature_gate;
 use crate::plugins::{PluginInfo, PluginRegistry, plugins_root};
 
 /// Return all installed plugin packs, including ones that failed to parse
 /// (those are surfaced with an `error` field set).
 #[tauri::command]
 pub fn list_plugins(registry: State<'_, PluginRegistry>) -> Result<Vec<PluginInfo>, String> {
-    Ok(registry.list())
+    Ok(registry.list(feature_gate::active_plugin_limit()))
 }
 
 /// Rescan the plugins directory and return the fresh list.
 #[tauri::command]
 pub fn reload_plugins(registry: State<'_, PluginRegistry>) -> Result<Vec<PluginInfo>, String> {
     registry.reload()?;
-    Ok(registry.list())
+    Ok(registry.list(feature_gate::active_plugin_limit()))
 }
 
 /// Persist / apply an override for a specific plugin id. The frontend is
 /// responsible for also writing the preference (`plugin_enabled:<id>`) so
 /// the override survives restarts.
+///
+/// Enabling a pack beyond the Community cap returns an UPGRADE_REQUIRED
+/// error; disabling is always allowed.
 #[tauri::command]
 pub fn set_plugin_enabled(
     id: String,
     enabled: bool,
     registry: State<'_, PluginRegistry>,
 ) -> Result<(), String> {
+    if enabled {
+        if let Some(max) = feature_gate::active_plugin_limit() {
+            let already_enabled = registry
+                .list(None)
+                .iter()
+                .filter(|p| p.enabled && p.id != id)
+                .count();
+            if already_enabled >= max {
+                feature_gate::require("plugins_unlimited")?;
+            }
+        }
+    }
     registry.set_override(&id, enabled);
     Ok(())
 }
