@@ -114,6 +114,7 @@
 	"plugins.parseError": "Errore di analisi: {error}",
 	"plugins.enabled": "Attivo",
 	"plugins.disabled": "Disattivo",
+	"plugins.gated": "Inattivo — il piano Community consente al massimo 3 plugin attivi.",
 
 	"view.schemaFields": "Mostra campi dello standard",
 	"view.schemaFieldsHint": "Campi vuoti dallo standard",
@@ -358,6 +359,7 @@
 	"comm.bodyPlaceholder": "Corpo personalizzato, o lascia vuoto per usare il messaggio del tab corrente",
 
 	"tc.title": "Libreria Test Case",
+	"tc.limitTitle": "Limite test case raggiunto",
 	"tc.search": "Cerca test case...",
 	"tc.saveCurrent": "+ Salva Messaggio Corrente",
 	"tc.newCase": "+ Nuovo Test Case",

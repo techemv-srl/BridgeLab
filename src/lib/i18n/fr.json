@@ -114,6 +114,7 @@
 	"plugins.parseError": "Erreur d'analyse : {error}",
 	"plugins.enabled": "Activé",
 	"plugins.disabled": "Désactivé",
+	"plugins.gated": "Inactif — l'édition Community autorise au maximum 3 plugins actifs.",
 
 	"view.schemaFields": "Afficher les champs du standard",
 	"view.schemaFieldsHint": "Champs vides du standard",
@@ -358,6 +359,7 @@
 	"comm.bodyPlaceholder": "Corps personnalisé, ou laissez vide pour utiliser le message de l'onglet actif",
 
 	"tc.title": "Bibliothèque de Cas de Test",
+	"tc.limitTitle": "Limite de cas de test atteinte",
 	"tc.search": "Rechercher des cas de test...",
 	"tc.saveCurrent": "+ Enregistrer le message actuel",
 	"tc.newCase": "+ Nouveau cas de test",

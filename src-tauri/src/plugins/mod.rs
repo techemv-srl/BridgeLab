@@ -122,6 +122,9 @@ pub struct PluginInfo {
     pub author: String,
     pub version: String,
     pub enabled: bool,
+    /// True when the pack is enabled but inactive because the Community cap
+    /// on active packs is exceeded (upgrade required to activate it).
+    pub gated: bool,
     pub kind: String, // "validation" | "anonymization"
     pub path: String,
     pub rule_count: usize,
@@ -258,19 +261,44 @@ impl PluginRegistry {
         pack.enabled
     }
 
-    pub fn list(&self) -> Vec<PluginInfo> {
+    /// Ids of the packs that actually contribute rules under the given cap:
+    /// the first `limit` enabled, error-free packs sorted by id (deterministic
+    /// regardless of filesystem scan order). `None` = no cap.
+    fn active_ids(&self, limit: Option<usize>) -> Vec<String> {
+        let guard = match self.plugins.read() { Ok(g) => g, Err(_) => return vec![] };
+        let mut ids: Vec<String> = guard
+            .iter()
+            .filter(|lp| lp.error.is_none() && self.is_enabled(&lp.pack))
+            .map(|lp| lp.pack.id.clone())
+            .collect();
+        ids.sort();
+        if let Some(max) = limit {
+            ids.truncate(max);
+        }
+        ids
+    }
+
+    /// Count of enabled, error-free packs (regardless of any cap).
+    pub fn enabled_count(&self) -> usize {
+        self.active_ids(None).len()
+    }
+
+    pub fn list(&self, limit: Option<usize>) -> Vec<PluginInfo> {
+        let active = self.active_ids(limit);
         let plugins = self.plugins.read().ok();
         let mut out = Vec::new();
         if let Some(p) = plugins {
             for lp in p.iter() {
                 let rule_count = lp.pack.validation_rules.len() + lp.pack.phi_rules.len();
+                let enabled = self.is_enabled(&lp.pack) && lp.error.is_none();
                 out.push(PluginInfo {
                     id: lp.pack.id.clone(),
                     name: lp.pack.name.clone(),
                     description: lp.pack.description.clone(),
                     author: lp.pack.author.clone(),
                     version: lp.pack.version.clone(),
-                    enabled: self.is_enabled(&lp.pack) && lp.error.is_none(),
+                    enabled,
+                    gated: enabled && !active.contains(&lp.pack.id),
                     kind: lp.kind.as_str().to_string(),
                     path: lp.path.display().to_string(),
                     rule_count,
@@ -283,27 +311,27 @@ impl PluginRegistry {
 
     pub fn plugins_root_path(&self) -> Option<PathBuf> { plugins_root() }
 
-    /// Collect enabled validation rules across all packs.
-    pub fn active_validation_rules(&self) -> Vec<ValidationRule> {
+    /// Collect validation rules from the packs active under the given cap.
+    pub fn active_validation_rules(&self, limit: Option<usize>) -> Vec<ValidationRule> {
+        let active = self.active_ids(limit);
         let guard = match self.plugins.read() { Ok(g) => g, Err(_) => return vec![] };
         let mut out = Vec::new();
         for lp in guard.iter() {
             if lp.kind != PluginKind::Validation { continue; }
-            if lp.error.is_some() { continue; }
-            if !self.is_enabled(&lp.pack) { continue; }
+            if !active.contains(&lp.pack.id) { continue; }
             out.extend(lp.pack.validation_rules.clone());
         }
         out
     }
 
-    /// Collect enabled PHI rules across all packs.
-    pub fn active_phi_rules(&self) -> Vec<PhiRule> {
+    /// Collect PHI rules from the packs active under the given cap.
+    pub fn active_phi_rules(&self, limit: Option<usize>) -> Vec<PhiRule> {
+        let active = self.active_ids(limit);
         let guard = match self.plugins.read() { Ok(g) => g, Err(_) => return vec![] };
         let mut out = Vec::new();
         for lp in guard.iter() {
             if lp.kind != PluginKind::Anonymization { continue; }
-            if lp.error.is_some() { continue; }
-            if !self.is_enabled(&lp.pack) { continue; }
+            if !active.contains(&lp.pack.id) { continue; }
             out.extend(lp.pack.phi_rules.clone());
         }
         out
@@ -499,5 +527,71 @@ mod tests {
             phi_rules: vec![],
         };
         assert!(!reg.is_enabled(&pack));
+    }
+
+    fn make_registry(ids: &[&str]) -> PluginRegistry {
+        let reg = PluginRegistry::new();
+        let loaded: Vec<LoadedPlugin> = ids.iter().map(|id| LoadedPlugin {
+            pack: PluginPack {
+                id: id.to_string(),
+                name: id.to_string(),
+                description: String::new(),
+                author: String::new(),
+                version: "1".into(),
+                enabled: true,
+                validation_rules: vec![ValidationRule {
+                    rule_id: format!("{id}-01"),
+                    severity: "error".into(),
+                    segment: "PID".into(),
+                    field: 3,
+                    component: None,
+                    check: CheckKind::NotEmpty,
+                    message: "x".into(),
+                }],
+                phi_rules: vec![],
+            },
+            kind: PluginKind::Validation,
+            path: PathBuf::from(format!("{id}.json")),
+            error: None,
+        }).collect();
+        *reg.plugins.write().unwrap() = loaded;
+        reg
+    }
+
+    #[test]
+    fn plugin_cap_limits_active_rules() {
+        let reg = make_registry(&["a", "b", "c", "d", "e"]);
+        assert_eq!(reg.active_validation_rules(None).len(), 5);
+        assert_eq!(reg.active_validation_rules(Some(3)).len(), 3);
+        // Deterministic: first 3 by id win
+        let rules = reg.active_validation_rules(Some(3));
+        let ids: Vec<&str> = rules.iter().map(|r| &r.rule_id[..1]).collect();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn plugin_cap_marks_excess_packs_gated() {
+        let reg = make_registry(&["a", "b", "c", "d"]);
+        let list = reg.list(Some(3));
+        let gated: Vec<&str> = list.iter().filter(|p| p.gated).map(|p| p.id.as_str()).collect();
+        assert_eq!(gated, vec!["d"]);
+        // All 4 still report enabled (user intent) — only "d" is inactive
+        assert!(list.iter().all(|p| p.enabled));
+    }
+
+    #[test]
+    fn disabling_a_pack_frees_a_cap_slot() {
+        let reg = make_registry(&["a", "b", "c", "d"]);
+        reg.set_override("a", false);
+        let list = reg.list(Some(3));
+        assert!(!list.iter().any(|p| p.gated), "d should now fit under the cap");
+        assert_eq!(reg.enabled_count(), 3);
+    }
+
+    #[test]
+    fn no_cap_without_limit() {
+        let reg = make_registry(&["a", "b", "c", "d", "e"]);
+        let list = reg.list(None);
+        assert!(!list.iter().any(|p| p.gated));
     }
 }

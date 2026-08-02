@@ -114,6 +114,7 @@
 	"plugins.parseError": "Error de análisis: {error}",
 	"plugins.enabled": "Activo",
 	"plugins.disabled": "Desactivo",
+	"plugins.gated": "Inactivo — el plan Community permite un máximo de 3 plugins activos.",
 
 	"view.schemaFields": "Mostrar campos del estándar",
 	"view.schemaFieldsHint": "Campos vacíos del estándar",
@@ -358,6 +359,7 @@
 	"comm.bodyPlaceholder": "Cuerpo personalizado, o déjalo vacío para usar el mensaje del tab actual",
 
 	"tc.title": "Biblioteca de Casos de Prueba",
+	"tc.limitTitle": "Límite de casos de prueba alcanzado",
 	"tc.search": "Buscar casos de prueba...",
 	"tc.saveCurrent": "+ Guardar Mensaje Actual",
 	"tc.newCase": "+ Nuevo Caso de Prueba",
