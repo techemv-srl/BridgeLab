@@ -140,6 +140,87 @@ pub fn get_builtin_templates() -> Vec<MessageTemplate> {
                 now = now, msg_id = msg_id
             ),
         },
+        MessageTemplate {
+            id: "fhir-patient".into(),
+            name: "FHIR Patient (JSON)".into(),
+            message_type: "FHIR".into(),
+            category: "FHIR".into(),
+            description: "Minimal Patient resource".into(),
+            content: r#"{
+  "resourceType": "Patient",
+  "id": "example",
+  "identifier": [{ "system": "urn:oid:2.16.840.1.113883.2.9.4.3.2", "value": "MRN001" }],
+  "name": [{ "family": "Doe", "given": ["John"] }],
+  "gender": "male",
+  "birthDate": "1980-01-01",
+  "address": [{ "line": ["123 Main St"], "city": "City", "postalCode": "12345" }]
+}"#.into(),
+        },
+        MessageTemplate {
+            id: "fhir-observation".into(),
+            name: "FHIR Observation - Blood Pressure (JSON)".into(),
+            message_type: "FHIR".into(),
+            category: "FHIR".into(),
+            description: "Vital-signs Observation with two components".into(),
+            content: r#"{
+  "resourceType": "Observation",
+  "id": "bp-example",
+  "status": "final",
+  "category": [{ "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "vital-signs" }] }],
+  "code": { "coding": [{ "system": "http://loinc.org", "code": "85354-9", "display": "Blood pressure panel" }] },
+  "subject": { "reference": "Patient/example" },
+  "effectiveDateTime": "2026-01-15T09:30:00Z",
+  "component": [
+    { "code": { "coding": [{ "system": "http://loinc.org", "code": "8480-6", "display": "Systolic" }] }, "valueQuantity": { "value": 120, "unit": "mmHg" } },
+    { "code": { "coding": [{ "system": "http://loinc.org", "code": "8462-4", "display": "Diastolic" }] }, "valueQuantity": { "value": 80, "unit": "mmHg" } }
+  ]
+}"#.into(),
+        },
+        MessageTemplate {
+            id: "fhir-bundle-transaction".into(),
+            name: "FHIR Bundle - Transaction (JSON)".into(),
+            message_type: "FHIR".into(),
+            category: "FHIR".into(),
+            description: "Transaction Bundle: Patient + two Observations referencing it (try the Bundle visualizer)".into(),
+            content: r#"{
+  "resourceType": "Bundle",
+  "type": "transaction",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:patient-1",
+      "resource": {
+        "resourceType": "Patient",
+        "name": [{ "family": "Doe", "given": ["John"] }],
+        "gender": "male",
+        "birthDate": "1980-01-01"
+      },
+      "request": { "method": "POST", "url": "Patient" }
+    },
+    {
+      "fullUrl": "urn:uuid:obs-1",
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4", "display": "Heart rate" }] },
+        "subject": { "reference": "urn:uuid:patient-1" },
+        "valueQuantity": { "value": 72, "unit": "beats/minute" }
+      },
+      "request": { "method": "POST", "url": "Observation" }
+    },
+    {
+      "fullUrl": "urn:uuid:obs-2",
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "8310-5", "display": "Body temperature" }] },
+        "subject": { "reference": "urn:uuid:patient-1" },
+        "valueQuantity": { "value": 36.8, "unit": "Cel" }
+      },
+      "request": { "method": "POST", "url": "Observation" }
+    }
+  ]
+}"#.into(),
+        },
     ]
 }
 
@@ -163,8 +244,29 @@ mod tests {
     #[test]
     fn test_all_templates_valid_msh() {
         for t in get_builtin_templates() {
+            if t.category == "FHIR" {
+                continue; // JSON resources, covered by test_fhir_templates_valid_json
+            }
             assert!(t.content.starts_with("MSH|"), "Template {} must start with MSH", t.id);
             assert!(t.content.contains('\r'), "Template {} must use CR line endings", t.id);
+        }
+    }
+
+    #[test]
+    fn test_fhir_templates_valid_json() {
+        let fhir: Vec<_> = get_builtin_templates()
+            .into_iter()
+            .filter(|t| t.category == "FHIR")
+            .collect();
+        assert!(fhir.len() >= 3, "expected the FHIR template set");
+        for t in fhir {
+            let v: serde_json::Value = serde_json::from_str(&t.content)
+                .unwrap_or_else(|e| panic!("Template {} is not valid JSON: {}", t.id, e));
+            assert!(
+                v.get("resourceType").and_then(|r| r.as_str()).is_some(),
+                "Template {} must declare resourceType",
+                t.id
+            );
         }
     }
 
