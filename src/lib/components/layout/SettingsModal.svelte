@@ -5,7 +5,7 @@
 		listPlugins, reloadPlugins, setPluginEnabled,
 		openPluginsFolder, getPluginsDir, type PluginInfo,
 	} from '$lib/ipc/plugins';
-	import { checkLicense, getHardwareId, deactivateLicense, getAvailableFeatures, type LicenseStatus } from '$lib/ipc/licensing';
+	import { checkLicense, getHardwareId, deactivateLicense, getAvailableFeatures, parseUpgradeError, type LicenseStatus } from '$lib/ipc/licensing';
 	import ShortcutsEditor from '$lib/components/layout/ShortcutsEditor.svelte';
 
 	let localeVersion = $state(0);
@@ -199,9 +199,11 @@
 		try {
 			await setPluginEnabled(p.id, nextEnabled);
 			await setPreference(`plugin_enabled:${p.id}`, String(nextEnabled));
-			p.enabled = nextEnabled;
+			// gated flags may shift when a slot frees up — refresh the list
+			plugins = await listPlugins();
 		} catch (e) {
-			pluginsError = String(e);
+			const up = parseUpgradeError(e);
+			pluginsError = up ? tr('upgrade.required', { tier: up.tier }) : String(e);
 		}
 	}
 
@@ -459,6 +461,9 @@
 							{#if p.error}
 								<div class="plugin-error">{tr('plugins.parseError', { error: p.error })}</div>
 							{/if}
+							{#if p.gated}
+								<div class="plugin-gated">{tr('plugins.gated')}</div>
+							{/if}
 						</div>
 						<label class="plugin-toggle">
 							<input
@@ -575,6 +580,7 @@
 	.plugin-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 10px; color: var(--color-text-secondary); }
 	.plugin-filepath { font-family: 'JetBrains Mono', monospace; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; }
 	.plugin-error { color: var(--color-error); font-size: 11px; margin-top: 4px; }
+	.plugin-gated { color: var(--color-warning); font-size: 11px; margin-top: 4px; }
 	.plugin-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; }
 
 	.license-info { display: grid; grid-template-columns: max-content 1fr; gap: 8px 14px; margin: 16px 0; font-size: 13px; }
