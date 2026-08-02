@@ -52,7 +52,7 @@ HL7 v2.xml:</p>
 
 <h3>Cobertura y niveles</h3>
 <p>Se incluyen completas siete versiones de HL7: <strong>2.3, 2.3.1,
-2.4, 2.5, 2.6, 2.7 y 2.7.1</strong> — 1.916 estructuras de mensaje en
+2.4, 2.5, 2.6, 2.7 y 2.7.1</strong> — 1.964 estructuras de mensaje en
 total, seleccionables desde el desplegable de versiones.</p>
 <p>El nivel gratuito exporta cuatro tipos de mensaje de alto uso en HL7
 v2.5, de modo que el flujo típico de depuración MLLP queda totalmente

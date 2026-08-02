@@ -1,5 +1,5 @@
 import type { ManualSection } from '../helpContent';
-import { mockupValidation, mockupCommunication } from './mockups';
+import { mockupValidationIt as mockupValidation, mockupCommunicationIt as mockupCommunication } from './mockups';
 
 export const itPart2: ManualSection[] = [
 {

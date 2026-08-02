@@ -48,7 +48,7 @@ vedi l'anteprima e salva con un clic.</p>
 
 <h3>Copertura e tier</h3>
 <p>Sette versioni HL7 sono incluse al completo: <strong>2.3, 2.3.1,
-2.4, 2.5, 2.6, 2.7 e 2.7.1</strong> — in totale 1.916 strutture di
+2.4, 2.5, 2.6, 2.7 e 2.7.1</strong> — in totale 1.964 strutture di
 messaggio, selezionabili dal dropdown delle versioni.</p>
 <p>Il tier free esporta quattro message type ad alto uso in HL7 v2.5,
 così il workflow tipico di debug MLLP è coperto:</p>
