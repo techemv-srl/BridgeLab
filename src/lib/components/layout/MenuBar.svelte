@@ -49,6 +49,7 @@
 		onExportXsd: () => void;
 		onCompareMessages: () => void;
 		onBatchValidate: () => void;
+		onBatchAnonymize: () => void;
 		onGenerateMessages: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
@@ -92,6 +93,7 @@
 		onExportXsd,
 		onCompareMessages,
 		onBatchValidate,
+		onBatchAnonymize,
 		onGenerateMessages,
 		onSetTheme,
 		onSetLanguage,
@@ -321,6 +323,9 @@
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onBatchValidate)}>
 					<span>{tr('menu.tools.batchValidate')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onBatchAnonymize)}>
+					<span>{tr('menu.tools.batchAnonymize')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onGenerateMessages)}>
 					<span>{tr('menu.tools.generate')}</span>
