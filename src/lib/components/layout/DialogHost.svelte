@@ -17,19 +17,21 @@
 	import type { TestCase } from '$lib/ipc/testcases';
 	import type { LicenseStatus } from '$lib/ipc/licensing';
 	import type { MessageTemplate } from '$lib/ipc/templates';
+	import pkg from '../../../../package.json';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
 	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
 	// Real app version for the About dialog (was hardcoded "0.1.0" and went
-	// stale). Falls back to the packaged version when the Tauri API is absent.
-	let appVersion = $state('');
+	// stale). Starts from the build-time package version so web/Vite builds
+	// still show it; the Tauri API overrides it with the installed version.
+	let appVersion = $state(pkg.version);
 	if (typeof window !== 'undefined') {
 		import('@tauri-apps/api/app')
 			.then(({ getVersion }) => getVersion())
 			.then((v) => { appVersion = v; })
-			.catch(() => { /* web mode: leave placeholder */ });
+			.catch(() => { /* web mode: keep the package version */ });
 	}
 
 	interface Props {
@@ -158,9 +160,7 @@
 
 				<div class="about-title">{tr('app.title')}</div>
 				<div class="about-subtitle">{tr('app.subtitle')}</div>
-				{#if appVersion}
-					<div class="about-version">{tr('about.version', { version: appVersion })}</div>
-				{/if}
+				<div class="about-version">{tr('about.version', { version: appVersion })}</div>
 				<p class="about-desc">{tr('about.description')}</p>
 				<p class="about-license">{tr('about.license')}</p>
 
