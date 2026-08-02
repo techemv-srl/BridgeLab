@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { /* onMount not used - resolves to server no-op */ } from 'svelte';
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
-	import { parseMessage, openFile, getFieldContent, getTreeChildren } from '$lib/ipc/parser';
-	import { getRecentFiles, addRecentFile, clearRecentFiles, getPreference, setPreference } from '$lib/ipc/database';
+	import { parseMessage } from '$lib/ipc/parser';
+	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { validateMessage, parseFhirMessage } from '$lib/ipc/validation';
 	import { getMessageFullText, getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
-	import type { RecentFile } from '$lib/ipc/database';
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
 	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
 	import { editorOptionsStore } from '$lib/stores/editor-options.svelte';
 	import { sessionStore } from '$lib/stores/session.svelte';
+	import { fileOpsStore } from '$lib/stores/file-ops.svelte';
 	import { shortcutStore, shortcutCapture, matchesKeys } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
@@ -67,7 +67,6 @@
 	let showTestCases = $state(false);
 	let showHelp = $state(false);
 	let licenseStatus = $state<LicenseStatus | null>(null);
-	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
 	let localeVersion = $state(0);
 
@@ -127,7 +126,7 @@
 				if (savedInspectorHeight) inspectorHeight = parseInt(savedInspectorHeight) || 260;
 				const savedRestore = await getPreference('restore_session');
 				if (savedRestore !== null) sessionStore.restoreEnabled = savedRestore !== 'false';
-				recentFiles = await getRecentFiles(20);
+				await fileOpsStore.refreshRecent();
 				await editorOptionsStore.loadFromPrefs();
 
 				// Apply plugin enable/disable overrides (stored as plugin_enabled:<id>)
@@ -220,109 +219,28 @@
 		document.documentElement.setAttribute('data-theme', t);
 	}
 
-	// --- File operations ---
+	// --- File operations (logic in fileOpsStore) ---
+
+	const suppressAutoParse = () => { skipNextAutoParse = true; };
 
 	async function handleOpenFile() {
-		try {
-			const { open } = await import('@tauri-apps/plugin-dialog');
-			const selected = await open({
-				multiple: false,
-				filters: [
-					{ name: 'HL7 Messages', extensions: ['hl7', 'txt', 'msg'] },
-					{ name: 'FHIR Resources', extensions: ['json', 'xml'] },
-					{ name: 'All Files', extensions: ['*'] },
-				],
-			});
-			if (selected) {
-				const path = typeof selected === 'string' ? selected : (selected as any).path ?? String(selected);
-				console.log('[BridgeLab] Opening file:', path);
-				const result = await openFile(path);
-				console.log('[BridgeLab] Parse result:', result.message_type, result.format, result.segment_count, 'segments');
-				skipNextAutoParse = true;
-				messageStore.openMessage(result, path, result.truncated_text);
-				// Track recent file
-				const filename = path.split('/').pop()?.split('\\').pop() ?? '';
-				try {
-					await addRecentFile(path, filename, result.message_type, result.version, result.file_size_bytes);
-					recentFiles = await getRecentFiles(20);
-				} catch {
-					// DB might not be available
-				}
-			}
-		} catch (e) {
-			console.error('[BridgeLab] Failed to open file:', e);
-			// Show error in a new tab so user sees something
-			const errMsg = String(e);
-			if (messageStore.activeTabId) {
-				messageStore.updateContent(messageStore.activeTabId, `Error opening file:\n${errMsg}`);
-			}
-		}
+		await fileOpsStore.openFromDialog(suppressAutoParse);
 	}
 
 	async function handleOpenRecentFile(path: string) {
-		try {
-			const result = await openFile(path);
-			skipNextAutoParse = true;
-			messageStore.openMessage(result, path, result.truncated_text);
-			const filename = path.split('/').pop()?.split('\\').pop() ?? '';
-			await addRecentFile(path, filename, result.message_type, result.version, result.file_size_bytes);
-			recentFiles = await getRecentFiles(20);
-		} catch (e) {
-			console.error('Failed to open recent file:', e);
-		}
+		await fileOpsStore.openPath(path, suppressAutoParse);
 	}
 
 	async function handleSave() {
-		if (!activeTab) return;
-		// If tab has no file path (Untitled / from paste/template), fall back to Save As
-		if (!activeTab.filePath) {
-			await handleSaveAs();
-			return;
-		}
-		try {
-			const { saveFile } = await import('$lib/ipc/parser');
-			await saveFile({
-				path: activeTab.filePath,
-				content: activeTab.content, // save current editor text, not the parsed store
-			});
-			messageStore.markSaved(activeTab.id);
-			console.log('[BridgeLab] Saved to:', activeTab.filePath);
-		} catch (e) {
-			console.error('Save failed:', e);
-			await dialogStore.error(t('dialog.saveFailed'), undefined, String(e));
-		}
+		await fileOpsStore.saveActive();
 	}
 
 	async function handleSaveAs() {
-		if (!activeTab) return;
-		try {
-			const { save } = await import('@tauri-apps/plugin-dialog');
-			const path = await save({
-				defaultPath: activeTab.filePath ?? activeTab.label,
-				filters: [
-					{ name: 'HL7 Messages', extensions: ['hl7'] },
-					{ name: 'All Files', extensions: ['*'] },
-				],
-			});
-			if (path) {
-				const { saveFile } = await import('$lib/ipc/parser');
-				await saveFile({ path, content: activeTab.content });
-				messageStore.markSaved(activeTab.id, path);
-				console.log('[BridgeLab] Saved as:', path);
-			}
-		} catch (e) {
-			console.error('Save As failed:', e);
-			await dialogStore.error(t('dialog.saveAsFailed'), undefined, String(e));
-		}
+		await fileOpsStore.saveActiveAs();
 	}
 
 	async function handleClearRecent() {
-		try {
-			await clearRecentFiles();
-			recentFiles = [];
-		} catch {
-			// ignore in web mode
-		}
+		await fileOpsStore.clearRecent();
 	}
 
 	// --- Tab operations ---
@@ -942,7 +860,7 @@
 
 	<!-- Menu Bar -->
 	<MenuBar
-		{recentFiles}
+		recentFiles={fileOpsStore.recentFiles}
 		{theme}
 		{showTree}
 		{showInspector}
@@ -1123,10 +1041,10 @@
 								</button>
 							</div>
 							<div class="welcome-paste-hint">{tr('welcome.pasteHint')}</div>
-							{#if recentFiles.length > 0}
+							{#if fileOpsStore.recentFiles.length > 0}
 								<div class="welcome-recent">
 									<div class="welcome-recent-title">{tr('menu.file.recent')}</div>
-									{#each recentFiles.slice(0, 6) as rf (rf.path)}
+									{#each fileOpsStore.recentFiles.slice(0, 6) as rf (rf.path)}
 										<button class="welcome-recent-item" onclick={() => handleOpenRecentFile(rf.path)} title={rf.path}>
 											{rf.path.split(/[\\/]/).pop()}
 											<span class="wr-path">{rf.path}</span>
