@@ -33,6 +33,10 @@ vedi l'anteprima e salva con un clic.</p>
 		convenzione <code>MESSAGGIO.GRUPPO</code>; blocchi di choice
 		HL7 (<code>OBR | RQD | RQ1 | RXO | ODS | ODT</code>) emessi
 		come <code>xsd:choice</code>.</li>
+	<li>Compilazione garantita con i processori di schema strict — le
+		poche strutture HL7 la cui definizione viola la regola Unique
+		Particle Attribution di XSD sono emesse come choice rilassata
+		annotata.</li>
 </ul>
 
 <h3>Azioni</h3>
@@ -43,6 +47,9 @@ vedi l'anteprima e salva con un clic.</p>
 </ul>
 
 <h3>Copertura e tier</h3>
+<p>Sette versioni HL7 sono incluse al completo: <strong>2.3, 2.3.1,
+2.4, 2.5, 2.6, 2.7 e 2.7.1</strong> — in totale 1.916 strutture di
+messaggio, selezionabili dal dropdown delle versioni.</p>
 <p>Il tier free esporta quattro message type ad alto uso in HL7 v2.5,
 così il workflow tipico di debug MLLP è coperto:</p>
 <ul>
@@ -105,6 +112,11 @@ vista a tre pannelli quando il messaggio attivo è un Bundle:</p>
 </ul>
 <p>Le <strong>referenze pendenti</strong> (che puntano a entry assenti
 nel Bundle) sono segnalate con un badge rosso.</p>
+<p>Il toggle <strong>Lista / Grafo</strong> passa a un grafo delle
+referenze: ogni entry è un nodo (colorato per tipo di risorsa), ogni
+<code>reference</code> una freccia orientata. Clicca un nodo per
+selezionarlo — il pannello di dettaglio segue la selezione. Disponibile
+fino a 150 entry; per i Bundle più grandi si usa la lista.</p>
 
 <h3>Valutatore FHIRPath (Pro)</h3>
 <p><kbd>Ctrl</kbd>+<kbd>P</kbd> o <strong>Strumenti → Valutatore
@@ -129,7 +141,17 @@ FHIRPath sulla risorsa corrente. Operatori supportati:</p>
 <p>F6 funziona anche per le risorse FHIR. Gli errori evidenziano campi
 obbligatori mancanti (es. <code>Patient.identifier</code>), tipi di
 dato non validi (gender fuori dal value set) e problemi
-strutturali.</p>
+strutturali. Gli URL canonici dichiarati in <code>meta.profile</code>
+vengono elencati come segnalazioni di tipo info (la conformità al
+profilo in sé non viene verificata); le voci malformate sono flaggate
+come avvisi.</p>
+
+<h3>Template FHIR</h3>
+<p><strong>File → Nuovo da Modello</strong> include una categoria FHIR:
+un Patient minimale, una Observation di pressione arteriosa con
+componenti e un Bundle transaction le cui entry si referenziano a
+vicenda tramite <code>urn:uuid</code> — aprilo e prova la vista a
+grafo del Visualizzatore Bundle.</p>
 `,
 },
 {
@@ -215,6 +237,11 @@ nel tuo IDE preferito.</p>
 <div class="note">I file che falliscono il parsing appaiono con un
 banner di errore rosso ma non rompono il registry - gli altri pack
 continuano a funzionare.</div>
+
+<p class="note">Nel tier Community sono attivi al massimo
+<strong>3 pack</strong> alla volta: i pack abilitati in eccesso
+mostrano un badge "inattivo" e non forniscono regole finché non si
+libera uno slot (disattiva un altro pack, oppure fai l'upgrade).</p>
 `,
 },
 {
@@ -253,6 +280,13 @@ team di integrazione e ospedali.</p>
 	<tr><td>SOAP + supporto prioritario</td>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>
+
+<p class="note">Community mantiene fino a <strong>3 plugin pack
+attivi</strong> e <strong>10 test case salvati</strong>. Nulla viene
+mai bloccato o cancellato: gli elementi salvati oltre il limite (es.
+durante un trial) restano visibili, modificabili ed eseguibili — solo
+i nuovi salvataggi e le nuove attivazioni oltre il limite chiedono
+l'upgrade, e liberare uno slot li riabilita immediatamente.</p>
 
 <h3>Trial</h3>
 <p>Al primo avvio parte un <strong>trial Pro di 7 giorni</strong> con
