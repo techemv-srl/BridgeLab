@@ -4,12 +4,16 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
 
 ## [0.6.0] — 2026-08-02
 
+### Added
+- **Six more HL7 versions in the XSD export**: complete catalogues for **v2.3, 2.3.1, 2.4, 2.6, 2.7 and 2.7.1** join the existing 2.5 — **1,916 message structures** across the seven supported versions, generated from the MIT-licensed hl7-dictionary with referential-integrity validation. Pick the version in the export dialog; v2.5 remains the free tier (ADT^A01, ADT^A40, ORM^O01, ORU^R01), the other versions are Pro.
+
 ### Changed
 - **Community plan limits are now enforced**: the free tier keeps up to **3 active validation/anonymization plugins** and **10 saved test cases**. Nothing is ever locked or deleted — test cases saved beyond the limit (e.g. during a trial) stay visible, editable and runnable; only *new* saves and plugin activations beyond the cap ask for an upgrade. Plugins over the limit show an explanatory badge in Settings → Plugins, and disabling one frees the slot immediately. Trial and Pro/Enterprise remain unlimited.
 
 ### Fixed
 - **Licensing tiers hardened**: a valid trial could in principle pass Enterprise-only feature gates (none are used by shipped features yet, so no practical impact); trials now get exactly the Pro feature set, matching the documented tiers. The whole tier matrix is covered by regression tests.
 - **About dialog version**: Help → About showed a hardcoded "Version 0.1.0" regardless of the installed release; it now displays the real application version.
+- **Exported XSDs now compile under strict schema processors**: a few HL7 structures repeat a segment across an optional-only window (e.g. DFT^P03's two ROL positions), which violates XSD's Unique Particle Attribution rule and made standard compilers reject the schema. Affected sequences are now emitted as an annotated unordered choice that accepts every valid message; group names containing `/` (v2.7) are sanitized to valid XML names. All 1,964 exportable schemas verified against a strict external compiler.
 
 ## [0.5.0] — 2026-07-31
 
