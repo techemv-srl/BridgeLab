@@ -22,6 +22,16 @@
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
 	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
+	// Real app version for the About dialog (was hardcoded "0.1.0" and went
+	// stale). Falls back to the packaged version when the Tauri API is absent.
+	let appVersion = $state('');
+	if (typeof window !== 'undefined') {
+		import('@tauri-apps/api/app')
+			.then(({ getVersion }) => getVersion())
+			.then((v) => { appVersion = v; })
+			.catch(() => { /* web mode: leave placeholder */ });
+	}
+
 	interface Props {
 		expandedFieldContent: string | null;
 		showAnonymize: boolean;
@@ -148,7 +158,9 @@
 
 				<div class="about-title">{tr('app.title')}</div>
 				<div class="about-subtitle">{tr('app.subtitle')}</div>
-				<div class="about-version">{tr('about.version', { version: '0.1.0' })}</div>
+				{#if appVersion}
+					<div class="about-version">{tr('about.version', { version: appVersion })}</div>
+				{/if}
 				<p class="about-desc">{tr('about.description')}</p>
 				<p class="about-license">{tr('about.license')}</p>
 
