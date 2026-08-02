@@ -2,6 +2,7 @@ use tauri::State;
 use uuid::Uuid;
 
 use crate::database::{Database, TestCase};
+use crate::licensing::feature_gate;
 
 #[tauri::command]
 pub fn save_test_case(
@@ -15,6 +16,19 @@ pub fn save_test_case(
     expected_validation_result: String,
     db: State<'_, Database>,
 ) -> Result<TestCase, String> {
+    // Community cap: block only NEW saves beyond the limit. Existing cases
+    // (even ones saved over the cap during a trial) stay editable/runnable.
+    if let Some(max) = feature_gate::test_case_limit() {
+        let existing = db.get_test_cases(None)?;
+        let is_update = id
+            .as_deref()
+            .map(|i| existing.iter().any(|tc| tc.id == i))
+            .unwrap_or(false);
+        if !is_update && existing.len() >= max {
+            feature_gate::require("test_cases_unlimited")?;
+        }
+    }
+
     let tc = TestCase {
         id: id.unwrap_or_else(|| Uuid::new_v4().to_string()),
         name, description, category, tags, content,

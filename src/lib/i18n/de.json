@@ -114,6 +114,7 @@
 	"plugins.parseError": "Analysefehler: {error}",
 	"plugins.enabled": "Aktiviert",
 	"plugins.disabled": "Deaktiviert",
+	"plugins.gated": "Inaktiv — die Community-Stufe erlaubt maximal 3 aktive Plugins.",
 
 	"view.schemaFields": "Standardfelder anzeigen",
 	"view.schemaFieldsHint": "Leere Felder aus dem Standard",
@@ -358,6 +359,7 @@
 	"comm.bodyPlaceholder": "Benutzerdefinierter Körper, oder leer lassen, um die Nachricht des aktuellen Tabs zu verwenden",
 
 	"tc.title": "Testfall-Bibliothek",
+	"tc.limitTitle": "Testfall-Limit erreicht",
 	"tc.search": "Testfälle suchen...",
 	"tc.saveCurrent": "+ Aktuelle Nachricht speichern",
 	"tc.newCase": "+ Neuer Testfall",

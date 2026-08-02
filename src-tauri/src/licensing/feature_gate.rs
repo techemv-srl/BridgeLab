@@ -23,8 +23,8 @@
 //! | export             | ✗         | ✓   | ✓          |
 //! | fhirpath           | ✗         | ✓   | ✓          |
 //! | bundle_visualizer  | ✗         | ✓   | ✓          |
-//! | plugins_unlimited  | ✗         | ✓   | ✓          |
-//! | test_cases_unlimited| ✗        | ✓   | ✓          |
+//! | plugins_unlimited  | ✗ (3)     | ✓   | ✓          |
+//! | test_cases_unlimited| ✗ (3)    | ✓   | ✓          |
 //! | xsd_export_community| ✓ (2)    | ✓   | ✓          |
 //! | xsd_export_full    | ✗         | ✓   | ✓          |
 //! | batch_validate     | ✗         | ✓   | ✓          |
@@ -35,6 +35,10 @@
 //! (2) `xsd_export_community` covers the 4 common messages (ADT^A01,
 //!     ADT^A40, ORM^O01, ORU^R01) in v2.5 only. All other messages or
 //!     versions require `xsd_export_full` (Pro).
+//! (3) Community keeps up to [`COMMUNITY_MAX_ACTIVE_PLUGINS`] plugin packs
+//!     active and [`COMMUNITY_MAX_TEST_CASES`] saved test cases. Existing
+//!     data is never locked or deleted when a trial ends — the caps only
+//!     block *new* activations/saves beyond the limit.
 
 use crate::licensing::{self, LicenseStatus, LicenseType};
 
@@ -70,6 +74,29 @@ const ENTERPRISE_FEATURES: &[&str] = &[
     "soap",
     "priority_support",
 ];
+
+/// Community cap on simultaneously active plugin packs.
+pub const COMMUNITY_MAX_ACTIVE_PLUGINS: usize = 3;
+/// Community cap on saved test cases.
+pub const COMMUNITY_MAX_TEST_CASES: usize = 10;
+
+/// Cap on active plugin packs for the current license, `None` = unlimited.
+pub fn active_plugin_limit() -> Option<usize> {
+    if require("plugins_unlimited").is_ok() {
+        None
+    } else {
+        Some(COMMUNITY_MAX_ACTIVE_PLUGINS)
+    }
+}
+
+/// Cap on saved test cases for the current license, `None` = unlimited.
+pub fn test_case_limit() -> Option<usize> {
+    if require("test_cases_unlimited").is_ok() {
+        None
+    } else {
+        Some(COMMUNITY_MAX_TEST_CASES)
+    }
+}
 
 /// Error returned when a feature is gated.
 #[derive(Debug)]
