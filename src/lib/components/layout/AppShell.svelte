@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { /* onMount not used - resolves to server no-op */ } from 'svelte';
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
-	import { parseMessage, openFile, getFieldContent, getTreeChildren } from '$lib/ipc/parser';
-	import { getRecentFiles, addRecentFile, clearRecentFiles, getPreference, setPreference } from '$lib/ipc/database';
+	import { parseMessage } from '$lib/ipc/parser';
+	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { validateMessage, parseFhirMessage } from '$lib/ipc/validation';
 	import { getMessageFullText, getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
-	import type { RecentFile } from '$lib/ipc/database';
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
 	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
+	import { editorOptionsStore } from '$lib/stores/editor-options.svelte';
+	import { sessionStore } from '$lib/stores/session.svelte';
+	import { fileOpsStore } from '$lib/stores/file-ops.svelte';
 	import { shortcutStore, shortcutCapture, matchesKeys } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
@@ -16,24 +18,15 @@
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
 	import FieldInspector from '$lib/components/tree/FieldInspector.svelte';
-	import HelpWindow from '$lib/components/layout/HelpWindow.svelte';
+	import WelcomeScreen from '$lib/components/layout/WelcomeScreen.svelte';
+	import DialogHost from '$lib/components/layout/DialogHost.svelte';
 	import EditorTabs from '$lib/components/editor/EditorTabs.svelte';
 	import MenuBar from '$lib/components/layout/MenuBar.svelte';
 	import StatusBar from '$lib/components/layout/StatusBar.svelte';
 	import ValidationPanel from '$lib/components/validation/ValidationPanel.svelte';
 	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
-	import AnonymizeDialog from '$lib/components/anonymization/AnonymizeDialog.svelte';
-	import SettingsModal from '$lib/components/layout/SettingsModal.svelte';
-	import SchemaExportDialog from '$lib/components/layout/SchemaExportDialog.svelte';
-	import CompareDialog from '$lib/components/diff/CompareDialog.svelte';
-	import BatchValidateDialog from '$lib/components/batch/BatchValidateDialog.svelte';
-	import GenerateDialog from '$lib/components/generator/GenerateDialog.svelte';
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
-	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
-	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
-	import BundleVisualizer from '$lib/components/bundle/BundleVisualizer.svelte';
 	import FhirPathPanel from '$lib/components/fhirpath/FhirPathPanel.svelte';
-	import TestCaseLibrary from '$lib/components/testcases/TestCaseLibrary.svelte';
 	import type { TestCase } from '$lib/ipc/testcases';
 	import { checkLicense, type LicenseStatus } from '$lib/ipc/licensing';
 	import type { MessageTemplate } from '$lib/ipc/templates';
@@ -65,7 +58,6 @@
 	let showTestCases = $state(false);
 	let showHelp = $state(false);
 	let licenseStatus = $state<LicenseStatus | null>(null);
-	let recentFiles = $state<RecentFile[]>([]);
 	let theme = $state('dark');
 	let localeVersion = $state(0);
 
@@ -97,43 +89,11 @@
 		lastValidatedTabId = id;
 	});
 
-	// Editor options loaded from preferences. Until v0.2.5 these prefs were
-	// saved by Settings but read by nobody — Monaco hardcoded everything.
-	let editorOptions = $state<import('$lib/components/editor/MonacoEditor.svelte').EditorOptions>({});
-
-	async function loadEditorOptions() {
-		try {
-			const [fs, ff, ww, mm, ln, ts, rw] = await Promise.all([
-				getPreference('editor_font_size'),
-				getPreference('editor_font_family'),
-				getPreference('editor_word_wrap'),
-				getPreference('editor_minimap'),
-				getPreference('editor_line_numbers'),
-				getPreference('editor_tab_size'),
-				getPreference('editor_render_whitespace'),
-			]);
-			editorOptions = {
-				...(fs && { fontSize: parseInt(fs) || 13 }),
-				...(ff && { fontFamily: ff }),
-				...(ww && { wordWrap: ww as 'on' | 'off' | 'wordWrapColumn' | 'bounded' }),
-				...(mm !== null && { minimap: mm !== 'false' }),
-				...(ln !== null && { lineNumbers: ln !== 'false' }),
-				...(ts && { tabSize: parseInt(ts) || 4 }),
-				...(rw && { renderWhitespace: rw as 'none' | 'boundary' | 'all' }),
-			};
-		} catch { /* web mode */ }
-	}
-
 	// Reactive references to the active tab
 	let activeTab = $derived(messageStore.activeTab);
 
 	// Initialize app (using $effect instead of onMount which is a server no-op)
 	let appInitialized = false;
-	let restoreSession = $state(true);
-	// Welcome screen must not render (and accept input) until the async
-	// startup — including session restore — has finished, or a tab created
-	// meanwhile would be clobbered by restoreSession().
-	let startupComplete = $state(false);
 	$effect(() => {
 		if (appInitialized || typeof window === 'undefined') return;
 		appInitialized = true;
@@ -156,9 +116,9 @@
 				const savedInspectorHeight = await getPreference('inspector_height');
 				if (savedInspectorHeight) inspectorHeight = parseInt(savedInspectorHeight) || 260;
 				const savedRestore = await getPreference('restore_session');
-				if (savedRestore !== null) restoreSession = savedRestore !== 'false';
-				recentFiles = await getRecentFiles(20);
-				await loadEditorOptions();
+				if (savedRestore !== null) sessionStore.restoreEnabled = savedRestore !== 'false';
+				await fileOpsStore.refreshRecent();
+				await editorOptionsStore.loadFromPrefs();
 
 				// Apply plugin enable/disable overrides (stored as plugin_enabled:<id>)
 				try {
@@ -177,20 +137,10 @@
 					}
 				} catch { /* web mode */ }
 
-				// Notepad++-style tab restore. Skip if the user already created
-				// a tab while startup I/O was in flight — restoreSession()
-				// replaces the whole tabs array and would discard their work.
-				if (restoreSession && messageStore.tabs.length === 0) {
-					const { loadSession } = await import('$lib/ipc/database');
-					const sessionTabs = await loadSession();
-					if (sessionTabs && sessionTabs.length > 0 && messageStore.tabs.length === 0) {
-						sessionRestored = messageStore.restoreSession(sessionTabs);
-						// Re-parse any HL7/FHIR content so tree + inspector populate
-						for (const tab of messageStore.tabs) {
-							void autoParse(tab.content);
-						}
-					}
-				}
+				// Notepad++-style tab restore (skip conditions live in the store)
+				sessionRestored = await sessionStore.restoreFromDisk((content) => {
+					void autoParse(content);
+				});
 			} catch {
 				// Running in web-only mode without Tauri backend
 			}
@@ -199,7 +149,7 @@
 			// renders (first-run onboarding). Any welcome action, paste, or
 			// the + button creates the first tab.
 			void sessionRestored;
-			startupComplete = true;
+			sessionStore.startupComplete = true;
 
 			try {
 				licenseStatus = await checkLicense();
@@ -211,10 +161,9 @@
 	});
 
 	// Session autosave: persist open tabs whenever they change, debounced.
-	let sessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
 		if (!appInitialized || typeof window === 'undefined') return;
-		if (!restoreSession) return;
+		if (!sessionStore.restoreEnabled) return;
 		// Track tabs + active id as dependencies
 		void messageStore.tabs;
 		void messageStore.activeTabId;
@@ -224,15 +173,7 @@
 			void t.filePath;
 			void t.isModified;
 		}
-		if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
-		sessionSaveTimer = setTimeout(async () => {
-			try {
-				const { saveSession } = await import('$lib/ipc/database');
-				await saveSession(messageStore.serializeSession());
-			} catch {
-				// web mode or backend unavailable - ignore
-			}
-		}, 800);
+		sessionStore.scheduleAutosave();
 	});
 
 	function handleTestCaseLoaded(tc: TestCase) {
@@ -269,109 +210,28 @@
 		document.documentElement.setAttribute('data-theme', t);
 	}
 
-	// --- File operations ---
+	// --- File operations (logic in fileOpsStore) ---
+
+	const suppressAutoParse = () => { skipNextAutoParse = true; };
 
 	async function handleOpenFile() {
-		try {
-			const { open } = await import('@tauri-apps/plugin-dialog');
-			const selected = await open({
-				multiple: false,
-				filters: [
-					{ name: 'HL7 Messages', extensions: ['hl7', 'txt', 'msg'] },
-					{ name: 'FHIR Resources', extensions: ['json', 'xml'] },
-					{ name: 'All Files', extensions: ['*'] },
-				],
-			});
-			if (selected) {
-				const path = typeof selected === 'string' ? selected : (selected as any).path ?? String(selected);
-				console.log('[BridgeLab] Opening file:', path);
-				const result = await openFile(path);
-				console.log('[BridgeLab] Parse result:', result.message_type, result.format, result.segment_count, 'segments');
-				skipNextAutoParse = true;
-				messageStore.openMessage(result, path, result.truncated_text);
-				// Track recent file
-				const filename = path.split('/').pop()?.split('\\').pop() ?? '';
-				try {
-					await addRecentFile(path, filename, result.message_type, result.version, result.file_size_bytes);
-					recentFiles = await getRecentFiles(20);
-				} catch {
-					// DB might not be available
-				}
-			}
-		} catch (e) {
-			console.error('[BridgeLab] Failed to open file:', e);
-			// Show error in a new tab so user sees something
-			const errMsg = String(e);
-			if (messageStore.activeTabId) {
-				messageStore.updateContent(messageStore.activeTabId, `Error opening file:\n${errMsg}`);
-			}
-		}
+		await fileOpsStore.openFromDialog(suppressAutoParse);
 	}
 
 	async function handleOpenRecentFile(path: string) {
-		try {
-			const result = await openFile(path);
-			skipNextAutoParse = true;
-			messageStore.openMessage(result, path, result.truncated_text);
-			const filename = path.split('/').pop()?.split('\\').pop() ?? '';
-			await addRecentFile(path, filename, result.message_type, result.version, result.file_size_bytes);
-			recentFiles = await getRecentFiles(20);
-		} catch (e) {
-			console.error('Failed to open recent file:', e);
-		}
+		await fileOpsStore.openPath(path, suppressAutoParse);
 	}
 
 	async function handleSave() {
-		if (!activeTab) return;
-		// If tab has no file path (Untitled / from paste/template), fall back to Save As
-		if (!activeTab.filePath) {
-			await handleSaveAs();
-			return;
-		}
-		try {
-			const { saveFile } = await import('$lib/ipc/parser');
-			await saveFile({
-				path: activeTab.filePath,
-				content: activeTab.content, // save current editor text, not the parsed store
-			});
-			messageStore.markSaved(activeTab.id);
-			console.log('[BridgeLab] Saved to:', activeTab.filePath);
-		} catch (e) {
-			console.error('Save failed:', e);
-			await dialogStore.error(t('dialog.saveFailed'), undefined, String(e));
-		}
+		await fileOpsStore.saveActive();
 	}
 
 	async function handleSaveAs() {
-		if (!activeTab) return;
-		try {
-			const { save } = await import('@tauri-apps/plugin-dialog');
-			const path = await save({
-				defaultPath: activeTab.filePath ?? activeTab.label,
-				filters: [
-					{ name: 'HL7 Messages', extensions: ['hl7'] },
-					{ name: 'All Files', extensions: ['*'] },
-				],
-			});
-			if (path) {
-				const { saveFile } = await import('$lib/ipc/parser');
-				await saveFile({ path, content: activeTab.content });
-				messageStore.markSaved(activeTab.id, path);
-				console.log('[BridgeLab] Saved as:', path);
-			}
-		} catch (e) {
-			console.error('Save As failed:', e);
-			await dialogStore.error(t('dialog.saveAsFailed'), undefined, String(e));
-		}
+		await fileOpsStore.saveActiveAs();
 	}
 
 	async function handleClearRecent() {
-		try {
-			await clearRecentFiles();
-			recentFiles = [];
-		} catch {
-			// ignore in web mode
-		}
+		await fileOpsStore.clearRecent();
 	}
 
 	// --- Tab operations ---
@@ -588,10 +448,6 @@
 		expandedFieldContent = content;
 	}
 
-	function closeExpandedField() {
-		expandedFieldContent = null;
-	}
-
 	/** Handle expand truncated: replace truncated text inline with full content.
 	 *  fieldPositionStr is the HL7 field position number determined by counting pipes. */
 	async function handleEditorExpandTruncated(lineNumber: number, fieldPositionStr: string) {
@@ -752,6 +608,27 @@
 		if (newTab) {
 			messageStore.updateContent(newTab.id, text);
 			newTab.label = 'Anonymized';
+		}
+	}
+
+	/** Open a generated message in a new tab, parse bound to THAT tab id —
+	 *  autoParse resolves the active tab after the IPC returns, and when
+	 *  opening many messages in a loop that would misattribute results to
+	 *  whichever tab ended up active. */
+	function handleOpenGenerated(content: string, label: string) {
+		messageStore.newTab();
+		const tab = messageStore.activeTab;
+		if (tab) {
+			const tabId = tab.id;
+			messageStore.updateContent(tabId, content);
+			tab.label = label;
+			void (async () => {
+				try {
+					const result = await parseMessage(content);
+					skipNextAutoParse = true;
+					messageStore.updateParseResult(tabId, result);
+				} catch { /* leave unparsed */ }
+			})();
 		}
 	}
 
@@ -991,7 +868,7 @@
 
 	<!-- Menu Bar -->
 	<MenuBar
-		{recentFiles}
+		recentFiles={fileOpsStore.recentFiles}
 		{theme}
 		{showTree}
 		{showInspector}
@@ -1134,7 +1011,7 @@
 						language={activeTab.parseResult?.format?.startsWith('FHIR JSON') ? 'json'
 							: activeTab.parseResult?.format?.startsWith('FHIR XML') ? 'xml'
 							: 'hl7v2'}
-						options={editorOptions}
+						options={editorOptionsStore.options}
 						onContentChange={handleContentChange}
 						onCursorChange={handleCursorChange}
 						onExpandTruncated={handleEditorExpandTruncated}
@@ -1145,46 +1022,15 @@
 						onCopyTruncatedMessage={handleCopyTruncated}
 						navigation={editorNavigation}
 					/>
-				{:else if startupComplete}
-					<div class="welcome">
-						<div class="welcome-card">
-							<div class="welcome-title">{tr('welcome.title')}</div>
-							<div class="welcome-subtitle">{tr('welcome.subtitle')}</div>
-							<div class="welcome-actions">
-								<button class="welcome-action" onclick={handleOpenFile}>
-									<span class="wa-label">{tr('welcome.open')}</span>
-									<kbd>{shortcutStore.get('file.open') || 'Ctrl+O'}</kbd>
-								</button>
-								<button class="welcome-action" onclick={() => { showTemplates = true; }}>
-									<span class="wa-label">{tr('welcome.template')}</span>
-									<kbd>{shortcutStore.get('file.newFromTemplate') || 'Ctrl+N'}</kbd>
-								</button>
-								<button class="welcome-action" onclick={() => { showTestCases = true; }}>
-									<span class="wa-label">{tr('welcome.testCases')}</span>
-									<kbd>{shortcutStore.get('file.testCases') || 'Ctrl+L'}</kbd>
-								</button>
-								<button class="welcome-action" onclick={() => { showHelp = true; }}>
-									<span class="wa-label">{tr('welcome.manual')}</span>
-									<kbd>F1</kbd>
-								</button>
-								<button class="welcome-action" onclick={handleNewTab}>
-									<span class="wa-label">{tr('welcome.blank')}</span>
-								</button>
-							</div>
-							<div class="welcome-paste-hint">{tr('welcome.pasteHint')}</div>
-							{#if recentFiles.length > 0}
-								<div class="welcome-recent">
-									<div class="welcome-recent-title">{tr('menu.file.recent')}</div>
-									{#each recentFiles.slice(0, 6) as rf (rf.path)}
-										<button class="welcome-recent-item" onclick={() => handleOpenRecentFile(rf.path)} title={rf.path}>
-											{rf.path.split(/[\\/]/).pop()}
-											<span class="wr-path">{rf.path}</span>
-										</button>
-									{/each}
-								</div>
-							{/if}
-						</div>
-					</div>
+				{:else if sessionStore.startupComplete}
+					<WelcomeScreen
+						onOpenFile={handleOpenFile}
+						onNewFromTemplate={() => { showTemplates = true; }}
+						onShowTestCases={() => { showTestCases = true; }}
+						onShowHelp={() => { showHelp = true; }}
+						onNewTab={handleNewTab}
+						onOpenRecentFile={handleOpenRecentFile}
+					/>
 				{/if}
 			</div>
 
@@ -1252,224 +1098,30 @@
 		</div>
 	</div>
 
-	<!-- Expanded field modal -->
-	{#if expandedFieldContent !== null}
-		<div class="modal-overlay" onclick={closeExpandedField} role="presentation">
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
-				<div class="modal-header">
-					<span>{tr('modal.fullContent')}</span>
-					<button class="modal-close" onclick={closeExpandedField}>&times;</button>
-				</div>
-				<div class="modal-body">
-					<pre>{expandedFieldContent}</pre>
-				</div>
-				<div class="modal-footer">
-					<button class="btn" onclick={() => { navigator.clipboard.writeText(expandedFieldContent!); }}>
-						{tr('modal.copy')}
-					</button>
-					<span class="modal-info">{tr('modal.characters', { count: expandedFieldContent.length.toLocaleString() })}</span>
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Anonymize dialog -->
-	{#if showAnonymize && activeTab?.parseResult}
-		<div class="modal-overlay" onclick={() => { showAnonymize = false; }} role="presentation">
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
-				<AnonymizeDialog
-					messageId={activeTab.parseResult.message_id}
-					onAnonymized={handleAnonymized}
-					onClose={() => { showAnonymize = false; }}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- About dialog -->
-	{#if showAbout}
-		<div class="modal-overlay" onclick={() => { showAbout = false; }} role="presentation">
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="modal modal-small" onclick={(e) => e.stopPropagation()} role="dialog">
-				<div class="modal-header">
-					<span>{tr('about.title')}</span>
-					<button class="modal-close" onclick={() => { showAbout = false; }}>&times;</button>
-				</div>
-				<div class="modal-body about-body">
-					<!-- Bridge logo -->
-					<div class="about-logo" aria-hidden="true">
-						<svg viewBox="0 0 120 50" width="120" height="50" fill="none" xmlns="http://www.w3.org/2000/svg">
-							<defs>
-								<linearGradient id="bridge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-									<stop offset="0%" stop-color="var(--color-accent, #89b4fa)"/>
-									<stop offset="100%" stop-color="var(--color-segment, #cba6f7)"/>
-								</linearGradient>
-							</defs>
-							<path d="M10 32c15-24 75-24 100 0" stroke="url(#bridge-grad)" stroke-width="3.5" stroke-linecap="round"/>
-							<line x1="28" y1="28" x2="28" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="48" y1="22" x2="48" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="72" y1="22" x2="72" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<line x1="92" y1="28" x2="92" y2="42" stroke="var(--color-accent, #89b4fa)" stroke-width="3" stroke-linecap="round"/>
-							<rect x="8" y="42" width="104" height="4" rx="2" fill="url(#bridge-grad)"/>
-						</svg>
-					</div>
-
-					<div class="about-title">{tr('app.title')}</div>
-					<div class="about-subtitle">{tr('app.subtitle')}</div>
-					<div class="about-version">{tr('about.version', { version: '0.1.0' })}</div>
-					<p class="about-desc">{tr('about.description')}</p>
-					<p class="about-license">{tr('about.license')}</p>
-
-					<div class="about-company">
-						<div class="about-company-name">TECHEMV SRL</div>
-						<div class="about-contact">
-							<a href="mailto:info@techemv.it">info@techemv.it</a>
-							<span class="about-sep">&middot;</span>
-							<a href="https://www.techemv.it" target="_blank" rel="noopener">www.techemv.it</a>
-						</div>
-					</div>
-
-					<p class="about-copyright">{tr('about.copyright', { year: new Date().getFullYear().toString() })}</p>
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	<!-- FHIR Bundle Visualizer modal -->
-	{#if showBundleVisualizer && activeTab?.parseResult}
-		<div class="modal-overlay" onclick={() => { showBundleVisualizer = false; }} role="presentation">
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="modal modal-xl" onclick={(e) => e.stopPropagation()} role="dialog">
-				<BundleVisualizer
-					messageId={activeTab.parseResult.message_id}
-					onClose={() => { showBundleVisualizer = false; }}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Test Case Library modal -->
-	{#if showTestCases}
-		<div class="modal-overlay" onclick={() => { showTestCases = false; }} role="presentation">
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="modal modal-xl" onclick={(e) => e.stopPropagation()} role="dialog">
-				<TestCaseLibrary
-					currentContent={activeTab?.content ?? ''}
-					currentLabel={activeTab?.label ?? ''}
-					onLoad={handleTestCaseLoaded}
-					onClose={() => { showTestCases = false; }}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Template selection modal -->
-	{#if showTemplates}
-		<div class="modal-overlay" onclick={() => { showTemplates = false; }} role="presentation">
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
-				<TemplateDialog
-					onSelect={handleTemplateSelected}
-					onClose={() => { showTemplates = false; }}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- License Activation modal -->
-	{#if showActivation && licenseStatus}
-		<div class="modal-overlay" onclick={() => { showActivation = false; }} role="presentation">
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
-				<ActivationDialog
-					currentStatus={licenseStatus}
-					onClose={() => { showActivation = false; }}
-					onStatusChange={(s) => { licenseStatus = s; }}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Settings modal -->
-	{#if showSettings}
-		<div class="modal-overlay" onclick={() => { showSettings = false; }} role="presentation">
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
-				<SettingsModal
-				initialSection={settingsSection}
-				onRestoreSessionChange={(enabled) => { restoreSession = enabled; }}
-				onEditorOptionsChange={() => { void loadEditorOptions(); }}
-					{theme}
-					onClose={() => { showSettings = false; }}
-					onThemeChange={handleSetTheme}
-					onShowActivation={() => { showSettings = false; showActivation = true; }}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Schema XSD export dialog -->
-	{#if showSchemaExport}
-		<SchemaExportDialog onClose={() => { showSchemaExport = false; }} />
-	{/if}
-
-	{#if showBatch}
-		<BatchValidateDialog
-			onClose={() => { showBatch = false; }}
-			onOpenFile={(path) => { showBatch = false; void handleOpenRecentFile(path); }}
-		/>
-	{/if}
-
-	{#if showGenerate}
-		<GenerateDialog
-			onClose={() => { showGenerate = false; }}
-			onOpenMessage={(content, label) => {
-				messageStore.newTab();
-				const tab = messageStore.activeTab;
-				if (tab) {
-					const tabId = tab.id;
-					messageStore.updateContent(tabId, content);
-					tab.label = label;
-					// Parse bound to THIS tab id — autoParse resolves the
-					// active tab after the IPC returns, and when opening many
-					// messages in a loop that would misattribute results to
-					// whichever tab ended up active.
-					void (async () => {
-						try {
-							const result = await parseMessage(content);
-							skipNextAutoParse = true;
-							messageStore.updateParseResult(tabId, result);
-						} catch { /* leave unparsed */ }
-					})();
-				}
-			}}
-		/>
-	{/if}
-
-	<!-- Compare messages (side-by-side diff of two open tabs) -->
-	{#if showCompare}
-		<CompareDialog
-			tabs={messageStore.tabs}
-			activeTabId={messageStore.activeTabId}
-			theme={theme === 'light' ? 'bridgelab-light' : 'bridgelab-dark'}
-			onClose={() => { showCompare = false; }}
-		/>
-	{/if}
-
-	<!-- In-app dialog (replaces native alert/confirm) -->
-	{#if showHelp}
-		<HelpWindow onClose={() => { showHelp = false; }} />
-	{/if}
+	<DialogHost
+		bind:expandedFieldContent
+		bind:showAnonymize
+		bind:showAbout
+		bind:showBundleVisualizer
+		bind:showTestCases
+		bind:showTemplates
+		bind:showActivation
+		bind:showSettings
+		bind:showSchemaExport
+		bind:showBatch
+		bind:showGenerate
+		bind:showCompare
+		bind:showHelp
+		bind:licenseStatus
+		{settingsSection}
+		{theme}
+		onTestCaseLoaded={handleTestCaseLoaded}
+		onTemplateSelected={handleTemplateSelected}
+		onAnonymized={handleAnonymized}
+		onSetTheme={handleSetTheme}
+		onOpenRecentFile={(path) => { void handleOpenRecentFile(path); }}
+		onOpenGenerated={handleOpenGenerated}
+	/>
 
 	<AppDialog />
 
@@ -1615,78 +1267,6 @@
 		color: var(--color-error);
 	}
 
-	.welcome {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		overflow-y: auto;
-		background: var(--color-bg-primary);
-	}
-
-	.welcome-card {
-		max-width: 460px;
-		width: 100%;
-		padding: 32px;
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-
-	.welcome-title { font-size: 22px; font-weight: 700; color: var(--color-text-primary); }
-	.welcome-subtitle { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 6px; }
-
-	.welcome-actions { display: flex; flex-direction: column; gap: 6px; }
-	.welcome-action {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 9px 14px;
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
-		background: var(--color-bg-secondary);
-		color: var(--color-text-primary);
-		font-size: 13px;
-		font-family: inherit;
-		cursor: pointer;
-		text-align: left;
-	}
-	.welcome-action:hover { background: var(--color-bg-tertiary); border-color: var(--color-accent); }
-	.welcome-action kbd {
-		padding: 1px 8px;
-		border: 1px solid var(--color-border);
-		border-bottom-width: 2px;
-		border-radius: 4px;
-		background: var(--color-bg-tertiary);
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 10px;
-		color: var(--color-text-secondary);
-	}
-
-	.welcome-paste-hint { font-size: 11px; color: var(--color-text-secondary); font-style: italic; text-align: center; }
-
-	.welcome-recent { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
-	.welcome-recent-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-secondary); margin-bottom: 4px; }
-	.welcome-recent-item {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 1px;
-		padding: 5px 10px;
-		border: none;
-		border-radius: 4px;
-		background: none;
-		color: var(--color-accent);
-		font-size: 12px;
-		font-family: inherit;
-		cursor: pointer;
-		text-align: left;
-		overflow: hidden;
-	}
-	.welcome-recent-item:hover { background: var(--color-bg-tertiary); }
-	.wr-path { font-size: 10px; color: var(--color-text-secondary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 	.panel-header {
 		display: flex;
 		justify-content: space-between;
@@ -1740,190 +1320,4 @@
 		background-color: var(--color-accent);
 	}
 
-	/* Buttons */
-	.btn {
-		padding: 4px 12px;
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		background-color: var(--color-bg-tertiary);
-		color: var(--color-text-primary);
-		cursor: pointer;
-		font-size: 12px;
-		font-family: inherit;
-		transition: background-color 0.15s;
-	}
-
-	.btn:hover {
-		background-color: var(--color-border);
-	}
-
-	/* Modal */
-	.modal-overlay {
-		position: fixed;
-		inset: 0;
-		background-color: rgba(0, 0, 0, 0.6);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 100;
-	}
-
-	.modal {
-		background-color: var(--color-bg-secondary);
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		width: 80%;
-		max-width: 900px;
-		max-height: 80vh;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.modal-small {
-		width: 400px;
-		max-width: 90%;
-	}
-
-	.modal-lg {
-		width: 700px;
-		max-width: 90%;
-	}
-
-	.modal-xl {
-		width: 1100px;
-		max-width: 95%;
-		height: 80vh;
-	}
-
-	.modal-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 12px 16px;
-		border-bottom: 1px solid var(--color-border);
-		font-weight: 600;
-	}
-
-	.modal-close {
-		background: none;
-		border: none;
-		color: var(--color-text-secondary);
-		cursor: pointer;
-		font-size: 20px;
-		line-height: 1;
-	}
-
-	.modal-body {
-		flex: 1;
-		overflow: auto;
-		padding: 16px;
-	}
-
-	.modal-body pre {
-		margin: 0;
-		white-space: pre-wrap;
-		word-break: break-all;
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 12px;
-		color: var(--color-text-primary);
-	}
-
-	.modal-footer {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 12px 16px;
-		border-top: 1px solid var(--color-border);
-	}
-
-	.modal-info {
-		font-size: 11px;
-		color: var(--color-text-secondary);
-	}
-
-	/* About dialog */
-	.about-body {
-		text-align: center;
-		padding: 24px 20px;
-	}
-
-	.about-logo {
-		margin-bottom: 16px;
-		display: flex;
-		justify-content: center;
-	}
-
-	.about-title {
-		font-size: 26px;
-		font-weight: 800;
-		color: var(--color-accent);
-		letter-spacing: -0.02em;
-	}
-
-	.about-subtitle {
-		font-size: 14px;
-		color: var(--color-text-secondary);
-		font-style: italic;
-		margin-bottom: 8px;
-	}
-
-	.about-version {
-		font-size: 12px;
-		color: var(--color-text-secondary);
-		margin-bottom: 16px;
-	}
-
-	.about-desc {
-		font-size: 13px;
-		color: var(--color-text-primary);
-		margin-bottom: 8px;
-	}
-
-	.about-license {
-		font-size: 11px;
-		color: var(--color-text-secondary);
-		margin-bottom: 16px;
-	}
-
-	.about-company {
-		padding: 12px 0;
-		border-top: 1px solid var(--color-border);
-		margin-top: 8px;
-	}
-
-	.about-company-name {
-		font-size: 13px;
-		font-weight: 700;
-		color: var(--color-text-primary);
-		margin-bottom: 4px;
-	}
-
-	.about-contact {
-		font-size: 12px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-	}
-
-	.about-contact a {
-		color: var(--color-accent);
-		text-decoration: none;
-	}
-
-	.about-contact a:hover {
-		text-decoration: underline;
-	}
-
-	.about-sep {
-		color: var(--color-text-secondary);
-		opacity: 0.5;
-	}
-
-	.about-copyright {
-		font-size: 10px;
-		color: var(--color-text-secondary);
-		margin-top: 12px;
-		opacity: 0.7;
-	}
 </style>
