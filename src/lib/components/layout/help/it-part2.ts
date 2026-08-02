@@ -92,6 +92,16 @@ ${mockupCommunication}
 		originale.</li>
 </ol>
 
+<h3>Generatore ACK</h3>
+<p>La riga <strong>Generatore ACK</strong> nel tab MLLP costruisce un
+acknowledgment per il messaggio attualmente nell'editor: scegli il
+codice (AA accept, AE error, AR reject) e clicca <strong>Genera
+ACK</strong>. Il Message Control ID viene letto da MSH-10 (rispettando
+il separatore di campo dichiarato in MSH-1) e l'ACK risultante si apre
+in un nuovo tab — pronto da rispedire o da conservare come fixture. Se
+il messaggio corrente non ha MSH-10 il generatore si rifiuta, invece di
+produrre un ACK non correlabile.</p>
+
 <h3>Listener MLLP (Pro)</h3>
 <p>Clicca <strong>Avvia ascolto</strong> per avviare un server sulla
 porta selezionata. I messaggi in arrivo si aprono in un nuovo tab
@@ -194,6 +204,19 @@ fiscale europeo, campi Z-segment interni) possono estendere il catalogo
 inserendo un file JSON sotto
 <code>&lt;config&gt;/BridgeLab/plugins/anonymization/</code>.</p>
 
+<h3>Anonimizzazione batch (Pro)</h3>
+<p><strong>Strumenti → Anonimizzazione batch…</strong> maschera
+un'intera cartella in un colpo solo: scegli i file sorgente o una
+cartella, scegli una cartella di output, esegui. Ogni messaggio passa
+per la stessa pipeline del dialog interattivo (catalogo PHI integrato +
+regole dei plugin attivi) e viene scritto come copia nella cartella di
+output — <strong>gli originali non vengono mai toccati</strong>: il
+tool si rifiuta di sovrascrivere qualsiasi file sorgente selezionato, e
+input con lo stesso nome provenienti da cartelle diverse ricevono
+suffissi numerici invece di sovrascriversi a vicenda. Una riga per file
+riporta il numero di PHI mascherati o l'errore; valgono gli stessi
+limiti della validazione batch (5000 file / 10&nbsp;MB).</p>
+
 <h3>Export</h3>
 <p>Gli utenti Pro possono esportare il messaggio strutturato come JSON
 o CSV da <strong>Strumenti → Esporta JSON / CSV</strong>. Utile per
@@ -214,6 +237,11 @@ messaggi riusabili con nome, categoria, tag e descrizione. Usa
 <strong>Salva messaggio corrente</strong> per catturare il tab attivo,
 oppure crea casi da zero. I casi persistono nel database locale e sono
 ricercabili su tutti i campi.</p>
+
+<p class="note">Il tier Community mantiene fino a 10 test case salvati
+— i casi esistenti restano sempre visibili, modificabili ed
+eseguibili; solo i nuovi salvataggi oltre il limite chiedono
+l'upgrade.</p>
 
 <h3>Esiti attesi</h3>
 <p>Ogni caso può dichiarare un <strong>tipo di messaggio atteso</strong>
