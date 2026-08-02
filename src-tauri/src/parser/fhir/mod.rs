@@ -324,6 +324,54 @@ pub fn validate_fhir_json(resource: &FhirResource) -> Vec<FhirValidationIssue> {
         });
     }
 
+    // meta.profile declarations: canonical URLs are surfaced (conformance
+    // against the profile itself is not checked — that needs the profile
+    // package), malformed entries are flagged.
+    if let Some(profiles) = json.get("meta").and_then(|m| m.get("profile")) {
+        match profiles.as_array() {
+            Some(list) => {
+                for (i, p) in list.iter().enumerate() {
+                    match p.as_str() {
+                        Some(url) if is_absolute_uri(url) => {
+                            issues.push(FhirValidationIssue {
+                                severity: "info".into(),
+                                message: format!(
+                                    "Declares profile {} (conformance not checked)",
+                                    url
+                                ),
+                                path: format!("meta.profile[{}]", i),
+                            });
+                        }
+                        Some(url) => {
+                            issues.push(FhirValidationIssue {
+                                severity: "warning".into(),
+                                message: format!(
+                                    "meta.profile entry '{}' is not an absolute canonical URI",
+                                    url
+                                ),
+                                path: format!("meta.profile[{}]", i),
+                            });
+                        }
+                        None => {
+                            issues.push(FhirValidationIssue {
+                                severity: "warning".into(),
+                                message: "meta.profile entries must be strings".into(),
+                                path: format!("meta.profile[{}]", i),
+                            });
+                        }
+                    }
+                }
+            }
+            None => {
+                issues.push(FhirValidationIssue {
+                    severity: "warning".into(),
+                    message: "meta.profile must be an array of canonical URLs".into(),
+                    path: "meta.profile".into(),
+                });
+            }
+        }
+    }
+
     // Resource-type-specific validations
     match resource.resource_type.as_str() {
         "Patient" => validate_patient(json, &mut issues),
@@ -333,6 +381,20 @@ pub fn validate_fhir_json(resource: &FhirResource) -> Vec<FhirValidationIssue> {
     }
 
     issues
+}
+
+/// FHIR `canonical` is URI-based, not HTTP-only: `urn:oid:...`, `urn:uuid:...`
+/// and other absolute URIs are all valid profile declarations. Accept any
+/// `scheme:rest` with an RFC 3986 scheme and a non-empty, whitespace-free
+/// remainder; reject relative references.
+fn is_absolute_uri(s: &str) -> bool {
+    let Some((scheme, rest)) = s.split_once(':') else {
+        return false;
+    };
+    let scheme_ok = !scheme.is_empty()
+        && scheme.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false)
+        && scheme.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.');
+    scheme_ok && !rest.is_empty() && !s.chars().any(|c| c.is_whitespace())
 }
 
 fn validate_patient(json: &Value, issues: &mut Vec<FhirValidationIssue>) {
@@ -467,5 +529,34 @@ mod tests {
         assert_eq!(children.len(), 1); // One array element
         let grandchildren = get_fhir_children(&resource, "fhir.name.0");
         assert_eq!(grandchildren.len(), 2); // family, given
+    }
+
+    #[test]
+    fn test_meta_profile_surfaced_and_linted() {
+        let json = r#"{"resourceType": "Patient", "id": "x", "name": [{"family": "D"}],
+            "meta": {"profile": ["http://hl7.org/fhir/StructureDefinition/Patient",
+                                 "urn:oid:2.16.840.1.113883.2.9.10.1.1",
+                                 "not-a-url"]}}"#;
+        let resource = parse_fhir_json(json).unwrap();
+        let issues = validate_fhir_json(&resource);
+        assert!(issues.iter().any(|i| i.path == "meta.profile[0]"
+            && i.severity == "info"
+            && i.message.contains("Declares profile")));
+        // canonical is URI-based, not HTTP-only: urn: schemes are valid
+        assert!(issues.iter().any(|i| i.path == "meta.profile[1]"
+            && i.severity == "info"
+            && i.message.contains("Declares profile")));
+        assert!(issues.iter().any(|i| i.path == "meta.profile[2]"
+            && i.severity == "warning"
+            && i.message.contains("not an absolute canonical URI")));
+    }
+
+    #[test]
+    fn test_meta_profile_must_be_array() {
+        let json = r#"{"resourceType": "Patient", "id": "x", "name": [{"family": "D"}],
+            "meta": {"profile": "http://example.org/p"}}"#;
+        let resource = parse_fhir_json(json).unwrap();
+        let issues = validate_fhir_json(&resource);
+        assert!(issues.iter().any(|i| i.path == "meta.profile" && i.severity == "warning"));
     }
 }
