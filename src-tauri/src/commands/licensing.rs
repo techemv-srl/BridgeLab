@@ -14,6 +14,11 @@ pub fn activate_license(
     licensee: String,
     email: String,
 ) -> Result<LicenseStatus, String> {
+    // licensee/email feed only the debug-only simple-key fallback below;
+    // keep release builds warning-free.
+    #[cfg(not(debug_assertions))]
+    let _ = (&licensee, &email);
+
     // Try Base64-encoded signed license
     match licensing::activate_from_key(&key) {
         Ok(_) => return Ok(licensing::check_license_status()),

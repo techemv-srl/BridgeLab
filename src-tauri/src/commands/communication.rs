@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use tauri::State;
 
 use crate::communication::http_client::{self, HttpMethod, HttpResult};
-use crate::communication::mllp::{self, MllpSendResult, MllpReceivedMessage};
+use crate::communication::mllp::{self, MllpSendResult};
 use crate::communication::mllp_listener::{ListenerConfig, ListenerState, ListenerStatus};
 use crate::communication::profiles::{ConnectionProfile, HistoryEntry};
 use crate::database::Database;
@@ -69,25 +69,14 @@ pub async fn mllp_send(
     Ok(result)
 }
 
-#[tauri::command]
-pub async fn mllp_receive(
-    port: u16,
-    timeout_secs: Option<u64>,
-    auto_ack: Option<bool>,
-) -> Result<MllpReceivedMessage, String> {
-    feature_gate::require("mllp_listen")?;
-
-    let timeout = timeout_secs.unwrap_or(60);
-    let ack = auto_ack.unwrap_or(true);
-    mllp::receive_one(port, timeout, ack).await
-}
-
 // --- Persistent MLLP listener (start / stop / status) -------------------------
 //
-// `mllp_receive` above is single-shot: bind, accept one, return. The persistent
-// listener below keeps accepting connections and emits a Tauri event
+// The listener keeps accepting connections and emits a Tauri event
 // (`mllp:received`) for each incoming message until the user calls stop. This
 // is what the Communication panel's Listen / Stop button drives.
+// (The old single-shot `mllp_receive` IPC command was removed in 0.7.0 — it
+// was never reachable from the UI once the persistent listener shipped. The
+// underlying `mllp::receive_one` stays as a tested library primitive.)
 
 #[tauri::command]
 pub async fn mllp_listen_start(
