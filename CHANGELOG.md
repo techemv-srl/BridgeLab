@@ -2,6 +2,15 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [0.6.0] — 2026-08-02
+
+### Changed
+- **Community plan limits are now enforced**: the free tier keeps up to **3 active validation/anonymization plugins** and **10 saved test cases**. Nothing is ever locked or deleted — test cases saved beyond the limit (e.g. during a trial) stay visible, editable and runnable; only *new* saves and plugin activations beyond the cap ask for an upgrade. Plugins over the limit show an explanatory badge in Settings → Plugins, and disabling one frees the slot immediately. Trial and Pro/Enterprise remain unlimited.
+
+### Fixed
+- **Licensing tiers hardened**: a valid trial could in principle pass Enterprise-only feature gates (none are used by shipped features yet, so no practical impact); trials now get exactly the Pro feature set, matching the documented tiers. The whole tier matrix is covered by regression tests.
+- **About dialog version**: Help → About showed a hardcoded "Version 0.1.0" regardless of the installed release; it now displays the real application version.
+
 ## [0.5.0] — 2026-07-31
 
 ### Added
