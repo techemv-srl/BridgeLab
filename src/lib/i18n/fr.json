@@ -62,6 +62,9 @@
 	"menu.help.updates": "Vérifier les mises à jour",
 
 	"tree.header": "Structure du message",
+	"panel.validation": "Validation",
+	"panel.communication": "Communication",
+	"panel.fhirpath": "FHIRPath",
 	"tree.expectedRequired": "obligatoire",
 	"tree.expectedOptional": "optionnel",
 	"tree.expectedRepeating": "répétable",
