@@ -82,6 +82,7 @@
 
 	"ctx.showInTree": "Mostra Segmento nel Tree",
 	"ctx.showInEditor": "Mostra nell'Editor",
+	"ctx.insertSegment": "Inserisci segmento {code}",
 
 	"inspector.title": "Ispettore Campo",
 	"inspector.noSelection": "Seleziona un nodo nel tree per ispezionarlo",
