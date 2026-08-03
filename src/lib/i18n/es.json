@@ -267,7 +267,7 @@
 	"welcome.card.listener": "Listener MLLP",
 	"welcome.card.listenerDesc": "Recibe tráfico en vivo con consola, auto-ACK e inspección por mensaje.",
 	"welcome.card.xsd": "Exportación XSD",
-	"welcome.card.xsdDesc": "Genera esquemas para 7 versiones HL7 — 1.964 estructuras de mensaje.",
+	"welcome.card.xsdDesc": "Esquemas para 7 versiones HL7 — 4 mensajes v2.5 comunes gratis, catálogo completo (1.964 estructuras) con Pro.",
 	"editor.initFailed": "No se pudo cargar el editor.",
 	"editor.retry": "Reintentar",
 	"tmpl.none": "No hay plantillas disponibles",
