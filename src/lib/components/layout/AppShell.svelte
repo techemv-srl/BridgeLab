@@ -258,8 +258,83 @@
 		}
 	}
 
-	function handleCheckUpdates() {
-		window.open('https://github.com/techemv-srl/BridgeLab/releases', '_blank');
+	/** Open a URL in the OS browser (window.open is a no-op in the webview). */
+	async function openExternal(url: string) {
+		try {
+			const { openUrl } = await import('@tauri-apps/plugin-opener');
+			await openUrl(url);
+		} catch {
+			window.open(url, '_blank'); // web mode
+		}
+	}
+
+	/** True when semver `a` is newer than `b` (numeric per-part compare). */
+	function isNewerVersion(a: string, b: string): boolean {
+		const pa = a.split('.').map((n) => parseInt(n) || 0);
+		const pb = b.split('.').map((n) => parseInt(n) || 0);
+		for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+			const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+			if (d !== 0) return d > 0;
+		}
+		return false;
+	}
+
+	/**
+	 * Help → Check for updates. Preferred path: the Tauri updater (signed
+	 * artifacts + latest.json) with in-app download and relaunch. Until
+	 * artifact signing is configured on the release pipeline, that check
+	 * errors out and we fall back to the GitHub releases API: compare
+	 * versions and take the user to the release page to download.
+	 */
+	async function handleCheckUpdates() {
+		let current = '';
+		try {
+			const { getVersion } = await import('@tauri-apps/api/app');
+			current = await getVersion();
+		} catch { /* web mode */ }
+
+		try {
+			const { check } = await import('@tauri-apps/plugin-updater');
+			const update = await check();
+			if (update) {
+				const go = await dialogStore.confirm(
+					t('update.available', { version: update.version, current }),
+					t('update.title'),
+				);
+				if (go) {
+					await update.downloadAndInstall();
+					const restart = await dialogStore.confirm(t('update.restart'), t('update.title'));
+					if (restart) {
+						const { relaunch } = await import('@tauri-apps/plugin-process');
+						await relaunch();
+					}
+				}
+			} else {
+				await dialogStore.info(t('update.upToDate', { current }), t('update.title'));
+			}
+			return;
+		} catch {
+			// Updater unavailable (unsigned artifacts) — GitHub fallback below.
+		}
+
+		try {
+			const res = await fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest');
+			if (!res.ok) throw new Error(`GitHub API: HTTP ${res.status}`);
+			const rel = await res.json();
+			const latest = String(rel.tag_name ?? '').replace(/^v/, '');
+			if (!latest) throw new Error('No release tag found');
+			if (current && isNewerVersion(latest, current)) {
+				const go = await dialogStore.confirm(
+					t('update.available', { version: latest, current }),
+					t('update.title'),
+				);
+				if (go) await openExternal(rel.html_url ?? 'https://github.com/techemv-srl/BridgeLab/releases');
+			} else {
+				await dialogStore.info(t('update.upToDate', { current: current || latest }), t('update.title'));
+			}
+		} catch (e) {
+			await dialogStore.error(t('update.checkFailed'), t('update.title'), String(e));
+		}
 	}
 
 	function applyTheme(t: string) {
