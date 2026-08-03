@@ -140,6 +140,7 @@
 	"dialog.confirmTitle": "Bestätigen",
 	"dialog.noMessageToValidate": "Keine Nachricht zum Validieren.",
 	"dialog.saveFailed": "Speichern fehlgeschlagen",
+	"dialog.openFailed": "Datei konnte nicht geöffnet werden",
 	"dialog.saveAsFailed": "Speichern unter fehlgeschlagen",
 	"dialog.deleteConfirm": "Testfall \"{name}\" löschen?",
 	"dialog.resetShortcuts": "Alle Tastenkombinationen auf Standard zurücksetzen?",
