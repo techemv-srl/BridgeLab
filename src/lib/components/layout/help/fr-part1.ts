@@ -48,6 +48,11 @@ ${mockupAppShell}
 Pro de 7 jours</strong> avec toutes les fonctionnalités activées. À
 l'expiration, BridgeLab continue de fonctionner avec les fonctionnalités
 Community - vous ne perdez jamais vos messages.</div>
+
+<p>Les cartes <strong>Découvrir BridgeLab</strong> de l'écran d'accueil
+ouvrent directement les fonctions qui distinguent BridgeLab — générateur de
+messages de test, anonymisation PHI, écouteur MLLP et export XSD — avec des
+badges PRO pour celles sous licence.</p>
 `,
 };
 
@@ -180,5 +185,16 @@ dans l'éditeur (elles n'ont pas encore de position physique).</p>
 les redimensionner ; faites glisser le séparateur horizontal au-dessus de
 l'Inspecteur de champ pour modifier sa hauteur. Les deux dimensions sont
 conservées d'un redémarrage à l'autre.</p>
+
+<h3>Structure standard complète</h3>
+<p>Avec <strong>Affichage → Afficher les champs du standard</strong> activé,
+l'arbre montre aussi les segments que le standard définit pour le type de
+message mais absents du message — lignes grisées à leur position standard,
+annotées avec le groupe, la cardinalité et le statut de choix. Développez-les
+pour parcourir la liste complète des champs jusqu'aux composants des types
+composés (ex. OBX-16 → composants XCN). <strong>Clic droit sur un segment
+grisé → Insérer le segment</strong> pour ajouter son squelette au message à
+la position standard, avec les séparateurs jusqu'au dernier champ
+obligatoire.</p>
 `,
 };
