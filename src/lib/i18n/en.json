@@ -140,6 +140,7 @@
 	"dialog.confirmTitle": "Confirm",
 	"dialog.noMessageToValidate": "No message to validate.",
 	"dialog.saveFailed": "Save failed",
+	"dialog.openFailed": "Could not open the file",
 	"dialog.saveAsFailed": "Save As failed",
 	"dialog.deleteConfirm": "Delete test case \"{name}\"?",
 	"dialog.resetShortcuts": "Reset all shortcuts to defaults?",
