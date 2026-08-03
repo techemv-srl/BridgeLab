@@ -2,6 +2,15 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [1.2.0] — 2026-08-03
+
+### Added
+- **Insert missing segments from the structure tree**. In the full standard-structure view, right-click a grayed expected-segment row → *Insert segment*: the segment's skeleton is added to the message at its standard position, with separators up to its last required field, and the message re-parses immediately.
+- **Discover BridgeLab cards** on the welcome screen: four compact cards open the distinguishing features directly — test-message generator, anonymization, MLLP listener, XSD export — with PRO badges on the licensed ones.
+
+### Fixed
+- **Help → Check for updates now works**. It compares the installed version with the latest release and, with your confirmation, takes you to the download (in-app download and restart will activate automatically once release signing is enabled). The old menu entry silently did nothing — external links never opened from inside the app, which also silenced the trial banner's "Compare plans" link; both open in your browser now.
+
 ## [1.1.0] — 2026-08-03
 
 ### Added

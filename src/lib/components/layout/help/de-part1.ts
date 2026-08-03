@@ -50,6 +50,11 @@ ${mockupAppShell}
 Pro-Testversion</strong> mit allen freigeschalteten Funktionen. Nach
 Ablauf arbeitet BridgeLab mit dem Community-Funktionsumfang weiter -
 Ihre Nachrichten gehen nie verloren.</div>
+
+<p>Die Karten <strong>BridgeLab entdecken</strong> auf dem Startbildschirm
+öffnen direkt die Funktionen, die BridgeLab auszeichnen — Testnachrichten-
+Generator, PHI-Anonymisierung, MLLP-Listener und XSD-Export — mit
+PRO-Badges für die lizenzpflichtigen.</p>
 `,
 };
 
@@ -186,5 +191,16 @@ haben noch keine physische Position).</p>
 Breite zu ändern; ziehen Sie den horizontalen Teiler über dem
 Feld-Inspektor, um dessen Höhe anzupassen. Beide Größen bleiben über
 Neustarts hinweg erhalten.</p>
+
+<h3>Vollständige Standardstruktur</h3>
+<p>Mit aktiviertem <strong>Ansicht → Standardfelder anzeigen</strong> zeigt
+der Baum auch die Segmente, die der Standard für den Nachrichtentyp
+definiert, die aber in der Nachricht fehlen — ausgegraute Zeilen an ihrer
+Standardposition, annotiert mit Gruppe, Kardinalität und Auswahlstatus. Beim
+Aufklappen erscheint die vollständige Feldliste bis hinunter zu den
+Komponenten zusammengesetzter Typen (z. B. OBX-16 → XCN-Komponenten).
+<strong>Rechtsklick auf ein ausgegrautes Segment → Segment einfügen</strong>
+fügt dessen Grundgerüst an der Standardposition in die Nachricht ein, mit
+Trennzeichen bis zum letzten Pflichtfeld.</p>
 `,
 };

@@ -1,6 +1,6 @@
 {
   "name": "bridgelab",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "BridgeLab - HL7 made simple. A modern HL7/FHIR message editor.",
   "private": true,
   "type": "module",
@@ -30,6 +30,7 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-fs": "^2.0.0",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-updater": "^2.0.0",
     "monaco-editor": "^0.52.0"

@@ -47,6 +47,11 @@ ${mockupAppShell}
 giorni</strong> con tutte le funzionalità sbloccate. Alla scadenza,
 BridgeLab continua a funzionare con il livello Community - non perdi
 mai i tuoi messaggi.</div>
+
+<p>Le card <strong>Scopri BridgeLab</strong> nella schermata di benvenuto
+aprono direttamente le funzioni che distinguono BridgeLab — generatore di
+messaggi di test, anonimizzazione PHI, listener MLLP ed export XSD — con i
+badge PRO a indicare quelle su licenza.</p>
 `,
 },
 {
@@ -173,6 +178,16 @@ fisica).</p>
 larghezza; trascina lo splitter orizzontale sopra l'Ispettore per
 cambiarne l'altezza. Entrambe le dimensioni sono persistite tra un
 avvio e l'altro.</p>
+
+<h3>Struttura standard completa</h3>
+<p>Con <strong>Visualizza → Mostra campi standard</strong> attivo, l'albero
+mostra anche i segmenti che lo standard prevede per il tipo di messaggio ma
+assenti dal messaggio — righe in grigio nella posizione standard, annotate
+con gruppo, cardinalità e stato di scelta. Espandili per sfogliare l'elenco
+campi completo fino ai componenti dei tipi composti (es. OBX-16 → componenti
+XCN). <strong>Click destro su un segmento grigio → Inserisci segmento</strong>
+per aggiungerne lo scheletro al messaggio nella posizione standard, con i
+separatori fino all'ultimo campo obbligatorio.</p>
 `,
 },
 ];
