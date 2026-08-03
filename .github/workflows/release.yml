@@ -146,3 +146,39 @@ jobs:
               release_id: ${{ needs.create-release.outputs.release_id }},
               draft: false
             })
+
+  prune-old-assets:
+    # After a successful publish, delete the BINARIES of older releases so
+    # only the newest KEEP_RELEASES stay downloadable — old builds carry old
+    # bugs. Releases, notes and tags are kept (history stays browsable);
+    # only their assets are removed. Source-code archives are generated from
+    # tags and are unaffected.
+    name: Prune old release binaries
+    needs: [create-release, publish-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      KEEP_RELEASES: '2'
+    steps:
+      - name: Delete assets of older releases
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const keep = parseInt(process.env.KEEP_RELEASES || '2', 10);
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner, repo: context.repo.repo, per_page: 100,
+            });
+            const published = releases
+              .filter((r) => !r.draft && !r.prerelease)
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            const stale = published.slice(keep);
+            for (const rel of stale) {
+              for (const asset of rel.assets) {
+                core.info(`Deleting ${rel.tag_name} asset: ${asset.name}`);
+                await github.rest.repos.deleteReleaseAsset({
+                  owner: context.repo.owner, repo: context.repo.repo, asset_id: asset.id,
+                });
+              }
+            }
+            core.info(`Binaries kept for: ${published.slice(0, keep).map(r => r.tag_name).join(', ') || 'none'}`);
