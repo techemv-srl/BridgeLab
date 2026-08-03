@@ -157,8 +157,14 @@
 			return;
 		}
 		getExpectedSegments(messageType, version)
-			.then((s) => { expectedSegs = s; })
-			.catch(() => { expectedSegs = []; });
+			.then((s) => {
+				// Ignore stale responses: the user may have switched tab or
+				// version while this lookup was in flight.
+				if (key === expectedKey) expectedSegs = s;
+			})
+			.catch(() => {
+				if (key === expectedKey) expectedSegs = [];
+			});
 	});
 
 	/** Root list = real segments, interleaved with ghost rows for expected
