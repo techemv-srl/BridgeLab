@@ -62,3 +62,56 @@ export async function getFieldInfo(
 ): Promise<FieldInfo | null> {
 	return invoke('get_field_info', { segmentType, fieldPosition, version });
 }
+
+// --- Schema-catalogue-backed structure info (all shipped HL7 versions) ---
+
+export interface ExpectedSegment {
+	code: string;
+	required: boolean;
+	repeats: boolean;
+	/** Group path (" / "-joined), empty for top-level segments. */
+	group: string;
+	/** True when the segment is one alternative of an HL7 choice block. */
+	choice: boolean;
+}
+
+/** Expected segment sequence for a message type (empty if unknown). */
+export async function getExpectedSegments(
+	messageType: string, version: string,
+): Promise<ExpectedSegment[]> {
+	return invoke('get_expected_segments', { messageType, version });
+}
+
+export interface SchemaFieldInfo {
+	position: number;
+	name: string;
+	data_type: string;
+	required: boolean;
+	repeats: boolean;
+	has_components: boolean;
+}
+
+export interface SegmentSchemaInfo {
+	code: string;
+	name: string;
+	fields: SchemaFieldInfo[];
+}
+
+export async function getSegmentSchema(
+	segment: string, version: string,
+): Promise<SegmentSchemaInfo | null> {
+	return invoke('get_segment_schema', { segment, version });
+}
+
+export interface CompositeComponentInfo {
+	position: number;
+	name: string;
+	data_type: string;
+}
+
+/** Components of a composite data type (empty for primitives / unknown). */
+export async function getCompositeComponents(
+	dataType: string, version: string,
+): Promise<CompositeComponentInfo[]> {
+	return invoke('get_composite_components', { dataType, version });
+}
