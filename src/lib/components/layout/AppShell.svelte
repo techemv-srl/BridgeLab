@@ -724,6 +724,34 @@
 		editorNavigation = { line: lineNumber, column, selectionLength, stamp: Date.now() };
 	}
 
+	/** Insert a skeleton for a standard segment (from a ghost row in the
+	 *  structure tree) into the editor at its standard position. */
+	async function handleInsertSegment(code: string, afterSegmentIdx: number | null) {
+		const tab = messageStore.activeTab;
+		if (!tab) return;
+		let pipes = 1;
+		try {
+			const { getSegmentSchema } = await import('$lib/ipc/tables');
+			const schema = await getSegmentSchema(code, tab.parseResult?.version ?? '2.5');
+			if (schema) {
+				// Enough separators to reach the last required field, so the
+				// mandatory slots are visible; at least one.
+				const lastRequired = schema.fields.filter((f) => f.required).map((f) => f.position);
+				pipes = Math.max(1, ...lastRequired);
+			}
+		} catch { /* skeleton with a single separator */ }
+		const skeleton = code === 'MSH' ? 'MSH|^~\\&' + '|'.repeat(Math.max(0, pipes - 2)) : code + '|'.repeat(pipes);
+
+		const content = tab.content;
+		const sep = content.includes('\r\n') ? '\r\n' : content.includes('\r') ? '\r' : '\n';
+		const lines = content.split(sep);
+		const at = afterSegmentIdx === null ? 0 : Math.min(afterSegmentIdx + 1, lines.length);
+		lines.splice(at, 0, skeleton);
+		const updated = lines.join(sep);
+		messageStore.updateContent(tab.id, updated);
+		await autoParse(updated);
+	}
+
 	// --- View operations ---
 
 	function handleToggleTree() {
@@ -1123,6 +1151,7 @@
 							onFieldExpand={handleFieldExpand}
 							navigateTo={treeNavigation}
 							onNavigateToEditor={handleTreeNavigateToEditor}
+							onInsertSegment={handleInsertSegment}
 						/>
 					</div>
 					{#if showInspector}
