@@ -47,6 +47,11 @@ ${mockupAppShell}
 giorni</strong> con tutte le funzionalità sbloccate. Alla scadenza,
 BridgeLab continua a funzionare con il livello Community - non perdi
 mai i tuoi messaggi.</div>
+
+<p>Le card <strong>Scopri BridgeLab</strong> nella schermata di benvenuto
+aprono direttamente le funzioni che distinguono BridgeLab — generatore di
+messaggi di test, anonimizzazione PHI, listener MLLP ed export XSD — con i
+badge PRO a indicare quelle su licenza.</p>
 `,
 },
 {

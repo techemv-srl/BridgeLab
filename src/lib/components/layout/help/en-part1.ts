@@ -44,6 +44,11 @@ ${mockupAppShell}
 <div class="note">On first launch you get a <strong>7-day Pro trial</strong>
 with every feature enabled. After expiry, BridgeLab continues to work
 with the Community feature set - you never lose your messages.</div>
+
+<p>The <strong>Discover BridgeLab</strong> cards on the welcome screen open
+the features that set BridgeLab apart — the test-message generator, PHI
+anonymization, the MLLP listener and the XSD export — directly, with PRO
+badges marking the licensed ones.</p>
 `,
 };
 

@@ -1243,6 +1243,10 @@
 						onShowHelp={() => { showHelp = true; }}
 						onNewTab={handleNewTab}
 						onOpenRecentFile={handleOpenRecentFile}
+						onShowGenerate={() => { showGenerate = true; }}
+						onShowBatchAnonymize={() => { showBatchAnon = true; }}
+						onShowCommunication={() => toggleBottomPanel('communication')}
+						onShowSchemaExport={() => { showSchemaExport = true; }}
 					/>
 				{/if}
 			</div>
