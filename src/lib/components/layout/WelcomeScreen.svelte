@@ -30,7 +30,7 @@
 		{ icon: '⚗', key: 'generator', pro: false, action: () => onShowGenerate() },
 		{ icon: '🛡', key: 'anonymize', pro: true, action: () => onShowBatchAnonymize() },
 		{ icon: '⇄', key: 'listener', pro: true, action: () => onShowCommunication() },
-		{ icon: '⬡', key: 'xsd', pro: false, action: () => onShowSchemaExport() },
+		{ icon: '⬡', key: 'xsd', pro: true, action: () => onShowSchemaExport() },
 	];
 </script>
 
@@ -93,14 +93,16 @@
 <style>
 	.welcome {
 		display: flex;
-		align-items: center;
-		justify-content: center;
 		height: 100%;
 		overflow-y: auto;
 		background: var(--color-bg-primary);
 	}
 
 	.welcome-card {
+		/* margin:auto centers the card when it fits and falls back to
+		   top-aligned (fully scrollable) when it is taller than the
+		   viewport — align-items:center would cut off the top. */
+		margin: auto;
 		max-width: 460px;
 		width: 100%;
 		padding: 32px;
