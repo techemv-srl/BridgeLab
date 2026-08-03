@@ -140,6 +140,7 @@
 	"dialog.confirmTitle": "Confirmar",
 	"dialog.noMessageToValidate": "No hay mensaje para validar.",
 	"dialog.saveFailed": "Guardado fallido",
+	"dialog.openFailed": "No se pudo abrir el archivo",
 	"dialog.saveAsFailed": "Guardar como fallido",
 	"dialog.deleteConfirm": "¿Eliminar el caso de prueba \"{name}\"?",
 	"dialog.resetShortcuts": "¿Restablecer todos los atajos a los valores predeterminados?",
