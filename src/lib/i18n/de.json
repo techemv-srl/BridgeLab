@@ -152,6 +152,7 @@
 	"update.available": "Version {version} ist verfügbar (installiert: {current}). Jetzt herunterladen?",
 	"update.upToDate": "BridgeLab ist aktuell ({current}).",
 	"update.restart": "Update installiert. BridgeLab jetzt neu starten?",
+	"update.restartManually": "Update installiert — bitte BridgeLab manuell neu starten, um es anzuwenden.",
 	"update.checkFailed": "Aktualisierungsprüfung fehlgeschlagen. Bitte später erneut versuchen oder die Release-Seite besuchen.",
 	"dialog.saveAsFailed": "Speichern unter fehlgeschlagen",
 	"dialog.deleteConfirm": "Testfall \"{name}\" löschen?",

@@ -305,8 +305,14 @@
 					await update.downloadAndInstall();
 					const restart = await dialogStore.confirm(t('update.restart'), t('update.title'));
 					if (restart) {
-						const { relaunch } = await import('@tauri-apps/plugin-process');
-						await relaunch();
+						// A relaunch failure must NOT bubble into the GitHub
+						// fallback below — the update IS installed at this point.
+						try {
+							const { relaunch } = await import('@tauri-apps/plugin-process');
+							await relaunch();
+						} catch {
+							await dialogStore.info(t('update.restartManually'), t('update.title'));
+						}
 					}
 				}
 			} else {
