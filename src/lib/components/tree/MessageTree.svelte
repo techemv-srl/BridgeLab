@@ -26,7 +26,7 @@
 		messageType?: string;
 		/** When true, inject placeholder rows for schema-defined fields that are
 		 *  absent from the message AND ghost rows for expected-but-absent segments
-		 *  (7edit-style full structure view). */
+		 *  (full standard-structure view). */
 		showSchemaFields?: boolean;
 		/** Parse format ("HL7v2", "FHIR JSON", "FHIR XML"). Search is HL7-only:
 		 *  search_message looks up the HL7 store, FHIR resources live in a
@@ -141,9 +141,9 @@
 		}
 	}
 
-	// Expected segment structure for the current message type (7edit-style
-	// ghost rows). Fetched once per (messageType, version) while the toggle
-	// is on; HL7 v2 only.
+	// Expected segment structure for the current message type (ghost rows of
+	// the full standard-structure view). Fetched once per (messageType,
+	// version) while the toggle is on; HL7 v2 only.
 	let expectedSegs = $state<ExpectedSegment[]>([]);
 	let expectedKey = '';
 	$effect(() => {
