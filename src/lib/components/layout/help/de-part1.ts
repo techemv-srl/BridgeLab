@@ -50,6 +50,11 @@ ${mockupAppShell}
 Pro-Testversion</strong> mit allen freigeschalteten Funktionen. Nach
 Ablauf arbeitet BridgeLab mit dem Community-Funktionsumfang weiter -
 Ihre Nachrichten gehen nie verloren.</div>
+
+<p>Die Karten <strong>BridgeLab entdecken</strong> auf dem Startbildschirm
+öffnen direkt die Funktionen, die BridgeLab auszeichnen — Testnachrichten-
+Generator, PHI-Anonymisierung, MLLP-Listener und XSD-Export — mit
+PRO-Badges für die lizenzpflichtigen.</p>
 `,
 };
 
