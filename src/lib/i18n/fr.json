@@ -62,6 +62,9 @@
 	"menu.help.updates": "Vérifier les mises à jour",
 
 	"tree.header": "Structure du message",
+	"panel.validation": "Validation",
+	"panel.communication": "Communication",
+	"panel.fhirpath": "FHIRPath",
 	"tree.empty": "Ouvrez un fichier HL7 ou collez un message pour commencer.",
 	"tree.shortcutHint": "Ctrl+O pour ouvrir un fichier",
 	"tree.noMessage": "Aucun message chargé",
