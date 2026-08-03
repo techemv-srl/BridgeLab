@@ -152,6 +152,24 @@
 			void sessionRestored;
 			sessionStore.startupComplete = true;
 
+			// Files the app was launched with (double-clicked .hl7), plus
+			// files forwarded by later launches (single-instance): both open
+			// as tabs in this window.
+			try {
+				const { getLaunchFiles } = await import('$lib/ipc/parser');
+				for (const p of await getLaunchFiles()) {
+					await fileOpsStore.openPath(p, suppressAutoParse);
+				}
+				const { listen } = await import('@tauri-apps/api/event');
+				await listen<string[]>('app://open-files', (e) => {
+					void (async () => {
+						for (const p of e.payload) {
+							await fileOpsStore.openPath(p, suppressAutoParse);
+						}
+					})();
+				});
+			} catch { /* web mode */ }
+
 			try {
 				licenseStatus = await checkLicense();
 			await shortcutStore.loadFromPrefs();
@@ -213,7 +231,16 @@
 
 	// --- File operations (logic in fileOpsStore) ---
 
-	const suppressAutoParse = () => { skipNextAutoParse = true; };
+	// Monaco's programmatic content sync deliberately does not fire
+	// onContentChange, so a bare one-shot flag would never be consumed and
+	// would swallow the FIRST real user edit instead. Self-expire it after
+	// the sync settles.
+	let suppressExpiry: ReturnType<typeof setTimeout> | null = null;
+	const suppressAutoParse = () => {
+		skipNextAutoParse = true;
+		if (suppressExpiry) clearTimeout(suppressExpiry);
+		suppressExpiry = setTimeout(() => { skipNextAutoParse = false; }, 150);
+	};
 
 	async function handleOpenFile() {
 		await fileOpsStore.openFromDialog(suppressAutoParse);
