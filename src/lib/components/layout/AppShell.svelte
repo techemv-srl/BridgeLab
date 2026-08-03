@@ -749,7 +749,13 @@
 		lines.splice(at, 0, skeleton);
 		const updated = lines.join(sep);
 		messageStore.updateContent(tab.id, updated);
-		await autoParse(updated);
+		// Parse bound to THIS tab id — autoParse resolves the active tab when
+		// the IPC returns, and the user may have switched tabs meanwhile.
+		try {
+			const result = await parseMessage(updated);
+			skipNextAutoParse = true;
+			messageStore.updateParseResult(tab.id, result);
+		} catch { /* leave unparsed */ }
 	}
 
 	// --- View operations ---
