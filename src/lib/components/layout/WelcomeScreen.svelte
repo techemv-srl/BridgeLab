@@ -14,9 +14,24 @@
 		onShowHelp: () => void;
 		onNewTab: () => void;
 		onOpenRecentFile: (path: string) => void;
+		/** Discovery cards: open the distinguishing features directly. */
+		onShowGenerate: () => void;
+		onShowBatchAnonymize: () => void;
+		onShowCommunication: () => void;
+		onShowSchemaExport: () => void;
 	}
 
-	let { onOpenFile, onNewFromTemplate, onShowTestCases, onShowHelp, onNewTab, onOpenRecentFile }: Props = $props();
+	let {
+		onOpenFile, onNewFromTemplate, onShowTestCases, onShowHelp, onNewTab, onOpenRecentFile,
+		onShowGenerate, onShowBatchAnonymize, onShowCommunication, onShowSchemaExport,
+	}: Props = $props();
+
+	const discoverCards = [
+		{ icon: '⚗', key: 'generator', pro: false, action: () => onShowGenerate() },
+		{ icon: '🛡', key: 'anonymize', pro: true, action: () => onShowBatchAnonymize() },
+		{ icon: '⇄', key: 'listener', pro: true, action: () => onShowCommunication() },
+		{ icon: '⬡', key: 'xsd', pro: false, action: () => onShowSchemaExport() },
+	];
 </script>
 
 <div class="welcome">
@@ -45,6 +60,22 @@
 			</button>
 		</div>
 		<div class="welcome-paste-hint">{tr('welcome.pasteHint')}</div>
+
+		<div class="welcome-discover">
+			<div class="welcome-recent-title">{tr('welcome.discover')}</div>
+			<div class="discover-grid">
+				{#each discoverCards as card (card.key)}
+					<button class="discover-card" onclick={card.action}>
+						<span class="dc-head">
+							<span class="dc-icon" aria-hidden="true">{card.icon}</span>
+							<span class="dc-title">{tr(`welcome.card.${card.key}`)}</span>
+							{#if card.pro}<span class="dc-pro">PRO</span>{/if}
+						</span>
+						<span class="dc-desc">{tr(`welcome.card.${card.key}Desc`)}</span>
+					</button>
+				{/each}
+			</div>
+		</div>
 		{#if fileOpsStore.recentFiles.length > 0}
 			<div class="welcome-recent">
 				<div class="welcome-recent-title">{tr('menu.file.recent')}</div>
@@ -110,6 +141,37 @@
 	}
 
 	.welcome-paste-hint { font-size: 11px; color: var(--color-text-secondary); font-style: italic; text-align: center; }
+
+	.welcome-discover { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+	.discover-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+	.discover-card {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		padding: 8px 10px;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: var(--color-bg-secondary);
+		color: var(--color-text-primary);
+		font-family: inherit;
+		cursor: pointer;
+		text-align: left;
+	}
+	.discover-card:hover { background: var(--color-bg-tertiary); border-color: var(--color-accent); }
+	.dc-head { display: flex; align-items: center; gap: 6px; }
+	.dc-icon { font-size: 13px; }
+	.dc-title { font-size: 12px; font-weight: 600; }
+	.dc-pro {
+		margin-left: auto;
+		padding: 0 5px;
+		border-radius: 3px;
+		background: var(--color-accent);
+		color: var(--color-bg-primary);
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.5px;
+	}
+	.dc-desc { font-size: 10px; color: var(--color-text-secondary); line-height: 1.35; }
 
 	.welcome-recent { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
 	.welcome-recent-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-secondary); margin-bottom: 4px; }
