@@ -152,6 +152,7 @@
 	"update.available": "Version {version} is available (you have {current}). Download it now?",
 	"update.upToDate": "BridgeLab is up to date ({current}).",
 	"update.restart": "Update installed. Restart BridgeLab now?",
+	"update.restartManually": "Update installed — please restart BridgeLab manually to apply it.",
 	"update.checkFailed": "Could not check for updates. Please try again later or visit the releases page.",
 	"dialog.saveAsFailed": "Save As failed",
 	"dialog.deleteConfirm": "Delete test case \"{name}\"?",
