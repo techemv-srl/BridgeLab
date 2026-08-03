@@ -705,6 +705,37 @@
 	}
 
 	// --- Drag & Drop ---
+	//
+	// In Tauri v2 the webview never receives HTML5 drops with files: the OS
+	// drop is consumed by Tauri (dragDropEnabled defaults to true) and
+	// surfaced as a native drag-drop event carrying real file PATHS. The
+	// HTML handlers below only ever fire in web mode, where they remain as
+	// a paste-like fallback.
+	let dragDropHooked = false;
+	$effect(() => {
+		if (dragDropHooked || typeof window === 'undefined') return;
+		dragDropHooked = true;
+		(async () => {
+			try {
+				const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+				await getCurrentWebview().onDragDropEvent((event) => {
+					const payload = event.payload;
+					if (payload.type !== 'drop') return;
+					const paths = payload.paths;
+					void (async () => {
+						// Sequential: keeps tab order = drop order and avoids
+						// interleaved recent-list refreshes.
+						for (const p of paths) {
+							await fileOpsStore.openPath(p, suppressAutoParse);
+						}
+					})();
+				});
+				// AppShell lives for the whole app lifetime — no unlisten needed.
+			} catch {
+				// Web mode: the HTML5 handlers below do the work.
+			}
+		})();
+	});
 
 	async function handleDragOver(e: DragEvent) {
 		e.preventDefault();
@@ -717,10 +748,8 @@
 		if (!files || files.length === 0) return;
 
 		for (const file of Array.from(files)) {
-			// In Tauri, we need the file path, but web File API only gives name
-			// Tauri's drag-drop gives us the path via the event
+			// Web mode only: the File API has no OS path, so read as text
 			try {
-				// Try reading as text for paste-like behavior
 				const text = await file.text();
 				if (text.startsWith('MSH|')) {
 					const result = await parseMessage(text, file.name);

@@ -140,6 +140,7 @@
 	"dialog.confirmTitle": "Confirmer",
 	"dialog.noMessageToValidate": "Aucun message à valider.",
 	"dialog.saveFailed": "Échec de l'enregistrement",
+	"dialog.openFailed": "Impossible d'ouvrir le fichier",
 	"dialog.saveAsFailed": "Échec de l'enregistrement sous",
 	"dialog.deleteConfirm": "Supprimer le cas de test \"{name}\" ?",
 	"dialog.resetShortcuts": "Réinitialiser tous les raccourcis aux valeurs par défaut ?",

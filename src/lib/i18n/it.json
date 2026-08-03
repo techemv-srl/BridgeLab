@@ -140,6 +140,7 @@
 	"dialog.confirmTitle": "Conferma",
 	"dialog.noMessageToValidate": "Nessun messaggio da validare.",
 	"dialog.saveFailed": "Salvataggio fallito",
+	"dialog.openFailed": "Impossibile aprire il file",
 	"dialog.saveAsFailed": "Salva con nome fallito",
 	"dialog.deleteConfirm": "Eliminare il test case \"{name}\"?",
 	"dialog.resetShortcuts": "Ripristinare tutte le scorciatoie ai valori predefiniti?",

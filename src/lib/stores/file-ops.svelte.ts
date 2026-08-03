@@ -47,11 +47,10 @@ class FileOpsStore {
 			}
 		} catch (e) {
 			console.error('[BridgeLab] Failed to open file:', e);
-			// Show error in a new tab so user sees something
-			const errMsg = String(e);
-			if (messageStore.activeTabId) {
-				messageStore.updateContent(messageStore.activeTabId, `Error opening file:\n${errMsg}`);
-			}
+			// The welcome screen has no tab to surface errors in — an invisible
+			// failure there looks like "the button does nothing". Always show
+			// a real error dialog.
+			await dialogStore.error(t('dialog.openFailed'), undefined, String(e));
 		}
 	}
 
@@ -64,7 +63,8 @@ class FileOpsStore {
 			await addRecentFile(path, filename, result.message_type, result.version, result.file_size_bytes);
 			this.recentFiles = await getRecentFiles(20);
 		} catch (e) {
-			console.error('Failed to open recent file:', e);
+			console.error('Failed to open file:', path, e);
+			await dialogStore.error(t('dialog.openFailed'), undefined, `${path}\n${String(e)}`);
 		}
 	}
 
