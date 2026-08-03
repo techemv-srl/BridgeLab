@@ -6,9 +6,9 @@
 	if (typeof window !== 'undefined') {
 		subscribeLocale(() => { localeVersion++; });
 	}
-	function tr(key: string): string {
+	function tr(key: string, params?: Record<string, string | number>): string {
 		void localeVersion;
-		return t(key);
+		return t(key, params);
 	}
 
 	interface Props {
@@ -20,9 +20,11 @@
 		onSelect: () => void;
 		onExpandTruncated: () => void;
 		onShowInEditor?: () => void;
+		/** Ghost rows: insert this segment's skeleton into the editor. */
+		onInsertSegment?: () => void;
 	}
 
-	let { node, isSelected, isExpanded, isPlaceholder = false, onToggle, onSelect, onExpandTruncated, onShowInEditor }: Props = $props();
+	let { node, isSelected, isExpanded, isPlaceholder = false, onToggle, onSelect, onExpandTruncated, onShowInEditor, onInsertSegment }: Props = $props();
 
 	const indent = $derived((node.depth - 1) * 16);
 
@@ -50,7 +52,7 @@
 	}
 
 	function handleContextMenu(e: MouseEvent) {
-		if (!onShowInEditor) return;
+		if (!onShowInEditor && !onInsertSegment) return;
 		e.preventDefault();
 		onSelect();
 		menuX = e.clientX;
@@ -73,6 +75,12 @@
 		e.stopPropagation();
 		menuOpen = false;
 		onShowInEditor?.();
+	}
+
+	function handleInsertSegment(e: MouseEvent) {
+		e.stopPropagation();
+		menuOpen = false;
+		onInsertSegment?.();
 	}
 </script>
 
@@ -132,9 +140,16 @@
 		onclick={(e) => e.stopPropagation()}
 		onkeydown={(e) => { if (e.key === 'Escape') menuOpen = false; }}
 	>
-		<button class="context-menu-item" onclick={handleShowInEditor}>
-			{tr('ctx.showInEditor')}
-		</button>
+		{#if onShowInEditor}
+			<button class="context-menu-item" onclick={handleShowInEditor}>
+				{tr('ctx.showInEditor')}
+			</button>
+		{/if}
+		{#if onInsertSegment}
+			<button class="context-menu-item" onclick={handleInsertSegment}>
+				{tr('ctx.insertSegment', { code: node.label.split(' ')[0] })}
+			</button>
+		{/if}
 	</div>
 {/if}
 

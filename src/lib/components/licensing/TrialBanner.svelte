@@ -68,7 +68,11 @@
 	}
 
 	function openPlans() {
-		window.open(PLANS_URL, '_blank');
+		// window.open is a no-op inside the Tauri webview — use the opener
+		// plugin, with the browser fallback for web mode.
+		import('@tauri-apps/plugin-opener')
+			.then(({ openUrl }) => openUrl(PLANS_URL))
+			.catch(() => { window.open(PLANS_URL, '_blank'); });
 	}
 </script>
 
