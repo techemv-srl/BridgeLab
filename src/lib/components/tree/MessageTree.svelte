@@ -20,6 +20,9 @@
 		navigateTo?: { segmentIdx: number; fieldPosition: number | null; stamp: number } | null;
 		/** Callback to request the editor to navigate to the selected tree node */
 		onNavigateToEditor?: (segmentIdx: number, fieldPosition: number | null, componentIdx: number | null) => void;
+		/** Insert a ghost segment's skeleton into the editor. afterSegmentIdx is
+		 *  the real segment (line) it should follow, null = insert at the top. */
+		onInsertSegment?: (code: string, afterSegmentIdx: number | null) => void;
 		/** HL7 version used to look up schema field definitions */
 		version?: string;
 		/** Message type (e.g. "ORU^R01") used to look up the expected segment structure */
@@ -41,6 +44,7 @@
 		onFieldExpand,
 		navigateTo = null,
 		onNavigateToEditor,
+		onInsertSegment,
 		version = '',
 		messageType = '',
 		showSchemaFields = false,
@@ -471,6 +475,24 @@
 		return { segmentIdx, fieldPosition, componentIdx };
 	}
 
+	/** For a ghost root, find the real segment (line index) it should follow:
+	 *  walk visibleNodes backwards from the ghost to the nearest real root. */
+	function insertGhostSegment(node: VNode) {
+		if (!onInsertSegment) return;
+		const code = segmentTypeFromNode(node);
+		if (!code) return;
+		const idx = visibleNodes.findIndex((n) => n.id === node.id);
+		let afterIdx: number | null = null;
+		for (let i = idx - 1; i >= 0; i--) {
+			const n = visibleNodes[i];
+			if (n.depth === 0 && !n._isPlaceholder) {
+				const m = n.id.match(/^seg(\d+)$/);
+				if (m) { afterIdx = parseInt(m[1]); break; }
+			}
+		}
+		onInsertSegment(code, afterIdx);
+	}
+
 	function showInEditor(node: TreeNode) {
 		const { segmentIdx, fieldPosition, componentIdx } = parseNodeId(node.id);
 		if (segmentIdx === null) return;
@@ -543,6 +565,9 @@
 					onSelect={() => selectNode(node)}
 					onExpandTruncated={() => expandTruncated(node)}
 					onShowInEditor={onNavigateToEditor && !node._isPlaceholder ? () => showInEditor(node) : undefined}
+					onInsertSegment={onInsertSegment && node._isPlaceholder && node.id.startsWith('ghost.') && node.node_type === 'segment'
+						? () => insertGhostSegment(node)
+						: undefined}
 				/>
 			{/each}
 		</div>

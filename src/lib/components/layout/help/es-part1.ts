@@ -179,5 +179,15 @@ tienen una posición física).</p>
 cambiar el ancho; arrastra el separador horizontal sobre el Inspector de
 Campo para cambiar su altura. Ambas dimensiones se conservan entre
 reinicios.</p>
+
+<h3>Estructura estándar completa</h3>
+<p>Con <strong>Ver → Mostrar campos del estándar</strong> activado, el árbol
+muestra también los segmentos que el estándar define para el tipo de mensaje
+pero ausentes del mensaje — filas en gris en su posición estándar, anotadas
+con grupo, cardinalidad y estado de elección. Expándelas para recorrer la
+lista completa de campos hasta los componentes de los tipos compuestos (p.
+ej. OBX-16 → componentes XCN). <strong>Clic derecho en un segmento gris →
+Insertar segmento</strong> para añadir su esqueleto al mensaje en la posición
+estándar, con separadores hasta el último campo obligatorio.</p>
 `,
 };

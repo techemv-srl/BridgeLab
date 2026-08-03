@@ -163,5 +163,15 @@ in the editor (they have no physical position yet).</p>
 <p>Drag the vertical splitter between tree and editor to resize; drag
 the horizontal splitter above the Field Inspector to change its height.
 Both widths are persisted across restarts.</p>
+
+<h3>Full standard structure</h3>
+<p>With <strong>View → Show standard fields</strong> enabled, the tree also
+shows the segments the standard defines for the message type but that are
+absent from the message — grayed rows at their standard position, annotated
+with group, cardinality and choice status. Expand them to browse their full
+field list down to composite components (e.g. OBX-16 → XCN components).
+<strong>Right-click a grayed segment → Insert segment</strong> to add its
+skeleton to the message at the standard position, with separators up to the
+last required field.</p>
 `,
 };
