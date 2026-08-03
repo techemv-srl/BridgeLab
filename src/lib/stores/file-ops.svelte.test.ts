@@ -58,9 +58,14 @@ describe('openPath', () => {
 		expect(addRecentFile).toHaveBeenCalledWith('/data/adt.hl7', 'adt.hl7', 'ADT^A01', '2.5', 120);
 	});
 
-	it('swallows failures without creating a tab', async () => {
+	it('shows a visible error dialog on failure, without creating a tab', async () => {
 		vi.mocked(openFile).mockRejectedValue(new Error('gone'));
-		await fileOpsStore.openPath('/missing.hl7', () => {});
+		const p = fileOpsStore.openPath('/missing.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		expect(dialogStore.active?.kind).toBe('error');
+		expect(dialogStore.active?.details).toContain('gone');
+		dialogStore.close(true);
+		await p;
 		expect(messageStore.tabs).toHaveLength(0);
 	});
 });
@@ -82,13 +87,17 @@ describe('openFromDialog', () => {
 		expect(fileOpsStore.recentFiles).toHaveLength(1);
 	});
 
-	it('reports open failures inside the active tab', async () => {
-		messageStore.newTab();
+	it('reports open failures in a visible dialog — even with zero tabs', async () => {
+		// Regression: from the welcome screen (no tabs) failures used to be
+		// written into the active tab, i.e. nowhere — "the button does nothing".
 		vi.mocked(open).mockResolvedValue('/broken.hl7');
 		vi.mocked(openFile).mockRejectedValue(new Error('corrupt'));
-		await fileOpsStore.openFromDialog(() => {});
-		expect(messageStore.activeTab?.content).toContain('Error opening file:');
-		expect(messageStore.activeTab?.content).toContain('corrupt');
+		const p = fileOpsStore.openFromDialog(() => {});
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		expect(dialogStore.active?.kind).toBe('error');
+		expect(dialogStore.active?.details).toContain('corrupt');
+		dialogStore.close(true);
+		await p;
 	});
 });
 

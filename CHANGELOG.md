@@ -2,6 +2,18 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [1.1.0] — 2026-08-03
+
+### Added
+- **Full standard-structure view**. With `View → Show standard fields` on, the Message Structure tree now also shows the segments the standard defines for the message type but that are absent from the message — grayed ghost rows at their standard position, annotated with group path, required/optional, repeating and choice status. Ghost segments expand into their complete field list, and composite fields expand into components (e.g. OBX-16 → XCN.1 ID Number, XCN.2 Family Name). Field placeholders inside present segments are now correct for every shipped HL7 version and expand into components too.
+- **Open with / double-click integration**. BridgeLab registers the `.hl7` extension: double-clicking a file opens it in the running instance as a new tab (single-instance — no more second window), or starts the app with the file open. Multiple files dropped or opened land as tabs in order.
+- **Native drag & drop**. Dropping files onto the window now works — anywhere, including the welcome screen. (The desktop webview never received browser-style drops; the app now listens to the native drop event with real file paths.)
+
+### Fixed
+- **File-open failures are visible**. Errors while opening a file used to be written into the active tab — from the welcome screen (no tabs) they were invisible, making a failing open look like a dead button. Failures now surface in an error dialog with the underlying reason, everywhere.
+- **Bottom panels no longer stack off-screen**. Validation, Communication and FHIRPath now share one resizable container as tabs: always fully visible at any height, the Communication panel keeps its listener console when in a background tab, and opening a panel from menu/shortcut/status bar brings its tab to the front.
+- **First edit after opening a file re-parses correctly** (the auto-parse mute set by file open could swallow the first user edit).
+
 ## [1.0.0] — 2026-08-02
 
 ### Added
