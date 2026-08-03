@@ -62,6 +62,9 @@
 	"menu.help.updates": "Buscar actualizaciones",
 
 	"tree.header": "Estructura del mensaje",
+	"panel.validation": "Validación",
+	"panel.communication": "Comunicación",
+	"panel.fhirpath": "FHIRPath",
 	"tree.expectedRequired": "obligatorio",
 	"tree.expectedOptional": "opcional",
 	"tree.expectedRepeating": "repetible",
