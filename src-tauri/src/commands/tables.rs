@@ -45,10 +45,13 @@ fn parse_schema_version(version: &str) -> Hl7Version {
         .unwrap_or(Hl7Version::V2_5)
 }
 
-/// "ORU^R01" / "ORU^R01^ORU_R01" → "ORU_R01".
+/// Catalogue key for an MSH-9 value. MSH-9.3 (message structure, e.g. the
+/// "ACK" in "ACK^A01^ACK") is authoritative when present; otherwise the key
+/// is derived as MSH-9.1_MSH-9.2.
 fn message_code_from_type(message_type: &str) -> String {
     let parts: Vec<&str> = message_type.split('^').collect();
     match parts.as_slice() {
+        [_, _, c, ..] if !c.is_empty() => c.to_string(),
         [a, b, ..] if !b.is_empty() => format!("{}_{}", a, b),
         [a] => a.to_string(),
         _ => message_type.replace('^', "_"),
@@ -58,6 +61,8 @@ fn message_code_from_type(message_type: &str) -> String {
 fn flatten_elements(
     elements: &[MessageElement],
     group_path: &str,
+    group_required: bool,
+    group_repeats: bool,
     out: &mut Vec<ExpectedSegment>,
 ) {
     for e in elements {
@@ -65,8 +70,12 @@ fn flatten_elements(
             MessageElement::Segment { code, required, repeats } => {
                 out.push(ExpectedSegment {
                     code: code.clone(),
-                    required: *required,
-                    repeats: *repeats,
+                    // A "required" segment inside an optional group is not
+                    // required in the message (e.g. IN1 inside ADT_A01's
+                    // optional INSURANCE group), and a repeating ancestor
+                    // makes the segment effectively repeatable.
+                    required: *required && group_required,
+                    repeats: *repeats || group_repeats,
                     group: group_path.to_string(),
                     choice: false,
                 });
@@ -77,17 +86,20 @@ fn flatten_elements(
                 } else {
                     format!("{} / {}", group_path, name)
                 };
-                // Every segment of an optional/repeating group inherits that
-                // context for display purposes.
-                let _ = (required, repeats);
-                flatten_elements(inner, &path, out);
+                flatten_elements(
+                    inner,
+                    &path,
+                    group_required && *required,
+                    group_repeats || *repeats,
+                    out,
+                );
             }
             MessageElement::Choice { required, repeats, segments } => {
                 for code in segments {
                     out.push(ExpectedSegment {
                         code: code.clone(),
-                        required: *required,
-                        repeats: *repeats,
+                        required: *required && group_required,
+                        repeats: *repeats || group_repeats,
                         group: group_path.to_string(),
                         choice: true,
                     });
@@ -108,7 +120,7 @@ pub fn get_expected_segments(message_type: String, version: String) -> Vec<Expec
         return Vec::new();
     };
     let mut out = Vec::new();
-    flatten_elements(&msg.elements, "", &mut out);
+    flatten_elements(&msg.elements, "", true, false, &mut out);
     out
 }
 
@@ -196,6 +208,30 @@ mod schema_structure_tests {
     #[test]
     fn unknown_message_type_yields_empty() {
         assert!(get_expected_segments("XXX^Z99".into(), "2.5".into()).is_empty());
+    }
+
+    /// Codex review: MSH-9.3 (message structure) is authoritative — an
+    /// ACK^A01^ACK must resolve to the "ACK" catalogue entry.
+    #[test]
+    fn explicit_structure_component_wins() {
+        let segs = get_expected_segments("ACK^A01^ACK".into(), "2.5".into());
+        assert!(!segs.is_empty(), "ACK^A01^ACK must resolve via MSH-9.3");
+        assert!(segs.iter().any(|s| s.code == "MSA"));
+    }
+
+    /// Codex review: a required segment inside an optional/repeating group
+    /// must inherit the group's cardinality (IN1 in ADT_A01's INSURANCE
+    /// group is not message-required, and it is effectively repeatable).
+    #[test]
+    fn group_cardinality_propagates_to_segments() {
+        let segs = get_expected_segments("ADT^A01".into(), "2.5".into());
+        let in1 = segs.iter().find(|s| s.code == "IN1").expect("IN1 expected in ADT_A01");
+        assert!(!in1.group.is_empty(), "IN1 lives inside the INSURANCE group");
+        assert!(!in1.required, "IN1 must not be message-required: {:?}", in1);
+        assert!(in1.repeats, "repeating INSURANCE group makes IN1 repeatable");
+        // Top-level cardinality unaffected
+        let msh = segs.iter().find(|s| s.code == "MSH").unwrap();
+        assert!(msh.required && !msh.repeats);
     }
 
     #[test]
