@@ -213,7 +213,16 @@
 
 	// --- File operations (logic in fileOpsStore) ---
 
-	const suppressAutoParse = () => { skipNextAutoParse = true; };
+	// Monaco's programmatic content sync deliberately does not fire
+	// onContentChange, so a bare one-shot flag would never be consumed and
+	// would swallow the FIRST real user edit instead. Self-expire it after
+	// the sync settles.
+	let suppressExpiry: ReturnType<typeof setTimeout> | null = null;
+	const suppressAutoParse = () => {
+		skipNextAutoParse = true;
+		if (suppressExpiry) clearTimeout(suppressExpiry);
+		suppressExpiry = setTimeout(() => { skipNextAutoParse = false; }, 150);
+	};
 
 	async function handleOpenFile() {
 		await fileOpsStore.openFromDialog(suppressAutoParse);
