@@ -10,10 +10,32 @@ pub mod templates;
 pub mod utils;
 pub mod validation;
 
+use std::sync::Mutex;
+
 use communication::mllp_listener::ListenerState;
 use database::Database;
 use message_store::MessageStore;
 use plugins::PluginRegistry;
+
+/// File paths the app was launched with (double-clicked / "open with").
+/// Drained once by the frontend via `get_launch_files`.
+pub struct LaunchFiles(pub Mutex<Vec<String>>);
+
+/// Keep only arguments that are real files (skips the executable path and
+/// any flags a launcher might add).
+fn collect_file_args(argv: &[String]) -> Vec<String> {
+    argv.iter()
+        .skip(1)
+        .filter(|a| !a.starts_with('-'))
+        .filter(|a| std::path::Path::new(a).is_file())
+        .cloned()
+        .collect()
+}
+
+#[tauri::command]
+fn get_launch_files(state: tauri::State<'_, LaunchFiles>) -> Vec<String> {
+    state.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,11 +44,28 @@ pub fn run() {
     // Best-effort plugin load; failures surface per-file via PluginInfo.error.
     let _ = plugins.reload();
 
+    let launch_files = collect_file_args(&std::env::args().collect::<Vec<_>>());
+
     tauri::Builder::default()
+        // Must be the first registered plugin: a second launch (e.g. the user
+        // double-clicks another .hl7 file) forwards its args here and exits,
+        // instead of opening a second BridgeLab window.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            use tauri::{Emitter, Manager};
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+            let files = collect_file_args(&argv);
+            if !files.is_empty() {
+                let _ = app.emit("app://open-files", files);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(MessageStore::new())
+        .manage(LaunchFiles(Mutex::new(launch_files)))
         .manage(db)
         .manage(plugins)
         .manage(ListenerState::new())
@@ -36,6 +75,7 @@ pub fn run() {
             commands::parser::get_field_content,
             commands::parser::search_message,
             commands::fileio::open_file,
+            get_launch_files,
             commands::fileio::save_file,
             commands::database::get_recent_files,
             commands::database::add_recent_file,
@@ -50,6 +90,9 @@ pub fn run() {
             commands::tables::get_segment_info,
             commands::tables::get_field_info,
             commands::tables::get_hl7_table,
+            commands::tables::get_expected_segments,
+            commands::tables::get_segment_schema,
+            commands::tables::get_composite_components,
             commands::validation::validate_message,
             commands::validation::validate_fhir,
             commands::parser::parse_fhir_message,
