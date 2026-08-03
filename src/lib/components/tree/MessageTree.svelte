@@ -1,7 +1,10 @@
 <script lang="ts">
 	import type { TreeNode } from '$lib/types/hl7';
 	import { getTreeChildren, getFieldContent, searchMessage, type SearchHit } from '$lib/ipc/parser';
-	import { getSegmentInfo } from '$lib/ipc/tables';
+	import {
+		getExpectedSegments, getSegmentSchema, getCompositeComponents,
+		type ExpectedSegment,
+	} from '$lib/ipc/tables';
 	import TreeNodeRow from './TreeNodeRow.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
@@ -19,7 +22,11 @@
 		onNavigateToEditor?: (segmentIdx: number, fieldPosition: number | null, componentIdx: number | null) => void;
 		/** HL7 version used to look up schema field definitions */
 		version?: string;
-		/** When true, inject placeholder rows for schema-defined fields that are absent from the message */
+		/** Message type (e.g. "ORU^R01") used to look up the expected segment structure */
+		messageType?: string;
+		/** When true, inject placeholder rows for schema-defined fields that are
+		 *  absent from the message AND ghost rows for expected-but-absent segments
+		 *  (7edit-style full structure view). */
 		showSchemaFields?: boolean;
 		/** Parse format ("HL7v2", "FHIR JSON", "FHIR XML"). Search is HL7-only:
 		 *  search_message looks up the HL7 store, FHIR resources live in a
@@ -35,13 +42,20 @@
 		navigateTo = null,
 		onNavigateToEditor,
 		version = '',
+		messageType = '',
 		showSchemaFields = false,
 		format = 'HL7v2',
 	}: Props = $props();
 
 	const searchEnabled = $derived(format === 'HL7v2');
 
-	type VNode = TreeNode & { _children?: TreeNode[]; _expanded?: boolean; _isPlaceholder?: boolean };
+	type VNode = TreeNode & {
+		_children?: TreeNode[];
+		_expanded?: boolean;
+		_isPlaceholder?: boolean;
+		/** Data type of a placeholder field (composite codes expand into components). */
+		_dataType?: string;
+	};
 
 	// Flat list of visible nodes for virtual scrolling
 	let visibleNodes = $state<VNode[]>([]);
@@ -127,11 +141,104 @@
 		}
 	}
 
+	// Expected segment structure for the current message type (7edit-style
+	// ghost rows). Fetched once per (messageType, version) while the toggle
+	// is on; HL7 v2 only.
+	let expectedSegs = $state<ExpectedSegment[]>([]);
+	let expectedKey = '';
+	$effect(() => {
+		const key = showSchemaFields && format === 'HL7v2' && messageType && version
+			? `${messageType}|${version}`
+			: '';
+		if (key === expectedKey) return;
+		expectedKey = key;
+		if (!key) {
+			expectedSegs = [];
+			return;
+		}
+		getExpectedSegments(messageType, version)
+			.then((s) => { expectedSegs = s; })
+			.catch(() => { expectedSegs = []; });
+	});
+
+	/** Root list = real segments, interleaved with ghost rows for expected
+	 *  segments that are absent from the message. Each ghost sits after the
+	 *  last real instance of the nearest preceding present segment code. */
+	function buildRootNodes(): VNode[] {
+		const real: VNode[] = roots.map((r) => ({ ...r, _expanded: false }));
+		if (!showSchemaFields || expectedSegs.length === 0) return real;
+
+		const presentCodes = new Set<string>();
+		for (const r of real) {
+			const c = segmentTypeFromNode(r);
+			if (c) presentCodes.add(c);
+		}
+
+		// One ghost per absent code; first occurrence in the definition wins.
+		const seen = new Set<string>();
+		const ghostsAfter = new Map<string, VNode[]>(); // anchor code, '' = top
+		let anchor = '';
+		for (const e of expectedSegs) {
+			if (seen.has(e.code)) continue;
+			seen.add(e.code);
+			if (presentCodes.has(e.code)) {
+				anchor = e.code;
+				continue;
+			}
+			const parts: string[] = [];
+			if (e.group) parts.push(e.group);
+			parts.push(e.required ? tr('tree.expectedRequired') : tr('tree.expectedOptional'));
+			if (e.repeats) parts.push(tr('tree.expectedRepeating'));
+			if (e.choice) parts.push(tr('tree.expectedChoice'));
+			const ghost: VNode = {
+				id: `ghost.${e.code}`,
+				label: e.code,
+				value_preview: parts.join(' · '),
+				node_type: 'segment',
+				depth: 0,
+				has_children: true,
+				is_truncated: false,
+				child_count: 0,
+				_expanded: false,
+				_isPlaceholder: true,
+			};
+			const list = ghostsAfter.get(anchor) ?? [];
+			list.push(ghost);
+			ghostsAfter.set(anchor, list);
+		}
+
+		const lastIdxByCode = new Map<string, number>();
+		real.forEach((r, i) => {
+			const c = segmentTypeFromNode(r);
+			if (c) lastIdxByCode.set(c, i);
+		});
+
+		const out: VNode[] = [...(ghostsAfter.get('') ?? [])];
+		const insertAfter = new Map<number, VNode[]>();
+		for (const [code, ghosts] of ghostsAfter) {
+			if (!code) continue;
+			const idx = lastIdxByCode.get(code);
+			if (idx === undefined) {
+				out.push(...ghosts);
+				continue;
+			}
+			insertAfter.set(idx, [...(insertAfter.get(idx) ?? []), ...ghosts]);
+		}
+		real.forEach((r, i) => {
+			out.push(r);
+			const g = insertAfter.get(i);
+			if (g) out.push(...g);
+		});
+		return out;
+	}
+
 	// Initialize with root nodes (also re-init when showSchemaFields toggles so
-	// previously-expanded segments pick up / drop placeholder rows).
+	// previously-expanded segments pick up / drop placeholder rows, and when
+	// the expected structure arrives so ghost segments appear).
 	$effect(() => {
 		void showSchemaFields;
-		visibleNodes = roots.map((r) => ({ ...r, _expanded: false }));
+		void expectedSegs;
+		visibleNodes = buildRootNodes();
 	});
 
 	// Reset search when the displayed message changes — hits reference node
@@ -199,7 +306,7 @@
 		if (!segType) return realChildren.map((c) => ({ ...c, _expanded: false }));
 
 		try {
-			const info = await getSegmentInfo(segType, version);
+			const info = await getSegmentSchema(segType, version);
 			if (!info) return realChildren.map((c) => ({ ...c, _expanded: false }));
 
 			const segId = segNode.id; // "seg{N}"
@@ -214,14 +321,15 @@
 				.map((f) => ({
 					id: `${segId}.f${f.position}`,
 					label: `${segType}-${f.position} ${f.name}`,
-					value_preview: '',
+					value_preview: f.data_type,
 					node_type: 'field' as const,
 					depth: segNode.depth + 1,
-					has_children: false,
+					has_children: f.has_components,
 					is_truncated: false,
 					child_count: 0,
 					_expanded: false,
 					_isPlaceholder: true,
+					_dataType: f.data_type,
 				}));
 
 			const merged: VNode[] = [
@@ -262,11 +370,16 @@
 			];
 		} else {
 			// Expand: fetch children and insert
-			if (!node._children) {
-				const children = await getTreeChildren(messageId, node.id);
-				node._children = children;
+			let childNodes: VNode[];
+			if (node._isPlaceholder) {
+				childNodes = await expandPlaceholder(node);
+			} else {
+				if (!node._children) {
+					const children = await getTreeChildren(messageId, node.id);
+					node._children = children;
+				}
+				childNodes = await mergeSchemaPlaceholders(node, node._children!);
 			}
-			const childNodes = await mergeSchemaPlaceholders(node, node._children!);
 			visibleNodes = [
 				...visibleNodes.slice(0, idx),
 				{ ...node, _expanded: true },
@@ -274,6 +387,51 @@
 				...visibleNodes.slice(idx + 1),
 			];
 		}
+	}
+
+	/** Children of a ghost/placeholder node, entirely from the schema
+	 *  catalogue: segment → its field definitions, composite field → its
+	 *  components (e.g. OBX-16 → XCN.1, XCN.2, …). */
+	async function expandPlaceholder(node: VNode): Promise<VNode[]> {
+		try {
+			if (node.node_type === 'segment') {
+				const code = segmentTypeFromNode(node);
+				if (!code) return [];
+				const schema = await getSegmentSchema(code, version);
+				return (schema?.fields ?? []).map((f) => ({
+					id: `${node.id}.f${f.position}`,
+					label: `${code}-${f.position} ${f.name}`,
+					value_preview: f.data_type,
+					node_type: 'field' as const,
+					depth: node.depth + 1,
+					has_children: f.has_components,
+					is_truncated: false,
+					child_count: 0,
+					_expanded: false,
+					_isPlaceholder: true,
+					_dataType: f.data_type,
+				}));
+			}
+			if (node.node_type === 'field' && node._dataType) {
+				const comps = await getCompositeComponents(node._dataType, version);
+				const base = node.label.split(' ')[0]; // "OBX-16"
+				return comps.map((c) => ({
+					id: `${node.id}.c${c.position}`,
+					label: `${base}.${c.position} ${c.name}`,
+					value_preview: c.data_type,
+					node_type: 'component' as const,
+					depth: node.depth + 1,
+					has_children: false,
+					is_truncated: false,
+					child_count: 0,
+					_expanded: false,
+					_isPlaceholder: true,
+				}));
+			}
+		} catch {
+			// schema lookup failed — render as childless
+		}
+		return [];
 	}
 
 	function selectNode(node: TreeNode) {
