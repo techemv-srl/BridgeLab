@@ -48,6 +48,11 @@ ${mockupAppShell}
 Pro de 7 jours</strong> avec toutes les fonctionnalités activées. À
 l'expiration, BridgeLab continue de fonctionner avec les fonctionnalités
 Community - vous ne perdez jamais vos messages.</div>
+
+<p>Les cartes <strong>Découvrir BridgeLab</strong> de l'écran d'accueil
+ouvrent directement les fonctions qui distinguent BridgeLab — générateur de
+messages de test, anonymisation PHI, écouteur MLLP et export XSD — avec des
+badges PRO pour celles sous licence.</p>
 `,
 };
 
