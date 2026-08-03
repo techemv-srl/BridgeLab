@@ -62,6 +62,10 @@
 	"menu.help.updates": "Buscar actualizaciones",
 
 	"tree.header": "Estructura del mensaje",
+	"tree.expectedRequired": "obligatorio",
+	"tree.expectedOptional": "opcional",
+	"tree.expectedRepeating": "repetible",
+	"tree.expectedChoice": "elección",
 	"tree.empty": "Abre un archivo HL7 o pega un mensaje para comenzar.",
 	"tree.shortcutHint": "Ctrl+O para abrir un archivo",
 	"tree.noMessage": "Ningún mensaje cargado",
