@@ -73,3 +73,9 @@ export async function expandAllFields(messageId: string): Promise<string> {
 export async function collapseAllFields(messageId: string): Promise<string> {
 	return invoke<string>('collapse_all_fields', { messageId });
 }
+
+/** File paths the app was launched with (double-click / "open with").
+ *  Drained: returns them once, empty afterwards. */
+export async function getLaunchFiles(): Promise<string[]> {
+	return invoke('get_launch_files');
+}
