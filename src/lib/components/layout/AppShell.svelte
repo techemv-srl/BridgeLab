@@ -74,6 +74,43 @@
 		return t(key, params);
 	}
 
+	// --- Bottom panel tabs ---
+	// The open bottom panels share ONE resizable container and render as tabs.
+	type BottomPanelId = 'validation' | 'communication' | 'fhirpath';
+	let activeBottomPanel = $state<BottomPanelId>('validation');
+	let openBottomPanels = $derived.by<BottomPanelId[]>(() => {
+		const out: BottomPanelId[] = [];
+		if (showValidation && validationReport) out.push('validation');
+		if (showCommunication) out.push('communication');
+		if (showFhirPath && activeTab?.parseResult) out.push('fhirpath');
+		return out;
+	});
+	// Keep the active tab valid when its panel closes (fall back to the first
+	// remaining one).
+	$effect(() => {
+		if (openBottomPanels.length > 0 && !openBottomPanels.includes(activeBottomPanel)) {
+			activeBottomPanel = openBottomPanels[0];
+		}
+	});
+
+	function closeActiveBottomPanel() {
+		if (activeBottomPanel === 'validation') showValidation = false;
+		else if (activeBottomPanel === 'communication') showCommunication = false;
+		else showFhirPath = false;
+	}
+
+	/** Toggle a bottom panel; opening one also brings its tab to the front. */
+	function toggleBottomPanel(id: BottomPanelId) {
+		if (id === 'validation') showValidation = !showValidation;
+		else if (id === 'communication') showCommunication = !showCommunication;
+		else showFhirPath = !showFhirPath;
+		const nowOpen =
+			(id === 'validation' && showValidation) ||
+			(id === 'communication' && showCommunication) ||
+			(id === 'fhirpath' && showFhirPath);
+		if (nowOpen) activeBottomPanel = id;
+	}
+
 	// Validation state
 	let validationReport = $state<ValidationReport | null>(null);
 
@@ -315,6 +352,7 @@
 			return;
 		}
 		showValidation = true;
+		activeBottomPanel = 'validation';
 		const content = activeTab.content;
 		const trimmed = content.trim();
 
@@ -811,9 +849,9 @@
 		'file.testCases': () => { showTestCases = true; },
 		'edit.settings': () => { showSettings = true; },
 		'view.toggleTree': () => handleToggleTree(),
-		'view.toggleValidation': () => { showValidation = !showValidation; },
-		'view.toggleCommunication': () => { showCommunication = !showCommunication; },
-		'view.toggleFhirPath': () => { showFhirPath = !showFhirPath; },
+		'view.toggleValidation': () => toggleBottomPanel('validation'),
+		'view.toggleCommunication': () => toggleBottomPanel('communication'),
+		'view.toggleFhirPath': () => toggleBottomPanel('fhirpath'),
 		'tools.reparse': () => handleParse(),
 		'tools.validate': () => handleValidate(),
 	};
@@ -885,11 +923,11 @@
 		onShowTestCases={() => { showTestCases = true; }}
 		onParse={handleParse}
 		onValidate={handleValidate}
-		onToggleValidation={() => { showValidation = !showValidation; }}
-		onToggleCommunication={() => { showCommunication = !showCommunication; }}
+		onToggleValidation={() => toggleBottomPanel('validation')}
+		onToggleCommunication={() => toggleBottomPanel('communication')}
 		onAnonymize={handleShowAnonymize}
 		onShowBundleVisualizer={() => { showBundleVisualizer = true; }}
-		onToggleFhirPath={() => { showFhirPath = !showFhirPath; }}
+		onToggleFhirPath={() => toggleBottomPanel('fhirpath')}
 		onCopyFull={handleCopyFull}
 		onCopyTruncated={handleCopyTruncated}
 		onExportJson={handleExportJson}
@@ -1036,8 +1074,11 @@
 				{/if}
 			</div>
 
-			<!-- Bottom Panels (Validation / Communication) -->
-			{#if (showValidation && validationReport) || showCommunication || showFhirPath}
+			<!-- Bottom panel: one shared, resizable container. Open panels are
+			     TABS inside it (stacking them at full height pushed the lower
+			     ones off-screen). Inactive panels stay mounted but hidden so
+			     the Communication panel never loses its listener console. -->
+			{#if openBottomPanels.length > 0}
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<div
@@ -1046,56 +1087,55 @@
 					role="separator"
 					tabindex={0}
 				></div>
-			{/if}
-
-			{#if showValidation && validationReport}
 				<div class="bottom-panel" style="height: {bottomPanelHeight}px">
-					<div class="panel-header">
-						<span>Validation</span>
-						<button class="panel-close" onclick={() => { showValidation = false; }}>&times;</button>
+					<div class="panel-header panel-tab-bar">
+						{#each openBottomPanels as p (p)}
+							<button
+								class="panel-tab"
+								class:active={activeBottomPanel === p}
+								onclick={() => { activeBottomPanel = p; }}
+							>
+								{tr(`panel.${p}`)}
+							</button>
+						{/each}
+						<button class="panel-close" onclick={closeActiveBottomPanel}>&times;</button>
 					</div>
-					<ValidationPanel
-						issues={validationReport.issues}
-						errorCount={validationReport.error_count}
-						warningCount={validationReport.warning_count}
-						infoCount={validationReport.info_count}
-						onIssueClick={handleValidationIssueClick}
-					/>
-				</div>
-			{/if}
-
-			{#if showCommunication}
-				<div class="bottom-panel" style="height: {bottomPanelHeight}px">
-					<div class="panel-header">
-						<span>Communication</span>
-						<button class="panel-close" onclick={() => { showCommunication = false; }}>&times;</button>
-					</div>
-					<CommunicationPanel
-						currentMessage={activeTab?.content ?? ''}
-						activeTabLabel={activeTab?.label ?? ''}
-						onMessageReceived={(content) => {
-							// Open each incoming MLLP message in a fresh tab so the
-							// user does not lose the message currently in the editor.
-							messageStore.newTab();
-							const t = messageStore.activeTab;
-							if (t) {
-								messageStore.updateContent(t.id, content);
-								const ts = new Date().toLocaleTimeString();
-								t.label = `Inbox ${ts}`;
-							}
-						}}
-						onOpenGenerated={handleOpenGenerated}
-					/>
-				</div>
-			{/if}
-
-			{#if showFhirPath && activeTab?.parseResult}
-				<div class="bottom-panel" style="height: {bottomPanelHeight}px">
-					<div class="panel-header">
-						<span>FHIRPath</span>
-						<button class="panel-close" onclick={() => { showFhirPath = false; }}>&times;</button>
-					</div>
-					<FhirPathPanel messageId={activeTab.parseResult.message_id} />
+					{#if showValidation && validationReport}
+						<div class="panel-body" class:hidden-panel={activeBottomPanel !== 'validation'}>
+							<ValidationPanel
+								issues={validationReport.issues}
+								errorCount={validationReport.error_count}
+								warningCount={validationReport.warning_count}
+								infoCount={validationReport.info_count}
+								onIssueClick={handleValidationIssueClick}
+							/>
+						</div>
+					{/if}
+					{#if showCommunication}
+						<div class="panel-body" class:hidden-panel={activeBottomPanel !== 'communication'}>
+							<CommunicationPanel
+								currentMessage={activeTab?.content ?? ''}
+								activeTabLabel={activeTab?.label ?? ''}
+								onMessageReceived={(content) => {
+									// Open each incoming MLLP message in a fresh tab so the
+									// user does not lose the message currently in the editor.
+									messageStore.newTab();
+									const t = messageStore.activeTab;
+									if (t) {
+										messageStore.updateContent(t.id, content);
+										const ts = new Date().toLocaleTimeString();
+										t.label = `Inbox ${ts}`;
+									}
+								}}
+								onOpenGenerated={handleOpenGenerated}
+							/>
+						</div>
+					{/if}
+					{#if showFhirPath && activeTab?.parseResult}
+						<div class="panel-body" class:hidden-panel={activeBottomPanel !== 'fhirpath'}>
+							<FhirPathPanel messageId={activeTab.parseResult.message_id} />
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -1142,7 +1182,7 @@
 		isModified={activeTab?.isModified ?? false}
 		errorCount={validationReport ? validationReport.error_count : null}
 		warningCount={validationReport ? validationReport.warning_count : null}
-		onShowValidation={() => { showValidation = true; }}
+		onShowValidation={() => { showValidation = true; activeBottomPanel = 'validation'; }}
 		onExpandAll={handleExpandAll}
 	/>
 </div>
@@ -1256,6 +1296,36 @@
 		border-top: 1px solid var(--color-border);
 		overflow: hidden;
 	}
+
+	.panel-tab-bar { gap: 2px; justify-content: flex-start; }
+	.panel-tab {
+		padding: 3px 12px;
+		border: none;
+		border-bottom: 2px solid transparent;
+		background: none;
+		color: var(--color-text-secondary);
+		font-size: 11px;
+		font-weight: 600;
+		font-family: inherit;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		cursor: pointer;
+	}
+	.panel-tab:hover { color: var(--color-text-primary); }
+	.panel-tab.active {
+		color: var(--color-accent);
+		border-bottom-color: var(--color-accent);
+	}
+	.panel-tab-bar .panel-close { margin-left: auto; }
+
+	.panel-body {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.panel-body.hidden-panel { display: none; }
 
 	.panel-close {
 		background: none;
