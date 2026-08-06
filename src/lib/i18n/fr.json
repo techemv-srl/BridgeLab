@@ -424,9 +424,12 @@
 	"act.contactUs": "Nous contacter",
 
 	"banner.trialPro": "Essai Pro : {days} jours restants. Après expiration, les fonctionnalités Community restent disponibles.",
-	"banner.freeAfterTrial": "Essai expiré. Les fonctionnalités Community sont actives. Passez à Pro pour débloquer toutes les fonctionnalités.",
+	"banner.freeAfterTrial": "Votre essai Pro est terminé — les fonctionnalités Community restent gratuites. Retrouvez l'anonymisation, la communication MLLP, l'export XSD et plus avec Pro.",
 	"banner.expired": "Licence expirée. Passez à un abonnement pour restaurer l'accès complet.",
 	"banner.comparePlans": "Comparer les offres",
+	"banner.requestQuote": "Demander un devis",
+	"banner.quoteSubject": "BridgeLab Pro — demande de devis",
+	"banner.quoteBody": "Bonjour TECHEMV,\n\nje souhaite recevoir un devis pour BridgeLab Pro (ou une extension d'essai).\n\nHardware ID : {hwid}\nVersion BridgeLab : {version}\nOrganisation : \nLicences nécessaires : \n\nCordialement,",
 
 	"activate": "Activer",
 

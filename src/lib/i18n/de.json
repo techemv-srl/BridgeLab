@@ -424,9 +424,12 @@
 	"act.contactUs": "Kontaktieren Sie uns",
 
 	"banner.trialPro": "Pro-Testversion: {days} Tage verbleibend. Nach Ablauf bleiben die Community-Funktionen verfügbar.",
-	"banner.freeAfterTrial": "Testversion abgelaufen. Community-Funktionen sind aktiv. Upgraden Sie für Pro-Funktionen.",
+	"banner.freeAfterTrial": "Ihre Pro-Testversion ist abgelaufen — die Community-Funktionen bleiben kostenlos. Mit Pro erhalten Sie Anonymisierung, MLLP-Kommunikation, XSD-Export und mehr zurück.",
 	"banner.expired": "Lizenz abgelaufen. Upgraden Sie, um den vollen Zugriff wiederherzustellen.",
 	"banner.comparePlans": "Tarife vergleichen",
+	"banner.requestQuote": "Angebot anfordern",
+	"banner.quoteSubject": "BridgeLab Pro — Angebotsanfrage",
+	"banner.quoteBody": "Guten Tag TECHEMV,\n\nich möchte ein Angebot für BridgeLab Pro (oder eine Verlängerung der Testversion) anfordern.\n\nHardware-ID: {hwid}\nBridgeLab-Version: {version}\nOrganisation: \nBenötigte Lizenzen: \n\nMit freundlichen Grüßen",
 
 	"activate": "Aktivieren",
 
