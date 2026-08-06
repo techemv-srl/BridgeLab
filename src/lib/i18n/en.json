@@ -424,9 +424,12 @@
 	"act.contactUs": "Contact us",
 
 	"banner.trialPro": "Pro trial: {days} days remaining. After expiry, Community features remain available.",
-	"banner.freeAfterTrial": "Trial expired. Community features are active. Upgrade to unlock Pro features.",
+	"banner.freeAfterTrial": "Your Pro trial has ended — Community features stay free. Pro brings back anonymization masking, the MLLP listener, batch validation and the full XSD catalogue.",
 	"banner.expired": "License expired. Upgrade to restore full access.",
 	"banner.comparePlans": "Compare plans",
+	"banner.requestQuote": "Request a quote",
+	"banner.quoteSubject": "BridgeLab Pro — quote request",
+	"banner.quoteBody": "Hello TECHEMV,\n\nI would like a quote for BridgeLab Pro (or an extended trial).\n\nHardware ID: {hwid}\nBridgeLab version: {version}\nOrganization: \nLicenses needed: \n\nBest regards,",
 
 	"activate": "Activate",
 
