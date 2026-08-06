@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { LicenseStatus } from '$lib/ipc/licensing';
+	import { getHardwareId } from '$lib/ipc/licensing';
 	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { t, subscribeLocale } from '$lib/i18n';
 
@@ -15,7 +16,20 @@
 	let { status, onActivate }: Props = $props();
 
 	const PLANS_URL = 'https://techemv-srl.github.io/BridgeLab/';
+	const CONTACT_EMAIL = 'info@techemv.it';
 	const DISMISS_KEY = 'trial_banner_dismissed_for';
+
+	// Prefetched for the quote mailto; best-effort (both are Tauri-only IPC,
+	// web mode simply omits them from the email body).
+	let hwid = $state('');
+	let appVersion = $state('');
+	if (typeof window !== 'undefined') {
+		getHardwareId().then((id) => { hwid = id; }).catch(() => {});
+		import('@tauri-apps/api/app')
+			.then(({ getVersion }) => getVersion())
+			.then((v) => { appVersion = v; })
+			.catch(() => {});
+	}
 
 	// Persist dismissal across restarts, scoped to the current license_type
 	// so the banner reappears if the user transitions trial→free→expired etc.
@@ -74,6 +88,15 @@
 			.then(({ openUrl }) => openUrl(PLANS_URL))
 			.catch(() => { window.open(PLANS_URL, '_blank'); });
 	}
+
+	function requestQuote() {
+		const subject = tr('banner.quoteSubject');
+		const body = tr('banner.quoteBody', { hwid: hwid || '-', version: appVersion || '-' });
+		const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+		import('@tauri-apps/plugin-opener')
+			.then(({ openUrl }) => openUrl(url))
+			.catch(() => { window.location.href = url; });
+	}
 </script>
 
 {#if visible}
@@ -90,6 +113,11 @@
 		<button class="banner-btn" onclick={onActivate}>
 			{tr('activate')}
 		</button>
+		{#if status.license_type === 'free' || status.license_type === 'expired'}
+			<button class="banner-btn" onclick={requestQuote}>
+				{tr('banner.requestQuote')}
+			</button>
+		{/if}
 		<button class="banner-btn banner-btn-ghost" onclick={openPlans}>
 			{tr('banner.comparePlans')}
 		</button>
@@ -104,13 +132,21 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 12px;
-		height: 28px;
+		/* Wrap on narrow (web) viewports: the post-trial text is long and the
+		   browser build has no minimum window width — grow instead of clipping. */
+		flex-wrap: wrap;
+		gap: 2px 12px;
+		min-height: 28px;
+		padding: 3px 8px;
 		background-color: var(--color-warning);
 		color: #1e1e2e;
 		font-size: 11px;
 		font-weight: 600;
 		flex-shrink: 0;
+	}
+
+	.banner-text {
+		text-align: center;
 	}
 
 	.trial-banner.urgent {
