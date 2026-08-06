@@ -424,7 +424,7 @@
 	"act.contactUs": "Contact us",
 
 	"banner.trialPro": "Pro trial: {days} days remaining. After expiry, Community features remain available.",
-	"banner.freeAfterTrial": "Your Pro trial has ended — Community features stay free. Get anonymization, MLLP communication, XSD export and more back with Pro.",
+	"banner.freeAfterTrial": "Your Pro trial has ended — Community features stay free. Pro brings back anonymization masking, the MLLP listener, batch validation and the full XSD catalogue.",
 	"banner.expired": "License expired. Upgrade to restore full access.",
 	"banner.comparePlans": "Compare plans",
 	"banner.requestQuote": "Request a quote",
