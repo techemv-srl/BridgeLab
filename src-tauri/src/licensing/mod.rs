@@ -258,7 +258,7 @@ pub fn load_or_init_trial() -> TrialData {
 
     let mut candidates: Vec<TrialData> = Vec::new();
     let mut tampered = false;
-    let mut intact_files = 0usize;
+    let mut migrated = false;
 
     for path in [trial_file_path().ok(), trial_marker_path().ok()]
         .into_iter()
@@ -269,19 +269,19 @@ pub fn load_or_init_trial() -> TrialData {
             Err(_) => continue,
         };
         match serde_json::from_str::<TrialData>(&content) {
-            Ok(t) if trial_is_authentic(&t, &hw) => {
-                intact_files += 1;
-                candidates.push(t);
-            }
+            Ok(t) if trial_is_authentic(&t, &hw) => candidates.push(t),
             Ok(mut t) if is_plausible_legacy(&t) => {
                 t.hw = hw.clone();
                 t.last_seen = now.to_rfc3339();
                 sign_trial(&mut t);
+                migrated = true;
                 candidates.push(t);
             }
             _ => tampered = true,
         }
     }
+
+    let created = candidates.is_empty();
 
     // When both copies survive, the least generous (earliest start) wins.
     let mut trial = match candidates.into_iter().min_by_key(|t| {
@@ -316,7 +316,12 @@ pub fn load_or_init_trial() -> TrialData {
         trial.last_seen = now.to_rfc3339();
         sign_trial(&mut trial);
     }
-    if should_advance || tampered || intact_files < 2 {
+    // Write only when the record actually changed. A missing copy (e.g. an
+    // unwritable cache dir, or a deleted trial.json) is repaired on the
+    // hourly advance rather than on every call — reads always take the
+    // earliest surviving copy, so enforcement never depends on an
+    // immediate rewrite.
+    if should_advance || tampered || migrated || created {
         persist_trial(&trial);
     }
     trial
