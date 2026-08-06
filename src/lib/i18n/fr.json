@@ -424,7 +424,7 @@
 	"act.contactUs": "Nous contacter",
 
 	"banner.trialPro": "Essai Pro : {days} jours restants. Après expiration, les fonctionnalités Community restent disponibles.",
-	"banner.freeAfterTrial": "Votre essai Pro est terminé — les fonctionnalités Community restent gratuites. Retrouvez l'anonymisation, la communication MLLP, l'export XSD et plus avec Pro.",
+	"banner.freeAfterTrial": "Votre essai Pro est terminé — les fonctionnalités Community restent gratuites. Pro rétablit le masquage d'anonymisation, le listener MLLP, la validation par lots et le catalogue XSD complet.",
 	"banner.expired": "Licence expirée. Passez à un abonnement pour restaurer l'accès complet.",
 	"banner.comparePlans": "Comparer les offres",
 	"banner.requestQuote": "Demander un devis",
