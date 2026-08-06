@@ -424,9 +424,12 @@
 	"act.contactUs": "Contattaci",
 
 	"banner.trialPro": "Trial Pro: {days} giorni rimanenti. Alla scadenza, le funzionalità Community restano disponibili.",
-	"banner.freeAfterTrial": "Trial scaduto. Le funzionalità Community sono attive. Aggiorna per sbloccare le funzionalità Pro.",
+	"banner.freeAfterTrial": "Il trial Pro è terminato — le funzionalità Community restano gratuite. Con Pro ritrovi anonimizzazione, comunicazione MLLP, export XSD e altro.",
 	"banner.expired": "Licenza scaduta. Aggiorna per ripristinare l'accesso completo.",
 	"banner.comparePlans": "Confronta i piani",
+	"banner.requestQuote": "Richiedi un preventivo",
+	"banner.quoteSubject": "BridgeLab Pro — richiesta preventivo",
+	"banner.quoteBody": "Buongiorno TECHEMV,\n\nvorrei ricevere un preventivo per BridgeLab Pro (o un'estensione del trial).\n\nHardware ID: {hwid}\nVersione BridgeLab: {version}\nOrganizzazione: \nLicenze necessarie: \n\nCordiali saluti,",
 
 	"activate": "Attiva",
 
