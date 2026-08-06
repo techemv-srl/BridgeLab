@@ -132,13 +132,21 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 12px;
-		height: 28px;
+		/* Wrap on narrow (web) viewports: the post-trial text is long and the
+		   browser build has no minimum window width — grow instead of clipping. */
+		flex-wrap: wrap;
+		gap: 2px 12px;
+		min-height: 28px;
+		padding: 3px 8px;
 		background-color: var(--color-warning);
 		color: #1e1e2e;
 		font-size: 11px;
 		font-weight: 600;
 		flex-shrink: 0;
+	}
+
+	.banner-text {
+		text-align: center;
 	}
 
 	.trial-banner.urgent {

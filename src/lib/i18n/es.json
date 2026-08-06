@@ -424,7 +424,7 @@
 	"act.contactUs": "Contáctanos",
 
 	"banner.trialPro": "Prueba Pro: {days} días restantes. Al vencer, las funciones Community seguirán disponibles.",
-	"banner.freeAfterTrial": "Tu prueba Pro ha terminado — las funciones Community siguen siendo gratuitas. Recupera anonimización, comunicación MLLP, exportación XSD y más con Pro.",
+	"banner.freeAfterTrial": "Tu prueba Pro ha terminado — las funciones Community siguen siendo gratuitas. Pro recupera el enmascaramiento de anonimización, el listener MLLP, la validación por lotes y el catálogo XSD completo.",
 	"banner.expired": "Licencia expirada. Actualiza para restaurar el acceso completo.",
 	"banner.comparePlans": "Comparar planes",
 	"banner.requestQuote": "Solicitar presupuesto",
