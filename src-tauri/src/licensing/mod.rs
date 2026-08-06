@@ -54,10 +54,23 @@ pub enum LicenseType {
 }
 
 /// Trial tracking data.
+///
+/// v2 binds the record to the machine (`hw`), carries a monotonic
+/// high-water timestamp (`last_seen`) so rolling the system clock back
+/// cannot extend the trial, and an integrity tag (`sig`) so the file
+/// cannot simply be edited or copied from another machine. The tag is a
+/// salted hash with the salt embedded in the binary — this stops casual
+/// tampering, not a determined reverse engineer (nothing offline can).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrialData {
     pub started_at: String,
     pub trial_days: i64,
+    #[serde(default)]
+    pub hw: String,
+    #[serde(default)]
+    pub last_seen: String,
+    #[serde(default)]
+    pub sig: String,
 }
 
 // =============================================================================
@@ -96,6 +109,15 @@ fn license_file_path() -> Result<PathBuf, String> {
 
 fn trial_file_path() -> Result<PathBuf, String> {
     Ok(data_dir()?.join("trial.json"))
+}
+
+/// Redundant copy of the trial record in a second base directory
+/// (cache dir ≠ data dir on every supported platform), so deleting
+/// `trial.json` alone no longer restarts the trial.
+fn trial_marker_path() -> Result<PathBuf, String> {
+    let dir = dirs::cache_dir()
+        .ok_or_else(|| "Could not determine cache directory".to_string())?;
+    Ok(dir.join("BridgeLab").join(".bl-state.json"))
 }
 
 // =============================================================================
@@ -172,47 +194,189 @@ pub fn remove_license() -> Result<(), String> {
 // Trial management
 // =============================================================================
 
-pub fn load_or_init_trial() -> TrialData {
-    let path = match trial_file_path() {
-        Ok(p) => p,
-        Err(_) => return new_trial(),
-    };
+const TRIAL_DAYS: i64 = 7;
 
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(trial) = serde_json::from_str::<TrialData>(&content) {
-            return trial;
+/// Salt for the trial integrity tag. Embedded in the binary: raises the
+/// bar from "edit a JSON file" to "reverse engineer the executable".
+const TRIAL_SIG_SALT: &[u8] = &[
+    0x42, 0x4c, 0x54, 0x32, 0x9f, 0x4e, 0x7c, 0x11,
+    0xd2, 0xa6, 0x4b, 0x08, 0x5e, 0x31, 0xc7, 0xe9,
+];
+
+fn trial_sig(started_at: &str, trial_days: i64, hw: &str, last_seen: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(TRIAL_SIG_SALT);
+    for part in [started_at, hw, last_seen] {
+        h.update(part.as_bytes());
+        h.update([0x1f]);
+    }
+    h.update(trial_days.to_le_bytes());
+    hex::encode(&h.finalize())
+}
+
+fn sign_trial(trial: &mut TrialData) {
+    trial.sig = trial_sig(&trial.started_at, trial.trial_days, &trial.hw, &trial.last_seen);
+}
+
+/// A trial record is authentic when its tag matches, it is bound to this
+/// machine, its duration was not inflated and its start is not in the future.
+fn trial_is_authentic(trial: &TrialData, hw: &str) -> bool {
+    if trial.sig.is_empty() || trial.hw != hw {
+        return false;
+    }
+    if trial.trial_days <= 0 || trial.trial_days > TRIAL_DAYS {
+        return false;
+    }
+    let started = match chrono::DateTime::parse_from_rfc3339(&trial.started_at) {
+        Ok(d) => d.with_timezone(&chrono::Utc),
+        Err(_) => return false,
+    };
+    if started > chrono::Utc::now() + chrono::Duration::hours(24) {
+        return false;
+    }
+    trial.sig == trial_sig(&trial.started_at, trial.trial_days, &trial.hw, &trial.last_seen)
+}
+
+/// Pre-hardening `trial.json` files had only `started_at` + `trial_days`.
+/// Accept them (so honest mid-trial users keep their remaining days) only
+/// when they look exactly like what the old code wrote and do not claim a
+/// start in the future.
+fn is_plausible_legacy(trial: &TrialData) -> bool {
+    trial.sig.is_empty()
+        && trial.hw.is_empty()
+        && trial.last_seen.is_empty()
+        && trial.trial_days == TRIAL_DAYS
+        && chrono::DateTime::parse_from_rfc3339(&trial.started_at)
+            .map(|d| d.with_timezone(&chrono::Utc) <= chrono::Utc::now() + chrono::Duration::hours(1))
+            .unwrap_or(false)
+}
+
+pub fn load_or_init_trial() -> TrialData {
+    let hw = get_hardware_id();
+    let now = chrono::Utc::now();
+
+    let mut candidates: Vec<TrialData> = Vec::new();
+    let mut tampered = false;
+    let mut migrated = false;
+
+    for path in [trial_file_path().ok(), trial_marker_path().ok()]
+        .into_iter()
+        .flatten()
+    {
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        match serde_json::from_str::<TrialData>(&content) {
+            Ok(t) if trial_is_authentic(&t, &hw) => candidates.push(t),
+            Ok(mut t) if is_plausible_legacy(&t) => {
+                t.hw = hw.clone();
+                t.last_seen = now.to_rfc3339();
+                sign_trial(&mut t);
+                migrated = true;
+                candidates.push(t);
+            }
+            _ => tampered = true,
         }
     }
 
-    let trial = new_trial();
-    save_trial(&trial).ok();
+    let created = candidates.is_empty();
+
+    // When both copies survive, the least generous (earliest start) wins.
+    let mut trial = match candidates.into_iter().min_by_key(|t| {
+        chrono::DateTime::parse_from_rfc3339(&t.started_at)
+            .map(|d| d.with_timezone(&chrono::Utc))
+            .unwrap_or(now)
+    }) {
+        Some(t) => t,
+        None if tampered => {
+            // A record existed but failed verification: fail closed to an
+            // already-expired trial instead of granting a fresh one.
+            let mut t = TrialData {
+                started_at: (now - chrono::Duration::days(TRIAL_DAYS + 1)).to_rfc3339(),
+                trial_days: TRIAL_DAYS,
+                hw: hw.clone(),
+                last_seen: now.to_rfc3339(),
+                sig: String::new(),
+            };
+            sign_trial(&mut t);
+            t
+        }
+        None => new_trial(&hw),
+    };
+
+    // Advance the monotonic high-water mark (throttled to hourly so gated
+    // IPC calls don't rewrite the files on every invocation).
+    let should_advance = match chrono::DateTime::parse_from_rfc3339(&trial.last_seen) {
+        Ok(seen) => now > seen.with_timezone(&chrono::Utc) + chrono::Duration::hours(1),
+        Err(_) => true,
+    };
+    if should_advance {
+        trial.last_seen = now.to_rfc3339();
+        sign_trial(&mut trial);
+    }
+    // Write only when the record actually changed. A missing copy (e.g. an
+    // unwritable cache dir, or a deleted trial.json) is repaired on the
+    // hourly advance rather than on every call — reads always take the
+    // earliest surviving copy, so enforcement never depends on an
+    // immediate rewrite.
+    if should_advance || tampered || migrated || created {
+        persist_trial(&trial);
+    }
     trial
 }
 
-fn new_trial() -> TrialData {
-    TrialData {
-        started_at: chrono::Utc::now().to_rfc3339(),
-        trial_days: 7,
-    }
+fn new_trial(hw: &str) -> TrialData {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut trial = TrialData {
+        started_at: now.clone(),
+        trial_days: TRIAL_DAYS,
+        hw: hw.to_string(),
+        last_seen: now,
+        sig: String::new(),
+    };
+    sign_trial(&mut trial);
+    trial
 }
 
-fn save_trial(trial: &TrialData) -> Result<(), String> {
-    let path = trial_file_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+/// Best-effort write to both locations; a single surviving copy is enough
+/// for the next load to restore the other.
+fn persist_trial(trial: &TrialData) {
+    let json = match serde_json::to_string_pretty(trial) {
+        Ok(j) => j,
+        Err(_) => return,
+    };
+    for path in [trial_file_path().ok(), trial_marker_path().ok()]
+        .into_iter()
+        .flatten()
+    {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&path, &json).ok();
     }
-    let json = serde_json::to_string_pretty(trial)
-        .map_err(|e| format!("Serialize failed: {}", e))?;
-    std::fs::write(path, json).map_err(|e| format!("Write failed: {}", e))
 }
 
 pub fn trial_days_remaining(trial: &TrialData) -> i64 {
-    let started = chrono::DateTime::parse_from_rfc3339(&trial.started_at)
-        .map(|d| d.with_timezone(&chrono::Utc))
-        .unwrap_or_else(|_| chrono::Utc::now());
+    let started = match chrono::DateTime::parse_from_rfc3339(&trial.started_at) {
+        Ok(d) => d.with_timezone(&chrono::Utc),
+        // Unparseable start = tampered record: fail closed, never fail open.
+        Err(_) => return 0,
+    };
+
+    // If the clock was rolled back past the last time the app ran, count
+    // from the high-water mark instead of the (rewound) wall clock.
+    let mut now = chrono::Utc::now();
+    if let Ok(seen) = chrono::DateTime::parse_from_rfc3339(&trial.last_seen) {
+        let seen = seen.with_timezone(&chrono::Utc);
+        if seen > now {
+            now = seen;
+        }
+    }
 
     let expires = started + chrono::Duration::days(trial.trial_days);
-    (expires - chrono::Utc::now()).num_days().max(0)
+    (expires - now).num_days().max(0)
 }
 
 // =============================================================================
@@ -450,14 +614,109 @@ mod tests {
         assert!(activate_simple_key("BL-FREE-short", "", "").is_err());
     }
 
+    fn make_trial(started_at: String, trial_days: i64) -> TrialData {
+        let mut t = TrialData {
+            started_at,
+            trial_days,
+            hw: get_hardware_id(),
+            last_seen: chrono::Utc::now().to_rfc3339(),
+            sig: String::new(),
+        };
+        sign_trial(&mut t);
+        t
+    }
+
     #[test]
     fn test_trial_days() {
-        let trial = TrialData {
-            started_at: chrono::Utc::now().to_rfc3339(),
-            trial_days: 7,
-        };
+        let trial = make_trial(chrono::Utc::now().to_rfc3339(), 7);
         let days = trial_days_remaining(&trial);
         assert!(days >= 6 && days <= 7, "expected 6-7 days remaining, got {}", days);
+    }
+
+    #[test]
+    fn test_signed_trial_is_authentic() {
+        let trial = make_trial(chrono::Utc::now().to_rfc3339(), 7);
+        assert!(trial_is_authentic(&trial, &get_hardware_id()));
+    }
+
+    #[test]
+    fn test_edited_fields_break_authenticity() {
+        let hw = get_hardware_id();
+        let base = make_trial(chrono::Utc::now().to_rfc3339(), 7);
+
+        // Editing the start date without re-signing
+        let mut edited = base.clone();
+        edited.started_at = (chrono::Utc::now() + chrono::Duration::days(300)).to_rfc3339();
+        assert!(!trial_is_authentic(&edited, &hw));
+
+        // Inflating the duration — even re-signed, >TRIAL_DAYS is rejected
+        let mut inflated = base.clone();
+        inflated.trial_days = 999_999;
+        sign_trial(&mut inflated);
+        assert!(!trial_is_authentic(&inflated, &hw));
+
+        // Record copied from a different machine
+        let mut foreign = base.clone();
+        foreign.hw = "BL-0000000000000000".into();
+        sign_trial(&mut foreign);
+        assert!(!trial_is_authentic(&foreign, &hw));
+
+        // v1-style record with no tag at all
+        let bare = TrialData {
+            started_at: chrono::Utc::now().to_rfc3339(),
+            trial_days: 7,
+            hw: String::new(),
+            last_seen: String::new(),
+            sig: String::new(),
+        };
+        assert!(!trial_is_authentic(&bare, &hw));
+    }
+
+    #[test]
+    fn test_future_start_rejected() {
+        let hw = get_hardware_id();
+        let trial = make_trial((chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339(), 7);
+        assert!(!trial_is_authentic(&trial, &hw));
+    }
+
+    #[test]
+    fn test_unparseable_start_fails_closed() {
+        // Pre-hardening this fell back to `now` → a never-expiring trial.
+        let mut trial = make_trial("not-a-date".into(), 7);
+        sign_trial(&mut trial);
+        assert_eq!(trial_days_remaining(&trial), 0);
+    }
+
+    #[test]
+    fn test_clock_rollback_does_not_extend() {
+        // last_seen far beyond the wall clock simulates a rolled-back clock:
+        // remaining days count from the high-water mark, not from `now`.
+        let mut trial = make_trial(chrono::Utc::now().to_rfc3339(), 7);
+        trial.last_seen = (chrono::Utc::now() + chrono::Duration::days(20)).to_rfc3339();
+        sign_trial(&mut trial);
+        assert_eq!(trial_days_remaining(&trial), 0);
+    }
+
+    #[test]
+    fn test_legacy_plausibility() {
+        let legacy = TrialData {
+            started_at: (chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339(),
+            trial_days: 7,
+            hw: String::new(),
+            last_seen: String::new(),
+            sig: String::new(),
+        };
+        assert!(is_plausible_legacy(&legacy));
+
+        // Forged legacy with a future start is not migrated
+        let mut forged = legacy.clone();
+        forged.started_at = (chrono::Utc::now() + chrono::Duration::days(300)).to_rfc3339();
+        assert!(!is_plausible_legacy(&forged));
+
+        // Forged legacy with inflated duration is not migrated
+        let mut inflated = legacy.clone();
+        inflated.trial_days = 9_999;
+        assert!(!is_plausible_legacy(&inflated));
     }
 
     #[test]
