@@ -320,6 +320,14 @@
 			</a>
 		</div>
 		<p class="sub tiny">
+			<strong>macOS note:</strong> current builds are not yet notarized
+			with Apple, so Gatekeeper may report the app as damaged on first
+			launch. Fix: open Terminal and run
+			<code>xattr -cr /Applications/BridgeLab.app</code>, or allow it
+			via System&nbsp;Settings &rarr; Privacy&nbsp;&amp;&nbsp;Security &rarr;
+			&ldquo;Open&nbsp;Anyway&rdquo;. Notarized builds are coming soon.
+		</p>
+		<p class="sub tiny">
 			Prefer the terminal?
 			<code>brew tap</code>, <code>winget</code> and an AUR package are on the roadmap.
 			For now, grab the binary or
