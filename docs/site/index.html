@@ -338,9 +338,11 @@
 				<p>
 					Yes. The core is MIT-licensed and stays fully usable
 					for production integration work. Pro and Enterprise
-					tiers unlock cloud features (team test case library,
-					SOAP with WSDL, priority support) but nothing that
-					blocks day-to-day HL7 work.
+					tiers unlock advanced features &mdash; MLLP listener,
+					PHI masking and batch tools, FHIRPath, the full XSD
+					catalogue, priority support &mdash; plus a team test
+					case library and SOAP with WSDL (coming soon), but
+					nothing that blocks day-to-day HL7 work.
 				</p>
 			</details>
 			<details>
@@ -368,9 +370,10 @@
 				<p>
 					Fully. Parsing, validation, MLLP and HTTP targeting
 					local hosts, anonymization, export, CLI &mdash; none
-					require network access. License activation happens
-					online once, then validation works offline via
-					Ed25519-signed tokens.
+					require network access. Even license activation is
+					offline: you receive a signed key by email and paste
+					it into the app; verification happens locally via
+					Ed25519 signatures, with no license server involved.
 				</p>
 			</details>
 			<details>
@@ -399,7 +402,8 @@
 			<details>
 				<summary>Which HL7 versions are supported?</summary>
 				<p>
-					v2.3 through v2.8 for segment / field schemas.
+					v2.3 through v2.7.1 for segment / field schemas
+					(seven versions, 1,964 message structures).
 					Custom (Z-) segments parse and edit cleanly, they
 					just fall back to raw values in the Field Inspector
 					unless you ship a plugin pack for them.
