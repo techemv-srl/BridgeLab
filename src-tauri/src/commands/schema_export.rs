@@ -57,7 +57,16 @@ pub fn hl7_schema_list_messages(version_key: String) -> Result<Vec<MessageOption
 }
 
 #[tauri::command]
-pub fn hl7_schema_export_xsd(version_key: String, message_code: String) -> Result<String, String> {
+pub fn hl7_schema_export_xsd(
+    version_key: String,
+    message_code: String,
+    tel: tauri::State<'_, crate::licensing::telemetry::UsageCounters>,
+) -> Result<String, String> {
+    tel.bump_mem("xsd_exports");
+    export_xsd(version_key, message_code)
+}
+
+pub(crate) fn export_xsd(version_key: String, message_code: String) -> Result<String, String> {
     let v = parse_version(&version_key)?;
     let s = schema::load(v);
 
@@ -156,7 +165,7 @@ mod tests {
     /// error for a typo or stale UI state must not depend on license state.
     #[test]
     fn unknown_message_returns_not_found_before_gate() {
-        let result = hl7_schema_export_xsd("V2_5".into(), "FOO_BAR".into());
+        let result = export_xsd("V2_5".into(), "FOO_BAR".into());
         let err = result.expect_err("FOO_BAR must fail");
         assert!(
             err.contains("not found"),

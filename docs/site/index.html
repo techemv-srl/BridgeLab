@@ -378,10 +378,11 @@
 				<p>
 					Fully. Parsing, validation, MLLP and HTTP targeting
 					local hosts, anonymization, export, CLI &mdash; none
-					require network access. Even license activation is
-					offline: you receive a signed key by email and paste
-					it into the app; verification happens locally via
-					Ed25519 signatures, with no license server involved.
+					require network access. Activating with an online
+					activation code needs a single HTTPS call; afterwards
+					the license is verified locally via Ed25519 signatures
+					with no license server involved. Fully offline signed
+					keys are available on request for air-gapped sites.
 				</p>
 			</details>
 			<details>
@@ -390,8 +391,9 @@
 					BridgeLab processes every message locally. Nothing
 					leaves your machine unless you explicitly send it via
 					the Communication panel. Telemetry is off by default
-					and, when enabled, carries only anonymous usage
-					counters.
+					and, when enabled in Settings &rarr; Privacy, carries
+					only anonymous usage counters &mdash; the exact JSON
+					payload can be previewed in the app before opting in.
 				</p>
 			</details>
 			<details>

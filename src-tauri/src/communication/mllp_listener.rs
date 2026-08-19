@@ -235,6 +235,14 @@ async fn handle_connection(
 
     let _ = stream.shutdown().await;
 
+    // Usage counter (memory-only here; flushed periodically elsewhere).
+    {
+        use tauri::Manager;
+        if let Some(c) = app.try_state::<crate::licensing::telemetry::UsageCounters>() {
+            c.bump_mem("mllp_received");
+        }
+    }
+
     let _ = app.emit("mllp:received", ReceivedEvent {
         content,
         source_addr,

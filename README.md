@@ -131,7 +131,20 @@ Binaries are published to [GitHub Releases](https://github.com/TECHEMV-SRL/Bridg
 
 ## License Keys
 
-BridgeLab uses Ed25519-signed license keys with hardware binding.
+BridgeLab uses Ed25519-signed license keys with hardware binding, verified
+locally — there is no license server dependency at runtime.
+
+**Online activation (default)** — buy a license and receive an activation
+code (`BL-PRO-XXXX-XXXX-XXXX`) by e-mail. Paste it in *Settings → License →
+Activate*: the app exchanges it once over HTTPS for a signed key bound to
+this machine, then everything works offline. Each seat allows a limited
+number of activations; use *Deactivate* to free the seat before moving to
+another machine.
+
+**Offline keys** — for air-gapped sites, send your Hardware ID (shown in
+the activation dialog) to **info@techemv.it** and receive a signed key by
+e-mail. No network access is ever required with this flow.
+
 Contact **TECHEMV SRL** (info@techemv.it) for license purchases.
 
 ## Project Structure
@@ -203,7 +216,7 @@ reports outside GitHub Issues, reach us at the email above.
 
 ## License
 
-Open Core - Free for non-commercial use.
-Paid tiers: Professional & Enterprise.
+Open Core — the core is MIT-licensed and free for commercial use.
+Professional & Enterprise features are licensed separately.
 
-Copyright (c) 2026 TECHEMV SRL - All rights reserved.
+Copyright (c) 2026 TECHEMV SRL
