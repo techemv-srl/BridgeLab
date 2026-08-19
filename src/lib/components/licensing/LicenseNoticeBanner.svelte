@@ -13,13 +13,31 @@
 	const NOTICE_KEY = 'license_server_notice';
 
 	let notice = $state('');
-	if (typeof window !== 'undefined') {
+	let dismissedThisSession = $state(false);
+
+	function refresh() {
 		getPreference(NOTICE_KEY)
-			.then((v) => { notice = v ?? ''; })
+			.then((v) => {
+				const next = v ?? '';
+				// A NEW notice (different text) overrides an earlier dismissal.
+				if (next && next !== notice && dismissedThisSession) dismissedThisSession = false;
+				if (!dismissedThisSession) notice = next;
+			})
 			.catch(() => {});
 	}
 
+	// The startup telemetry request (or a "Send now") can store a notice
+	// while this component is already mounted — poll so it surfaces without
+	// requiring an app restart.
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		refresh();
+		const timer = setInterval(refresh, 60_000);
+		return () => clearInterval(timer);
+	});
+
 	function dismiss() {
+		dismissedThisSession = true;
 		notice = '';
 		setPreference(NOTICE_KEY, '').catch(() => {});
 	}

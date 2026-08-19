@@ -254,8 +254,13 @@
 	async function handleTelemetrySendNow() {
 		telemetrySendResult = '…';
 		try {
-			await sendTelemetryNow();
+			const sent = await sendTelemetryNow();
 			telemetrySendResult = tr('settings.telemetrySent');
+			// If the preview panel is open, replace it with the payload that
+			// was ACTUALLY transmitted — the privacy promise is literal.
+			if (telemetryPreview !== null) {
+				telemetryPreview = JSON.stringify(sent.payload, null, 2);
+			}
 			telemetry = await getTelemetrySettings();
 		} catch (e) {
 			telemetrySendResult = tr('settings.telemetryFailed', { error: String(e) });

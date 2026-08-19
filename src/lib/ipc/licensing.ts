@@ -60,7 +60,13 @@ export async function setTelemetryEnabled(enabled: boolean): Promise<void> {
 	return invoke('set_telemetry_enabled', { enabled });
 }
 
-export async function sendTelemetryNow(): Promise<string> {
+export interface TelemetrySendResult {
+	message: string;
+	/** The exact JSON payload that was transmitted. */
+	payload: unknown;
+}
+
+export async function sendTelemetryNow(): Promise<TelemetrySendResult> {
 	return invoke('send_telemetry_now');
 }
 
