@@ -151,7 +151,9 @@ async fn process_file(path: &std::path::Path, plugin_rules: &[ValidationRule]) -
 pub async fn batch_validate(
     paths: Vec<String>,
     registry: State<'_, PluginRegistry>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<BatchReport, String> {
+    tel.bump_mem("batch_runs");
     feature_gate::require("batch_validate")?;
 
     let plugin_rules = registry.active_validation_rules(feature_gate::active_plugin_limit());
@@ -269,7 +271,9 @@ pub async fn batch_anonymize(
     paths: Vec<String>,
     output_dir: String,
     registry: State<'_, PluginRegistry>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<BatchAnonReport, String> {
+    tel.bump_mem("batch_runs");
     feature_gate::require("anonymize_mask")?;
 
     let out_dir = std::path::PathBuf::from(&output_dir);

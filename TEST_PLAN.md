@@ -560,6 +560,31 @@ Tests for bugs fixed in previous releases, run to prevent regressions.
 
 ---
 
+## 35. Online Activation & Telemetry (1.3.0)
+
+For network cases, point the app at a controllable endpoint with
+`BRIDGELAB_LICENSE_SERVER=http://127.0.0.1:<port>/api/v1` (a tiny local mock
+server, or an unroutable port to simulate "network down") and observe
+requests server-side or with a packet capture.
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-OA-01 | P0 | Online activation happy path | Fresh install, paste valid `BL-PRO-…` code, Activate | License active (Pro features); `license.json` contains `activation_code` and `activated_at` | |
+| BL-OA-02 | P0 | Wrong code | Paste well-formed but unknown code | Server message shown under the input; app state unchanged | |
+| BL-OA-03 | P1 | Revoked code | Activate with revoked code | Server's revocation message shown verbatim | |
+| BL-OA-04 | P0 | No seats left | Activate same code on a 3rd machine | Clear NO_SEATS message; after Deactivate on machine 1, machine 3 activates | |
+| BL-OA-05 | P0 | Network down | Disable network, paste valid code | Error mentions checking connection / offline keys; app stays usable (trial/free) | |
+| BL-OA-06 | P0 | Legacy Base64 key still works | Paste a signed offline key | Activates via the offline path, no server call | |
+| BL-OA-07 | P0 | 1.2.0 license.json untouched | Start with a pre-1.3 `license.json` | Loads and validates unchanged; no new fields added on re-save | |
+| BL-OA-08 | P0 | Deactivate with network down | Deactivate an online-activated license offline | Local license removed regardless; no error blocks the flow | |
+| BL-OA-09 | P1 | Debug simple key unaffected | (debug build) `BL-PRO-ABCD1234EFGH` | Falls through to the simple-key path, not the online path | |
+| BL-TEL-01 | P0 | Telemetry off = zero requests | Default install, use the app, watch the endpoint | No telemetry request ever sent | |
+| BL-TEL-02 | P0 | Telemetry on = one POST per 24 h | Enable in Settings → Privacy, restart twice same day | Exactly one POST; `telemetry_last_sent` updated | |
+| BL-TEL-03 | P1 | Send now | Enable, press "Send now" | POST fires; inline confirmation text | |
+| BL-TEL-04 | P0 | Preview matches payload | Open "Show what is sent", compare with captured POST body | Identical JSON (timestamps aside) | |
+| BL-TEL-05 | P0 | No PII in payload | Inspect captured payload | No hostname, username, file names, message content; installation_id is a random UUID | |
+| BL-TEL-06 | P1 | Revoked notice | Mock telemetry response with `revoked: true` | Dismissible banner appears; local license NOT deleted; dismiss clears it | |
+
 ## Test Matrix by Platform
 
 Run full suite on each:
