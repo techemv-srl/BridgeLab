@@ -238,9 +238,10 @@ fn last_sent_within_24h(db: &Database) -> bool {
         .unwrap_or(false)
 }
 
-/// POST the payload. Returns the server's message (for the Settings
-/// "Send now" button); the periodic path ignores it.
-pub async fn send(app: &tauri::AppHandle) -> Result<String, String> {
+/// POST the payload. Returns the server's message and the payload that was
+/// actually transmitted (so the Settings "Send now" button can show the
+/// exact bytes sent); the periodic path ignores both.
+pub async fn send(app: &tauri::AppHandle) -> Result<(String, serde_json::Value), String> {
     let payload = build_payload(app);
     let url = format!("{}/bridgelab/telemetry", license_server_base());
     let version = app.package_info().version.to_string();
@@ -271,7 +272,7 @@ pub async fn send(app: &tauri::AppHandle) -> Result<String, String> {
             .unwrap_or_else(|| "Your license was revoked. Contact info@techemv.it.".into());
         let _ = db.set_preference(PREF_SERVER_NOTICE, &notice);
     }
-    Ok(body.message.unwrap_or_else(|| "OK".into()))
+    Ok((body.message.unwrap_or_else(|| "OK".into()), payload))
 }
 
 /// Startup task: establish identity, count the session, then keep the

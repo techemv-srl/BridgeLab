@@ -160,6 +160,17 @@ pub fn run() {
             commands::batch::batch_anonymize,
             commands::generator::generate_test_messages,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running BridgeLab");
+        .build(tauri::generate_context!())
+        .expect("error while running BridgeLab")
+        .run(|app_handle, event| {
+            // Flush the in-memory usage deltas on normal exit so short
+            // sessions don't lose their counters (the periodic flusher only
+            // covers sessions longer than its interval).
+            if let tauri::RunEvent::Exit = event {
+                use tauri::Manager;
+                let db = app_handle.state::<database::Database>();
+                let counters = app_handle.state::<licensing::telemetry::UsageCounters>();
+                counters.flush(&db);
+            }
+        });
 }
