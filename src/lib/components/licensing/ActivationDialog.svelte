@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { activateLicense, deactivateLicense, getHardwareId, type LicenseStatus } from '$lib/ipc/licensing';
+	import {
+		activateLicense, activateLicenseOnline, deactivateLicense, getHardwareId,
+		isActivationCode, looksLikeActivationCode, type LicenseStatus,
+	} from '$lib/ipc/licensing';
 	import { t, subscribeLocale } from '$lib/i18n';
 
 	let localeVersion = $state(0);
@@ -18,12 +21,19 @@
 	let hardwareId = $state('');
 	let error = $state('');
 	let activating = $state(false);
+	let activatingOnline = $state(false);
 
-	// Live-decode the pasted key to preview licensee + email
+	// Instant hint: is the input an online activation code? (The Rust-side
+	// check is authoritative and re-run on submit.)
+	let inputIsCode = $derived(looksLikeActivationCode(licenseKey));
+
+	// Live-decode the pasted key to preview licensee + email.
+	// Activation codes are not Base64 payloads — guard first so they never throw.
 	let keyPreview = $derived.by<{ licensee: string; email: string; type: string; features: string[] } | null>(() => {
 		try {
 			const trimmed = licenseKey.trim();
 			if (!trimmed || trimmed.length < 20) return null;
+			if (looksLikeActivationCode(trimmed)) return null;
 			const json = atob(trimmed);
 			const parsed = JSON.parse(json);
 			const p = parsed.payload;
@@ -86,9 +96,21 @@
 		error = '';
 		activating = true;
 		try {
-			// Licensee and email are embedded in the signed key payload;
-			// we pass empty strings since the backend extracts them from the key.
-			const status = await activateLicense(licenseKey.trim(), '', '');
+			// The Rust-side detection decides the path: activation codes go
+			// online, everything else is the legacy offline signed key.
+			let online = false;
+			try { online = await isActivationCode(licenseKey); }
+			catch { online = looksLikeActivationCode(licenseKey); }
+
+			let status: LicenseStatus;
+			if (online) {
+				activatingOnline = true;
+				status = await activateLicenseOnline(licenseKey.trim());
+			} else {
+				// Licensee and email are embedded in the signed key payload;
+				// we pass empty strings since the backend extracts them from the key.
+				status = await activateLicense(licenseKey.trim(), '', '');
+			}
 			if (status.is_valid) {
 				onStatusChange(status);
 				onClose();
@@ -99,6 +121,7 @@
 			error = String(e);
 		}
 		activating = false;
+		activatingOnline = false;
 	}
 
 	async function handleDeactivate() {
@@ -142,13 +165,9 @@
 			{#if currentStatus.email}
 				<div class="status-detail">{currentStatus.email}</div>
 			{/if}
-		</div>
-
-		<!-- Hardware ID -->
-		<div class="hw-section">
-			<div class="status-label">{tr('act.hardwareId')}</div>
-			<div class="hw-id">{hardwareId || '...'}</div>
-			<div class="hw-hint">{tr('act.hwHint')}</div>
+			{#if currentStatus.activation_code}
+				<div class="status-detail activated-with">{tr('act.activatedWith', { code: currentStatus.activation_code })}</div>
+			{/if}
 		</div>
 
 		{#if isActive}
@@ -161,18 +180,19 @@
 					{/each}
 				</div>
 				<button class="btn btn-danger" onclick={handleDeactivate}>
-					{tr('act.deactivate')}
+					{currentStatus.activation_code ? tr('act.deactivateOnline') : tr('act.deactivate')}
 				</button>
 			</div>
-		{:else}
-			<div class="contact-prompt">
-				{tr('act.contactPrompt')}
-				<a href="mailto:info@techemv.it">info@techemv.it</a>
+			<!-- Hardware ID (support requests, offline re-issues) -->
+			<div class="hw-section">
+				<div class="status-label">{tr('act.hardwareId')}</div>
+				<div class="hw-id">{hardwareId || '...'}</div>
 			</div>
-
-			<!-- Activation form: only the key field -->
+		{:else}
+			<!-- Activation form: one input for both code and offline key -->
 			<div class="form-section">
 				<div class="status-label">{tr('act.activate')}</div>
+				<div class="online-hint">{tr('act.onlineHint')}</div>
 				<div class="form-row key-row">
 					<label for="act-key">{tr('act.key')}</label>
 					<button class="btn btn-paste" onclick={pasteFromClipboard} title={tr('act.pasteFromClipboard')}>
@@ -184,6 +204,10 @@
 						rows="4"
 						class="input-full key-input"></textarea>
 				</div>
+
+				{#if inputIsCode}
+					<div class="key-hint code-hint">{tr('act.codeDetected')}</div>
+				{/if}
 
 				{#if keyPreview}
 					<div class="key-preview">
@@ -204,8 +228,6 @@
 							</div>
 						</div>
 					</div>
-				{:else if licenseKey.trim().length > 0}
-					<div class="key-hint">{tr('plugins.loading')}</div>
 				{/if}
 
 				{#if error}
@@ -213,9 +235,23 @@
 				{/if}
 
 				<button class="btn btn-primary" onclick={handleActivate} disabled={activating}>
-					{activating ? tr('act.activating') : tr('activate')}
+					{activatingOnline ? tr('act.activatingOnline') : activating ? tr('act.activating') : tr('activate')}
 				</button>
 			</div>
+
+			<!-- Offline key path: hardware ID + contact, collapsed by default -->
+			<details class="offline-help">
+				<summary>{tr('act.offlineKeyHelp')}</summary>
+				<div class="hw-section">
+					<div class="contact-prompt">
+						{tr('act.contactPrompt')}
+						<a href="mailto:info@techemv.it">info@techemv.it</a>
+					</div>
+					<div class="status-label">{tr('act.hardwareId')}</div>
+					<div class="hw-id">{hardwareId || '...'}</div>
+					<div class="hw-hint">{tr('act.hwHint')}</div>
+				</div>
+			</details>
 
 			<div class="license-types">
 				<div class="status-label">{tr('act.licenseTypes')}</div>
@@ -312,4 +348,17 @@
 	}
 	.contact-prompt a { color: var(--color-accent); font-weight: 600; }
 	.contact-info { text-align: center; font-size: 11px; color: var(--color-text-secondary); margin-top: 12px; }
+
+	.online-hint { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 6px; }
+	.code-hint { color: var(--color-success); font-style: normal; margin-bottom: 8px; }
+	.activated-with { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+	.offline-help summary {
+		cursor: pointer;
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		user-select: none;
+	}
+	.offline-help summary:hover { color: var(--color-accent); }
+	.offline-help .hw-section { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 </style>

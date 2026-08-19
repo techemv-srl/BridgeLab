@@ -71,6 +71,15 @@ pub fn run() {
         .manage(db)
         .manage(plugins)
         .manage(ListenerState::new())
+        .manage(licensing::telemetry::UsageCounters::new())
+        .setup(|app| {
+            // Establish install identity, count the session and run the
+            // opt-in telemetry loop (no-op while disabled; every network
+            // failure is silent — telemetry must never affect the app).
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(licensing::telemetry::maybe_send_on_startup(handle));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::parser::parse_message,
             commands::parser::get_tree_children,
@@ -124,9 +133,15 @@ pub fn run() {
             commands::anonymization::export_as_csv,
             commands::licensing::check_license,
             commands::licensing::activate_license,
+            commands::licensing::activate_license_online,
             commands::licensing::deactivate_license,
+            commands::licensing::is_activation_code,
             commands::licensing::get_hardware_id,
             commands::licensing::get_available_features,
+            commands::licensing::get_telemetry_settings,
+            commands::licensing::set_telemetry_enabled,
+            commands::licensing::send_telemetry_now,
+            commands::licensing::get_telemetry_preview,
             commands::templates::get_templates,
             commands::templates::get_templates_grouped,
             commands::test_cases::save_test_case,

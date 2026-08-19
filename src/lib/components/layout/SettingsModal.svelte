@@ -5,7 +5,11 @@
 		listPlugins, reloadPlugins, setPluginEnabled,
 		openPluginsFolder, getPluginsDir, type PluginInfo,
 	} from '$lib/ipc/plugins';
-	import { checkLicense, getHardwareId, deactivateLicense, getAvailableFeatures, parseUpgradeError, type LicenseStatus } from '$lib/ipc/licensing';
+	import {
+		checkLicense, getHardwareId, deactivateLicense, getAvailableFeatures, parseUpgradeError,
+		getTelemetrySettings, setTelemetryEnabled, sendTelemetryNow, getTelemetryPreview,
+		type LicenseStatus, type TelemetrySettings,
+	} from '$lib/ipc/licensing';
 	import ShortcutsEditor from '$lib/components/layout/ShortcutsEditor.svelte';
 
 	let localeVersion = $state(0);
@@ -217,6 +221,53 @@
 		}
 	});
 
+	// Privacy / telemetry state
+	let telemetry = $state<TelemetrySettings | null>(null);
+	let telemetryLoaded = $state(false);
+	let telemetryPreview = $state<string | null>(null);
+	let telemetrySendResult = $state('');
+
+	async function loadTelemetry() {
+		try { telemetry = await getTelemetrySettings(); } catch { /* web mode */ }
+		telemetryLoaded = true;
+	}
+
+	// The toggle persists immediately — it must not depend on Save & Close.
+	async function handleTelemetryToggle(e: Event) {
+		const enabled = (e.currentTarget as HTMLInputElement).checked;
+		try {
+			await setTelemetryEnabled(enabled);
+			if (telemetry) telemetry = { ...telemetry, enabled };
+			telemetrySendResult = '';
+		} catch { /* web mode */ }
+	}
+
+	async function handleTelemetryPreview() {
+		if (telemetryPreview !== null) { telemetryPreview = null; return; }
+		try {
+			telemetryPreview = JSON.stringify(await getTelemetryPreview(), null, 2);
+		} catch (e) {
+			telemetryPreview = String(e);
+		}
+	}
+
+	async function handleTelemetrySendNow() {
+		telemetrySendResult = '…';
+		try {
+			await sendTelemetryNow();
+			telemetrySendResult = tr('settings.telemetrySent');
+			telemetry = await getTelemetrySettings();
+		} catch (e) {
+			telemetrySendResult = tr('settings.telemetryFailed', { error: String(e) });
+		}
+	}
+
+	$effect(() => {
+		if (activeSection === 'privacy' && !telemetryLoaded) {
+			void loadTelemetry();
+		}
+	});
+
 	const sections = [
 		{ id: 'editor', label: tr('settings.editor'), icon: '\u270E' },
 		{ id: 'display', label: tr('settings.display'), icon: '\u2600' },
@@ -224,6 +275,7 @@
 		{ id: 'parser', label: tr('settings.parser'), icon: '\u2699' },
 		{ id: 'memory', label: tr('settings.performance'), icon: '\u26A1' },
 		{ id: 'plugins', label: tr('plugins.title'), icon: '\u2699' },
+		{ id: 'privacy', label: tr('settings.privacy'), icon: '\ud83d\udee1' },
 		{ id: 'license', label: tr('act.title'), icon: '\ud83d\udd11' },
 	];
 
@@ -477,6 +529,45 @@
 					</div>
 				{/each}
 
+			{:else if activeSection === 'privacy'}
+				<h3>{tr('settings.privacy')}</h3>
+
+				<div class="setting-check">
+					<label>
+						<input
+							type="checkbox"
+							checked={telemetry?.enabled ?? false}
+							onchange={handleTelemetryToggle}
+						/>
+						{tr('settings.telemetryEnabled')}
+					</label>
+					<div class="hint">{tr('settings.telemetryHelp')}</div>
+				</div>
+
+				<div class="setting-check">
+					<button class="btn" onclick={handleTelemetryPreview}>
+						{tr('settings.telemetryPreview')}
+					</button>
+					{#if telemetry?.enabled}
+						<button class="btn" onclick={handleTelemetrySendNow}>
+							{tr('settings.telemetrySendNow')}
+						</button>
+					{/if}
+					{#if telemetrySendResult}
+						<span class="hint">{telemetrySendResult}</span>
+					{/if}
+				</div>
+
+				{#if telemetryPreview !== null}
+					<pre class="telemetry-preview">{telemetryPreview}</pre>
+				{/if}
+
+				{#if telemetry}
+					<div class="hint">
+						{tr('settings.installationId')}: <code>{telemetry.installation_id}</code>
+					</div>
+				{/if}
+
 			{:else if activeSection === 'license'}
 				<h3>{tr('act.title')}</h3>
 
@@ -604,4 +695,17 @@
 	.btn:hover { background: var(--color-border); }
 	.btn-primary { background: var(--color-accent); color: var(--color-bg-primary); border-color: var(--color-accent); }
 	.btn-primary:hover { opacity: 0.9; }
+	.telemetry-preview {
+		background: var(--color-bg-tertiary);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 8px 10px;
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 10px;
+		line-height: 1.5;
+		max-height: 260px;
+		overflow: auto;
+		white-space: pre;
+		user-select: text;
+	}
 </style>
