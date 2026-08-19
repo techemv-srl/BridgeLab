@@ -26,6 +26,7 @@
 	import ValidationPanel from '$lib/components/validation/ValidationPanel.svelte';
 	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
+	import LicenseNoticeBanner from '$lib/components/licensing/LicenseNoticeBanner.svelte';
 	import FhirPathPanel from '$lib/components/fhirpath/FhirPathPanel.svelte';
 	import type { TestCase } from '$lib/ipc/testcases';
 	import { checkLicense, type LicenseStatus } from '$lib/ipc/licensing';
@@ -1075,6 +1076,8 @@
 	{#if licenseStatus}
 		<TrialBanner status={licenseStatus} onActivate={() => { showActivation = true; }} />
 	{/if}
+	<!-- Non-blocking notice pushed by the license server (dismiss clears it) -->
+	<LicenseNoticeBanner />
 
 	<!-- Menu Bar -->
 	<MenuBar

@@ -35,7 +35,9 @@ pub fn anonymize_message(
     message_id: String,
     store: State<'_, MessageStore>,
     registry: State<'_, PluginRegistry>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<AnonymizeResult, String> {
+    tel.bump_mem("anonymizations");
     feature_gate::require("anonymize_mask")?;
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
@@ -85,7 +87,9 @@ pub fn get_message_truncated_text(
 pub fn export_as_json(
     message_id: String,
     store: State<'_, MessageStore>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<String, String> {
+    tel.bump_mem("exports");
     feature_gate::require("export")?;
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
@@ -122,7 +126,9 @@ pub fn export_as_json(
 pub fn export_as_csv(
     message_id: String,
     store: State<'_, MessageStore>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<String, String> {
+    tel.bump_mem("exports");
     feature_gate::require("export")?;
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;

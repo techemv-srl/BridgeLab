@@ -1,0 +1,16 @@
+{
+  "payload": {
+    "license_type": "professional",
+    "licensee": "Contract Test Vector",
+    "email": "test-vector@techemv.it",
+    "hardware_id": "BL-0123456789ABCDEF",
+    "issued_at": "2026-08-19T10:00:00Z",
+    "expires_at": "2027-08-19T10:00:00Z",
+    "features": [
+      "core",
+      "hl7v2",
+      "mllp_listen"
+    ]
+  },
+  "signature": "76caca230b208840a15f48b8ccc7c3e919944394c81e3cf42035b3cf4512f1e8f869c9438ea987c05308592a3f73570eed541e3b46db6c253cbcd9a099efcc0b"
+}
