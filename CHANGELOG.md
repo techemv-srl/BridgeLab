@@ -2,6 +2,23 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [1.3.0] — Unreleased
+
+### Added
+- **Online activation codes**. Buy a license, receive a short code
+  (`BL-PRO-XXXX-XXXX-XXXX`) by e-mail and paste it in the activation dialog:
+  the app exchanges it once over HTTPS for a signed license bound to your
+  machine — after that everything works offline, exactly like before.
+  Offline signed keys remain available for air-gapped sites, and existing
+  keys keep working untouched. *Deactivate* now also frees the seat on the
+  license server (best-effort — local removal always succeeds).
+- **Opt-in anonymous telemetry (default OFF)** with a new
+  **Settings → Privacy** section: a toggle, a "Show what is sent" preview of
+  the exact JSON payload, and a "Send now" button. When enabled, BridgeLab
+  sends anonymous usage counters plus app version, OS and license tier at
+  most once a day. No message content, file names, host names or personal
+  data are ever sent, and nothing is sent at all while the toggle is off.
+
 ## [1.2.0] — 2026-08-03
 
 ### Added

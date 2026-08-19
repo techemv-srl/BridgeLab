@@ -202,6 +202,7 @@ mod tests {
             is_valid,
             license_type: lt,
             days_remaining: None,
+            activation_code: None,
             licensee: String::new(),
             email: String::new(),
             features: vec![],
