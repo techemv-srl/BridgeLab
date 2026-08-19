@@ -38,8 +38,10 @@ pub async fn mllp_send(
     end_char2: Option<String>,
     profile_name: Option<String>,
     db: State<'_, Database>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<MllpSendResult, String> {
     feature_gate::require("mllp_send")?;
+    tel.bump_mem("mllp_sent");
 
     let connect_timeout = timeout_secs.unwrap_or(30);
     let opts = mllp::SendOptions {
@@ -114,7 +116,9 @@ pub async fn http_request(
     follow_redirects: Option<bool>,
     profile_name: Option<String>,
     db: State<'_, Database>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<HttpResult, String> {
+    tel.bump_mem("http_requests");
     let http_method = HttpMethod::from_str(&method)
         .ok_or_else(|| format!("Invalid HTTP method: {}", method))?;
 

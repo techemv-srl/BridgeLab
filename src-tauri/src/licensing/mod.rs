@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub mod feature_gate;
+pub mod online;
+pub mod telemetry;
 
 // =============================================================================
 // The PUBLIC key is embedded in the app for offline verification.
@@ -24,11 +26,21 @@ pub struct LicensePayload {
 }
 
 /// A complete license = payload + signature.
+///
+/// The extra fields below `signature` are unsigned metadata written by the
+/// online-activation flow; they never participate in signature verification
+/// and stay `None` for offline keys and pre-1.3 `license.json` files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LicenseFile {
     pub payload: LicensePayload,
     /// Hex-encoded Ed25519 signature of the JSON-serialized payload
     pub signature: String,
+    /// Activation code used to obtain this license online (None for offline keys).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activation_code: Option<String>,
+    /// ISO-8601 timestamp of the online activation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activated_at: Option<String>,
 }
 
 /// License status returned to the frontend.
@@ -41,6 +53,10 @@ pub struct LicenseStatus {
     pub email: String,
     pub features: Vec<String>,
     pub message: String,
+    /// Set when the installed license was obtained via online activation —
+    /// lets the UI show the code and offer seat-freeing deactivation.
+    #[serde(default)]
+    pub activation_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -126,12 +142,24 @@ fn trial_marker_path() -> Result<PathBuf, String> {
 
 /// Verify an Ed25519 signature on a license payload.
 fn verify_signature(payload: &LicensePayload, signature_hex: &str) -> bool {
+    verify_signature_with(PUBLIC_KEY_HEX, payload, signature_hex)
+}
+
+/// Signature verification against an explicit public key. Exists so the
+/// client/server signing contract (compact JSON, struct field order) can be
+/// exercised in CI with a throw-away test key pair — see the
+/// `server_signed_license` fixture test.
+pub fn verify_signature_with(
+    public_key_hex: &str,
+    payload: &LicensePayload,
+    signature_hex: &str,
+) -> bool {
     // Reject if no public key has been configured (shipping placeholder = no valid licenses)
-    if PUBLIC_KEY_HEX == "PLACEHOLDER_GENERATE_WITH_CLI" {
+    if public_key_hex == "PLACEHOLDER_GENERATE_WITH_CLI" {
         return false;
     }
 
-    let pub_bytes = match hex::decode(PUBLIC_KEY_HEX) {
+    let pub_bytes = match hex::decode(public_key_hex) {
         Ok(b) if b.len() == PUBLIC_KEY_LENGTH => b,
         _ => return false,
     };
@@ -383,9 +411,10 @@ pub fn trial_days_remaining(trial: &TrialData) -> i64 {
 // Activate from license key (Base64-encoded JSON)
 // =============================================================================
 
-/// Activate a license from a key string.
-/// The key is a Base64-encoded JSON LicenseFile.
-pub fn activate_from_key(key: &str) -> Result<LicenseFile, String> {
+/// Decode a Base64 JSON license key, verify signature and hardware binding —
+/// WITHOUT saving. The online-activation flow uses this to attach unsigned
+/// metadata (activation code, timestamp) before persisting.
+pub fn parse_and_verify_key(key: &str) -> Result<LicenseFile, String> {
     // Try Base64 decode
     let decoded = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
@@ -412,9 +441,14 @@ pub fn activate_from_key(key: &str) -> Result<LicenseFile, String> {
         ));
     }
 
-    // Save the license
-    save_license(&license)?;
+    Ok(license)
+}
 
+/// Activate a license from a key string (offline path).
+/// The key is a Base64-encoded JSON LicenseFile.
+pub fn activate_from_key(key: &str) -> Result<LicenseFile, String> {
+    let license = parse_and_verify_key(key)?;
+    save_license(&license)?;
     Ok(license)
 }
 
@@ -457,6 +491,8 @@ pub fn activate_simple_key(key: &str, licensee: &str, email: &str) -> Result<Lic
             features,
         },
         signature: "dev-mode-no-signature".to_string(),
+        activation_code: None,
+        activated_at: None,
     };
 
     save_license(&license)?;
@@ -481,6 +517,7 @@ pub fn check_license_status() -> LicenseStatus {
                 email: license.payload.email,
                 features: vec![],
                 message: "License is bound to a different machine".into(),
+                activation_code: license.activation_code.clone(),
             };
         }
 
@@ -502,6 +539,7 @@ pub fn check_license_status() -> LicenseStatus {
                 email: license.payload.email,
                 features: vec![],
                 message: "License signature is invalid".into(),
+                activation_code: license.activation_code.clone(),
             };
         }
 
@@ -518,6 +556,7 @@ pub fn check_license_status() -> LicenseStatus {
                         email: license.payload.email,
                         features: vec![],
                         message: "License has expired".into(),
+                        activation_code: license.activation_code.clone(),
                     };
                 }
                 return LicenseStatus {
@@ -528,6 +567,7 @@ pub fn check_license_status() -> LicenseStatus {
                     email: license.payload.email,
                     features: license.payload.features,
                     message: format!("{} days remaining", days),
+                    activation_code: license.activation_code.clone(),
                 };
             }
         }
@@ -541,6 +581,7 @@ pub fn check_license_status() -> LicenseStatus {
             email: license.payload.email,
             features: license.payload.features,
             message: "License is valid".into(),
+            activation_code: license.activation_code.clone(),
         };
     }
 
@@ -557,6 +598,7 @@ pub fn check_license_status() -> LicenseStatus {
             email: String::new(),
             features: feature_gate::available_features_for_type(&LicenseType::Professional),
             message: format!("Trial: {} days remaining", days),
+            activation_code: None,
         }
     } else {
         // Trial expired → fall back to Community (Free) tier, not zero features
@@ -568,6 +610,7 @@ pub fn check_license_status() -> LicenseStatus {
             email: String::new(),
             features: feature_gate::available_features_for_type(&LicenseType::Free),
             message: "Trial expired. Community features are still available.".into(),
+            activation_code: None,
         }
     }
 }
@@ -725,5 +768,67 @@ mod tests {
         let encoded = hex::encode(data);
         let decoded = hex::decode(&encoded).unwrap();
         assert_eq!(decoded, data);
+    }
+
+    /// Cross-language signing contract: the license server (Python) must
+    /// reproduce byte-for-byte the compact serde JSON of `LicensePayload`
+    /// (struct field order, snake_case license_type, null/string expires_at).
+    /// The fixture was signed with a throw-away test key pair — if this test
+    /// fails after a backend change, the two sides have drifted.
+    #[test]
+    fn test_server_signing_contract() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/licensing");
+        let pub_hex = std::fs::read_to_string(format!("{}/test_public_key.hex", dir))
+            .expect("fixture public key")
+            .trim()
+            .to_string();
+        let file_json = std::fs::read_to_string(format!("{}/server_signed_license.json", dir))
+            .expect("fixture license");
+        let file: LicenseFile = serde_json::from_str(&file_json).expect("fixture parses");
+
+        assert!(
+            verify_signature_with(&pub_hex, &file.payload, &file.signature),
+            "server-signed fixture failed verification — signing contract drifted"
+        );
+
+        // Tampering with any signed field must break verification.
+        let mut tampered = file.payload.clone();
+        tampered.licensee = "Someone Else".into();
+        assert!(!verify_signature_with(&pub_hex, &tampered, &file.signature));
+    }
+
+    /// A 1.2.x license.json (no activation metadata) must keep loading, and
+    /// the unsigned metadata must round-trip without touching the payload.
+    #[test]
+    fn test_pre_13_license_file_compat() {
+        let legacy = r#"{
+            "payload": {
+                "license_type": "professional",
+                "licensee": "Old Customer",
+                "email": "old@customer.it",
+                "hardware_id": "",
+                "issued_at": "2026-01-01T00:00:00Z",
+                "expires_at": null,
+                "features": ["core"]
+            },
+            "signature": "aa"
+        }"#;
+        let parsed: LicenseFile = serde_json::from_str(legacy).expect("legacy parses");
+        assert!(parsed.activation_code.is_none());
+        assert!(parsed.activated_at.is_none());
+
+        // Serializing a legacy file must not add the optional fields
+        // (skip_serializing_if) — the signed payload bytes stay identical.
+        let out = serde_json::to_string(&parsed).unwrap();
+        assert!(!out.contains("activation_code"));
+        assert!(!out.contains("activated_at"));
+
+        // And a 1.3 file with metadata round-trips.
+        let mut online = parsed.clone();
+        online.activation_code = Some("BL-PRO-2345-ABCD-WXYZ".into());
+        online.activated_at = Some("2026-08-19T10:00:00Z".into());
+        let out = serde_json::to_string(&online).unwrap();
+        let back: LicenseFile = serde_json::from_str(&out).unwrap();
+        assert_eq!(back.activation_code.as_deref(), Some("BL-PRO-2345-ABCD-WXYZ"));
     }
 }

@@ -8,6 +8,15 @@ export interface LicenseStatus {
 	email: string;
 	features: string[];
 	message: string;
+	/** Set when the license was obtained via online activation. */
+	activation_code: string | null;
+}
+
+export interface TelemetrySettings {
+	enabled: boolean;
+	installation_id: string;
+	last_sent: string | null;
+	counters: Record<string, number>;
 }
 
 export async function checkLicense(): Promise<LicenseStatus> {
@@ -22,6 +31,41 @@ export async function activateLicense(
 
 export async function deactivateLicense(): Promise<LicenseStatus> {
 	return invoke('deactivate_license');
+}
+
+/** Exchange an activation code (BL-PRO-XXXX-XXXX-XXXX) for a signed license. */
+export async function activateLicenseOnline(code: string): Promise<LicenseStatus> {
+	return invoke('activate_license_online', { code });
+}
+
+/** Authoritative (Rust-side) activation-code detection. */
+export async function isActivationCode(input: string): Promise<boolean> {
+	return invoke('is_activation_code', { input });
+}
+
+/**
+ * Frontend twin of the Rust detection — used for instant UI hints only;
+ * the Rust side decides which activation path actually runs.
+ */
+export const ACTIVATION_CODE_RE = /^BL-(PRO|ENT)-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
+export function looksLikeActivationCode(input: string): boolean {
+	return ACTIVATION_CODE_RE.test(input.trim().toUpperCase().replace(/ /g, ''));
+}
+
+export async function getTelemetrySettings(): Promise<TelemetrySettings> {
+	return invoke('get_telemetry_settings');
+}
+
+export async function setTelemetryEnabled(enabled: boolean): Promise<void> {
+	return invoke('set_telemetry_enabled', { enabled });
+}
+
+export async function sendTelemetryNow(): Promise<string> {
+	return invoke('send_telemetry_now');
+}
+
+export async function getTelemetryPreview(): Promise<unknown> {
+	return invoke('get_telemetry_preview');
 }
 
 export async function getHardwareId(): Promise<string> {
