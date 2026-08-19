@@ -115,11 +115,16 @@ struct DeactivateRequest<'a> {
     hardware_id: &'a str,
 }
 
-fn unreachable_err(e: impl std::fmt::Display) -> String {
-    format!(
-        "Could not reach the license server: {}. Check your connection or use an offline key.",
-        e
-    )
+/// Stable sentinel for "the license server cannot be reached". The frontend
+/// maps it to a localized, non-technical message that points isolated
+/// (air-gapped) sites at the offline-key flow — raw network details would
+/// only mislead users on machines that are offline by design.
+pub const ERR_SERVER_UNREACHABLE: &str = "ERR_SERVER_UNREACHABLE";
+
+fn unreachable_err(_e: impl std::fmt::Display) -> String {
+    #[cfg(debug_assertions)]
+    eprintln!("[licensing] license server unreachable: {}", _e);
+    ERR_SERVER_UNREACHABLE.to_string()
 }
 
 /// Exchange an activation code for a signed license, verify it locally
