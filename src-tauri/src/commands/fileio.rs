@@ -10,12 +10,13 @@ use crate::utils::error::BridgeLabError;
 pub async fn open_file(
     path: String,
     store: State<'_, MessageStore>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<ParseResult, BridgeLabError> {
     let content = tokio::fs::read_to_string(&path)
         .await
         .map_err(|e| BridgeLabError::FileError(format!("Failed to read {}: {}", path, e)))?;
 
-    parse_message(content, Some(path), store)
+    parse_message(content, Some(path), store, tel)
 }
 
 /// Save message content to a file.
