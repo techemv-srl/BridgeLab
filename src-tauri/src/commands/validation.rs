@@ -23,7 +23,9 @@ pub fn validate_message(
     message_id: String,
     store: State<'_, MessageStore>,
     registry: State<'_, PluginRegistry>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<ValidationReport, String> {
+    tel.bump_mem("validations_hl7");
     let msg = store
         .get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
@@ -50,7 +52,11 @@ pub fn validate_message(
 
 /// Validate a FHIR JSON resource.
 #[tauri::command]
-pub fn validate_fhir(content: String) -> Result<FhirValidationReport, String> {
+pub fn validate_fhir(
+    content: String,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
+) -> Result<FhirValidationReport, String> {
+    tel.bump_mem("validations_fhir");
     // Route by encoding: XML resources go through the XML->JSON converter,
     // then the same rule set runs on both.
     let trimmed = content.trim_start();
