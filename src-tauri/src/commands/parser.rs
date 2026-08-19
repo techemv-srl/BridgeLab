@@ -34,7 +34,9 @@ pub fn parse_message(
     content: String,
     _source: Option<String>,
     store: State<'_, MessageStore>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<ParseResult, BridgeLabError> {
+    tel.bump_mem("messages_parsed");
     // Strip UTF-8 BOM if present
     let content = if content.starts_with('\u{FEFF}') {
         content[3..].to_string()
@@ -476,7 +478,9 @@ pub fn collapse_all_fields(
 pub fn parse_fhir_message(
     content: String,
     store: State<'_, MessageStore>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<ParseResult, BridgeLabError> {
+    tel.bump_mem("fhir_parsed");
     let file_size = content.len() as u64;
 
     let format_type = fhir::detect_fhir(&content)
@@ -554,7 +558,9 @@ pub fn evaluate_fhirpath(
     message_id: String,
     expression: String,
     store: State<'_, MessageStore>,
+    tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<fhir::fhirpath::FhirPathResult, BridgeLabError> {
+    tel.bump_mem("fhirpath_evals");
     feature_gate::require("fhirpath")
         .map_err(|e| BridgeLabError::ParseError(e))?;
     let resource = store
