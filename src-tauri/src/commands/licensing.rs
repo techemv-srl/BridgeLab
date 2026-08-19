@@ -112,13 +112,26 @@ pub fn set_telemetry_enabled(enabled: bool, db: State<'_, Database>) -> Result<(
     telemetry::set_enabled(&db, enabled)
 }
 
-/// Manual send from Settings; returns the server's message for inline display.
+#[derive(serde::Serialize)]
+pub struct TelemetrySendResult {
+    pub message: String,
+    /// The exact JSON payload that was transmitted, so the Privacy UI can
+    /// show precisely what left the machine.
+    pub payload: serde_json::Value,
+}
+
+/// Manual send from Settings; returns the server's message plus the payload
+/// that was actually sent, for inline display.
 #[tauri::command]
-pub async fn send_telemetry_now(app: tauri::AppHandle, db: State<'_, Database>) -> Result<String, String> {
+pub async fn send_telemetry_now(
+    app: tauri::AppHandle,
+    db: State<'_, Database>,
+) -> Result<TelemetrySendResult, String> {
     if !telemetry::is_enabled(&db) {
         return Err("Telemetry is disabled".into());
     }
-    telemetry::send(&app).await
+    let (message, payload) = telemetry::send(&app).await?;
+    Ok(TelemetrySendResult { message, payload })
 }
 
 /// The exact JSON payload a telemetry send would transmit (transparency).
