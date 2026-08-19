@@ -22,6 +22,7 @@
 	let error = $state('');
 	let activating = $state(false);
 	let activatingOnline = $state(false);
+	let offlineDetails = $state<HTMLDetailsElement | null>(null);
 
 	// Instant hint: is the input an online activation code? (The Rust-side
 	// check is authoritative and re-run on submit.)
@@ -118,7 +119,16 @@
 				error = status.message;
 			}
 		} catch (e) {
-			error = String(e);
+			const msg = String(e);
+			if (msg.includes('ERR_SERVER_UNREACHABLE')) {
+				// Isolated / air-gapped site: no technical noise — one clear,
+				// localized message pointing at the offline-key flow, with the
+				// disclosure opened so the Hardware ID is immediately visible.
+				error = tr('act.serverUnreachable');
+				if (offlineDetails) offlineDetails.open = true;
+			} else {
+				error = msg;
+			}
 		}
 		activating = false;
 		activatingOnline = false;
@@ -240,7 +250,7 @@
 			</div>
 
 			<!-- Offline key path: hardware ID + contact, collapsed by default -->
-			<details class="offline-help">
+			<details class="offline-help" bind:this={offlineDetails}>
 				<summary>{tr('act.offlineKeyHelp')}</summary>
 				<div class="hw-section">
 					<div class="contact-prompt">

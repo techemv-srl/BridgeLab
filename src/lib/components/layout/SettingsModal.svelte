@@ -262,8 +262,10 @@
 				telemetryPreview = JSON.stringify(sent.payload, null, 2);
 			}
 			telemetry = await getTelemetrySettings();
-		} catch (e) {
-			telemetrySendResult = tr('settings.telemetryFailed', { error: String(e) });
+		} catch {
+			// Never alarm the user over telemetry — isolated sites are a
+			// normal deployment. Neutral wording, no technical detail.
+			telemetrySendResult = tr('settings.telemetryOffline');
 		}
 	}
 
