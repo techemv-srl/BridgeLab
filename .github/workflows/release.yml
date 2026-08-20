@@ -136,19 +136,33 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          exported=0
-          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            val="${!v}"
-            if [ -n "$val" ]; then
-              {
-                echo "$v<<__APPLE_EOF__"
-                echo "$val"
-                echo "__APPLE_EOF__"
-              } >> "$GITHUB_ENV"
-              exported=$((exported+1))
-            fi
+          export_var() {
+            { echo "$1<<__APPLE_EOF__"; echo "${!1}"; echo "__APPLE_EOF__"; } >> "$GITHUB_ENV"
+          }
+          # Groups are exported atomically: a partial set (e.g. certificate
+          # without its password) would trigger the signing path and fail,
+          # instead of falling back to an unsigned build.
+          sign_ok=1
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do
+            [ -n "${!v}" ] || sign_ok=0
           done
-          echo "Apple signing vars exported: $exported (0 = unsigned build)"
+          notar_ok=1
+          for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || notar_ok=0
+          done
+          if [ "$sign_ok" = 1 ]; then
+            for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do export_var "$v"; done
+            if [ "$notar_ok" = 1 ]; then
+              for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do export_var "$v"; done
+              echo "macOS signing + notarization: ENABLED"
+            else
+              echo "::warning::macOS signing ENABLED but notarization secrets incomplete (need APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID) - building signed, NOT notarized"
+            fi
+          elif [ -n "$APPLE_CERTIFICATE$APPLE_CERTIFICATE_PASSWORD$APPLE_SIGNING_IDENTITY$APPLE_ID$APPLE_PASSWORD$APPLE_TEAM_ID" ]; then
+            echo "::warning::Apple signing secrets INCOMPLETE (need APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY) - building UNSIGNED"
+          else
+            echo "macOS signing: disabled (no Apple secrets configured) - building unsigned"
+          fi
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
