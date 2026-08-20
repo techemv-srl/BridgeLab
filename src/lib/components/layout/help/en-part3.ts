@@ -282,7 +282,7 @@ editable and runnable — only new saves and activations beyond the limit
 ask for an upgrade, and freeing a slot re-enables them immediately.</p>
 
 <h3>Trial</h3>
-<p>First launch starts a <strong>7-day Pro trial</strong> with every Pro
+<p>First launch starts a <strong>14-day Pro trial</strong> with every Pro
 feature enabled. The trial banner (yellow) is dismissible; when 3 days
 remain it turns red and stays visible as a reminder.</p>
 

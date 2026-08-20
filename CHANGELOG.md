@@ -2,7 +2,7 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
-## [1.3.0] — Unreleased
+## [1.3.0] — 2026-08-20
 
 ### Added
 - **Online activation codes**. Buy a license, receive a short code
@@ -12,12 +12,17 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   Offline signed keys remain available for air-gapped sites, and existing
   keys keep working untouched. *Deactivate* now also frees the seat on the
   license server (best-effort — local removal always succeeds).
-- **Opt-in anonymous telemetry (default OFF)** with a new
+- **Opt-in usage statistics (default OFF)** with a new
   **Settings → Privacy** section: a toggle, a "Show what is sent" preview of
   the exact JSON payload, and a "Send now" button. When enabled, BridgeLab
-  sends anonymous usage counters plus app version, OS and license tier at
-  most once a day. No message content, file names, host names or personal
-  data are ever sent, and nothing is sent at all while the toggle is off.
+  automatically sends — at most once a day — usage counters plus app
+  version, OS, license tier, a random installation ID and (for
+  online-activated licenses) the activation code. The data is pseudonymous:
+  no message content, file names, host names or personal data are ever
+  sent, and nothing is sent at all while the toggle is off.
+- **Pro trial extended to 14 days** (was 7) — a more realistic evaluation
+  window for hospital integration teams. Extensions to 30 days remain
+  available on request via info@techemv.it.
 
 ## [1.2.0] — 2026-08-03
 

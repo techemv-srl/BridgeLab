@@ -295,7 +295,7 @@ activations au-delà de la limite demandent une mise à niveau, et libérer
 un emplacement les réactive immédiatement.</p>
 
 <h3>Essai</h3>
-<p>Le premier lancement démarre un <strong>essai Pro de 7 jours</strong>
+<p>Le premier lancement démarre un <strong>essai Pro de 14 jours</strong>
 avec toutes les fonctionnalités Pro activées. Le bandeau d'essai (jaune)
 peut être masqué ; quand il ne reste que 3 jours, il devient rouge et
 reste affiché en guise de rappel.</p>
