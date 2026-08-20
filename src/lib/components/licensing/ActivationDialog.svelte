@@ -3,7 +3,7 @@
 		activateLicense, activateLicenseOnline, deactivateLicense, getHardwareId,
 		isActivationCode, looksLikeActivationCode, type LicenseStatus,
 	} from '$lib/ipc/licensing';
-	import { t, subscribeLocale } from '$lib/i18n';
+	import { t, subscribeLocale, getLocale } from '$lib/i18n';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -16,6 +16,15 @@
 	}
 
 	let { currentStatus, onClose, onStatusChange }: Props = $props();
+
+	function fmtDate(rfc3339: string): string {
+		// Format with the app's selected UI language, not the host locale
+		// (a French UI on an en-US machine must not show month/day dates);
+		// reading localeVersion re-renders the date on language switch.
+		void localeVersion;
+		const d = new Date(rfc3339);
+		return isNaN(d.getTime()) ? rfc3339 : d.toLocaleDateString(getLocale());
+	}
 
 	let licenseKey = $state('');
 	let hardwareId = $state('');
@@ -174,6 +183,9 @@
 			{/if}
 			{#if currentStatus.email}
 				<div class="status-detail">{currentStatus.email}</div>
+			{/if}
+			{#if currentStatus.expires_at}
+				<div class="status-detail">{tr('act.expiresOn', { date: fmtDate(currentStatus.expires_at) })}</div>
 			{/if}
 			{#if currentStatus.activation_code}
 				<div class="status-detail activated-with">{tr('act.activatedWith', { code: currentStatus.activation_code })}</div>
