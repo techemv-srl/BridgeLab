@@ -57,6 +57,10 @@ pub struct LicenseStatus {
     /// lets the UI show the code and offer seat-freeing deactivation.
     #[serde(default)]
     pub activation_code: Option<String>,
+    /// License expiry (RFC-3339) — None for perpetual licenses and trials
+    /// (the trial communicates via days_remaining only).
+    #[serde(default)]
+    pub expires_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -521,6 +525,7 @@ pub fn check_license_status() -> LicenseStatus {
                 features: vec![],
                 message: "License is bound to a different machine".into(),
                 activation_code: license.activation_code.clone(),
+                expires_at: license.payload.expires_at.clone(),
             };
         }
 
@@ -543,6 +548,7 @@ pub fn check_license_status() -> LicenseStatus {
                 features: vec![],
                 message: "License signature is invalid".into(),
                 activation_code: license.activation_code.clone(),
+                expires_at: None,
             };
         }
 
@@ -560,6 +566,7 @@ pub fn check_license_status() -> LicenseStatus {
                         features: vec![],
                         message: "License has expired".into(),
                         activation_code: license.activation_code.clone(),
+                        expires_at: license.payload.expires_at.clone(),
                     };
                 }
                 return LicenseStatus {
@@ -571,6 +578,7 @@ pub fn check_license_status() -> LicenseStatus {
                     features: license.payload.features,
                     message: format!("{} days remaining", days),
                     activation_code: license.activation_code.clone(),
+                    expires_at: license.payload.expires_at.clone(),
                 };
             }
         }
@@ -585,6 +593,7 @@ pub fn check_license_status() -> LicenseStatus {
             features: license.payload.features,
             message: "License is valid".into(),
             activation_code: license.activation_code.clone(),
+            expires_at: None,
         };
     }
 
@@ -602,6 +611,7 @@ pub fn check_license_status() -> LicenseStatus {
             features: feature_gate::available_features_for_type(&LicenseType::Professional),
             message: format!("Trial: {} days remaining", days),
             activation_code: None,
+            expires_at: None,
         }
     } else {
         // Trial expired → fall back to Community (Free) tier, not zero features
@@ -614,6 +624,7 @@ pub fn check_license_status() -> LicenseStatus {
             features: feature_gate::available_features_for_type(&LicenseType::Free),
             message: "Trial expired. Community features are still available.".into(),
             activation_code: None,
+            expires_at: None,
         }
     }
 }
