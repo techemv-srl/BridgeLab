@@ -289,7 +289,7 @@ i nuovi salvataggi e le nuove attivazioni oltre il limite chiedono
 l'upgrade, e liberare uno slot li riabilita immediatamente.</p>
 
 <h3>Trial</h3>
-<p>Al primo avvio parte un <strong>trial Pro di 7 giorni</strong> con
+<p>Al primo avvio parte un <strong>trial Pro di 14 giorni</strong> con
 ogni funzionalità Pro abilitata. Il banner trial (giallo) è
 chiudibile; quando restano 3 giorni diventa rosso e non si può più
 chiudere come promemoria.</p>
