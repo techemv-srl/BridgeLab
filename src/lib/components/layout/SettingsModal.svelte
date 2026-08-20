@@ -15,6 +15,12 @@
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
 	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
+	function fmtDate(rfc3339: string): string {
+		// App-selected locale, reactive to language switches (see tr()).
+		void localeVersion;
+		const d = new Date(rfc3339);
+		return isNaN(d.getTime()) ? rfc3339 : d.toLocaleDateString(getLocale());
+	}
 
 	interface Props {
 		theme: string;
@@ -590,7 +596,7 @@
 
 						{#if licenseStatus.expires_at}
 							<dt>{tr('act.expiry')}</dt>
-							<dd>{new Date(licenseStatus.expires_at).toLocaleDateString()}</dd>
+							<dd>{fmtDate(licenseStatus.expires_at)}</dd>
 						{/if}
 
 						<dt>{tr('act.hardwareId')}</dt>
