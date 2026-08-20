@@ -314,21 +314,28 @@ internet access is ever required. The dialog previews the licensee
 name and entitlements before activation.</p>
 
 <h3>Offline verification</h3>
-<p>Whichever flow you used, after activation license verification is
-purely local - no network call is required and no license server is
-ever contacted again. The key carries an Ed25519 signature that the
+<p>Whichever flow you used, routine license verification is purely
+local - the app never needs to contact the license server to keep
+working. Server calls happen only when you explicitly trigger them:
+activating with a code, freeing a seat via <em>Deactivate</em>, or
+opt-in usage statistics. The key carries an Ed25519 signature that the
 app verifies against an embedded public key.</p>
 
-<h3>Privacy &amp; anonymous statistics</h3>
-<p>BridgeLab can send <strong>anonymous usage statistics</strong> to
-TECHEMV — disabled by default, opt-in under
-<strong>Settings → Privacy</strong>. When enabled, at most once a day
-the app sends usage counters plus app version, OS and license tier.
-No message content, file names, host names or personal data are ever
-sent; the exact JSON payload can be inspected with <em>Show what is
-sent</em>. With the toggle off (the default) nothing is transmitted at
-all, and network problems never produce errors — a fully offline
-installation is a normal, supported setup.</p>
+<h3>Privacy &amp; usage statistics</h3>
+<p>BridgeLab can send <strong>usage statistics</strong> to TECHEMV —
+disabled by default, opt-in under <strong>Settings → Privacy</strong>.
+When enabled, automatic sending happens at most once a day; the
+<em>Send now</em> button transmits immediately. Each report contains
+usage counters, app version, OS, license tier, a <strong>random
+installation ID</strong> and — only for licenses activated online —
+the <strong>activation code</strong> (used to flag a revoked license).
+The data is therefore <strong>pseudonymous</strong>, not fully
+anonymous: no message content, file names, host names, user names or
+patient data are ever sent, and the exact JSON payload can be
+inspected with <em>Show what is sent</em>. With the toggle off (the
+default) nothing is transmitted at all, and network problems never
+produce errors — a fully offline installation is a normal, supported
+setup.</p>
 `,
 };
 

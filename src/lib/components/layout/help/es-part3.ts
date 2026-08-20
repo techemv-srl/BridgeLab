@@ -334,24 +334,31 @@ diálogo muestra el nombre del titular y las funciones incluidas antes
 de la activación.</p>
 
 <h3>Verificación offline</h3>
-<p>Sea cual sea el flujo utilizado, tras la activación la verificación
-de la licencia es puramente local - no se necesita ninguna llamada de
-red y nunca se vuelve a contactar con ningún servidor de licencias. La
-clave lleva una firma Ed25519 que la aplicación verifica contra una
-clave pública integrada.</p>
+<p>Sea cual sea el flujo utilizado, la verificación ordinaria de la
+licencia es puramente local - la aplicación nunca necesita contactar
+con el servidor de licencias para seguir funcionando. Las llamadas al
+servidor solo ocurren cuando las desencadenas explícitamente:
+activación con código, liberación del puesto con <em>Desactivar</em>,
+o estadísticas de uso opt-in. La clave lleva una firma Ed25519 que la
+aplicación verifica contra una clave pública integrada.</p>
 
-<h3>Privacidad y estadísticas anónimas</h3>
-<p>BridgeLab puede enviar <strong>estadísticas de uso anónimas</strong>
-a TECHEMV — desactivadas por defecto, activables en
-<strong>Configuración → Privacidad</strong>. Si están activas, como
-máximo una vez al día la aplicación envía contadores de uso junto con
-la versión de la aplicación, el sistema operativo y el tipo de
-licencia. Nunca se envían contenidos de mensajes, nombres de archivo,
-nombres de host ni datos personales; el JSON exacto puede inspeccionarse
-con <em>Mostrar lo que se envía</em>. Con el interruptor apagado (el
-valor por defecto) no se transmite nada, y los problemas de red nunca
-producen errores: una instalación totalmente sin conexión es un
-escenario normal y soportado.</p>
+<h3>Privacidad y estadísticas de uso</h3>
+<p>BridgeLab puede enviar <strong>estadísticas de uso</strong> a
+TECHEMV — desactivadas por defecto, activables en
+<strong>Configuración → Privacidad</strong>. Si están activas, el
+envío automático ocurre como máximo una vez al día; el botón
+<em>Enviar ahora</em> transmite de inmediato. Cada informe contiene
+contadores de uso, versión de la aplicación, sistema operativo, tipo
+de licencia, un <strong>ID de instalación aleatorio</strong> y — solo
+para licencias activadas en línea — el <strong>código de
+activación</strong> (usado para señalar una licencia revocada). Los
+datos son por tanto <strong>seudónimos</strong>, no totalmente
+anónimos: nunca se envían contenidos de mensajes, nombres de archivo,
+nombres de host, nombres de usuario ni datos de pacientes, y el JSON
+exacto puede inspeccionarse con <em>Mostrar lo que se envía</em>. Con
+el interruptor apagado (el valor por defecto) no se transmite nada, y
+los problemas de red nunca producen errores: una instalación
+totalmente sin conexión es un escenario normal y soportado.</p>
 `,
 };
 

@@ -341,24 +341,32 @@ keinem Zeitpunkt erforderlich. Der Dialog zeigt vor der Aktivierung
 den Namen des Lizenznehmers und die enthaltenen Berechtigungen an.</p>
 
 <h3>Offline-Verifizierung</h3>
-<p>Unabhängig vom gewählten Weg erfolgt die Lizenzprüfung nach der
-Aktivierung rein lokal - es ist kein Netzwerkaufruf erforderlich und
-kein Lizenzserver wird jemals wieder kontaktiert. Der Schlüssel trägt
-eine Ed25519-Signatur, die die App gegen einen eingebetteten
-öffentlichen Schlüssel verifiziert.</p>
+<p>Unabhängig vom gewählten Weg erfolgt die routinemäßige Lizenzprüfung
+rein lokal - die App muss den Lizenzserver nie kontaktieren, um weiter
+zu funktionieren. Serveraufrufe finden nur statt, wenn Sie sie
+ausdrücklich auslösen: Aktivierung per Code, Freigabe des
+Arbeitsplatzes über <em>Deaktivieren</em> oder Opt-in-
+Nutzungsstatistiken. Der Schlüssel trägt eine Ed25519-Signatur, die
+die App gegen einen eingebetteten öffentlichen Schlüssel
+verifiziert.</p>
 
-<h3>Datenschutz und anonyme Statistiken</h3>
-<p>BridgeLab kann <strong>anonyme Nutzungsstatistiken</strong> an
-TECHEMV senden — standardmäßig deaktiviert, aktivierbar unter
-<strong>Einstellungen → Datenschutz</strong>. Wenn aktiviert, sendet
-die App höchstens einmal täglich Nutzungszähler sowie App-Version,
-Betriebssystem und Lizenzstufe. Nachrichteninhalte, Dateinamen,
-Hostnamen oder persönliche Daten werden niemals gesendet; das exakte
-JSON lässt sich über <em>Zeigen, was gesendet wird</em> einsehen. Bei
-ausgeschaltetem Schalter (Standard) wird nichts übertragen, und
-Netzwerkprobleme erzeugen niemals Fehlermeldungen: Eine vollständig
-offline betriebene Installation ist ein normales, unterstütztes
-Szenario.</p>
+<h3>Datenschutz und Nutzungsstatistiken</h3>
+<p>BridgeLab kann <strong>Nutzungsstatistiken</strong> an TECHEMV
+senden — standardmäßig deaktiviert, aktivierbar unter
+<strong>Einstellungen → Datenschutz</strong>. Wenn aktiviert, erfolgt
+der automatische Versand höchstens einmal täglich; die Schaltfläche
+<em>Jetzt senden</em> überträgt sofort. Jeder Bericht enthält
+Nutzungszähler, App-Version, Betriebssystem, Lizenzstufe, eine
+<strong>zufällige Installations-ID</strong> und — nur bei online
+aktivierten Lizenzen — den <strong>Aktivierungscode</strong> (zur
+Kennzeichnung widerrufener Lizenzen). Die Daten sind daher
+<strong>pseudonym</strong>, nicht vollständig anonym:
+Nachrichteninhalte, Dateinamen, Hostnamen, Benutzernamen oder
+Patientendaten werden niemals gesendet, und das exakte JSON lässt sich
+über <em>Zeigen, was gesendet wird</em> einsehen. Bei ausgeschaltetem
+Schalter (Standard) wird nichts übertragen, und Netzwerkprobleme
+erzeugen niemals Fehlermeldungen: Eine vollständig offline betriebene
+Installation ist ein normales, unterstütztes Szenario.</p>
 `,
 };
 
