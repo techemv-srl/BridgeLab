@@ -313,18 +313,41 @@ plugins et cas de test restent intacts.</p>
 	<li>Le bouton <em>Mettre à niveau</em> du bandeau d'essai</li>
 </ul>
 
-<p>Pour obtenir une clé de licence, écrivez à <a href="mailto:info@techemv.it">info@techemv.it</a>
-en indiquant votre <strong>ID Matériel</strong> (affiché dans la boîte
-de dialogue d'activation, également visible sous Paramètres → Licence).
-TECHEMV SRL génère une licence signée liée à votre machine et vous la
-renvoie par email. Collez-la dans le champ de clé ; la boîte de dialogue
-prévisualise le nom du titulaire et les droits associés avant
-l'activation.</p>
+<p><strong>Activation en ligne (par défaut) :</strong> après l'achat,
+vous recevez par e-mail un code d'activation du type
+<code>BL-PRO-XXXX-XXXX-XXXX</code>. Collez-le dans le champ de clé :
+l'application l'échange en un seul appel HTTPS contre une licence
+signée liée à cette machine. Utilisez <em>Désactiver</em> pour libérer
+le poste avant de passer à un autre ordinateur.</p>
+
+<p><strong>Clé hors ligne (sites isolés / air-gapped) :</strong>
+écrivez à <a href="mailto:info@techemv.it">info@techemv.it</a> en
+indiquant votre <strong>ID Matériel</strong> (affiché sous « Besoin
+d'une clé hors ligne ? » dans la boîte de dialogue d'activation,
+également visible sous Paramètres → Licence). TECHEMV SRL vous renvoie
+une licence signée liée à votre machine — aucun accès internet n'est
+jamais nécessaire. La boîte de dialogue prévisualise le nom du
+titulaire et les droits associés avant l'activation.</p>
 
 <h3>Vérification hors ligne</h3>
-<p>Après la première activation, la vérification de licence est purement
-locale - aucun appel réseau n'est nécessaire. La clé porte une signature
-Ed25519 que l'application vérifie contre une clé publique embarquée.</p>
+<p>Quel que soit le flux utilisé, après l'activation la vérification de
+licence est purement locale - aucun appel réseau n'est nécessaire et
+aucun serveur de licences n'est plus jamais contacté. La clé porte une
+signature Ed25519 que l'application vérifie contre une clé publique
+embarquée.</p>
+
+<h3>Confidentialité et statistiques anonymes</h3>
+<p>BridgeLab peut envoyer des <strong>statistiques d'utilisation
+anonymes</strong> à TECHEMV — désactivées par défaut, activables sous
+<strong>Paramètres → Confidentialité</strong>. Une fois activées,
+l'application envoie au plus une fois par jour des compteurs
+d'utilisation ainsi que la version de l'application, le système
+d'exploitation et le niveau de licence. Aucun contenu de message, nom
+de fichier, nom d'hôte ni donnée personnelle n'est jamais envoyé ; le
+JSON exact peut être inspecté via <em>Voir ce qui est envoyé</em>.
+Interrupteur désactivé (le défaut), rien n'est transmis, et les
+problèmes réseau ne produisent jamais d'erreurs : une installation
+totalement hors ligne est un scénario normal et pris en charge.</p>
 `,
 };
 

@@ -298,17 +298,37 @@ upgrade. Your messages, settings, plugins and test cases remain intact.</p>
 	<li>The <em>Upgrade</em> button on the trial banner</li>
 </ul>
 
-<p>To obtain a license key, email <a href="mailto:info@techemv.it">info@techemv.it</a>
-with your <strong>Hardware ID</strong> (shown in the activation dialog,
-also visible under Settings → License). TECHEMV SRL generates a
-signed license bound to your machine and emails it back. Paste it into
-the key field; the dialog previews the licensee name and entitlements
-before activation.</p>
+<p><strong>Online activation (default):</strong> after purchase you
+receive an activation code like <code>BL-PRO-XXXX-XXXX-XXXX</code> by
+e-mail. Paste it into the key field: the app exchanges it once over
+HTTPS for a signed license bound to this machine. Use
+<em>Deactivate</em> to free the seat before moving to another
+computer.</p>
+
+<p><strong>Offline key (isolated / air-gapped sites):</strong> email
+<a href="mailto:info@techemv.it">info@techemv.it</a> with your
+<strong>Hardware ID</strong> (shown under "Need an offline key?" in
+the activation dialog, also visible under Settings → License).
+TECHEMV SRL emails back a signed license bound to your machine — no
+internet access is ever required. The dialog previews the licensee
+name and entitlements before activation.</p>
 
 <h3>Offline verification</h3>
-<p>After the first activation, license verification is purely local -
-no network call is required. The key carries an Ed25519 signature that
-the app verifies against an embedded public key.</p>
+<p>Whichever flow you used, after activation license verification is
+purely local - no network call is required and no license server is
+ever contacted again. The key carries an Ed25519 signature that the
+app verifies against an embedded public key.</p>
+
+<h3>Privacy &amp; anonymous statistics</h3>
+<p>BridgeLab can send <strong>anonymous usage statistics</strong> to
+TECHEMV — disabled by default, opt-in under
+<strong>Settings → Privacy</strong>. When enabled, at most once a day
+the app sends usage counters plus app version, OS and license tier.
+No message content, file names, host names or personal data are ever
+sent; the exact JSON payload can be inspected with <em>Show what is
+sent</em>. With the toggle off (the default) nothing is transmitted at
+all, and network problems never produce errors — a fully offline
+installation is a normal, supported setup.</p>
 `,
 };
 
