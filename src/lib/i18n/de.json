@@ -421,6 +421,8 @@
 	"act.licenseTypes": "Lizenztypen",
 
 	"act.daysRemaining": "{days} Tage verbleibend",
+	"act.expiresOn": "Gültig bis {date}",
+	"act.expiry": "Gültig bis",
 	"act.hwHint": "Teilen Sie diese ID bei der Anforderung eines Lizenzschlüssels.",
 	"act.keyPlaceholder": "Aktivierungscode (BL-PRO-…) oder Offline-Lizenzschlüssel einfügen",
 	"act.activatingOnline": "Lizenzserver wird kontaktiert…",
