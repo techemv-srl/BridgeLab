@@ -41,7 +41,7 @@ ${mockupAppShell}
 		MSH-10 are filled with the current timestamp and a fresh GUID.</li>
 </ul>
 
-<div class="note">On first launch you get a <strong>7-day Pro trial</strong>
+<div class="note">On first launch you get a <strong>14-day Pro trial</strong>
 with every feature enabled. After expiry, BridgeLab continues to work
 with the Community feature set - you never lose your messages.</div>
 

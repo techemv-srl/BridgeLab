@@ -173,7 +173,7 @@ function makeValidation(l: MockupLabels): string {
 
 const EN_LABELS: MockupLabels = {
 	menuBar: 'File  Edit  View  Tools  Help',
-	trialBanner: 'Pro trial: 7 days remaining',
+	trialBanner: 'Pro trial: 14 days remaining',
 	untitled: 'Untitled',
 	treeHeader: 'MESSAGE STRUCTURE',
 	inspectorTitle: 'FIELD INSPECTOR',
@@ -202,7 +202,7 @@ const EN_LABELS: MockupLabels = {
 
 const IT_LABELS: MockupLabels = {
 	menuBar: 'File  Modifica  Visualizza  Strumenti  Aiuto',
-	trialBanner: 'Trial Pro: 7 giorni rimanenti',
+	trialBanner: 'Trial Pro: 14 giorni rimanenti',
 	untitled: 'Senza titolo',
 	treeHeader: 'STRUTTURA MESSAGGIO',
 	inspectorTitle: 'ISPETTORE CAMPO',
@@ -231,7 +231,7 @@ const IT_LABELS: MockupLabels = {
 
 const FR_LABELS: MockupLabels = {
 	menuBar: 'Fichier  Édition  Affichage  Outils  Aide',
-	trialBanner: 'Essai Pro : 7 jours restants',
+	trialBanner: 'Essai Pro : 14 jours restants',
 	untitled: 'Sans titre',
 	treeHeader: 'STRUCTURE DU MESSAGE',
 	inspectorTitle: 'INSPECTEUR DE CHAMP',
@@ -260,7 +260,7 @@ const FR_LABELS: MockupLabels = {
 
 const ES_LABELS: MockupLabels = {
 	menuBar: 'Archivo  Editar  Ver  Herramientas  Ayuda',
-	trialBanner: 'Prueba Pro: 7 días restantes',
+	trialBanner: 'Prueba Pro: 14 días restantes',
 	untitled: 'Sin título',
 	treeHeader: 'ESTRUCTURA DEL MENSAJE',
 	inspectorTitle: 'INSPECTOR DE CAMPO',
@@ -289,7 +289,7 @@ const ES_LABELS: MockupLabels = {
 
 const DE_LABELS: MockupLabels = {
 	menuBar: 'Datei  Bearbeiten  Ansicht  Werkzeuge  Hilfe',
-	trialBanner: 'Pro-Testversion: 7 Tage verbleibend',
+	trialBanner: 'Pro-Testversion: 14 Tage verbleibend',
 	untitled: 'Unbenannt',
 	treeHeader: 'NACHRICHTENSTRUKTUR',
 	inspectorTitle: 'FELD-INSPEKTOR',
