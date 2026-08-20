@@ -394,9 +394,9 @@ Before running tests:
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
-| BL-LIC-01 | P0 | Trial starts on first launch | Fresh install | 30 days trial active | |
+| BL-LIC-01 | P0 | Trial starts on first launch | Fresh install | 14 days trial active | |
 | BL-LIC-02 | P0 | Trial banner shows days | Check top of window | Yellow banner with days remaining | |
-| BL-LIC-03 | P1 | Banner urgent <7 days | Simulate <7 days remaining | Red banner | |
+| BL-LIC-03 | P1 | Banner urgent ≤3 days | Simulate ≤3 days remaining | Red, non-dismissible banner | |
 | BL-LIC-04 | P0 | Open activation dialog | Click Upgrade | Dialog opens | |
 | BL-LIC-05 | P0 | Activate Free license | Enter `BL-FREE-ABCD1234EFGH` | Free activated | |
 | BL-LIC-06 | P0 | Activate Pro license | Enter `BL-PRO-12345678ABCD` | Pro activated | |
