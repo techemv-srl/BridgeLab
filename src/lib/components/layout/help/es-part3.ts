@@ -317,19 +317,48 @@ prueba permanecen intactos.</p>
 	<li>El botón <em>Actualizar</em> del banner de prueba</li>
 </ul>
 
-<p>Para obtener una clave de licencia, escribe a
-<a href="mailto:info@techemv.it">info@techemv.it</a> con tu <strong>ID
-de Hardware</strong> (se muestra en el diálogo de activación y también
-en Configuración → Licencia). TECHEMV SRL genera una licencia firmada
-vinculada a tu máquina y te la devuelve por correo. Pégala en el campo
-de la clave; el diálogo muestra el nombre del titular y las funciones
-incluidas antes de la activación.</p>
+<p><strong>Activación en línea (predeterminada):</strong> tras la
+compra recibes por correo un código de activación del tipo
+<code>BL-PRO-XXXX-XXXX-XXXX</code>. Pégalo en el campo de la clave: la
+aplicación lo intercambia con una sola llamada HTTPS por una licencia
+firmada vinculada a este equipo. Usa <em>Desactivar</em> para liberar
+el puesto antes de cambiar de ordenador.</p>
+
+<p><strong>Clave sin conexión (entornos aislados / air-gapped):</strong>
+escribe a <a href="mailto:info@techemv.it">info@techemv.it</a> con tu
+<strong>ID de Hardware</strong> (se muestra bajo "¿Necesitas una clave
+sin conexión?" en el diálogo de activación y también en
+Configuración → Licencia). TECHEMV SRL te devuelve una licencia firmada
+vinculada a tu máquina — nunca se necesita acceso a internet. El
+diálogo muestra el nombre del titular y las funciones incluidas antes
+de la activación.</p>
 
 <h3>Verificación offline</h3>
-<p>Tras la primera activación, la verificación de la licencia es
-puramente local - no se necesita ninguna llamada de red. La clave lleva
-una firma Ed25519 que la aplicación verifica contra una clave pública
-integrada.</p>
+<p>Sea cual sea el flujo utilizado, la verificación ordinaria de la
+licencia es puramente local - la aplicación nunca necesita contactar
+con el servidor de licencias para seguir funcionando. Las llamadas al
+servidor solo ocurren cuando las desencadenas explícitamente:
+activación con código, liberación del puesto con <em>Desactivar</em>,
+o estadísticas de uso opt-in. La clave lleva una firma Ed25519 que la
+aplicación verifica contra una clave pública integrada.</p>
+
+<h3>Privacidad y estadísticas de uso</h3>
+<p>BridgeLab puede enviar <strong>estadísticas de uso</strong> a
+TECHEMV — desactivadas por defecto, activables en
+<strong>Configuración → Privacidad</strong>. Si están activas, el
+envío automático ocurre como máximo una vez al día; el botón
+<em>Enviar ahora</em> transmite de inmediato. Cada informe contiene
+contadores de uso, versión de la aplicación, sistema operativo, tipo
+de licencia, un <strong>ID de instalación aleatorio</strong> y — solo
+para licencias activadas en línea — el <strong>código de
+activación</strong> (usado para señalar una licencia revocada). Los
+datos son por tanto <strong>seudónimos</strong>, no totalmente
+anónimos: nunca se envían contenidos de mensajes, nombres de archivo,
+nombres de host, nombres de usuario ni datos de pacientes, y el JSON
+exacto puede inspeccionarse con <em>Mostrar lo que se envía</em>. Con
+el interruptor apagado (el valor por defecto) no se transmite nada, y
+los problemas de red nunca producen errores: una instalación
+totalmente sin conexión es un escenario normal y soportado.</p>
 `,
 };
 
