@@ -203,6 +203,7 @@ mod tests {
             license_type: lt,
             days_remaining: None,
             activation_code: None,
+            expires_at: None,
             licensee: String::new(),
             email: String::new(),
             features: vec![],
