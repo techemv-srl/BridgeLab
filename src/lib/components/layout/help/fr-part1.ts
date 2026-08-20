@@ -45,7 +45,7 @@ ${mockupAppShell}
 </ul>
 
 <div class="note">Au premier lancement vous bénéficiez d'un <strong>essai
-Pro de 7 jours</strong> avec toutes les fonctionnalités activées. À
+Pro de 14 jours</strong> avec toutes les fonctionnalités activées. À
 l'expiration, BridgeLab continue de fonctionner avec les fonctionnalités
 Community - vous ne perdez jamais vos messages.</div>
 
