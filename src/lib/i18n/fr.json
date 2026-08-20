@@ -421,6 +421,8 @@
 	"act.licenseTypes": "Types de Licence",
 
 	"act.daysRemaining": "{days} jours restants",
+	"act.expiresOn": "Valide jusqu'au {date}",
+	"act.expiry": "Valide jusqu'au",
 	"act.hwHint": "Partagez cet ID lors de la demande d'une clé de licence.",
 	"act.keyPlaceholder": "Collez votre code d'activation (BL-PRO-…) ou une clé de licence hors ligne",
 	"act.activatingOnline": "Contact du serveur de licences…",

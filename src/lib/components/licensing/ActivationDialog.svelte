@@ -17,6 +17,11 @@
 
 	let { currentStatus, onClose, onStatusChange }: Props = $props();
 
+	function fmtDate(rfc3339: string): string {
+		const d = new Date(rfc3339);
+		return isNaN(d.getTime()) ? rfc3339 : d.toLocaleDateString();
+	}
+
 	let licenseKey = $state('');
 	let hardwareId = $state('');
 	let error = $state('');
@@ -174,6 +179,9 @@
 			{/if}
 			{#if currentStatus.email}
 				<div class="status-detail">{currentStatus.email}</div>
+			{/if}
+			{#if currentStatus.expires_at}
+				<div class="status-detail">{tr('act.expiresOn', { date: fmtDate(currentStatus.expires_at) })}</div>
 			{/if}
 			{#if currentStatus.activation_code}
 				<div class="status-detail activated-with">{tr('act.activatedWith', { code: currentStatus.activation_code })}</div>

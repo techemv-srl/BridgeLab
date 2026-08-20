@@ -10,6 +10,8 @@ export interface LicenseStatus {
 	message: string;
 	/** Set when the license was obtained via online activation. */
 	activation_code: string | null;
+	/** License expiry (RFC-3339); null for perpetual licenses and trials. */
+	expires_at: string | null;
 }
 
 export interface TelemetrySettings {
