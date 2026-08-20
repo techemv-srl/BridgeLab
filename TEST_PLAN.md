@@ -69,7 +69,7 @@ Before running tests:
 |----|----------|-------------|-------|-----------------|--------|
 | BL-APP-01 | P0 | App starts without errors | Launch app | Window opens, no error dialogs, DevTools console clean | |
 | BL-APP-02 | P0 | Initial empty tab created | Launch app | "Untitled" tab visible, Monaco editor has focus | |
-| BL-APP-03 | P0 | Trial banner shows on first run | Fresh install, launch | Yellow "Trial: 30 days remaining" banner at top | |
+| BL-APP-03 | P0 | Trial banner shows on first run | Fresh install, launch | Yellow "Trial: 14 days remaining" banner at top | |
 | BL-APP-04 | P1 | Window is resizable | Drag window corners | Window resizes, panels reflow correctly | |
 | BL-APP-05 | P1 | Minimum window size respected | Try to resize below 900x600 | Window stops at 900x600 | |
 | BL-APP-06 | P1 | App icon is the new bridge design | Check taskbar/dock | Bridge icon with HL7 badge, not placeholder | |
