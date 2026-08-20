@@ -69,7 +69,7 @@ Before running tests:
 |----|----------|-------------|-------|-----------------|--------|
 | BL-APP-01 | P0 | App starts without errors | Launch app | Window opens, no error dialogs, DevTools console clean | |
 | BL-APP-02 | P0 | Initial empty tab created | Launch app | "Untitled" tab visible, Monaco editor has focus | |
-| BL-APP-03 | P0 | Trial banner shows on first run | Fresh install, launch | Yellow "Trial: 30 days remaining" banner at top | |
+| BL-APP-03 | P0 | Trial banner shows on first run | Fresh install, launch | Yellow "Trial: 14 days remaining" banner at top | |
 | BL-APP-04 | P1 | Window is resizable | Drag window corners | Window resizes, panels reflow correctly | |
 | BL-APP-05 | P1 | Minimum window size respected | Try to resize below 900x600 | Window stops at 900x600 | |
 | BL-APP-06 | P1 | App icon is the new bridge design | Check taskbar/dock | Bridge icon with HL7 badge, not placeholder | |
@@ -394,9 +394,9 @@ Before running tests:
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
-| BL-LIC-01 | P0 | Trial starts on first launch | Fresh install | 30 days trial active | |
+| BL-LIC-01 | P0 | Trial starts on first launch | Fresh install | 14 days trial active | |
 | BL-LIC-02 | P0 | Trial banner shows days | Check top of window | Yellow banner with days remaining | |
-| BL-LIC-03 | P1 | Banner urgent <7 days | Simulate <7 days remaining | Red banner | |
+| BL-LIC-03 | P1 | Banner urgent ≤3 days | Simulate ≤3 days remaining | Red, non-dismissible banner | |
 | BL-LIC-04 | P0 | Open activation dialog | Click Upgrade | Dialog opens | |
 | BL-LIC-05 | P0 | Activate Free license | Enter `BL-FREE-ABCD1234EFGH` | Free activated | |
 | BL-LIC-06 | P0 | Activate Pro license | Enter `BL-PRO-12345678ABCD` | Pro activated | |
