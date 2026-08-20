@@ -584,9 +584,14 @@
 						<dd class="license-type-badge" class:trial={licenseStatus.license_type === 'trial'} class:pro={licenseStatus.license_type === 'professional'} class:ent={licenseStatus.license_type === 'enterprise'} class:expired={licenseStatus.license_type === 'expired'}>
 							{licenseStatus.license_type}
 							{#if licenseStatus.days_remaining !== null}
-								({licenseStatus.days_remaining} days)
+								({tr('act.daysRemaining', { days: licenseStatus.days_remaining })})
 							{/if}
 						</dd>
+
+						{#if licenseStatus.expires_at}
+							<dt>{tr('act.expiry')}</dt>
+							<dd>{new Date(licenseStatus.expires_at).toLocaleDateString()}</dd>
+						{/if}
 
 						<dt>{tr('act.hardwareId')}</dt>
 						<dd><code>{hardwareId}</code></dd>
