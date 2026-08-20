@@ -303,7 +303,7 @@ fragen nach einem Upgrade, und das Freiwerden eines Platzes
 reaktiviert sie sofort.</p>
 
 <h3>Testversion</h3>
-<p>Beim ersten Start beginnt eine <strong>7-tägige
+<p>Beim ersten Start beginnt eine <strong>14-tägige
 Pro-Testversion</strong> mit allen aktivierten Pro-Funktionen. Das
 (gelbe) Testversions-Banner lässt sich schließen; bei 3 verbleibenden
 Tagen wird es rot und bleibt als Erinnerung sichtbar.</p>

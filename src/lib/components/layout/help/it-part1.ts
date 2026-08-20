@@ -43,7 +43,7 @@ ${mockupAppShell}
 		GUID correnti.</li>
 </ul>
 
-<div class="note">Al primo avvio ricevi un <strong>trial Pro di 7
+<div class="note">Al primo avvio ricevi un <strong>trial Pro di 14
 giorni</strong> con tutte le funzionalità sbloccate. Alla scadenza,
 BridgeLab continua a funzionare con il livello Community - non perdi
 mai i tuoi messaggi.</div>

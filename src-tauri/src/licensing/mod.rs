@@ -222,7 +222,10 @@ pub fn remove_license() -> Result<(), String> {
 // Trial management
 // =============================================================================
 
-const TRIAL_DAYS: i64 = 7;
+const TRIAL_DAYS: i64 = 14;
+/// Duration written by pre-1.3 versions — the legacy-migration check must
+/// match what the OLD code actually wrote, not the current duration.
+const LEGACY_TRIAL_DAYS: i64 = 7;
 
 /// Salt for the trial integrity tag. Embedded in the binary: raises the
 /// bar from "edit a JSON file" to "reverse engineer the executable".
@@ -274,7 +277,7 @@ fn is_plausible_legacy(trial: &TrialData) -> bool {
     trial.sig.is_empty()
         && trial.hw.is_empty()
         && trial.last_seen.is_empty()
-        && trial.trial_days == TRIAL_DAYS
+        && trial.trial_days == LEGACY_TRIAL_DAYS
         && chrono::DateTime::parse_from_rfc3339(&trial.started_at)
             .map(|d| d.with_timezone(&chrono::Utc) <= chrono::Utc::now() + chrono::Duration::hours(1))
             .unwrap_or(false)
@@ -678,8 +681,15 @@ mod tests {
 
     #[test]
     fn test_signed_trial_is_authentic() {
-        let trial = make_trial(chrono::Utc::now().to_rfc3339(), 7);
-        assert!(trial_is_authentic(&trial, &get_hardware_id()));
+        // Both the current duration (14) and pre-1.3 signed records (7)
+        // must verify.
+        for days in [TRIAL_DAYS, LEGACY_TRIAL_DAYS] {
+            let trial = make_trial(chrono::Utc::now().to_rfc3339(), days);
+            assert!(trial_is_authentic(&trial, &get_hardware_id()), "days={}", days);
+        }
+        // Anything above the current duration is rejected even if re-signed.
+        let over = make_trial(chrono::Utc::now().to_rfc3339(), TRIAL_DAYS + 1);
+        assert!(!trial_is_authentic(&over, &get_hardware_id()));
     }
 
     #[test]
@@ -744,7 +754,7 @@ mod tests {
     fn test_legacy_plausibility() {
         let legacy = TrialData {
             started_at: (chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339(),
-            trial_days: 7,
+            trial_days: LEGACY_TRIAL_DAYS,
             hw: String::new(),
             last_seen: String::new(),
             sig: String::new(),
@@ -760,6 +770,12 @@ mod tests {
         let mut inflated = legacy.clone();
         inflated.trial_days = 9_999;
         assert!(!is_plausible_legacy(&inflated));
+
+        // The old code never wrote 14 — a bare record claiming the NEW
+        // duration is a forgery, not a legacy file.
+        let mut fake14 = legacy.clone();
+        fake14.trial_days = TRIAL_DAYS;
+        assert!(!is_plausible_legacy(&fake14));
     }
 
     #[test]
