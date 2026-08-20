@@ -307,18 +307,46 @@ intatti.</p>
 	<li>Il pulsante <em>Aggiorna</em> sul banner trial</li>
 </ul>
 
-<p>Per ottenere una chiave di licenza, scrivi a
+<p><strong>Attivazione online (predefinita):</strong> dopo l'acquisto
+ricevi via email un codice di attivazione tipo
+<code>BL-PRO-XXXX-XXXX-XXXX</code>. Incollalo nel campo chiave: l'app
+lo scambia con una singola chiamata HTTPS per una licenza firmata
+vincolata a questa macchina. Usa <em>Disattiva</em> per liberare la
+postazione prima di passare a un altro computer.</p>
+
+<p><strong>Chiave offline (siti isolati / air-gapped):</strong> scrivi a
 <a href="mailto:info@techemv.it">info@techemv.it</a> con il tuo
-<strong>Hardware ID</strong> (mostrato nel dialog di attivazione e in
-Impostazioni → Licenza). TECHEMV SRL genera una licenza firmata
-vincolata alla tua macchina e te la rispedisce. Incollala nel campo
-chiave; il dialog mostra il nome del licensee e i diritti prima
-dell'attivazione.</p>
+<strong>Hardware ID</strong> (mostrato sotto "Ti serve una chiave
+offline?" nel dialog di attivazione e in Impostazioni → Licenza).
+TECHEMV SRL ti rispedisce una licenza firmata vincolata alla tua
+macchina — non serve mai l'accesso a internet. Il dialog mostra il
+nome del licensee e i diritti prima dell'attivazione.</p>
 
 <h3>Verifica offline</h3>
-<p>Dopo la prima attivazione la verifica della licenza è puramente
-locale - non serve nessuna chiamata di rete. La chiave porta una firma
-Ed25519 che l'app verifica contro una public key embedded.</p>
+<p>Qualunque flusso tu abbia usato, la verifica ordinaria della
+licenza è puramente locale - l'app non ha mai bisogno di contattare il
+server licenze per continuare a funzionare. Le chiamate al server
+avvengono solo quando le richiedi esplicitamente: attivazione con
+codice, liberazione della postazione con <em>Disattiva</em>, o
+statistiche d'uso opt-in. La chiave porta una firma Ed25519 che l'app
+verifica contro una public key embedded.</p>
+
+<h3>Privacy e statistiche d'uso</h3>
+<p>BridgeLab può inviare <strong>statistiche d'uso</strong> a TECHEMV
+— disattivate di default, attivabili in
+<strong>Impostazioni → Privacy</strong>. Se attive, l'invio automatico
+avviene al massimo una volta al giorno; il pulsante <em>Invia ora</em>
+trasmette subito. Ogni invio contiene contatori d'uso, versione
+dell'app, sistema operativo, tipo di licenza, un <strong>ID di
+installazione casuale</strong> e — solo per licenze attivate online —
+il <strong>codice di attivazione</strong> (usato per segnalare una
+licenza revocata). I dati sono quindi <strong>pseudonimi</strong>, non
+del tutto anonimi: non vengono mai inviati contenuti dei messaggi,
+nomi di file, nomi host, nomi utente o dati dei pazienti, e il JSON
+esatto è ispezionabile con <em>Mostra cosa viene inviato</em>. Con
+l'interruttore spento (il default) non viene trasmesso nulla, e i
+problemi di rete non producono mai errori: un'installazione
+completamente offline è uno scenario normale e supportato.</p>
 `,
 },
 {
