@@ -323,19 +323,27 @@ macchina — non serve mai l'accesso a internet. Il dialog mostra il
 nome del licensee e i diritti prima dell'attivazione.</p>
 
 <h3>Verifica offline</h3>
-<p>Qualunque flusso tu abbia usato, dopo l'attivazione la verifica
-della licenza è puramente locale - non serve nessuna chiamata di rete
-e nessun server viene mai più contattato. La chiave porta una firma
-Ed25519 che l'app verifica contro una public key embedded.</p>
+<p>Qualunque flusso tu abbia usato, la verifica ordinaria della
+licenza è puramente locale - l'app non ha mai bisogno di contattare il
+server licenze per continuare a funzionare. Le chiamate al server
+avvengono solo quando le richiedi esplicitamente: attivazione con
+codice, liberazione della postazione con <em>Disattiva</em>, o
+statistiche d'uso opt-in. La chiave porta una firma Ed25519 che l'app
+verifica contro una public key embedded.</p>
 
-<h3>Privacy e statistiche anonime</h3>
-<p>BridgeLab può inviare <strong>statistiche d'uso anonime</strong> a
-TECHEMV — disattivate di default, attivabili in
-<strong>Impostazioni → Privacy</strong>. Se attive, al massimo una
-volta al giorno l'app invia contatori d'uso più versione dell'app,
-sistema operativo e tipo di licenza. Non vengono mai inviati contenuti
-dei messaggi, nomi di file, nomi host o dati personali; il JSON esatto
-è ispezionabile con <em>Mostra cosa viene inviato</em>. Con
+<h3>Privacy e statistiche d'uso</h3>
+<p>BridgeLab può inviare <strong>statistiche d'uso</strong> a TECHEMV
+— disattivate di default, attivabili in
+<strong>Impostazioni → Privacy</strong>. Se attive, l'invio automatico
+avviene al massimo una volta al giorno; il pulsante <em>Invia ora</em>
+trasmette subito. Ogni invio contiene contatori d'uso, versione
+dell'app, sistema operativo, tipo di licenza, un <strong>ID di
+installazione casuale</strong> e — solo per licenze attivate online —
+il <strong>codice di attivazione</strong> (usato per segnalare una
+licenza revocata). I dati sono quindi <strong>pseudonimi</strong>, non
+del tutto anonimi: non vengono mai inviati contenuti dei messaggi,
+nomi di file, nomi host, nomi utente o dati dei pazienti, e il JSON
+esatto è ispezionabile con <em>Mostra cosa viene inviato</em>. Con
 l'interruttore spento (il default) non viene trasmesso nulla, e i
 problemi di rete non producono mai errori: un'installazione
 completamente offline è uno scenario normale e supportato.</p>
