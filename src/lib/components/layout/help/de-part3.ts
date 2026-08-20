@@ -322,20 +322,43 @@ und Testfälle bleiben unangetastet.</p>
 	<li>Die Schaltfläche <em>Aktivieren</em> im Testversions-Banner</li>
 </ul>
 
-<p>Für einen Lizenzschlüssel senden Sie eine E-Mail an
+<p><strong>Online-Aktivierung (Standard):</strong> Nach dem Kauf
+erhalten Sie per E-Mail einen Aktivierungscode der Form
+<code>BL-PRO-XXXX-XXXX-XXXX</code>. Fügen Sie ihn in das Schlüsselfeld
+ein: Die App tauscht ihn mit einem einzigen HTTPS-Aufruf gegen eine
+signierte, an diesen Rechner gebundene Lizenz. Verwenden Sie
+<em>Deaktivieren</em>, um den Arbeitsplatz freizugeben, bevor Sie auf
+einen anderen Computer wechseln.</p>
+
+<p><strong>Offline-Schlüssel (isolierte / Air-Gapped-Umgebungen):</strong>
+Senden Sie eine E-Mail an
 <a href="mailto:info@techemv.it">info@techemv.it</a> mit Ihrer
-<strong>Hardware-ID</strong> (angezeigt im Aktivierungsdialog, ebenso
-sichtbar unter Einstellungen → Lizenzaktivierung). TECHEMV SRL
-erzeugt eine signierte, an Ihren Rechner gebundene Lizenz und sendet
-sie per E-Mail zurück. Fügen Sie sie in das Schlüsselfeld ein; der
-Dialog zeigt vor der Aktivierung den Namen des Lizenznehmers und die
-enthaltenen Berechtigungen an.</p>
+<strong>Hardware-ID</strong> (angezeigt unter „Offline-Schlüssel
+benötigt?" im Aktivierungsdialog, ebenso sichtbar unter
+Einstellungen → Lizenzaktivierung). TECHEMV SRL sendet eine signierte,
+an Ihren Rechner gebundene Lizenz zurück — ein Internetzugang ist zu
+keinem Zeitpunkt erforderlich. Der Dialog zeigt vor der Aktivierung
+den Namen des Lizenznehmers und die enthaltenen Berechtigungen an.</p>
 
 <h3>Offline-Verifizierung</h3>
-<p>Nach der ersten Aktivierung erfolgt die Lizenzprüfung rein lokal -
-es ist kein Netzwerkaufruf erforderlich. Der Schlüssel trägt eine
-Ed25519-Signatur, die die App gegen einen eingebetteten öffentlichen
-Schlüssel verifiziert.</p>
+<p>Unabhängig vom gewählten Weg erfolgt die Lizenzprüfung nach der
+Aktivierung rein lokal - es ist kein Netzwerkaufruf erforderlich und
+kein Lizenzserver wird jemals wieder kontaktiert. Der Schlüssel trägt
+eine Ed25519-Signatur, die die App gegen einen eingebetteten
+öffentlichen Schlüssel verifiziert.</p>
+
+<h3>Datenschutz und anonyme Statistiken</h3>
+<p>BridgeLab kann <strong>anonyme Nutzungsstatistiken</strong> an
+TECHEMV senden — standardmäßig deaktiviert, aktivierbar unter
+<strong>Einstellungen → Datenschutz</strong>. Wenn aktiviert, sendet
+die App höchstens einmal täglich Nutzungszähler sowie App-Version,
+Betriebssystem und Lizenzstufe. Nachrichteninhalte, Dateinamen,
+Hostnamen oder persönliche Daten werden niemals gesendet; das exakte
+JSON lässt sich über <em>Zeigen, was gesendet wird</em> einsehen. Bei
+ausgeschaltetem Schalter (Standard) wird nichts übertragen, und
+Netzwerkprobleme erzeugen niemals Fehlermeldungen: Eine vollständig
+offline betriebene Installation ist ein normales, unterstütztes
+Szenario.</p>
 `,
 };
 
