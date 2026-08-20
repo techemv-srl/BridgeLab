@@ -299,7 +299,7 @@ límite piden una actualización, y liberar un hueco los reactiva de
 inmediato.</p>
 
 <h3>Prueba</h3>
-<p>El primer arranque inicia una <strong>prueba Pro de 7 días</strong>
+<p>El primer arranque inicia una <strong>prueba Pro de 14 días</strong>
 con todas las funciones Pro habilitadas. El banner de prueba (amarillo)
 se puede descartar; cuando quedan 3 días se vuelve rojo y permanece
 visible como recordatorio.</p>

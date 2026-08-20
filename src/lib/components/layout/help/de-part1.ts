@@ -46,7 +46,7 @@ ${mockupAppShell}
 		dem aktuellen Zeitstempel und einer frischen GUID befüllt.</li>
 </ul>
 
-<div class="note">Beim ersten Start erhalten Sie eine <strong>7-tägige
+<div class="note">Beim ersten Start erhalten Sie eine <strong>14-tägige
 Pro-Testversion</strong> mit allen freigeschalteten Funktionen. Nach
 Ablauf arbeitet BridgeLab mit dem Community-Funktionsumfang weiter -
 Ihre Nachrichten gehen nie verloren.</div>
