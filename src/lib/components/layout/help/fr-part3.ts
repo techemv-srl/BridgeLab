@@ -330,24 +330,33 @@ jamais nécessaire. La boîte de dialogue prévisualise le nom du
 titulaire et les droits associés avant l'activation.</p>
 
 <h3>Vérification hors ligne</h3>
-<p>Quel que soit le flux utilisé, après l'activation la vérification de
-licence est purement locale - aucun appel réseau n'est nécessaire et
-aucun serveur de licences n'est plus jamais contacté. La clé porte une
-signature Ed25519 que l'application vérifie contre une clé publique
-embarquée.</p>
+<p>Quel que soit le flux utilisé, la vérification ordinaire de la
+licence est purement locale - l'application n'a jamais besoin de
+contacter le serveur de licences pour continuer à fonctionner. Les
+appels au serveur n'ont lieu que lorsque vous les déclenchez
+explicitement : activation par code, libération du poste via
+<em>Désactiver</em>, ou statistiques d'utilisation opt-in. La clé
+porte une signature Ed25519 que l'application vérifie contre une clé
+publique embarquée.</p>
 
-<h3>Confidentialité et statistiques anonymes</h3>
-<p>BridgeLab peut envoyer des <strong>statistiques d'utilisation
-anonymes</strong> à TECHEMV — désactivées par défaut, activables sous
-<strong>Paramètres → Confidentialité</strong>. Une fois activées,
-l'application envoie au plus une fois par jour des compteurs
-d'utilisation ainsi que la version de l'application, le système
-d'exploitation et le niveau de licence. Aucun contenu de message, nom
-de fichier, nom d'hôte ni donnée personnelle n'est jamais envoyé ; le
-JSON exact peut être inspecté via <em>Voir ce qui est envoyé</em>.
-Interrupteur désactivé (le défaut), rien n'est transmis, et les
-problèmes réseau ne produisent jamais d'erreurs : une installation
-totalement hors ligne est un scénario normal et pris en charge.</p>
+<h3>Confidentialité et statistiques d'utilisation</h3>
+<p>BridgeLab peut envoyer des <strong>statistiques
+d'utilisation</strong> à TECHEMV — désactivées par défaut, activables
+sous <strong>Paramètres → Confidentialité</strong>. Une fois activées,
+l'envoi automatique a lieu au plus une fois par jour ; le bouton
+<em>Envoyer maintenant</em> transmet immédiatement. Chaque rapport
+contient des compteurs d'utilisation, la version de l'application, le
+système d'exploitation, le niveau de licence, un <strong>ID
+d'installation aléatoire</strong> et — uniquement pour les licences
+activées en ligne — le <strong>code d'activation</strong> (utilisé
+pour signaler une licence révoquée). Les données sont donc
+<strong>pseudonymes</strong> et non totalement anonymes : aucun
+contenu de message, nom de fichier, nom d'hôte, nom d'utilisateur ni
+donnée patient n'est jamais envoyé, et le JSON exact peut être
+inspecté via <em>Voir ce qui est envoyé</em>. Interrupteur désactivé
+(le défaut), rien n'est transmis, et les problèmes réseau ne
+produisent jamais d'erreurs : une installation totalement hors ligne
+est un scénario normal et pris en charge.</p>
 `,
 };
 
