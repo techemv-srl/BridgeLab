@@ -117,23 +117,59 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      # macOS Developer ID signing + notarization. The Apple env vars are
+      # exported ONLY when the corresponding secrets are non-empty: putting
+      # them (even empty) in the tauri-action env block makes the Tauri
+      # bundler treat the mere PRESENCE of APPLE_CERTIFICATE as "signing
+      # requested" and fail importing an empty certificate
+      # (SecKeychainItemImport: parameters not valid). Until the Apple
+      # Developer enrollment is completed and the six secrets are
+      # configured, this step exports nothing and builds stay unsigned.
+      - name: Enable macOS signing when secrets are configured
+        if: startsWith(matrix.platform.os, 'macos')
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS Developer ID signing + notarization. Every var below is a
-          # no-op while the secrets are unset (tauri-action skips the keychain
-          # import and the bundler skips notarization on empty values), so the
-          # pipeline keeps producing unsigned builds until the Apple Developer
-          # enrollment is completed and the six secrets are configured.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          export_var() {
+            { echo "$1<<__APPLE_EOF__"; echo "${!1}"; echo "__APPLE_EOF__"; } >> "$GITHUB_ENV"
+          }
+          # Groups are exported atomically: a partial set (e.g. certificate
+          # without its password) would trigger the signing path and fail,
+          # instead of falling back to an unsigned build.
+          sign_ok=1
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do
+            [ -n "${!v}" ] || sign_ok=0
+          done
+          notar_ok=1
+          for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || notar_ok=0
+          done
+          if [ "$sign_ok" = 1 ]; then
+            for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do export_var "$v"; done
+            if [ "$notar_ok" = 1 ]; then
+              for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do export_var "$v"; done
+              echo "macOS signing + notarization: ENABLED"
+            else
+              echo "::warning::macOS signing ENABLED but notarization secrets incomplete (need APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID) - building signed, NOT notarized"
+            fi
+          elif [ -n "$APPLE_CERTIFICATE$APPLE_CERTIFICATE_PASSWORD$APPLE_SIGNING_IDENTITY$APPLE_ID$APPLE_PASSWORD$APPLE_TEAM_ID" ]; then
+            echo "::warning::Apple signing secrets INCOMPLETE (need APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY) - building UNSIGNED"
+          else
+            echo "macOS signing: disabled (no Apple secrets configured) - building unsigned"
+          fi
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: --target ${{ matrix.platform.target }}
