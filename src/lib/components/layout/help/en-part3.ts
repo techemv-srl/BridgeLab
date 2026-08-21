@@ -305,6 +305,11 @@ HTTPS for a signed license bound to this machine. Use
 <em>Deactivate</em> to free the seat before moving to another
 computer.</p>
 
+<p>Renewed your subscription? Press <em>Update license</em> in the
+License dialog to pick the new expiry up instantly — or do nothing:
+within 14 days of expiry the app fetches it silently at startup
+(never producing errors on offline machines).</p>
+
 <p><strong>Offline key (isolated / air-gapped sites):</strong> email
 <a href="mailto:info@techemv.it">info@techemv.it</a> with your
 <strong>Hardware ID</strong> (shown under "Need an offline key?" in

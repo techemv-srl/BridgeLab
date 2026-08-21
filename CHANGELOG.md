@@ -2,6 +2,17 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [1.3.1] — 2026-08-21
+
+### Added
+- **One-click license renewal pickup**. For licenses activated online, the
+  License dialog gains an **Update license** button: it re-activates with
+  your stored code (the seat is reused, never consumed twice) and shows the
+  new expiry immediately — no more deactivate-and-re-paste. On top of that,
+  within 14 days of expiry (or past it) the app silently picks a renewed
+  expiry up by itself at startup, at most once a day, with every network
+  failure ignored — fully offline installations notice nothing.
+
 ## [1.3.0] — 2026-08-20
 
 ### Added

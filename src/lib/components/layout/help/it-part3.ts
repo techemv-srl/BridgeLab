@@ -314,6 +314,11 @@ lo scambia con una singola chiamata HTTPS per una licenza firmata
 vincolata a questa macchina. Usa <em>Disattiva</em> per liberare la
 postazione prima di passare a un altro computer.</p>
 
+<p>Hai rinnovato l'abbonamento? Premi <em>Aggiorna licenza</em> nel
+dialog per recuperare subito la nuova scadenza — oppure non fare
+nulla: entro 14 giorni dalla scadenza l'app la recupera da sola
+all'avvio, in silenzio (mai errori sulle macchine offline).</p>
+
 <p><strong>Chiave offline (siti isolati / air-gapped):</strong> scrivi a
 <a href="mailto:info@techemv.it">info@techemv.it</a> con il tuo
 <strong>Hardware ID</strong> (mostrato sotto "Ti serve una chiave
