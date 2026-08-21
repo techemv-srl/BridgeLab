@@ -467,3 +467,11 @@ footer {
 .price-features { list-style: none; padding: 0; margin: 10px 0 18px; display: grid; gap: 7px; font-size: 14px; }
 .price-features li::before { content: "\2713\00a0\00a0"; color: var(--accent); }
 .price-card .btn { margin-top: auto; text-align: center; }
+
+/* ---- legal pages ---- */
+.legal { max-width: 780px; }
+.legal h1 { font-size: 32px; margin-bottom: 6px; }
+.legal h2 { font-size: 20px; margin: 30px 0 10px; }
+.legal p, .legal li { font-size: 15px; line-height: 1.65; opacity: .92; }
+.legal ul { padding-left: 22px; display: grid; gap: 6px; }
+.foot-bottom p { margin: 2px 0; }
