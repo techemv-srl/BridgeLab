@@ -180,6 +180,80 @@ pub async fn activate_online(
     Ok(license)
 }
 
+// =============================================================================
+// Silent license refresh (renewals)
+// =============================================================================
+
+/// Days before expiry at which the app starts trying to refresh an
+/// online-activated license in the background (renewals extend the code
+/// server-side; a reactivation picks the new expiry up without any user
+/// action). Past-expiry licenses keep being retried too — renewing after
+/// the deadline is common.
+const REFRESH_WINDOW_DAYS: i64 = 14;
+const PREF_REFRESH_LAST: &str = "license_refresh_last_attempt";
+
+/// True when the expiry is close enough (or past) to warrant a refresh.
+fn within_refresh_window(expires_at: &str) -> bool {
+    match chrono::DateTime::parse_from_rfc3339(expires_at) {
+        Ok(exp) => {
+            let days_left = (exp.with_timezone(&chrono::Utc) - chrono::Utc::now()).num_days();
+            days_left <= REFRESH_WINDOW_DAYS
+        }
+        Err(_) => false,
+    }
+}
+
+/// Startup task: if an online-activated license is within the refresh
+/// window, silently re-activate with the stored code (at most one attempt
+/// per 24 h). Every failure is ignored — offline sites must never notice
+/// this exists. On success a `license://refreshed` event lets the UI
+/// reload the license status.
+pub async fn maybe_refresh_on_startup(app: tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
+
+    let Some(license) = super::load_license() else { return };
+    let Some(code) = license.activation_code.clone() else { return };
+    // Perpetual licenses (no expiry) never need refreshing.
+    let Some(expires) = license.payload.expires_at.as_deref() else { return };
+    if !within_refresh_window(expires) {
+        return;
+    }
+
+    let (installation_id, locale) = {
+        let db = app.state::<crate::database::Database>();
+        // Throttle: one attempt per day, recorded BEFORE the call so a
+        // crash loop can't hammer the server.
+        if let Ok(Some(last)) = db.get_preference(PREF_REFRESH_LAST) {
+            if let Ok(t) = chrono::DateTime::parse_from_rfc3339(&last) {
+                if chrono::Utc::now() - t.with_timezone(&chrono::Utc) < chrono::Duration::hours(24) {
+                    return;
+                }
+            }
+        }
+        let _ = db.set_preference(PREF_REFRESH_LAST, &chrono::Utc::now().to_rfc3339());
+        (
+            super::telemetry::installation_id(&db),
+            db.get_preference("language").ok().flatten(),
+        )
+    };
+
+    let app_version = app.package_info().version.to_string();
+    match activate_online(&code, &installation_id, &app_version, locale).await {
+        Ok(lic) => {
+            let _ = app.emit("license://refreshed", lic.payload.expires_at);
+            #[cfg(debug_assertions)]
+            eprintln!("[licensing] silent refresh: license updated");
+        }
+        Err(_e) => {
+            // Unreachable server, revoked code, whatever: stay silent. The
+            // license on disk keeps working until its own expiry, and the
+            // user can always refresh manually from the License dialog.
+            #[cfg(debug_assertions)]
+            eprintln!("[licensing] silent refresh failed (ignored): {}", _e);
+        }
+    }
+}
+
 /// Tell the server this machine's seat is being freed. Best-effort: the
 /// caller removes the local license regardless of the outcome here.
 pub async fn deactivate_online(code: &str, hardware_id: &str, app_version: &str) -> Result<(), String> {
@@ -237,6 +311,17 @@ mod tests {
             normalize_activation_code("BL-ENT-0000 -9999- ZZZZ"),
             "BL-ENT-0000-9999-ZZZZ"
         );
+    }
+
+    #[test]
+    fn test_refresh_window() {
+        let soon = (chrono::Utc::now() + chrono::Duration::days(5)).to_rfc3339();
+        let past = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+        let far = (chrono::Utc::now() + chrono::Duration::days(200)).to_rfc3339();
+        assert!(within_refresh_window(&soon), "5 days out is within the window");
+        assert!(within_refresh_window(&past), "expired licenses keep retrying");
+        assert!(!within_refresh_window(&far), "200 days out must not refresh");
+        assert!(!within_refresh_window("not-a-date"), "unparseable fails closed");
     }
 
     #[test]

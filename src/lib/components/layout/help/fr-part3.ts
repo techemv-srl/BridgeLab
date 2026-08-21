@@ -320,6 +320,13 @@ l'application l'échange en un seul appel HTTPS contre une licence
 signée liée à cette machine. Utilisez <em>Désactiver</em> pour libérer
 le poste avant de passer à un autre ordinateur.</p>
 
+<p>Abonnement renouvel&eacute; ? Cliquez sur <em>Mettre &agrave; jour la
+licence</em> dans la bo&icirc;te de dialogue pour r&eacute;cup&eacute;rer
+imm&eacute;diatement la nouvelle &eacute;ch&eacute;ance — ou ne faites
+rien : dans les 14 jours pr&eacute;c&eacute;dant l'expiration,
+l'application la r&eacute;cup&egrave;re seule au d&eacute;marrage, en
+silence (jamais d'erreurs sur les machines hors ligne).</p>
+
 <p><strong>Clé hors ligne (sites isolés / air-gapped) :</strong>
 écrivez à <a href="mailto:info@techemv.it">info@techemv.it</a> en
 indiquant votre <strong>ID Matériel</strong> (affiché sous « Besoin

@@ -214,6 +214,18 @@
 			} catch {
 				// License check failed - treat as trial
 			}
+
+			// The backend silently refreshes online-activated licenses near
+			// expiry; reload the status so banner and dialog show the new
+			// expiry without a restart.
+			try {
+				const { listen } = await import('@tauri-apps/api/event');
+				await listen('license://refreshed', () => {
+					void (async () => {
+						try { licenseStatus = await checkLicense(); } catch { /* keep old */ }
+					})();
+				});
+			} catch { /* web mode */ }
 		})();
 	});
 

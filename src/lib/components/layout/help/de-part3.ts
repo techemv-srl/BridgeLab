@@ -330,6 +330,12 @@ signierte, an diesen Rechner gebundene Lizenz. Verwenden Sie
 <em>Deaktivieren</em>, um den Arbeitsplatz freizugeben, bevor Sie auf
 einen anderen Computer wechseln.</p>
 
+<p>Abonnement verl&auml;ngert? Klicken Sie im Dialog auf <em>Lizenz
+aktualisieren</em>, um das neue Ablaufdatum sofort zu &uuml;bernehmen —
+oder tun Sie nichts: Innerhalb von 14 Tagen vor Ablauf holt die App es
+beim Start selbst&auml;ndig und lautlos nach (niemals Fehlermeldungen
+auf Offline-Rechnern).</p>
+
 <p><strong>Offline-Schlüssel (isolierte / Air-Gapped-Umgebungen):</strong>
 Senden Sie eine E-Mail an
 <a href="mailto:info@techemv.it">info@techemv.it</a> mit Ihrer
