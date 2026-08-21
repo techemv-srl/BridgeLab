@@ -38,6 +38,7 @@
 			<a href="#compare">Compare</a>
 			<a href="#plugins">Plugins</a>
 			<a href="#download">Download</a>
+			<a href="#pricing">Pricing</a>
 			<a href="#faq">FAQ</a>
 			<a class="nav-github" href="https://github.com/techemv-srl/BridgeLab" aria-label="GitHub">
 				<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12a11.5 11.5 0 008 10.9c.6.1.8-.3.8-.6v-2.3c-3.3.7-4-1.4-4-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 016 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.6.2 2.8.1 3.1.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0023.5 12C23.5 5.7 18.3.5 12 .5z"/></svg>
@@ -63,6 +64,7 @@
 			<div class="cta">
 				<a class="btn btn-primary" href="#download">Download</a>
 				<a class="btn" href="https://github.com/techemv-srl/BridgeLab">View on GitHub</a>
+				<a class="btn" href="#pricing">Pricing</a>
 			</div>
 			<ul class="kpi">
 				<li><strong>&lt; 2s</strong><span>open a 10 MB message</span></li>
@@ -216,7 +218,7 @@
 						<td>Yes</td>
 						<td>10 MB, smoothly</td>
 						<td>Yes</td>
-						<td>Free core, paid Pro</td>
+						<td>Free core &middot; Pro &euro;249/yr</td>
 						<td>Yes (2026)</td>
 					</tr>
 					<tr>
@@ -336,8 +338,71 @@
 	</div>
 </section>
 
+<!-- PRICING -->
+<section id="pricing" class="section">
+	<div class="wrap">
+		<h2>Pricing</h2>
+		<p class="sub">
+			Free core for real work, forever. Pro and Enterprise are annual
+			subscriptions per seat &mdash; one seat covers two activations
+			(desktop&nbsp;+&nbsp;laptop). Renewing keeps your activation code:
+			paste it again and you are done.
+		</p>
+		<div class="pricegrid">
+			<div class="price-card">
+				<div class="price-tier">Community</div>
+				<div class="price-amount">&euro;0</div>
+				<div class="price-per">MIT core, free for commercial use</div>
+				<ul class="price-features">
+					<li>HL7 v2 + FHIR editing &amp; validation</li>
+					<li>MLLP send, HTTP GET</li>
+					<li>PHI detection, community XSD set</li>
+					<li>Plugins &amp; test cases (limited)</li>
+				</ul>
+				<a class="btn" href="#download">Download</a>
+			</div>
+			<div class="price-card featured">
+				<div class="price-badge">Launch offer &mdash; first 20 licenses</div>
+				<div class="price-tier">Pro</div>
+				<div class="price-amount">&euro;199<span class="price-strike">&euro;249</span></div>
+				<div class="price-per">first year / seat &middot; then &euro;249/year</div>
+				<ul class="price-features">
+					<li>Everything in Community</li>
+					<li>MLLP listener &amp; batch validation</li>
+					<li>PHI masking, FHIRPath, bundle visualizer</li>
+					<li>Full XSD catalogue &amp; export</li>
+					<li>HTTP auth &amp; mutations</li>
+					<li>Unlimited plugins &amp; test cases</li>
+					<li>E-mail support</li>
+				</ul>
+				<a class="btn btn-primary" href="mailto:info@techemv.it?subject=BridgeLab%20Pro%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Pro.%0A%0ACompany%3A%20%0ASeats%3A%201%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks">Request a quote</a>
+			</div>
+			<div class="price-card">
+				<div class="price-tier">Enterprise</div>
+				<div class="price-amount">&euro;499</div>
+				<div class="price-per">per year / seat</div>
+				<ul class="price-features">
+					<li>Everything in Pro</li>
+					<li>SOAP with WSDL (coming soon)</li>
+					<li>Priority support</li>
+					<li>Multi-seat: &minus;10% from 3, &minus;15% from 5</li>
+					<li>Offline keys for air-gapped sites</li>
+					<li>PO / wire-transfer invoicing</li>
+				</ul>
+				<a class="btn" href="mailto:info@techemv.it?subject=BridgeLab%20Enterprise%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Enterprise.%0A%0ACompany%3A%20%0ASeats%3A%20%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks">Request a quote</a>
+			</div>
+		</div>
+		<p class="sub tiny">
+			Prices exclude VAT. Quotes are answered within one business day;
+			you receive an activation code by e-mail &mdash; paste it into
+			BridgeLab&rsquo;s License dialog and the seat activates online.
+			Self-serve checkout is coming soon.
+		</p>
+	</div>
+</section>
+
 <!-- FAQ -->
-<section id="faq" class="section">
+<section id="faq" class="section alt">
 	<div class="wrap">
 		<h2>Frequently asked</h2>
 		<div class="faq">
@@ -351,6 +416,40 @@
 					catalogue, priority support &mdash; plus a team test
 					case library and SOAP with WSDL (coming soon), but
 					nothing that blocks day-to-day HL7 work.
+				</p>
+			</details>
+			<details>
+				<summary>How much does Pro cost?</summary>
+				<p>
+					Pro is &euro;249 per seat per year (launch offer:
+					&euro;199 for the first year, first 20 licenses).
+					Enterprise is &euro;499/year and adds priority support
+					plus SOAP with WSDL (coming soon). One seat covers two
+					activations, e.g. desktop&nbsp;+&nbsp;laptop. Prices
+					exclude VAT; multi-seat discounts from 3 seats.
+				</p>
+			</details>
+			<details>
+				<summary>How does activation and renewal work?</summary>
+				<p>
+					You receive an activation code (BL-PRO-XXXX-XXXX-XXXX) by
+					e-mail. Paste it into the License dialog: the app makes a
+					single HTTPS call, receives a signed license and from then
+					on everything is verified locally &mdash; no heartbeat, no
+					phone-home required. When you renew, the same code is
+					extended server-side: paste it again and the new expiry is
+					picked up. Air-gapped machine? Write to
+					<a href="mailto:info@techemv.it">info@techemv.it</a> with
+					your Hardware ID for an offline key.
+				</p>
+			</details>
+			<details>
+				<summary>What happens when my subscription expires?</summary>
+				<p>
+					BridgeLab keeps working: it falls back to the Community
+					tier with a renewal banner. Your files, plugins and test
+					cases stay untouched. Renew and re-paste your code to
+					re-enable Pro features on the spot.
 				</p>
 			</details>
 			<details>
