@@ -78,6 +78,10 @@ pub fn run() {
             // failure is silent — telemetry must never affect the app).
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(licensing::telemetry::maybe_send_on_startup(handle));
+            // Silent renewal pickup for online-activated licenses near/past
+            // expiry (no-op otherwise; every failure is ignored).
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(licensing::online::maybe_refresh_on_startup(handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
