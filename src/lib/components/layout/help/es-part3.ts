@@ -324,6 +324,12 @@ aplicación lo intercambia con una sola llamada HTTPS por una licencia
 firmada vinculada a este equipo. Usa <em>Desactivar</em> para liberar
 el puesto antes de cambiar de ordenador.</p>
 
+<p>&iquest;Has renovado la suscripci&oacute;n? Pulsa <em>Actualizar
+licencia</em> en el di&aacute;logo para recuperar al instante la nueva
+fecha — o no hagas nada: en los 14 d&iacute;as previos al vencimiento
+la aplicaci&oacute;n la recupera sola al arrancar, en silencio (nunca
+errores en equipos sin conexi&oacute;n).</p>
+
 <p><strong>Clave sin conexión (entornos aislados / air-gapped):</strong>
 escribe a <a href="mailto:info@techemv.it">info@techemv.it</a> con tu
 <strong>ID de Hardware</strong> (se muestra bajo "¿Necesitas una clave
