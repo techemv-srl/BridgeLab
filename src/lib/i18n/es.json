@@ -428,6 +428,8 @@
 	"act.activatingOnline": "Contactando con el servidor de licencias…",
 	"act.activatedWith": "Activada en línea con el código {code}",
 	"act.deactivateOnline": "Desactivar y liberar este puesto",
+	"act.refreshLicense": "Actualizar licencia",
+	"act.refreshing": "Actualizando…",
 	"act.offlineKeyHelp": "¿Necesitas una clave sin conexión? (entornos aislados)",
 	"act.onlineHint": "¿Has comprado una licencia? Pega el código de activación del correo de confirmación.",
 	"act.serverUnreachable": "No se puede contactar con el servidor de licencias. Si este equipo no tiene acceso a internet, usa una clave de licencia sin conexión — consulta '¿Necesitas una clave sin conexión?' más abajo.",

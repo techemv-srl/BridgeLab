@@ -428,6 +428,8 @@
 	"act.activatingOnline": "Lizenzserver wird kontaktiert…",
 	"act.activatedWith": "Online aktiviert mit Code {code}",
 	"act.deactivateOnline": "Deaktivieren und diesen Arbeitsplatz freigeben",
+	"act.refreshLicense": "Lizenz aktualisieren",
+	"act.refreshing": "Aktualisierung…",
 	"act.offlineKeyHelp": "Offline-Schlüssel benötigt? (Air-Gapped-Umgebungen)",
 	"act.onlineHint": "Lizenz gekauft? Fügen Sie den Aktivierungscode aus Ihrer Bestätigungs-E-Mail ein.",
 	"act.serverUnreachable": "Der Lizenzserver ist nicht erreichbar. Wenn dieser Computer keinen Internetzugang hat, verwenden Sie stattdessen einen Offline-Lizenzschlüssel — siehe 'Offline-Schlüssel benötigt?' unten.",
