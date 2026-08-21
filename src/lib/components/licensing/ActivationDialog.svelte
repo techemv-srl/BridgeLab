@@ -238,6 +238,16 @@
 				<div class="hw-id">{hardwareId || '...'}</div>
 			</div>
 		{:else}
+			{#if currentStatus.activation_code}
+				<!-- Expired online license: one-click renewal pickup with the
+				     stored code, no manual re-entry needed. -->
+				<div class="renew-hint">
+					<span>{tr('act.renewHint')}</span>
+					<button class="btn btn-primary" onclick={handleRefresh} disabled={refreshing}>
+						{refreshing ? tr('act.refreshing') : tr('act.refreshLicense')}
+					</button>
+				</div>
+			{/if}
 			<!-- Activation form: one input for both code and offline key -->
 			<div class="form-section">
 				<div class="status-label">{tr('act.activate')}</div>
@@ -402,6 +412,18 @@
 	.code-hint { color: var(--color-success); font-style: normal; margin-bottom: 8px; }
 	.activated-with { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
 	.active-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+	.renew-hint {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		flex-wrap: wrap;
+		padding: 10px 14px;
+		background: var(--color-bg-tertiary);
+		border-radius: 6px;
+		border-left: 3px solid var(--color-accent);
+		font-size: 12px;
+	}
 
 	.offline-help summary {
 		cursor: pointer;
