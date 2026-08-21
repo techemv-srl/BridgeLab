@@ -407,7 +407,7 @@
 			Prices exclude VAT. Quotes are answered within one business day;
 			you receive an activation code by e-mail &mdash; paste it into
 			BridgeLab&rsquo;s License dialog and the seat activates online.
-			Self-serve checkout is coming soon.
+			<span id="checkout-soon">Self-serve checkout is coming soon.</span>
 		</p>
 	</div>
 </section>
@@ -602,62 +602,81 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 	})
 	.catch(() => {});
 </script>
-<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
 (function () {
 	// ---- Paddle config -------------------------------------------------
-	// Live go-live: set enabled:true, environment:'production', the LIVE
-	// client token and the LIVE price IDs (rerun of the catalog script).
+	// Live go-live: set enabled:true and fill the production block with the
+	// LIVE client token and price IDs. The sandbox block stays untouched so
+	// ?checkout=sandbox keeps working for end-to-end tests after launch.
 	var PADDLE_CFG = {
 		enabled: false,
-		environment: 'sandbox',                 // 'sandbox' | 'production'
-		clientToken: 'test_1ffc5e7085b9e227dc6d0eb077d',
-		prices: {
-			PRO: 'pri_01m0hk970cn25sdhd58d2qtcwg',   // sandbox IDs — replace with live IDs at go-live
-			ENT: 'pri_01m0hk9763yg0emnxdbj2vky9e'
+		environment: 'production',              // block used when enabled (no ?checkout=sandbox)
+		production: {
+			clientToken: 'LIVE_CLIENT_TOKEN',
+			prices: { PRO: 'LIVE_PRO_PRICE_ID', ENT: 'LIVE_ENT_PRICE_ID' }
+		},
+		sandbox: {
+			clientToken: 'test_1ffc5e7085b9e227dc6d0eb077d',
+			prices: {
+				PRO: 'pri_01m0hk970cn25sdhd58d2qtcwg',
+				ENT: 'pri_01m0hk9763yg0emnxdbj2vky9e'
+			}
 		}
 	};
 	// --------------------------------------------------------------------
 	var force = new URLSearchParams(location.search).get('checkout') === 'sandbox';
-	if (!PADDLE_CFG.enabled && !force) return;   // quote-only mode: do nothing
-	if (force) PADDLE_CFG.environment = 'sandbox';
-
-	if (PADDLE_CFG.environment === 'sandbox') Paddle.Environment.set('sandbox');
-	Paddle.Initialize({
-		token: PADDLE_CFG.clientToken,
-		eventCallback: function (ev) {
-			if (ev.name === 'checkout.completed') {
-				var el = document.getElementById('checkout-done');
-				if (el) el.hidden = false;
-			}
-		}
-	});
+	if (!PADDLE_CFG.enabled && !force) return;   // quote-only mode: Paddle.js is never loaded
+	var env = force ? 'sandbox' : PADDLE_CFG.environment;
+	var cfg = PADDLE_CFG[env];
 
 	function buy(tier) {
 		Paddle.Checkout.open({
-			items: [{ priceId: PADDLE_CFG.prices[tier], quantity: 1 }],
+			items: [{ priceId: cfg.prices[tier], quantity: 1 }],
 			customData: { product: 'bridgelab' },   // REQUIRED: routes the purchase to the license webhook
 			settings: { displayMode: 'overlay', theme: 'dark', locale: 'en' }
 		});
 	}
 
-	// Swap the two quote CTAs into Buy buttons (quote stays as a small link)
-	document.querySelectorAll('[data-buy]').forEach(function (a) {
-		var tier = a.getAttribute('data-buy');
-		a.textContent = 'Buy now';
-		a.removeAttribute('href');
-		a.setAttribute('role', 'button');
-		a.setAttribute('tabindex', '0');
-		a.style.cursor = 'pointer';
-		a.addEventListener('click', function (e) { e.preventDefault(); buy(tier); });
-		a.addEventListener('keydown', function (e) {
-			if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); buy(tier); }
+	function activate() {
+		// Swap the two quote CTAs into Buy buttons (quote stays as a small link)
+		document.querySelectorAll('[data-buy]').forEach(function (a) {
+			var tier = a.getAttribute('data-buy');
+			a.textContent = 'Buy now';
+			a.removeAttribute('href');
+			a.setAttribute('role', 'button');
+			a.setAttribute('tabindex', '0');
+			a.style.cursor = 'pointer';
+			a.addEventListener('click', function (e) { e.preventDefault(); buy(tier); });
+			a.addEventListener('keydown', function (e) {
+				if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); buy(tier); }
+			});
+			var q = a.parentElement.querySelector('.quote-alt');
+			if (q) q.hidden = false;
 		});
-		var q = a.parentElement.querySelector('.quote-alt');
-		if (q) q.hidden = false;
-	});
-	var hint = document.getElementById('launch-hint');
-	if (hint) hint.hidden = false;
+		var hint = document.getElementById('launch-hint');
+		if (hint) hint.hidden = false;
+		var soon = document.getElementById('checkout-soon');
+		if (soon) soon.hidden = true;
+	}
+
+	// Load Paddle.js only now — quote-only visitors never contact Paddle,
+	// matching the privacy policy ("when used").
+	var script = document.createElement('script');
+	script.src = 'https://cdn.paddle.com/paddle/v2/paddle.js';
+	script.onload = function () {
+		if (env === 'sandbox') Paddle.Environment.set('sandbox');
+		Paddle.Initialize({
+			token: cfg.clientToken,
+			eventCallback: function (ev) {
+				if (ev.name === 'checkout.completed') {
+					var el = document.getElementById('checkout-done');
+					if (el) el.hidden = false;
+				}
+			}
+		});
+		activate();
+	};
+	document.head.appendChild(script);
 })();
 </script>
 </body>
