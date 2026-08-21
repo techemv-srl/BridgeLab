@@ -430,6 +430,7 @@
 	"act.deactivateOnline": "Désactiver et libérer ce poste",
 	"act.refreshLicense": "Mettre à jour la licence",
 	"act.refreshing": "Mise à jour…",
+	"act.renewHint": "Abonnement renouvelé ? Récupérez la nouvelle échéance avec le code enregistré :",
 	"act.offlineKeyHelp": "Besoin d'une clé hors ligne ? (sites isolés)",
 	"act.onlineHint": "Licence achetée ? Collez le code d'activation reçu dans l'e-mail de confirmation.",
 	"act.serverUnreachable": "Le serveur de licences est injoignable. Si cet ordinateur n'a pas d'accès à internet, utilisez une clé de licence hors ligne — voir « Besoin d'une clé hors ligne ? » ci-dessous.",
