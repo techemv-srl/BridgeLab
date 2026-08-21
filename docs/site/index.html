@@ -375,7 +375,8 @@
 					<li>Unlimited plugins &amp; test cases</li>
 					<li>E-mail support</li>
 				</ul>
-				<a class="btn btn-primary" href="mailto:info@techemv.it?subject=BridgeLab%20Pro%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Pro.%0A%0ACompany%3A%20%0ASeats%3A%201%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks">Request a quote</a>
+				<a class="btn btn-primary" data-buy="PRO" href="mailto:info@techemv.it?subject=BridgeLab%20Pro%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Pro.%0A%0ACompany%3A%20%0ASeats%3A%201%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks">Request a quote</a>
+				<a class="quote-alt sub tiny" hidden href="mailto:info@techemv.it?subject=BridgeLab%20quote%20request">Prefer an invoice? Request a quote</a>
 			</div>
 			<div class="price-card">
 				<div class="price-tier">Enterprise</div>
@@ -389,9 +390,19 @@
 					<li>Offline keys for air-gapped sites</li>
 					<li>PO / wire-transfer invoicing</li>
 				</ul>
-				<a class="btn" href="mailto:info@techemv.it?subject=BridgeLab%20Enterprise%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Enterprise.%0A%0ACompany%3A%20%0ASeats%3A%20%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks">Request a quote</a>
+				<a class="btn" data-buy="ENT" href="mailto:info@techemv.it?subject=BridgeLab%20Enterprise%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Enterprise.%0A%0ACompany%3A%20%0ASeats%3A%20%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks">Request a quote</a>
+				<a class="quote-alt sub tiny" hidden href="mailto:info@techemv.it?subject=BridgeLab%20quote%20request">Prefer an invoice? Request a quote</a>
 			</div>
 		</div>
+		<p class="sub tiny" id="launch-hint" hidden>
+			Launch offer: use code <code>LAUNCH199</code> at checkout &mdash;
+			&euro;50 off the first year, limited to the first 20 licenses.
+		</p>
+		<p class="sub tiny" id="checkout-done" hidden>
+			&#10003; Payment received &mdash; your activation code is on its
+			way by e-mail (usually within a minute). Paste it into
+			BridgeLab&rsquo;s License dialog to activate.
+		</p>
 		<p class="sub tiny">
 			Prices exclude VAT. Quotes are answered within one business day;
 			you receive an activation code by e-mail &mdash; paste it into
@@ -590,6 +601,64 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 		}
 	})
 	.catch(() => {});
+</script>
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+<script>
+(function () {
+	// ---- Paddle config -------------------------------------------------
+	// Live go-live: set enabled:true, environment:'production', the LIVE
+	// client token and the LIVE price IDs (rerun of the catalog script).
+	var PADDLE_CFG = {
+		enabled: false,
+		environment: 'sandbox',                 // 'sandbox' | 'production'
+		clientToken: 'test_1ffc5e7085b9e227dc6d0eb077d',
+		prices: {
+			PRO: 'pri_01m0hk970cn25sdhd58d2qtcwg',   // sandbox IDs — replace with live IDs at go-live
+			ENT: 'pri_01m0hk9763yg0emnxdbj2vky9e'
+		}
+	};
+	// --------------------------------------------------------------------
+	var force = new URLSearchParams(location.search).get('checkout') === 'sandbox';
+	if (!PADDLE_CFG.enabled && !force) return;   // quote-only mode: do nothing
+	if (force) PADDLE_CFG.environment = 'sandbox';
+
+	if (PADDLE_CFG.environment === 'sandbox') Paddle.Environment.set('sandbox');
+	Paddle.Initialize({
+		token: PADDLE_CFG.clientToken,
+		eventCallback: function (ev) {
+			if (ev.name === 'checkout.completed') {
+				var el = document.getElementById('checkout-done');
+				if (el) el.hidden = false;
+			}
+		}
+	});
+
+	function buy(tier) {
+		Paddle.Checkout.open({
+			items: [{ priceId: PADDLE_CFG.prices[tier], quantity: 1 }],
+			customData: { product: 'bridgelab' },   // REQUIRED: routes the purchase to the license webhook
+			settings: { displayMode: 'overlay', theme: 'dark', locale: 'en' }
+		});
+	}
+
+	// Swap the two quote CTAs into Buy buttons (quote stays as a small link)
+	document.querySelectorAll('[data-buy]').forEach(function (a) {
+		var tier = a.getAttribute('data-buy');
+		a.textContent = 'Buy now';
+		a.removeAttribute('href');
+		a.setAttribute('role', 'button');
+		a.setAttribute('tabindex', '0');
+		a.style.cursor = 'pointer';
+		a.addEventListener('click', function (e) { e.preventDefault(); buy(tier); });
+		a.addEventListener('keydown', function (e) {
+			if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); buy(tier); }
+		});
+		var q = a.parentElement.querySelector('.quote-alt');
+		if (q) q.hidden = false;
+	});
+	var hint = document.getElementById('launch-hint');
+	if (hint) hint.hidden = false;
+})();
 </script>
 </body>
 </html>
