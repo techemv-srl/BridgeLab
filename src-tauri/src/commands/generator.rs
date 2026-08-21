@@ -58,33 +58,33 @@ struct Patient {
 }
 
 fn gen_patient(rng: &mut StdRng) -> Patient {
-    let sex = if rng.gen_bool(0.5) { 'M' } else { 'F' };
+    let sex = if rng.random_bool(0.5) { 'M' } else { 'F' };
     let given = if sex == 'M' {
-        FIRST_NAMES_M[rng.gen_range(0..FIRST_NAMES_M.len())]
+        FIRST_NAMES_M[rng.random_range(0..FIRST_NAMES_M.len())]
     } else {
-        FIRST_NAMES_F[rng.gen_range(0..FIRST_NAMES_F.len())]
+        FIRST_NAMES_F[rng.random_range(0..FIRST_NAMES_F.len())]
     };
-    let year = rng.gen_range(1930..=2015);
-    let month = rng.gen_range(1..=12);
-    let day = rng.gen_range(1..=28);
+    let year = rng.random_range(1930..=2015);
+    let month = rng.random_range(1..=12);
+    let day = rng.random_range(1..=28);
     Patient {
-        family: LAST_NAMES[rng.gen_range(0..LAST_NAMES.len())].to_string(),
+        family: LAST_NAMES[rng.random_range(0..LAST_NAMES.len())].to_string(),
         given: given.to_string(),
         sex,
         dob: format!("{:04}{:02}{:02}", year, month, day),
-        mrn: format!("{:07}", rng.gen_range(1_000_000u32..10_000_000)),
-        street: format!("{} {}", STREETS[rng.gen_range(0..STREETS.len())], rng.gen_range(1..200)),
-        city: CITIES[rng.gen_range(0..CITIES.len())].to_string(),
-        zip: format!("{:05}", rng.gen_range(10000..99999)),
+        mrn: format!("{:07}", rng.random_range(1_000_000u32..10_000_000)),
+        street: format!("{} {}", STREETS[rng.random_range(0..STREETS.len())], rng.random_range(1..200)),
+        city: CITIES[rng.random_range(0..CITIES.len())].to_string(),
+        zip: format!("{:05}", rng.random_range(10000..99999)),
     }
 }
 
 /// Message timestamp: fixed base plus a pseudo-random offset so batches
 /// spread over a plausible window while staying seed-deterministic.
 fn gen_ts(rng: &mut StdRng, idx: usize) -> String {
-    let day = rng.gen_range(1..=28);
+    let day = rng.random_range(1..=28);
     let hour = (8 + idx % 10) as u32;
-    let min = rng.gen_range(0..60);
+    let min = rng.random_range(0..60);
     format!("202607{:02}{:02}{:02}00", day, hour, min)
 }
 
@@ -106,9 +106,9 @@ fn build_adt(rng: &mut StdRng, idx: usize, event: &str) -> String {
     let p = gen_patient(rng);
     let ts = gen_ts(rng, idx);
     let ctrl = format!("GEN{:06}", idx + 1);
-    let ward = rng.gen_range(1..9);
-    let room = rng.gen_range(100..500);
-    let class = ["I", "O", "E"][rng.gen_range(0..3)];
+    let ward = rng.random_range(1..9);
+    let room = rng.random_range(100..500);
+    let class = ["I", "O", "E"][rng.random_range(0..3)];
     [
         msh(&ts, &format!("ADT^{}", event), &ctrl),
         format!("EVN|{}|{}", event, ts),
@@ -122,21 +122,21 @@ fn build_oru(rng: &mut StdRng, idx: usize) -> String {
     let p = gen_patient(rng);
     let ts = gen_ts(rng, idx);
     let ctrl = format!("GEN{:06}", idx + 1);
-    let order = format!("ORD{:06}", rng.gen_range(100_000u32..1_000_000));
+    let order = format!("ORD{:06}", rng.random_range(100_000u32..1_000_000));
     let mut segs = vec![
         msh(&ts, "ORU^R01", &ctrl),
         pid(&p),
         format!("OBR|1|{}||CBC^Complete Blood Count^L|||{}|||||||||||||||{}|F", order, ts, ts),
     ];
-    let n_tests = rng.gen_range(3..=LAB_TESTS.len());
+    let n_tests = rng.random_range(3..=LAB_TESTS.len());
     for (i, (code, name, unit, low, high)) in LAB_TESTS.iter().take(n_tests).enumerate() {
         // 15% of results deliberately out of range with an abnormal flag —
         // realistic sets need pathological values too.
-        let abnormal = rng.gen_bool(0.15);
+        let abnormal = rng.random_bool(0.15);
         let value = if abnormal {
-            high + (high - low) * rng.gen_range(0.1..0.5)
+            high + (high - low) * rng.random_range(0.1..0.5)
         } else {
-            rng.gen_range(*low..*high)
+            rng.random_range(*low..*high)
         };
         let flag = if abnormal { "H" } else { "N" };
         segs.push(format!(
@@ -151,7 +151,7 @@ fn build_orm(rng: &mut StdRng, idx: usize) -> String {
     let p = gen_patient(rng);
     let ts = gen_ts(rng, idx);
     let ctrl = format!("GEN{:06}", idx + 1);
-    let order = format!("ORD{:06}", rng.gen_range(100_000u32..1_000_000));
+    let order = format!("ORD{:06}", rng.random_range(100_000u32..1_000_000));
     [
         msh(&ts, "ORM^O01", &ctrl),
         pid(&p),
@@ -173,13 +173,13 @@ pub fn generate_test_messages(
     let count = count.clamp(1, MAX_COUNT);
     let mut rng = match seed {
         Some(s) => StdRng::seed_from_u64(s),
-        None => StdRng::from_entropy(),
+        None => StdRng::from_os_rng(),
     };
 
     let mut out = Vec::with_capacity(count);
     for i in 0..count {
         let effective = if kind == "mixed" {
-            ["ADT^A01", "ADT^A08", "ORU^R01", "ORM^O01"][rng.gen_range(0..4)]
+            ["ADT^A01", "ADT^A08", "ORU^R01", "ORM^O01"][rng.random_range(0..4)]
         } else {
             kind.as_str()
         };
