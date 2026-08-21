@@ -428,6 +428,8 @@
 	"act.activatingOnline": "Contatto il server licenze…",
 	"act.activatedWith": "Attivata online con il codice {code}",
 	"act.deactivateOnline": "Disattiva e libera questa postazione",
+	"act.refreshLicense": "Aggiorna licenza",
+	"act.refreshing": "Aggiornamento…",
 	"act.offlineKeyHelp": "Ti serve una chiave offline? (siti air-gapped)",
 	"act.onlineHint": "Hai acquistato una licenza? Incolla il codice di attivazione dall'email di conferma.",
 	"act.serverUnreachable": "Impossibile raggiungere il server licenze. Se questo computer non ha accesso a internet, usa una chiave di licenza offline — vedi 'Ti serve una chiave offline?' qui sotto.",

@@ -143,6 +143,23 @@
 		activatingOnline = false;
 	}
 
+	// One-click renewal pickup: re-activate with the stored code (the seat
+	// is reused, never consumed twice) and show the new expiry in place.
+	let refreshing = $state(false);
+	async function handleRefresh() {
+		if (!currentStatus.activation_code) return;
+		error = '';
+		refreshing = true;
+		try {
+			const status = await activateLicenseOnline(currentStatus.activation_code);
+			onStatusChange(status);
+		} catch (e) {
+			const msg = String(e);
+			error = msg.includes('ERR_SERVER_UNREACHABLE') ? tr('act.serverUnreachable') : msg;
+		}
+		refreshing = false;
+	}
+
 	async function handleDeactivate() {
 		try {
 			const status = await deactivateLicense();
@@ -201,9 +218,19 @@
 						<span class="feature-tag">{feature}</span>
 					{/each}
 				</div>
-				<button class="btn btn-danger" onclick={handleDeactivate}>
-					{currentStatus.activation_code ? tr('act.deactivateOnline') : tr('act.deactivate')}
-				</button>
+				{#if error}
+					<div class="error-msg">{error}</div>
+				{/if}
+				<div class="active-actions">
+					{#if currentStatus.activation_code}
+						<button class="btn btn-primary" onclick={handleRefresh} disabled={refreshing}>
+							{refreshing ? tr('act.refreshing') : tr('act.refreshLicense')}
+						</button>
+					{/if}
+					<button class="btn btn-danger" onclick={handleDeactivate}>
+						{currentStatus.activation_code ? tr('act.deactivateOnline') : tr('act.deactivate')}
+					</button>
+				</div>
 			</div>
 			<!-- Hardware ID (support requests, offline re-issues) -->
 			<div class="hw-section">
@@ -374,6 +401,7 @@
 	.online-hint { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 6px; }
 	.code-hint { color: var(--color-success); font-style: normal; margin-bottom: 8px; }
 	.activated-with { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+	.active-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 	.offline-help summary {
 		cursor: pointer;
