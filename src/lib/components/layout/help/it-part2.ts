@@ -70,11 +70,11 @@ bridgelab-cli batch ./inbox --json</code></pre>
 },
 {
 	id: 'communication',
-	heading: 'Comunicazione (MLLP / HTTP)',
+	heading: 'Comunicazione (MLLP / HTTP / SOAP)',
 	body: `
 <p>Apri il pannello Comunicazione con <kbd>Ctrl</kbd>+<kbd>K</kbd> o
-<strong>Strumenti → Pannello Comunicazione</strong>. Tre tab: MLLP,
-HTTP e Cronologia.</p>
+<strong>Strumenti → Pannello Comunicazione</strong>. Quattro tab: MLLP,
+HTTP, SOAP e Cronologia.</p>
 
 ${mockupCommunication}
 
@@ -145,6 +145,26 @@ header di autenticazione personalizzati (Basic, Bearer) e
 follow-redirect richiedono Pro. Il body usa di default il messaggio del
 tab corrente ma può essere sovrascritto.</p>
 
+<h3>Client SOAP (Enterprise)</h3>
+<p>Il tab SOAP invia il messaggio corrente (o un body personalizzato) a
+endpoint SOAP 1.1/1.2 — middleware in stile IHE, gateway regionali e
+web service ospedalieri legacy. Imposta l'URL dell'endpoint, la versione
+SOAP e la <em>SOAPAction</em>; BridgeLab costruisce l'envelope, la invia
+con il content type corretto (<code>text/xml</code> più header
+SOAPAction per la 1.1, <code>application/soap+xml</code> con il
+parametro action per la 1.2) e mostra lo status HTTP, il tempo di
+andata/ritorno, l'XML interno del Body e l'eventuale SOAP Fault,
+decodificato per entrambe le versioni.</p>
+<p>Un messaggio HL7 v2 grezzo viene automaticamente sottoposto a
+escape XML e avvolto in un elemento <code>&lt;payload&gt;</code>; il
+contenuto già XML viene inserito così com'è. Le impostazioni avanzate
+aggiungono credenziali <strong>WS-Security UsernameToken</strong>,
+header <strong>WS-Addressing</strong> (To / Action / MessageID) e un
+<strong>template envelope personalizzato</strong> in cui il segnaposto
+letterale <code>{payload}</code> viene sostituito con il messaggio —
+utile quando il servizio di destinazione richiede un wrapper specifico.
+L'import WSDL è previsto come passo successivo.</p>
+
 <h3>Cronologia</h3>
 <p>Ogni invio e ricezione viene loggata (host, porta, dimensione, codice
 di risposta, tempo di andata/ritorno). Le ultime 100 voci persistono
@@ -155,7 +175,8 @@ risposta complete.</p>
 <p>Salva gli endpoint usati di frequente come profili nominati dalla
 riga <strong>Profilo</strong>: digita un nome e clicca <em>Salva</em>. I
 profili MLLP memorizzano host, porta, timeout e auto-ACK; quelli HTTP
-memorizzano URL, header e timeout. Selezionare un profilo lo applica al
+memorizzano URL, header e timeout; quelli SOAP memorizzano endpoint,
+SOAPAction e timeout. Selezionare un profilo lo applica al
 form; salvare con un nome esistente lo sovrascrive; <em>Elimina</em>
 rimuove quello selezionato. I profili sono salvati nel database locale e
 sopravvivono ai riavvii.</p>

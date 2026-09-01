@@ -1,3 +1,19 @@
+LICENSING OF THIS REPOSITORY
+============================
+
+Everything in this repository is licensed under the MIT License below,
+EXCEPT the contents of the following directories, which are licensed
+under the Business Source License 1.1 (see the LICENSE file inside each
+directory for the full terms and parameters):
+
+    src-tauri/src/pro/
+    src/lib/pro/
+
+Code published in this repository under the MIT License before the
+introduction of these directories remains MIT-licensed.
+
+============================
+
 MIT License
 
 Copyright (c) 2026 TECHEMV SRL

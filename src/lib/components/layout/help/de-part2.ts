@@ -73,12 +73,12 @@ bridgelab-cli batch ./inbox --json</code></pre>
 
 export const communicationSection: ManualSection = {
 	id: 'communication',
-	heading: 'Kommunikation (MLLP / HTTP)',
+	heading: 'Kommunikation (MLLP / HTTP / SOAP)',
 	body: `
 <p>Öffnen Sie das untere Kommunikationspanel mit
 <kbd>Ctrl</kbd>+<kbd>K</kbd> oder über
-<strong>Werkzeuge → Kommunikationspanel</strong>. Drei Tabs: MLLP,
-HTTP und Verlauf.</p>
+<strong>Werkzeuge → Kommunikationspanel</strong>. Vier Tabs: MLLP,
+HTTP, SOAP und Verlauf.</p>
 
 ${mockupCommunication}
 
@@ -154,6 +154,26 @@ Weiterleitungen erfordern Pro. Als Body wird standardmäßig die
 Nachricht des aktuellen Tabs verwendet; er lässt sich aber
 überschreiben.</p>
 
+<h3>SOAP-Client (Enterprise)</h3>
+<p>Der SOAP-Tab sendet die aktuelle Nachricht (oder einen eigenen Body)
+an SOAP-1.1/1.2-Endpunkte — Middlewares im IHE-Stil, regionale Gateways
+und ältere Krankenhaus-Webservices. Geben Sie Endpunkt-URL,
+SOAP-Version und <em>SOAPAction</em> an; BridgeLab baut die Envelope,
+sendet sie mit dem korrekten Content-Type (<code>text/xml</code> plus
+SOAPAction-Header bei 1.1, <code>application/soap+xml</code> mit
+action-Parameter bei 1.2) und zeigt HTTP-Status, Umlaufzeit, das innere
+Body-XML sowie einen etwaigen SOAP Fault an — dekodiert für beide
+Versionen.</p>
+<p>Eine rohe HL7-v2-Nachricht wird automatisch XML-escaped und in ein
+<code>&lt;payload&gt;</code>-Element gehüllt; bereits vorliegendes XML
+wird unverändert eingefügt. Die erweiterten Einstellungen ergänzen
+<strong>WS-Security-UsernameToken</strong>-Zugangsdaten,
+<strong>WS-Addressing</strong>-Header (To / Action / MessageID) und
+eine <strong>eigene Envelope-Vorlage</strong>, in der der wörtliche
+Platzhalter <code>{payload}</code> durch die Nachricht ersetzt wird —
+nützlich, wenn der Zieldienst einen bestimmten Wrapper erwartet. Der
+WSDL-Import ist als nächster Schritt geplant.</p>
+
 <h3>Verlauf</h3>
 <p>Jeder Sende- und Empfangsvorgang wird protokolliert (Host, Port,
 Größe, Antwortcode, Umlaufzeit). Die letzten 100 Einträge bleiben über
@@ -164,7 +184,8 @@ Antwort vollständig an.</p>
 <p>Speichern Sie häufig genutzte Endpunkte als benannte Profile über
 die Zeile <strong>Profil</strong>: Namen eingeben und auf
 <em>Speichern</em> klicken. MLLP-Profile speichern Host, Port, Timeout
-und Auto-ACK; HTTP-Profile speichern URL, Header und Timeout. Die
+und Auto-ACK; HTTP-Profile speichern URL, Header und Timeout;
+SOAP-Profile speichern Endpunkt, SOAPAction und Timeout. Die
 Auswahl eines Profils übernimmt es ins Formular; Speichern unter einem
 vorhandenen Namen überschreibt es; <em>Löschen</em> entfernt das
 ausgewählte Profil. Profile liegen in der lokalen Datenbank und
