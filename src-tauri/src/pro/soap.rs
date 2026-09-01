@@ -149,9 +149,20 @@ pub fn build_envelope(req: &SoapRequest) -> String {
 /// it working across soap/soapenv/env/s prefixes and both SOAP versions.
 pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
     use quick_xml::events::Event;
-    use quick_xml::Reader;
+    use quick_xml::name::ResolveResult;
+    use quick_xml::NsReader;
 
-    let mut reader = Reader::from_str(xml);
+    // Body and Fault are only recognized in the SOAP envelope namespace
+    // (either version) — an application payload element that happens to be
+    // named "Fault" must not be classified as a protocol fault. Prefix
+    // independence comes from real namespace resolution, not from ignoring
+    // namespaces.
+    fn is_soap_ns(res: &ResolveResult) -> bool {
+        matches!(res, ResolveResult::Bound(ns)
+            if ns.as_ref() == NS_11.as_bytes() || ns.as_ref() == NS_12.as_bytes())
+    }
+
+    let mut reader = NsReader::from_str(xml);
     reader.config_mut().trim_text(false);
 
     let mut body_depth: i32 = -1;
@@ -159,7 +170,10 @@ pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
     let mut body_start: Option<usize> = None;
     let mut body_inner: Option<String> = None;
 
-    // Fault fields (1.1: faultcode/faultstring; 1.2: Code/Value + Reason/Text)
+    // Fault fields (1.1: faultcode/faultstring; 1.2: Code/Value + Reason/Text).
+    // The Fault element itself must be a direct child of the SOAP Body in the
+    // SOAP namespace; its 1.1 subelements are unqualified per spec, so those
+    // are matched by local name only while inside a verified Fault.
     let mut in_fault = false;
     let mut fault_code = String::new();
     let mut fault_reason = String::new();
@@ -167,30 +181,48 @@ pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
     let mut in_code = false;
     let mut in_reason = false;
 
-    let mut buf = Vec::new();
     loop {
         let pos = reader.buffer_position() as usize;
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                let local = local_name(e.name().as_ref());
+        match reader.read_resolved_event() {
+            Ok((res, Event::Start(e))) => {
+                let local = e.local_name();
+                let local = local.as_ref();
                 depth += 1;
-                match local.as_str() {
-                    "Body" if body_depth < 0 => {
+                match local {
+                    b"Body" if body_depth < 0 && is_soap_ns(&res) => {
                         body_depth = depth;
                         // inner XML starts right after this tag closes
                         body_start = Some(reader.buffer_position() as usize);
                     }
-                    "Fault" => in_fault = true,
-                    "faultcode" if in_fault => capture = Some("code"),
-                    "faultstring" if in_fault => capture = Some("reason"),
-                    "Code" if in_fault => in_code = true,
-                    "Reason" if in_fault => in_reason = true,
-                    "Value" if in_fault && in_code => capture = Some("code"),
-                    "Text" if in_fault && in_reason => capture = Some("reason"),
+                    b"Fault"
+                        if !in_fault
+                            && body_depth >= 0
+                            && depth == body_depth + 1
+                            && is_soap_ns(&res) =>
+                    {
+                        in_fault = true;
+                    }
+                    b"faultcode" if in_fault => capture = Some("code"),
+                    b"faultstring" if in_fault => capture = Some("reason"),
+                    b"Code" if in_fault && is_soap_ns(&res) => in_code = true,
+                    b"Reason" if in_fault && is_soap_ns(&res) => in_reason = true,
+                    b"Value" if in_fault && in_code => capture = Some("code"),
+                    b"Text" if in_fault && in_reason => capture = Some("reason"),
                     _ => {}
                 }
             }
-            Ok(Event::Text(t)) => {
+            Ok((res, Event::Empty(e))) => {
+                // A self-closing <soap:Body/> is a present-but-empty Body:
+                // the response is still a valid SOAP envelope.
+                if body_depth < 0
+                    && body_inner.is_none()
+                    && e.local_name().as_ref() == b"Body"
+                    && is_soap_ns(&res)
+                {
+                    body_inner = Some(String::new());
+                }
+            }
+            Ok((_, Event::Text(t))) => {
                 if let Some(which) = capture {
                     let txt = t.unescape().unwrap_or_default().to_string();
                     if which == "code" && fault_code.is_empty() {
@@ -200,27 +232,27 @@ pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
                     }
                 }
             }
-            Ok(Event::End(e)) => {
-                let local = local_name(e.name().as_ref());
-                if local == "Body" && depth == body_depth {
+            Ok((res, Event::End(e))) => {
+                let local = e.local_name();
+                let local = local.as_ref();
+                if local == b"Body" && depth == body_depth && is_soap_ns(&res) {
                     if let Some(start) = body_start {
                         body_inner = Some(xml[start..pos].to_string());
                     }
                 }
-                match local.as_str() {
-                    "Fault" => in_fault = false,
-                    "Code" => in_code = false,
-                    "Reason" => in_reason = false,
-                    "faultcode" | "faultstring" | "Value" | "Text" => capture = None,
+                match local {
+                    b"Fault" if depth == body_depth + 1 => in_fault = false,
+                    b"Code" => in_code = false,
+                    b"Reason" => in_reason = false,
+                    b"faultcode" | b"faultstring" | b"Value" | b"Text" => capture = None,
                     _ => {}
                 }
                 depth -= 1;
             }
-            Ok(Event::Eof) => break,
+            Ok((_, Event::Eof)) => break,
             Err(_) => break,
             _ => {}
         }
-        buf.clear();
     }
 
     let fault = if !fault_code.is_empty() || !fault_reason.is_empty() {
@@ -229,11 +261,6 @@ pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
         None
     };
     (fault, body_inner.map(|s| s.trim().to_string()))
-}
-
-fn local_name(qname: &[u8]) -> String {
-    let s = String::from_utf8_lossy(qname);
-    s.rsplit(':').next().unwrap_or(&s).to_string()
 }
 
 /// Send the request and parse the reply. Transport errors come back inside
@@ -265,16 +292,40 @@ pub async fn send(req: SoapRequest) -> SoapResult {
     match builder.send().await {
         Ok(resp) => {
             let status = resp.status().as_u16();
-            let elapsed = started.elapsed().as_millis() as u64;
-            let text = resp.text().await.unwrap_or_default();
-            let (fault, body) = parse_response(&text);
-            SoapResult {
-                success: fault.is_none() && (200..300).contains(&status),
-                status_code: status,
-                fault,
-                body,
-                response_time_ms: elapsed,
-                error: None,
+            match resp.text().await {
+                Ok(text) => {
+                    // Measured after the body is fully consumed: send()
+                    // resolves on headers, and time-to-first-byte alone
+                    // undercounts streamed/delayed responses.
+                    let elapsed = started.elapsed().as_millis() as u64;
+                    let (fault, body) = parse_response(&text);
+                    // A reply without a SOAP Body (proxy HTML page, auth
+                    // gateway, empty stream) is not a successful SOAP
+                    // exchange, whatever the HTTP status says.
+                    let is_soap = fault.is_some() || body.is_some();
+                    let ok_status = (200..300).contains(&status);
+                    let error = if ok_status && !is_soap {
+                        Some("Response is not a SOAP envelope (no SOAP Body found in the reply)".to_string())
+                    } else {
+                        None
+                    };
+                    SoapResult {
+                        success: ok_status && fault.is_none() && is_soap,
+                        status_code: status,
+                        fault,
+                        body,
+                        response_time_ms: elapsed,
+                        error,
+                    }
+                }
+                Err(e) => SoapResult {
+                    success: false,
+                    status_code: status,
+                    fault: None,
+                    body: None,
+                    response_time_ms: started.elapsed().as_millis() as u64,
+                    error: Some(format!("Failed to read response body: {}", e)),
+                },
             }
         }
         Err(e) => SoapResult {
@@ -373,6 +424,46 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_ignores_app_fault_element() {
+        // An application payload element named "Fault" outside the SOAP
+        // namespace must NOT be classified as a protocol fault.
+        let xml = r#"<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+            <s:Body><result xmlns="urn:app"><Fault><Code><Value>APP-1</Value></Code>
+            <Reason><Text>domain error payload</Text></Reason></Fault></result>
+            </s:Body></s:Envelope>"#;
+        let (fault, body) = parse_response(xml);
+        assert!(fault.is_none(), "app-level Fault misread as SOAP Fault");
+        assert!(body.unwrap().contains("APP-1"));
+    }
+
+    #[test]
+    fn test_parse_default_namespace_fault() {
+        // Unprefixed envelope bound via a default namespace still counts.
+        let xml = r#"<Envelope xmlns="http://www.w3.org/2003/05/soap-envelope">
+            <Body><Fault><Code><Value>Sender</Value></Code>
+            <Reason><Text>bad</Text></Reason></Fault></Body></Envelope>"#;
+        let (fault, _) = parse_response(xml);
+        let f = fault.expect("default-ns fault detected");
+        assert_eq!(f.code, "Sender");
+        assert_eq!(f.reason, "bad");
+    }
+
+    #[test]
+    fn test_parse_empty_self_closing_body() {
+        let xml = r#"<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body/></s:Envelope>"#;
+        let (fault, body) = parse_response(xml);
+        assert!(fault.is_none());
+        assert_eq!(body, Some(String::new()));
+    }
+
+    #[test]
+    fn test_parse_non_soap_response() {
+        let (fault, body) = parse_response("<html><body>login required</body></html>");
+        assert!(fault.is_none());
+        assert!(body.is_none(), "HTML <body> must not count as a SOAP Body");
+    }
+
+    #[test]
     fn test_parse_body_inner() {
         let xml = r#"<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
             <s:Body><ackResponse><code>AA</code></ackResponse></s:Body></s:Envelope>"#;
@@ -415,6 +506,33 @@ mod tests {
         assert!(out.success, "roundtrip failed: {:?}", out.error);
         assert_eq!(out.status_code, 200);
         assert_eq!(out.body.unwrap(), "<ok>1</ok>");
+    }
+
+    #[tokio::test]
+    async fn test_soap_roundtrip_non_soap_response() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 65536];
+            let _ = sock.read(&mut buf).await.unwrap();
+            let body = "<html><body>Please sign in</body></html>";
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(), body
+            );
+            sock.write_all(resp.as_bytes()).await.unwrap();
+        });
+
+        let mut r = base_req();
+        r.endpoint = format!("http://{}/", addr);
+        let out = send(r).await;
+        assert!(!out.success, "a 2xx HTML page must not be a SOAP success");
+        assert_eq!(out.status_code, 200);
+        assert!(out.error.unwrap().contains("not a SOAP envelope"));
     }
 
     #[tokio::test]
