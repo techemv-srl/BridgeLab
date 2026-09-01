@@ -21,6 +21,9 @@ pub struct ConnectionProfile {
 pub enum ProfileType {
     Mllp,
     Http,
+    /// SOAP endpoint profiles (Enterprise): `url` holds the endpoint,
+    /// `headers` holds the SOAPAction.
+    Soap,
 }
 
 /// A request/response history entry.
