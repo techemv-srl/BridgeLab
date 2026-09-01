@@ -2,7 +2,7 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
-## [Unreleased]
+## [1.4.0] — 2026-09-01
 
 ### Added
 - **SOAP client (Enterprise)**. New SOAP tab in the Communication panel
