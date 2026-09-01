@@ -10,5 +10,6 @@ pub mod generator;
 pub mod parser;
 pub mod plugins;
 pub mod schema_export;
+pub mod soap;
 pub mod tables;
 pub mod validation;

@@ -9,6 +9,13 @@ authors = ["1warpengine"]
 name = "bridgelab_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[features]
+# Official TECHEMV builds ship with "pro" enabled. Building with
+# --no-default-features produces a Community-only binary that compiles
+# without the BUSL-licensed src/pro/ directory.
+default = ["pro"]
+pro = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

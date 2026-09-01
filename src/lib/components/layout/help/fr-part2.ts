@@ -74,11 +74,11 @@ bridgelab-cli batch ./inbox --json</code></pre>
 
 export const communicationSection: ManualSection = {
 	id: 'communication',
-	heading: 'Communication (MLLP / HTTP)',
+	heading: 'Communication (MLLP / HTTP / SOAP)',
 	body: `
 <p>Ouvrez le panneau de communication en bas avec <kbd>Ctrl</kbd>+<kbd>K</kbd>
-ou <strong>Outils → Panneau de communication</strong>. Trois onglets :
-MLLP, HTTP et Historique.</p>
+ou <strong>Outils → Panneau de communication</strong>. Quatre onglets :
+MLLP, HTTP, SOAP et Historique.</p>
 
 ${mockupCommunication}
 
@@ -152,6 +152,26 @@ POST/PUT/DELETE, les en-têtes d'authentification personnalisés (Basic,
 Bearer) et le suivi des redirections nécessitent Pro. Le corps reprend
 par défaut le message de l'onglet actif mais peut être remplacé.</p>
 
+<h3>Client SOAP (Enterprise)</h3>
+<p>L'onglet SOAP envoie le message courant (ou un corps personnalisé)
+vers des endpoints SOAP 1.1/1.2 — middlewares de type IHE, passerelles
+régionales et services web hospitaliers legacy. Renseignez l'URL de
+l'endpoint, la version SOAP et la <em>SOAPAction</em> ; BridgeLab
+construit l'enveloppe, l'envoie avec le bon content type
+(<code>text/xml</code> plus l'en-tête SOAPAction en 1.1,
+<code>application/soap+xml</code> avec le paramètre action en 1.2) et
+affiche le statut HTTP, le temps aller-retour, le XML interne du Body
+et l'éventuel SOAP Fault, décodé pour les deux versions.</p>
+<p>Un message HL7 v2 brut est automatiquement échappé en XML et
+enveloppé dans un élément <code>&lt;payload&gt;</code> ; un contenu
+déjà XML est inséré tel quel. Les paramètres avancés ajoutent des
+identifiants <strong>WS-Security UsernameToken</strong>, des en-têtes
+<strong>WS-Addressing</strong> (To / Action / MessageID) et un
+<strong>modèle d'enveloppe personnalisé</strong> dans lequel le
+littéral <code>{payload}</code> est remplacé par le message — utile
+quand le service cible attend un wrapper spécifique. L'import WSDL est
+prévu comme étape suivante.</p>
+
 <h3>Historique</h3>
 <p>Chaque envoi et chaque réception sont journalisés (hôte, port, taille,
 code de réponse, temps aller-retour). Les 100 dernières entrées sont
@@ -163,7 +183,8 @@ requête et la réponse complètes.</p>
 depuis la ligne <strong>Profil</strong> : saisissez un nom et cliquez
 sur <em>Enregistrer</em>. Les profils MLLP stockent hôte, port, délai
 d'expiration et ACK automatique ; les profils HTTP stockent URL,
-en-têtes et délai d'expiration. Sélectionner un profil l'applique au
+en-têtes et délai d'expiration ; les profils SOAP stockent endpoint,
+SOAPAction et délai d'expiration. Sélectionner un profil l'applique au
 formulaire ; enregistrer sous un nom existant l'écrase ;
 <em>Supprimer</em> retire le profil sélectionné. Les profils sont
 stockés dans la base de données locale et survivent aux redémarrages.</p>

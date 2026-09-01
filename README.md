@@ -217,6 +217,13 @@ reports outside GitHub Issues, reach us at the email above.
 ## License
 
 Open Core — the core is MIT-licensed and free for commercial use.
-Professional & Enterprise features are licensed separately.
+Paid-tier feature implementations live in two clearly marked
+directories — `src-tauri/src/pro/` and `src/lib/pro/` — licensed under
+the Business Source License 1.1 (production use requires an active
+subscription; each converts to MIT four years after publication). See
+the root `LICENSE` file for the exact carve-out; everything published
+before those directories existed remains MIT. Building the Rust backend
+with `--no-default-features` produces a Community-only binary that
+compiles without the BUSL directories.
 
 Copyright (c) 2026 TECHEMV SRL
