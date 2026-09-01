@@ -20,7 +20,7 @@ export interface HttpResult {
 export interface ConnectionProfile {
 	id: string;
 	name: string;
-	profile_type: 'mllp' | 'http';
+	profile_type: 'mllp' | 'http' | 'soap';
 	host: string;
 	port: number;
 	timeout_secs: number;

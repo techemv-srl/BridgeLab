@@ -2,6 +2,26 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [Unreleased]
+
+### Added
+- **SOAP client (Enterprise)**. New SOAP tab in the Communication panel
+  for SOAP 1.1/1.2 endpoints (IHE-style middlewares, regional gateways,
+  legacy hospital web services): envelope building with a default or
+  custom template (`{payload}` placeholder), optional WS-Security
+  UsernameToken and WS-Addressing headers, correct per-version content
+  types, and response parsing with Body extraction and SOAP Fault
+  decoding for both versions. Connection profiles and request history
+  cover SOAP like MLLP and HTTP. WSDL import is planned as a follow-up.
+
+### Changed
+- **Dual-license layout**. The repository now carves out two directories
+  (`src-tauri/src/pro/`, `src/lib/pro/`) under the Business Source
+  License 1.1 for paid-tier feature implementations; everything else
+  remains MIT, and all code published before this change stays MIT.
+  Building with `--no-default-features` produces a Community-only binary
+  without the BUSL directories.
+
 ## [1.3.1] — 2026-08-21
 
 ### Added

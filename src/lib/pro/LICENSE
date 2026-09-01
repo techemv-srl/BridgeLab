@@ -1,0 +1,37 @@
+Business Source License 1.1
+
+License text: https://mariadb.com/bsl11/
+
+-----------------------------------------------------------------------------
+
+Licensor:             TECHEMV SRL, Pordenone, Italy (VAT IT01960380937)
+
+Licensed Work:        All source code contained in this directory
+                      (src/lib/pro/) and its subdirectories.
+                      The Licensed Work is (c) 2026 TECHEMV SRL.
+
+Additional Use Grant: You may use the Licensed Work in production only
+                      as part of an official TECHEMV build of BridgeLab
+                      and with an active BridgeLab Pro or Enterprise
+                      subscription. Compiling, reading and modifying the
+                      Licensed Work for evaluation, review and
+                      non-production development is permitted.
+
+Change Date:          Four years after the date each version of the
+                      Licensed Work is first published.
+
+Change License:       MIT
+
+-----------------------------------------------------------------------------
+
+Notice
+
+The Business Source License (this document, or the "License") is not an
+Open Source license. However, the Licensed Work will eventually be made
+available under an Open Source License, as stated in this License.
+
+For the full text of the Business Source License 1.1, see
+https://mariadb.com/bsl11/ — the parameters above complete it for this
+Licensed Work. All other files in this repository outside the directories
+carrying this LICENSE file remain under the MIT license (see the LICENSE
+file at the repository root).

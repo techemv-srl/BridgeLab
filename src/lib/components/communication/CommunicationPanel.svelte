@@ -8,6 +8,7 @@
 		type ListenerStatus, type MllpReceivedEvent, type ConnectionProfile,
 	} from '$lib/ipc/communication';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
+	import { soapSend, type SoapResult } from '$lib/pro/soap/ipc';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
@@ -49,7 +50,7 @@
 		}
 	}
 
-	let activeSubTab = $state<'mllp' | 'http' | 'history'>('mllp');
+	let activeSubTab = $state<'mllp' | 'http' | 'soap' | 'history'>('mllp');
 
 	// MLLP state
 	let mllpHost = $state('localhost');
@@ -148,6 +149,22 @@
 	let httpAuthUser = $state('');
 	let httpAuthPass = $state('');
 
+	// SOAP state (Enterprise — the backend feature-gates the actual send)
+	let soapEndpoint = $state('http://localhost:8080/hl7Service');
+	let soapVersion = $state('1.1');
+	let soapAction = $state('');
+	let soapBody = $state('');
+	let soapResult = $state<SoapResult | null>(null);
+	let soapSending = $state(false);
+	let soapShowAdvanced = $state(false);
+	// SOAP advanced options
+	let soapTimeout = $state(30);
+	let soapUseWsSecurity = $state(false);
+	let soapWsUser = $state('');
+	let soapWsPass = $state('');
+	let soapWsAddressing = $state(false);
+	let soapTemplate = $state('');
+
 	// History state
 	let history = $state<HistoryEntry[]>([]);
 	let selectedHistoryId = $state<string | null>(null);
@@ -158,11 +175,14 @@
 	let profiles = $state<ConnectionProfile[]>([]);
 	let mllpProfileId = $state('');
 	let httpProfileId = $state('');
+	let soapProfileId = $state('');
 	let mllpProfileName = $state('');
 	let httpProfileName = $state('');
+	let soapProfileName = $state('');
 
 	let mllpProfiles = $derived(profiles.filter((p) => p.profile_type === 'mllp'));
 	let httpProfiles = $derived(profiles.filter((p) => p.profile_type === 'http'));
+	let soapProfiles = $derived(profiles.filter((p) => p.profile_type === 'soap'));
 
 	async function loadProfiles() {
 		try { profiles = await getConnectionProfiles(); } catch { /* web mode */ }
@@ -186,8 +206,17 @@
 		httpTimeout = p.timeout_secs;
 	}
 
-	async function saveProfile(kind: 'mllp' | 'http') {
-		const name = (kind === 'mllp' ? mllpProfileName : httpProfileName).trim();
+	function applySoapProfile(id: string) {
+		const p = profiles.find((pp) => pp.id === id);
+		if (!p) return;
+		if (p.url) soapEndpoint = p.url;
+		// SOAP profiles reuse the free-text `headers` column for the action.
+		soapAction = p.headers ?? '';
+		soapTimeout = p.timeout_secs;
+	}
+
+	async function saveProfile(kind: 'mllp' | 'http' | 'soap') {
+		const name = (kind === 'mllp' ? mllpProfileName : kind === 'http' ? httpProfileName : soapProfileName).trim();
 		if (!name) return;
 		// Same name + type overwrites (upsert) instead of piling up duplicates.
 		const existing = profiles.find((p) => p.name === name && p.profile_type === kind);
@@ -198,27 +227,36 @@
 				host: mllpHost, port: mllpPort, timeout_secs: mllpTimeout,
 				url: null, headers: null, auto_ack: mllpAutoAck,
 			}
-			: {
+			: kind === 'http'
+			? {
 				id: existing?.id ?? crypto.randomUUID(),
 				name, profile_type: 'http',
 				host: '', port: 0, timeout_secs: httpTimeout,
 				url: httpUrl, headers: httpHeadersText, auto_ack: false,
+			}
+			: {
+				id: existing?.id ?? crypto.randomUUID(),
+				name, profile_type: 'soap',
+				host: '', port: 0, timeout_secs: soapTimeout,
+				url: soapEndpoint, headers: soapAction, auto_ack: false,
 			};
 		try {
 			await saveConnectionProfile(profile);
 			await loadProfiles();
 			if (kind === 'mllp') { mllpProfileId = profile.id; mllpProfileName = ''; }
-			else { httpProfileId = profile.id; httpProfileName = ''; }
+			else if (kind === 'http') { httpProfileId = profile.id; httpProfileName = ''; }
+			else { soapProfileId = profile.id; soapProfileName = ''; }
 		} catch { /* web mode */ }
 	}
 
-	async function deleteProfile(kind: 'mllp' | 'http') {
-		const id = kind === 'mllp' ? mllpProfileId : httpProfileId;
+	async function deleteProfile(kind: 'mllp' | 'http' | 'soap') {
+		const id = kind === 'mllp' ? mllpProfileId : kind === 'http' ? httpProfileId : soapProfileId;
 		if (!id) return;
 		try {
 			await deleteConnectionProfile(id);
 			if (kind === 'mllp') mllpProfileId = '';
-			else httpProfileId = '';
+			else if (kind === 'http') httpProfileId = '';
+			else soapProfileId = '';
 			await loadProfiles();
 		} catch { /* web mode */ }
 	}
@@ -374,6 +412,32 @@
 		loadHistory();
 	}
 
+	// --- SOAP ---
+	async function handleSoapSend() {
+		const payload = soapBody.trim() || currentMessage;
+		if (!payload.trim()) return;
+		soapSending = true;
+		soapResult = null;
+		try {
+			soapResult = await soapSend({
+				endpoint: soapEndpoint,
+				soap_version: soapVersion,
+				action: soapAction,
+				payload,
+				envelope_template: soapTemplate.trim() || null,
+				ws_security: soapUseWsSecurity && soapWsUser
+					? { username: soapWsUser, password: soapWsPass }
+					: null,
+				ws_addressing: soapWsAddressing,
+				timeout_secs: soapTimeout,
+			}, activeTabLabel || undefined);
+		} catch (e) {
+			soapResult = { success: false, status_code: 0, fault: null, body: null, response_time_ms: 0, error: friendlyError(e) };
+		}
+		soapSending = false;
+		loadHistory();
+	}
+
 	// --- History ---
 	async function loadHistory() {
 		try { history = await getRequestHistory(50); } catch { /* web mode */ }
@@ -398,6 +462,7 @@
 	<div class="comm-tabs">
 		<button class="comm-tab" class:active={activeSubTab === 'mllp'} onclick={() => { activeSubTab = 'mllp'; }}>MLLP</button>
 		<button class="comm-tab" class:active={activeSubTab === 'http'} onclick={() => { activeSubTab = 'http'; }}>HTTP</button>
+		<button class="comm-tab" class:active={activeSubTab === 'soap'} onclick={() => { activeSubTab = 'soap'; }}>SOAP</button>
 		<button class="comm-tab" class:active={activeSubTab === 'history'} onclick={() => { activeSubTab = 'history'; loadHistory(); }}>
 			{tr('comm.history')} {history.length > 0 ? `(${history.length})` : ''}
 		</button>
@@ -770,6 +835,108 @@
 						{/if}
 						{#if httpResult.body}
 							<pre class="result-body">{httpResult.body.substring(0, 5000)}{httpResult.body.length > 5000 ? '\n...truncated...' : ''}</pre>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+		<!-- ==================== SOAP ==================== -->
+		{:else if activeSubTab === 'soap'}
+			<div class="comm-form">
+				<div class="section-label">{tr('comm.request')} <span class="hint">{tr('comm.soapEnterpriseHint')}</span></div>
+				<div class="form-row">
+					<select id="soap-version" bind:value={soapVersion} class="input-method" title={tr('comm.soapVersion')}>
+						<option value="1.1">SOAP 1.1</option>
+						<option value="1.2">SOAP 1.2</option>
+					</select>
+					<input bind:value={soapEndpoint} placeholder="http://server/hl7Service" class="input-grow" />
+				</div>
+				<div class="form-row">
+					<label for="soap-action">{tr('comm.soapAction')}</label>
+					<input id="soap-action" bind:value={soapAction} placeholder="urn:sendHL7Message" class="input-grow" />
+				</div>
+				<div class="form-row">
+					<label for="soap-profile">{tr('comm.profile')}</label>
+					<select id="soap-profile" bind:value={soapProfileId}
+						onchange={() => applySoapProfile(soapProfileId)}
+						style="min-width: 130px; padding: 4px 6px;">
+						<option value="">—</option>
+						{#each soapProfiles as p (p.id)}
+							<option value={p.id}>{p.name}</option>
+						{/each}
+					</select>
+					{#if soapProfileId}
+						<button class="btn btn-sm" onclick={() => deleteProfile('soap')}>{tr('comm.profileDelete')}</button>
+					{/if}
+					<input class="input-grow" bind:value={soapProfileName}
+						placeholder={tr('comm.profileNamePlaceholder')} />
+					<button class="btn btn-sm" onclick={() => saveProfile('soap')} disabled={!soapProfileName.trim()}>
+						{tr('comm.profileSave')}
+					</button>
+				</div>
+
+				<button class="toggle-advanced" onclick={() => { soapShowAdvanced = !soapShowAdvanced; }}>
+					{soapShowAdvanced ? '▼' : '▶'} {tr('comm.advancedSoap')}
+				</button>
+				{#if soapShowAdvanced}
+					<div class="advanced-section">
+						<div class="form-row">
+							<label for="soap-timeout">{tr('comm.timeout')}</label>
+							<input id="soap-timeout" type="number" min={1} max={300} bind:value={soapTimeout} class="input-xs" />
+							<span class="hint">s</span>
+						</div>
+						<div class="setting-check">
+							<label><input type="checkbox" bind:checked={soapUseWsSecurity} /> {tr('comm.soapWsSecurity')}</label>
+						</div>
+						{#if soapUseWsSecurity}
+							<div class="form-row">
+								<label for="soap-ws-user">{tr('comm.username')}</label>
+								<input id="soap-ws-user" bind:value={soapWsUser} class="input-grow" />
+								<label for="soap-ws-pass">{tr('comm.password')}</label>
+								<input id="soap-ws-pass" type="password" bind:value={soapWsPass} class="input-grow" />
+							</div>
+						{/if}
+						<div class="setting-check">
+							<label><input type="checkbox" bind:checked={soapWsAddressing} /> {tr('comm.soapWsAddressing')}</label>
+						</div>
+						<div class="section-label">{tr('comm.soapTemplate')} <span class="hint">{tr('comm.soapTemplateHint')}</span></div>
+						<textarea bind:value={soapTemplate} rows={3}
+							placeholder={'<soap:Envelope ...><soap:Body>{payload}</soap:Body></soap:Envelope>'}
+							class="input-area"></textarea>
+					</div>
+				{/if}
+
+				<div class="section-label">{tr('comm.body')} <span class="hint">{tr('comm.bodyHint')}</span></div>
+				<textarea bind:value={soapBody} rows={2} placeholder={tr('comm.bodyPlaceholder')} class="input-area"></textarea>
+
+				{#if !soapBody.trim() && hasMessage}
+					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: currentMessage.length })}</div>
+				{:else if !soapBody.trim() && !hasMessage}
+					<div class="info-box">{tr('comm.noBodyNoMessage')}</div>
+				{/if}
+
+				<div class="form-actions">
+					<button class="btn btn-primary" onclick={handleSoapSend} disabled={soapSending || (!soapBody.trim() && !hasMessage)}>
+						{soapSending ? tr('comm.sending') : tr('comm.sendViaSoap')}
+					</button>
+				</div>
+
+				{#if soapResult}
+					<div class="result" class:success={soapResult.success} class:error={!soapResult.success}>
+						<div class="result-header">
+							<span>{soapResult.status_code > 0 ? `HTTP ${soapResult.status_code}` : 'FAILED'}</span>
+							<span>{soapResult.response_time_ms}ms</span>
+						</div>
+						{#if soapResult.error}
+							<div class="result-error">{soapResult.error}</div>
+						{/if}
+						{#if soapResult.fault}
+							<div class="result-label">{tr('comm.soapFault')}</div>
+							<div class="result-error">{soapResult.fault.code}{soapResult.fault.code && soapResult.fault.reason ? ' — ' : ''}{soapResult.fault.reason}</div>
+						{/if}
+						{#if soapResult.body}
+							<div class="result-label">{tr('comm.soapResponseBody')}</div>
+							<pre class="result-body">{soapResult.body.substring(0, 5000)}{soapResult.body.length > 5000 ? '\n...truncated...' : ''}</pre>
 						{/if}
 					</div>
 				{/if}
