@@ -281,6 +281,7 @@ impl Database {
         let pt = match profile.profile_type {
             ProfileType::Mllp => "mllp",
             ProfileType::Http => "http",
+            ProfileType::Soap => "soap",
         };
         conn.execute(
             "INSERT INTO connection_profiles (id, name, profile_type, host, port, timeout_secs, url, headers, auto_ack)
@@ -307,7 +308,11 @@ impl Database {
 
         let profiles = stmt.query_map([], |row| {
             let pt_str: String = row.get(2)?;
-            let pt = if pt_str == "http" { ProfileType::Http } else { ProfileType::Mllp };
+            let pt = match pt_str.as_str() {
+                "http" => ProfileType::Http,
+                "soap" => ProfileType::Soap,
+                _ => ProfileType::Mllp,
+            };
             Ok(ConnectionProfile {
                 id: row.get(0)?,
                 name: row.get(1)?,
