@@ -6,6 +6,11 @@ pub mod licensing;
 pub mod message_store;
 pub mod parser;
 pub mod plugins;
+/// Proprietary (BUSL-1.1) feature implementations — see src/pro/LICENSE.
+/// Compiled out entirely in Community-only builds (--no-default-features);
+/// the MIT command shims in commands/ return a clear error instead.
+#[cfg(feature = "pro")]
+pub mod pro;
 pub mod templates;
 pub mod utils;
 pub mod validation;
@@ -163,6 +168,7 @@ pub fn run() {
             commands::batch::batch_validate,
             commands::batch::batch_anonymize,
             commands::generator::generate_test_messages,
+            commands::soap::soap_send,
         ])
         .build(tauri::generate_context!())
         .expect("error while running BridgeLab")

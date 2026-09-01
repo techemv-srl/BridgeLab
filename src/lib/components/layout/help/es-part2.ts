@@ -74,11 +74,11 @@ bridgelab-cli batch ./inbox --json</code></pre>
 
 export const communicationSection: ManualSection = {
 	id: 'communication',
-	heading: 'Comunicación (MLLP / HTTP)',
+	heading: 'Comunicación (MLLP / HTTP / SOAP)',
 	body: `
 <p>Abre el panel de comunicación inferior con <kbd>Ctrl</kbd>+<kbd>K</kbd>
-o <strong>Herramientas → Panel de comunicación</strong>. Tres pestañas:
-MLLP, HTTP e Historial.</p>
+o <strong>Herramientas → Panel de comunicación</strong>. Cuatro
+pestañas: MLLP, HTTP, SOAP e Historial.</p>
 
 ${mockupCommunication}
 
@@ -154,6 +154,26 @@ Bearer) y el seguimiento de redirecciones requieren Pro. El cuerpo por
 defecto es el mensaje de la pestaña actual, pero puede
 sobrescribirse.</p>
 
+<h3>Cliente SOAP (Enterprise)</h3>
+<p>La pestaña SOAP envía el mensaje actual (o un cuerpo personalizado)
+a endpoints SOAP 1.1/1.2 — middlewares de estilo IHE, pasarelas
+regionales y servicios web hospitalarios heredados. Indica la URL del
+endpoint, la versión SOAP y la <em>SOAPAction</em>; BridgeLab
+construye el envelope, lo envía con el content type correcto
+(<code>text/xml</code> más la cabecera SOAPAction en 1.1,
+<code>application/soap+xml</code> con el parámetro action en 1.2) y
+muestra el estado HTTP, el tiempo de ida y vuelta, el XML interno del
+Body y el posible SOAP Fault, decodificado para ambas versiones.</p>
+<p>Un mensaje HL7 v2 en bruto se escapa como XML y se envuelve
+automáticamente en un elemento <code>&lt;payload&gt;</code>; el
+contenido que ya es XML se inserta tal cual. La configuración avanzada
+añade credenciales <strong>WS-Security UsernameToken</strong>,
+cabeceras <strong>WS-Addressing</strong> (To / Action / MessageID) y
+una <strong>plantilla de envelope personalizada</strong> en la que el
+literal <code>{payload}</code> se sustituye por el mensaje — útil
+cuando el servicio de destino espera un wrapper específico. La
+importación de WSDL está prevista como paso siguiente.</p>
+
 <h3>Historial</h3>
 <p>Cada envío y cada recepción quedan registrados (host, puerto, tamaño,
 código de respuesta, tiempo de ida y vuelta). Las últimas 100 entradas
@@ -165,7 +185,8 @@ petición y la respuesta completas.</p>
 la fila <strong>Perfil</strong>: escribe un nombre y haz clic en
 <em>Guardar</em>. Los perfiles MLLP almacenan host, puerto, tiempo de
 espera y auto-ACK; los perfiles HTTP almacenan URL, cabeceras y tiempo
-de espera. Al seleccionar un perfil, este se aplica al formulario;
+de espera; los perfiles SOAP almacenan endpoint, SOAPAction y tiempo de
+espera. Al seleccionar un perfil, este se aplica al formulario;
 guardar con un nombre existente lo sobrescribe; <em>Eliminar</em> borra
 el seleccionado. Los perfiles se guardan en la base de datos local y
 sobreviven a los reinicios.</p>

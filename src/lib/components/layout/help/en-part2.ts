@@ -64,11 +64,11 @@ bridgelab-cli batch ./inbox --json</code></pre>
 
 export const communicationSection: ManualSection = {
 	id: 'communication',
-	heading: 'Communication (MLLP / HTTP)',
+	heading: 'Communication (MLLP / HTTP / SOAP)',
 	body: `
 <p>Open the bottom Communication panel with <kbd>Ctrl</kbd>+<kbd>K</kbd>
-or <strong>Tools → Communication Panel</strong>. Three tabs: MLLP, HTTP
-and History.</p>
+or <strong>Tools → Communication Panel</strong>. Four tabs: MLLP, HTTP,
+SOAP and History.</p>
 
 ${mockupCommunication}
 
@@ -133,6 +133,25 @@ custom authentication headers (Basic, Bearer), and follow-redirects
 require Pro. The body defaults to the current tab's message but can be
 overridden.</p>
 
+<h3>SOAP client (Enterprise)</h3>
+<p>The SOAP tab sends the current message (or a custom body) to SOAP
+1.1/1.2 endpoints — IHE-style middlewares, regional gateways and legacy
+hospital web services. Set the endpoint URL, the SOAP version and the
+<em>SOAPAction</em>; BridgeLab builds the envelope, posts it with the
+correct content type (<code>text/xml</code> plus the SOAPAction header
+for 1.1, <code>application/soap+xml</code> with the action parameter
+for 1.2) and shows the HTTP status, round-trip time, the inner Body XML
+and any SOAP Fault, decoded for both versions.</p>
+<p>A raw HL7 v2 message is XML-escaped and wrapped in a
+<code>&lt;payload&gt;</code> element automatically; content that is
+already XML is inserted as-is. Advanced settings add
+<strong>WS-Security UsernameToken</strong> credentials,
+<strong>WS-Addressing</strong> headers (To / Action / MessageID) and a
+<strong>custom envelope template</strong> in which the literal
+<code>{payload}</code> placeholder is replaced with the message — use
+it when the target service expects a specific wrapper. WSDL import is
+planned as a follow-up.</p>
+
 <h3>History</h3>
 <p>Every send and receive is logged (host, port, size, response code,
 round-trip time). The last 100 entries are persisted between restarts;
@@ -142,7 +161,8 @@ click any row to see the full request and response.</p>
 <p>Save frequently-used endpoints as named profiles from the
 <strong>Profile</strong> row: type a name and click <em>Save</em>. MLLP
 profiles store host, port, timeout and auto-ACK; HTTP profiles store
-URL, headers and timeout. Selecting a profile applies it to the form;
+URL, headers and timeout; SOAP profiles store endpoint, SOAPAction and
+timeout. Selecting a profile applies it to the form;
 saving with an existing name overwrites it; <em>Delete</em> removes the
 selected one. Profiles are stored in the local database and survive
 restarts.</p>
