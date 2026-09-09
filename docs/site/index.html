@@ -395,13 +395,14 @@
 			</div>
 		</div>
 		<p class="sub tiny" id="launch-hint" hidden>
-			Launch offer: use code <code>LAUNCH199</code> at checkout &mdash;
-			&euro;50 off the first year, limited to the first 20 licenses.
+			Launch offer applied automatically at checkout &mdash; &euro;50 off the
+			first year of Pro, limited to the first 20 licenses. Business
+			customers can enter their VAT ID at checkout (reverse charge).
 		</p>
 		<p class="sub tiny" id="checkout-done" hidden>
-			&#10003; Payment received &mdash; your activation code is on its
-			way by e-mail (usually within a minute). Paste it into
-			BridgeLab&rsquo;s License dialog to activate.
+			&#10003; Order complete &mdash; your activation code is on its way by
+			e-mail from noreply@techemv.it (usually within a minute; check spam
+			the first time). Paste it into BridgeLab&rsquo;s License dialog to activate.
 		</p>
 		<p class="sub tiny">
 			Prices exclude VAT. Quotes are answered within one business day;
@@ -604,11 +605,68 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 	})
 	.catch(() => {});
 </script>
-<!--
-	Self-serve checkout: the [data-buy] links, .quote-alt, #launch-hint,
-	#checkout-done and #checkout-soon hooks above are reserved for the
-	FastSpring (Merchant of Record) integration. Until it is wired up the
-	page stays in quote-only mode and loads no third-party script.
--->
+<script>
+(function () {
+	// ---- FastSpring config --------------------------------------------
+	// Go-live: set enabled:true and environment:'live'. Nothing else changes.
+	var FS_CFG = {
+		enabled: false,
+		environment: 'test',   // 'test' | 'live'
+		storefronts: {
+			test: 'techemv.test.onfastspring.com/popup-bridgelab-checkout',
+			live: 'techemv.onfastspring.com/popup-bridgelab-checkout'
+		},
+		products: { PRO: 'bridgelab-pro', ENT: 'bridgelab-ent' }   // FastSpring product paths
+	};
+	var LAUNCH_CODE = 'LAUNCH199';   // set to '' when the 20 launch licenses are gone
+	// --------------------------------------------------------------------
+	var force = new URLSearchParams(location.search).get('checkout') === 'test';
+	if (!FS_CFG.enabled && !force) return;          // quote-only mode: SBL never loaded
+	var env = force ? 'test' : FS_CFG.environment;
+
+	// Called by SBL when the popup closes; orderReference is set only on a completed order
+	window.onFSPopupClosed = function (orderReference) {
+		if (orderReference && orderReference.id) {
+			var el = document.getElementById('checkout-done');
+			if (el) el.hidden = false;
+			fastspring.builder.reset();
+		}
+	};
+
+	var s = document.createElement('script');
+	s.id = 'fsc-api';
+	s.type = 'text/javascript';
+	s.src = 'https://sbl.onfastspring.com/sbl/1.0.9/fastspring-builder.min.js';
+	s.setAttribute('data-storefront', FS_CFG.storefronts[env]);
+	s.setAttribute('data-popup-closed', 'onFSPopupClosed');
+	s.setAttribute('data-continuous', 'true');
+	s.onload = wire;
+	document.head.appendChild(s);
+
+	function buy(tier) {
+		fastspring.builder.reset();                                   // clean cart
+		if (LAUNCH_CODE && tier === 'PRO') fastspring.builder.promo(LAUNCH_CODE);
+		fastspring.builder.add(FS_CFG.products[tier], 1);           // quantity editable in the popup = seats
+		fastspring.builder.checkout();
+	}
+
+	function wire() {
+		document.querySelectorAll('[data-buy]').forEach(function (a) {
+			var tier = a.getAttribute('data-buy');
+			a.textContent = 'Buy now';
+			a.removeAttribute('href');
+			a.style.cursor = 'pointer';
+			a.addEventListener('click', function (e) { e.preventDefault(); buy(tier); });
+			var q = a.parentElement.querySelector('.quote-alt');
+			if (q) q.hidden = false;
+		});
+		var hint = document.getElementById('launch-hint');
+		if (hint) hint.hidden = false;
+		// "Coming soon" no longer applies once self-serve checkout is live
+		var soon = document.getElementById('checkout-soon');
+		if (soon) soon.hidden = true;
+	}
+})();
+</script>
 </body>
 </html>
