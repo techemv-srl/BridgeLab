@@ -9,6 +9,8 @@
 	interface Props {
 		messageId: string | null;
 		version: string;
+		/** Parse format of the active tab ("hl7v2", "fhir_json", "fhir_xml", …). */
+		format?: string;
 		/** The currently selected tree node (null if nothing selected) */
 		selectedNode: TreeNode | null;
 		/** Segment type for the segment containing the selected node (e.g., "PID") */
@@ -16,7 +18,13 @@
 		onViewFullValue?: (fullText: string) => void;
 	}
 
-	let { messageId, version, selectedNode, segmentType, onViewFullValue }: Props = $props();
+	let { messageId, version, format = '', selectedNode, segmentType, onViewFullValue }: Props = $props();
+
+	/** FHIR documents have no HL7 v2 segment/field schema to look up. */
+	let isFhir = $derived(format.toLowerCase().startsWith('fhir'));
+
+	/** FHIR node ids are "fhir.name.0.family" — show the path without the prefix. */
+	let fhirPath = $derived(selectedNode ? selectedNode.id.replace(/^fhir\.?/, '') || selectedNode.label : '');
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') {
@@ -38,10 +46,12 @@
 		let segmentIdx: number | null = null;
 		let fieldPosition: number | null = null;
 		let componentIdx: number | null = null;
+		// Only HL7 v2 ids ("seg3.f5.c1") carry indices; FHIR ids are property
+		// paths ("fhir.name.0.family") and must not be mistaken for them.
 		for (const p of parts) {
-			if (p.startsWith('seg')) segmentIdx = parseInt(p.slice(3));
-			else if (p.startsWith('f')) fieldPosition = parseInt(p.slice(1));
-			else if (p.startsWith('c')) componentIdx = parseInt(p.slice(1));
+			if (/^seg\d+$/.test(p)) segmentIdx = parseInt(p.slice(3));
+			else if (/^f\d+$/.test(p)) fieldPosition = parseInt(p.slice(1));
+			else if (/^c\d+$/.test(p)) componentIdx = parseInt(p.slice(1));
 		}
 		return { segmentIdx, fieldPosition, componentIdx };
 	}
@@ -53,7 +63,10 @@
 		valueTable = null;
 		schemaLookupDone = false;
 
-		if (!selectedNode || !segmentType) return;
+		if (!selectedNode) return;
+		// Nothing to look up (FHIR element, or a node outside any segment):
+		// mark the lookup as finished so the panel never sits on "Loading…".
+		if (isFhir || !segmentType) { schemaLookupDone = true; return; }
 		const p = parseNodeId(selectedNode.id);
 
 		(async () => {
@@ -146,7 +159,13 @@
 			</div>
 
 			<!-- Schema-derived fields -->
-			{#if fieldInfo}
+			{#if isFhir}
+				<dl class="kv">
+					<dt>{tr('inspector.path')}</dt>
+					<dd><code>{fhirPath}</code></dd>
+				</dl>
+				<div class="schema-unknown">{tr('inspector.fhirElement')}</div>
+			{:else if fieldInfo}
 				<dl class="kv">
 					<dt>{tr('inspector.position')}</dt>
 					<dd>{fieldInfo.segment_code}-{fieldInfo.position}</dd>
@@ -187,7 +206,7 @@
 			{:else if schemaLookupDone}
 				<div class="schema-unknown">{tr('inspector.schemaUnknown')}</div>
 			{:else}
-				<div class="schema-unknown">{tr('xsd.loading')}</div>
+				<div class="schema-unknown">{tr('inspector.loading')}</div>
 			{/if}
 
 			<!-- Current value -->
@@ -227,7 +246,8 @@
 						<button class="view-full-btn" onclick={handleViewFull}>
 							{tr('inspector.viewFull')}
 						</button>
-					{:else if currentLength !== null}
+					{:else if currentLength !== null && !isFhir}
+						<!-- FHIR container previews ("[1 items]") are synthetic: their length is meaningless -->
 						<div class="value-meta">{tr('inspector.currentLength')}: {currentLength}</div>
 					{/if}
 				</div>
