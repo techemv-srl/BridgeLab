@@ -11,6 +11,13 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   the `browser` resolve condition under Vite 6), so the diff dialog threw
   on open instead of rendering. Upgraded the plugin to the Vite 6 line;
   the compare dialog now opens with the side-by-side diff of two tabs.
+- **Field Inspector stuck on "Generating…" with FHIR documents.** The
+  inspector kept the node selected in a previous HL7 tab (e.g. "MSH (0)")
+  when switching to a FHIR tab, and waited forever for an HL7 v2 schema
+  lookup that never runs for FHIR elements. The selection is now cleared
+  on every tab switch, FHIR elements show their path with a clear note
+  instead of a spinner, and the panel's loading label no longer borrows
+  the XSD export's "Generating…" text.
 
 ## [1.4.0] — 2026-09-01
 
