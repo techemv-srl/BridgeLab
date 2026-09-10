@@ -411,7 +411,15 @@ pub fn trial_days_remaining(trial: &TrialData) -> i64 {
     }
 
     let expires = started + chrono::Duration::days(trial.trial_days);
-    (expires - now).num_days().max(0)
+    days_remaining_ceil(expires - now)
+}
+
+/// Whole days left in a remaining duration, rounded UP: a 14-day trial
+/// started a minute ago has 14 days left, not 13 (`num_days` truncates).
+/// Anything at or past expiry is 0.
+pub fn days_remaining_ceil(remaining: chrono::Duration) -> i64 {
+    let secs = remaining.num_seconds();
+    if secs <= 0 { 0 } else { (secs + 86_399) / 86_400 }
 }
 
 // =============================================================================
@@ -555,8 +563,11 @@ pub fn check_license_status() -> LicenseStatus {
         // Expiration check
         if let Some(ref expires) = license.payload.expires_at {
             if let Ok(exp) = chrono::DateTime::parse_from_rfc3339(expires) {
-                let days = (exp.with_timezone(&chrono::Utc) - chrono::Utc::now()).num_days();
-                if days < 0 {
+                let remaining = exp.with_timezone(&chrono::Utc) - chrono::Utc::now();
+                let days = days_remaining_ceil(remaining);
+                // Expired exactly at the expiry instant (num_days() used to
+                // truncate, granting up to one extra day past expiry).
+                if remaining.num_seconds() < 0 {
                     return LicenseStatus {
                         is_valid: false,
                         license_type: LicenseType::Expired,
@@ -688,6 +699,25 @@ mod tests {
         let trial = make_trial(chrono::Utc::now().to_rfc3339(), 7);
         let days = trial_days_remaining(&trial);
         assert!(days >= 6 && days <= 7, "expected 6-7 days remaining, got {}", days);
+    }
+
+    #[test]
+    fn test_fresh_trial_reports_full_duration() {
+        // A trial that started seconds ago must show the advertised 14 days,
+        // not 13 (truncation regression seen in the trial banner).
+        let trial = make_trial(chrono::Utc::now().to_rfc3339(), TRIAL_DAYS);
+        assert_eq!(trial_days_remaining(&trial), TRIAL_DAYS);
+    }
+
+    #[test]
+    fn test_days_remaining_ceil() {
+        use chrono::Duration;
+        assert_eq!(days_remaining_ceil(Duration::seconds(1)), 1);
+        assert_eq!(days_remaining_ceil(Duration::hours(23)), 1);
+        assert_eq!(days_remaining_ceil(Duration::hours(25)), 2);
+        assert_eq!(days_remaining_ceil(Duration::days(14) - Duration::seconds(30)), 14);
+        assert_eq!(days_remaining_ceil(Duration::zero()), 0);
+        assert_eq!(days_remaining_ceil(Duration::seconds(-5)), 0);
     }
 
     #[test]

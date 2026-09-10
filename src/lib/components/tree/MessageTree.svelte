@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TreeNode } from '$lib/types/hl7';
 	import { getTreeChildren, getFieldContent, searchMessage, type SearchHit } from '$lib/ipc/parser';
+	import { getFhirTreeChildren } from '$lib/ipc/validation';
 	import {
 		getExpectedSegments, getSegmentSchema, getCompositeComponents,
 		type ExpectedSegment,
@@ -385,7 +386,12 @@
 				childNodes = await expandPlaceholder(node);
 			} else {
 				if (!node._children) {
-					const children = await getTreeChildren(messageId, node.id);
+					// FHIR resources live in a separate backend store: asking the
+					// HL7 command for their children fails with "Message not found"
+					// and the node silently never expands.
+					const children = format === 'HL7v2'
+						? await getTreeChildren(messageId, node.id)
+						: await getFhirTreeChildren(messageId, node.id);
 					node._children = children;
 				}
 				childNodes = await mergeSchemaPlaceholders(node, node._children!);
