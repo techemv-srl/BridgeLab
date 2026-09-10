@@ -2,6 +2,12 @@
 	import { registerHL7Language } from './HL7MonarchLanguage';
 	import { registerHL7AutoComplete } from './HL7AutoComplete';
 	import { t, subscribeLocale } from '$lib/i18n';
+	// Monaco web workers, bundled by Vite. The JSON language service needs
+	// its own worker: handing it the generic editor worker makes that worker
+	// try to AMD-load the JSON module ("undefined is not an object
+	// (evaluating 'require.toUrl')") and FHIR JSON tabs lose validation.
+	import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+	import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 
 	type MonacoModule = typeof import('monaco-editor');
 	type IStandaloneCodeEditor = import('monaco-editor').editor.IStandaloneCodeEditor;
@@ -102,11 +108,8 @@
 			monacoMod = mod;
 
 			self.MonacoEnvironment = {
-				getWorker(_: string, _label: string) {
-					return new Worker(
-						new URL('monaco-editor/esm/vs/editor/editor.worker.js', import.meta.url),
-						{ type: 'module' }
-					);
+				getWorker(_: string, label: string) {
+					return label === 'json' ? new JsonWorker() : new EditorWorker();
 				}
 			};
 

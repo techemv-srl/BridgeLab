@@ -39,8 +39,14 @@ pub struct FhirValidationIssue {
 }
 
 /// Detect if content is a FHIR resource. Returns the format if detected.
+/// Strip a leading UTF-8 byte-order mark: `str::trim` does not treat U+FEFF
+/// as whitespace, and files saved by Windows tools frequently start with it.
+pub fn strip_bom(content: &str) -> &str {
+    content.strip_prefix('\u{feff}').unwrap_or(content)
+}
+
 pub fn detect_fhir(content: &str) -> Option<FhirFormat> {
-    let trimmed = content.trim();
+    let trimmed = strip_bom(content).trim();
 
     // JSON detection
     if trimmed.starts_with('{') {
@@ -495,6 +501,19 @@ mod tests {
     fn test_detect_not_fhir() {
         assert_eq!(detect_fhir("MSH|^~\\&|"), None);
         assert_eq!(detect_fhir("Hello world"), None);
+    }
+
+    #[test]
+    fn test_detect_fhir_with_utf8_bom() {
+        // Windows editors prepend U+FEFF; str::trim does not strip it.
+        let json = "\u{feff}{\"resourceType\": \"Patient\", \"id\": \"123\"}";
+        assert_eq!(detect_fhir(json), Some(FhirFormat::Json));
+        let xml = "\u{feff}<Patient xmlns=\"http://hl7.org/fhir\"><id value=\"123\"/></Patient>";
+        assert_eq!(detect_fhir(xml), Some(FhirFormat::Xml));
+        assert_eq!(strip_bom("\u{feff}abc"), "abc");
+        assert_eq!(strip_bom("abc"), "abc");
+        // A BOM-prefixed document must also parse, not just be detected.
+        assert!(parse_fhir_json(strip_bom(json)).is_ok());
     }
 
     #[test]
