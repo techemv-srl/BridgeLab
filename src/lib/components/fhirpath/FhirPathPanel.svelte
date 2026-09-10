@@ -89,6 +89,14 @@
 			{#each examples.slice(0, 4) as ex}
 				<button class="example-chip" onclick={() => useExample(ex)}>{ex}</button>
 			{/each}
+			<!-- Recent expressions share the row: a separate footer used to push
+			     the result list out of the (short) bottom panel entirely. -->
+			{#if history.length > 0}
+				<span class="examples-label history-label">Recent:</span>
+				{#each history.slice(0, 4) as h}
+					<button class="history-chip" onclick={() => useExample(h)}>{h}</button>
+				{/each}
+			{/if}
 		</div>
 	</div>
 
@@ -121,18 +129,10 @@
 		{/if}
 	</div>
 
-	{#if history.length > 0}
-		<div class="fp-history">
-			<div class="history-label">Recent:</div>
-			{#each history as h}
-				<button class="history-chip" onclick={() => useExample(h)}>{h}</button>
-			{/each}
-		</div>
-	{/if}
 </div>
 
 <style>
-	.fp-panel { display: flex; flex-direction: column; height: 100%; background: var(--color-bg-secondary); font-size: 12px; overflow: hidden; }
+	.fp-panel { display: flex; flex-direction: column; height: 100%; background: var(--color-bg-secondary); font-size: 12px; overflow-y: auto; }
 	.fp-header { padding: 6px 12px; border-bottom: 1px solid var(--color-border); font-weight: 600; font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
 
 	.fp-input-area { padding: 8px 12px; border-bottom: 1px solid var(--color-border); flex-shrink: 0; }
@@ -148,7 +148,9 @@
 	.example-chip { padding: 2px 8px; background: var(--color-bg-tertiary); border: 1px solid var(--color-border); border-radius: 10px; color: var(--color-accent); font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer; }
 	.example-chip:hover { background: var(--color-border); }
 
-	.fp-output { flex: 1; overflow-y: auto; padding: 8px 12px; }
+	/* The result list must never be squeezed to a few pixels: keep a usable
+	   minimum and let the whole panel scroll when the bottom dock is short. */
+	.fp-output { flex: 1; min-height: 88px; overflow-y: auto; padding: 8px 12px; }
 	.fp-empty { padding: 16px; text-align: center; color: var(--color-text-secondary); font-style: italic; }
 
 	.result-error { padding: 8px; background: var(--color-error); color: white; border-radius: 4px; font-size: 11px; }
@@ -164,8 +166,7 @@
 	.result-idx { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--color-text-secondary); font-weight: 700; min-width: 30px; }
 	.result-value { flex: 1; margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; color: var(--color-text-primary); }
 
-	.fp-history { padding: 6px 12px; border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; flex-shrink: 0; }
-	.history-label { font-size: 10px; color: var(--color-text-secondary); }
+	.history-label { margin-left: 8px; }
 	.history-chip { padding: 2px 8px; background: var(--color-bg-tertiary); border: 1px solid var(--color-border); border-radius: 10px; color: var(--color-text-primary); font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer; }
 	.history-chip:hover { background: var(--color-border); color: var(--color-accent); }
 </style>

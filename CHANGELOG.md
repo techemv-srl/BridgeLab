@@ -18,6 +18,29 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   on every tab switch, FHIR elements show their path with a clear note
   instead of a spinner, and the panel's loading label no longer borrows
   the XSD export's "Generating…" text.
+- **FHIR files could not be opened from disk.** File → Open, a file
+  passed on the command line / "open with", and the recent-files list all
+  went through the HL7 parser, so a FHIR JSON or XML resource failed with
+  "Message does not start with MSH" even though the open dialog offers a
+  "FHIR Resources" filter. Files are now routed by content to the right
+  parser.
+- **Trial and license days rounded down.** A freshly started 14-day trial
+  showed "13 days remaining" and a license expiring later today showed
+  "0 days"; remaining days are now rounded up, and a license is treated
+  as expired at its actual expiry instant instead of up to a day later.
+- **FHIR tree nodes did not expand.** Clicking a container node of a FHIR
+  resource (e.g. `name [2 items]`) asked the HL7 backend for its children
+  and silently failed with "Message not found"; the tree now uses the
+  FHIR command for FHIR documents.
+- **FHIRPath results hidden.** In the default bottom-panel height the
+  result list ended up in a 36-pixel box below the summary line, so the
+  evaluated values were not visible without scrolling that box. Recent
+  expressions now share the examples row, the results area keeps a
+  usable minimum height and the panel scrolls as a whole.
+- **Monaco JSON worker.** FHIR JSON tabs handed the generic editor worker
+  to the JSON language service, which logged "undefined is not an object
+  (evaluating 'require.toUrl')" and left JSON validation/formatting off.
+  The JSON worker is now bundled and used for JSON models.
 
 ## [1.4.0] — 2026-09-01
 
