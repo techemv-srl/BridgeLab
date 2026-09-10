@@ -482,6 +482,12 @@ pub fn parse_fhir_message(
 ) -> Result<ParseResult, BridgeLabError> {
     tel.bump_mem("fhir_parsed");
     let file_size = content.len() as u64;
+    // BOM-prefixed files (common from Windows editors) must parse like any
+    // other: serde_json/quick-xml reject a leading U+FEFF.
+    let content = match content.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_string(),
+        None => content,
+    };
 
     let format_type = fhir::detect_fhir(&content)
         .ok_or_else(|| BridgeLabError::ParseError("Content is not a valid FHIR resource".into()))?;
