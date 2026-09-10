@@ -620,7 +620,34 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 	};
 	var LAUNCH_CODE = 'LAUNCH199';   // set to '' when the 20 launch licenses are gone
 	// --------------------------------------------------------------------
-	var force = new URLSearchParams(location.search).get('checkout') === 'test';
+	// ---- Channel attribution ------------------------------------------
+	// utm_source on the landing URL is kept for the tab's lifetime so the
+	// order tag (and the quote e-mail) carry the acquisition channel even
+	// after navigating around the site. Captured in quote-only mode too.
+	var params = new URLSearchParams(location.search);
+	var src = params.get('utm_source');
+	if (src) { try { sessionStorage.setItem('bl_src', src.slice(0, 40)); } catch (e) {} }
+
+	function storedSource() {
+		try { return sessionStorage.getItem('bl_src') || ''; } catch (e) { return ''; }
+	}
+
+	// Manual sales get the same attribution: append the stored source to
+	// the mailto quote links' body at click time.
+	document.querySelectorAll('a[href^="mailto:"][data-buy], a.quote-alt[href^="mailto:"]').forEach(function (a) {
+		a.addEventListener('click', function () {
+			var s = storedSource();
+			if (!s || !a.getAttribute('href') || a.getAttribute('href').indexOf('mailto:') !== 0) return;
+			var href = a.getAttribute('href');
+			if (href.indexOf('Source:%20') !== -1) return;
+			var tail = 'Source:%20' + encodeURIComponent(s);
+			href += href.indexOf('body=') !== -1 ? '%0A' + tail : '&body=' + tail;
+			a.setAttribute('href', href);
+		});
+	});
+	// --------------------------------------------------------------------
+
+	var force = params.get('checkout') === 'test';
 	if (!FS_CFG.enabled && !force) return;          // quote-only mode: SBL never loaded
 	var env = force ? 'test' : FS_CFG.environment;
 
@@ -645,6 +672,11 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 
 	function buy(tier) {
 		fastspring.builder.reset();                                   // clean cart
+		var source = storedSource();
+		if (!source && document.referrer) {
+			try { source = 'ref:' + new URL(document.referrer).hostname.slice(0, 32); } catch (e) {}
+		}
+		fastspring.builder.tag({ source: source || 'direct', page: location.pathname });
 		if (LAUNCH_CODE && tier === 'PRO') fastspring.builder.promo(LAUNCH_CODE);
 		fastspring.builder.add(FS_CFG.products[tier], 1);           // quantity editable in the popup = seats
 		fastspring.builder.checkout();
@@ -668,5 +700,6 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 	}
 })();
 </script>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "5bf97bc4ce874007be58efe2fc716778"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
