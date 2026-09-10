@@ -589,6 +589,14 @@
 		selectedTreeNode = node;
 	}
 
+	// A tree node belongs to the tab it was clicked in: drop the selection
+	// whenever the active tab changes, otherwise the Field Inspector keeps
+	// showing e.g. "MSH (0)" from an HL7 tab on top of a FHIR document.
+	$effect(() => {
+		void messageStore.activeTabId;
+		selectedTreeNode = null;
+	});
+
 	/** Derive the segment type code (e.g. "PID") for the currently selected tree node. */
 	let selectedSegmentType = $derived.by<string | null>(() => {
 		if (!selectedTreeNode || !activeTab?.parseResult) return null;
@@ -1190,6 +1198,7 @@
 							<FieldInspector
 								messageId={activeTab.parseResult.message_id}
 								version={activeTab.parseResult.version}
+								format={activeTab.parseResult.format}
 								selectedNode={selectedTreeNode}
 								segmentType={selectedSegmentType}
 								onViewFullValue={(text) => { expandedFieldContent = text; }}
