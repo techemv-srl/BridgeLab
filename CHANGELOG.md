@@ -9,6 +9,10 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   carried the pre-1.0 bridge mark; they are regenerated from the unified
   About-style mark used by the app icon, the About dialog and the website.
   The app's web favicon (`static/favicon.*`) is aligned to the same mark.
+- **Windows uninstaller icon.** The uninstaller window showed the generic
+  NSIS icon in its title bar because no uninstaller icon was configured;
+  it now uses the BridgeLab icon and the same header image as the
+  installer.
 
 ## [1.4.1] — 2026-09-10
 
