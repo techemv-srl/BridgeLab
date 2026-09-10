@@ -16,6 +16,12 @@ pub async fn open_file(
         .await
         .map_err(|e| BridgeLabError::FileError(format!("Failed to read {}: {}", path, e)))?;
 
+    // Route by content, not by extension: FHIR resources (JSON/XML) opened
+    // from the file dialog, a launch argument or the recent-files list must
+    // reach the FHIR parser instead of failing with "does not start with MSH".
+    if crate::parser::fhir::detect_fhir(&content).is_some() {
+        return super::parser::parse_fhir_message(content, store, tel);
+    }
     parse_message(content, Some(path), store, tel)
 }
 
