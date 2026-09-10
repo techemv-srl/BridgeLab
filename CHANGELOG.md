@@ -2,6 +2,16 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [Unreleased]
+
+### Fixed
+- **Tools → Compare messages… did nothing.** The client bundle was
+  picking up Svelte's *server* lifecycle stubs for components importing
+  from `svelte` (the Vite 5-era `@sveltejs/vite-plugin-svelte` 4 dropped
+  the `browser` resolve condition under Vite 6), so the diff dialog threw
+  on open instead of rendering. Upgraded the plugin to the Vite 6 line;
+  the compare dialog now opens with the side-by-side diff of two tabs.
+
 ## [1.4.0] — 2026-09-01
 
 ### Added

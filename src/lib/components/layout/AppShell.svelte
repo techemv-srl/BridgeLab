@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { /* onMount not used - resolves to server no-op */ } from 'svelte';
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
 	import { parseMessage } from '$lib/ipc/parser';
 	import { getPreference, setPreference } from '$lib/ipc/database';
