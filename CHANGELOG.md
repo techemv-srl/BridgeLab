@@ -2,7 +2,7 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
-## [Unreleased]
+## [1.4.1] — 2026-09-10
 
 ### Fixed
 - **Tools → Compare messages… did nothing.** The client bundle was
