@@ -2,6 +2,14 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [Unreleased]
+
+### Changed
+- **Windows installer artwork.** The NSIS sidebar and header images still
+  carried the pre-1.0 bridge mark; they are regenerated from the unified
+  About-style mark used by the app icon, the About dialog and the website.
+  The app's web favicon (`static/favicon.*`) is aligned to the same mark.
+
 ## [1.4.1] — 2026-09-10
 
 ### Fixed
