@@ -45,9 +45,12 @@ convention:</p>
 </ul>
 
 <h3>Coverage and tiers</h3>
-<p>Seven HL7 versions ship complete: <strong>2.3, 2.3.1, 2.4, 2.5, 2.6,
-2.7 and 2.7.1</strong> — 1,964 message structures in total, selectable
-from the version dropdown.</p>
+<p>Ten HL7 versions ship complete: <strong>2.1, 2.2, 2.3, 2.3.1, 2.4,
+2.5, 2.5.1, 2.6, 2.7 and 2.7.1</strong> — 2,320 message structures in
+total, selectable from the version dropdown.</p>
+<p>HL7 v2.7.1 is a technical-correction release of v2.7 and carries the
+same message definitions, so it is marked <strong>(= v2.7)</strong> in
+the dropdown and exports from the v2.7 catalogue.</p>
 <p>The free tier exports four high-use message types in HL7 v2.5 so the
 typical MLLP-debugging workflow is fully covered:</p>
 <ul>
@@ -118,19 +121,50 @@ list.</p>
 <h3>FHIRPath Evaluator (Pro)</h3>
 <p><kbd>Ctrl</kbd>+<kbd>P</kbd> or <strong>Tools → FHIRPath Evaluator</strong>
 opens an interactive console where you type FHIRPath expressions
-against the current resource. Supported operators include:</p>
+against the current resource.</p>
+<p>The evaluator implements the FHIRPath 2.0 language: the full operator
+set with the specification's precedence and three-valued logic, and
+around seventy functions.</p>
 <ul>
 	<li><strong>Navigation:</strong> <code>Patient.name.family</code>,
-		<code>Bundle.entry.resource</code></li>
+		<code>Bundle.entry.resource</code>, with choice elements reached by
+		their base name — <code>Observation.value</code> finds
+		<code>valueQuantity</code></li>
 	<li><strong>Indexing:</strong> <code>Patient.name[0].given</code></li>
-	<li><strong>Filters:</strong>
-		<code>Bundle.entry.where(resource.resourceType = 'Patient')</code></li>
-	<li><strong>Aggregates:</strong> <code>count()</code>,
-		<code>first()</code>, <code>last()</code>,
-		<code>distinct()</code></li>
-	<li><strong>Projection:</strong>
-		<code>Bundle.entry.select(resource.id)</code></li>
+	<li><strong>Filters and projection:</strong>
+		<code>where()</code>, <code>select()</code>, <code>repeat()</code>,
+		<code>ofType()</code>, with <code>$this</code> and
+		<code>$index</code> bound inside them</li>
+	<li><strong>Collections:</strong> <code>count()</code>,
+		<code>first()</code>, <code>last()</code>, <code>tail()</code>,
+		<code>skip()</code>, <code>take()</code>, <code>distinct()</code>,
+		<code>sort()</code>, <code>union()</code>, <code>combine()</code>,
+		<code>intersect()</code>, <code>exclude()</code>,
+		<code>aggregate()</code></li>
+	<li><strong>Logic:</strong> <code>and</code>, <code>or</code>,
+		<code>xor</code>, <code>implies</code>, <code>not()</code>,
+		<code>exists()</code>, <code>all()</code>, <code>iif()</code> —
+		all with the empty collection as the "unknown" value</li>
+	<li><strong>Strings:</strong> <code>substring()</code>,
+		<code>matches()</code>, <code>replace()</code>,
+		<code>split()</code>, <code>join()</code>, <code>encode()</code>,
+		<code>escape()</code> and friends</li>
+	<li><strong>Dates and quantities:</strong> partial-precision literals
+		(<code>@2015</code>, <code>@2015-02-04T14:34:28+10:00</code>),
+		duration arithmetic (<code>Patient.birthDate + 18 years</code>) and
+		unit conversion within a dimension
+		(<code>4 'g' = 4000 'mg'</code>)</li>
+	<li><strong>FHIR extras:</strong> <code>extension(url)</code>,
+		<code>hasValue()</code>, and <code>resolve()</code>, which follows
+		a Reference to a contained or bundled resource</li>
+	<li><strong>Debugging:</strong> <code>trace('label')</code> passes its
+		input through unchanged and shows it under the result, so you can
+		see what a long path produced halfway along</li>
 </ul>
+<p>Comparing values of different precision returns the empty collection
+rather than a guess: <code>@2015-02-04 = @2015-02</code> is neither true
+nor false, because the second value could be that day or another one in
+the same month.</p>
 <p>Recent expressions are kept in a history dropdown for quick replay.</p>
 
 <h3>FHIR validation</h3>
@@ -140,6 +174,76 @@ fields (e.g. <code>Patient.identifier</code>), invalid data types
 <code>meta.profile</code> canonical URLs are listed as info findings
 (profile conformance itself is not checked); malformed entries are
 flagged as warnings.</p>
+
+<h3>Profile validation (Pro)</h3>
+<p>By default a FHIR resource is checked structurally: is there a
+<code>resourceType</code>, do the resource-specific rules hold. Checking it
+against a <strong>StructureDefinition</strong> — the real definition of what
+a Patient may contain — needs those definitions, and they ship as FHIR NPM
+packages.</p>
+<p><strong>Tools → FHIR profile packages…</strong> installs one from a
+<code>.tgz</code>. Start with <code>hl7.fhir.r4.core</code> from
+packages.fhir.org for the base resource definitions, and add national or
+site-specific implementation guides on top.</p>
+<p>Once a package is installed, every FHIR validation also checks:</p>
+<ul>
+	<li><strong>Cardinality</strong> — a required element that is missing, or
+		a <code>0..1</code> element that repeats.</li>
+	<li><strong>Element types</strong> — a boolean written as a string, a
+		number where an object belongs.</li>
+	<li><strong>Choice elements</strong> — <code>value[x]</code> must appear
+		as exactly one of <code>valueQuantity</code>,
+		<code>valueString</code> and so on. Writing a plain <code>value</code>,
+		or two forms at once, is reported.</li>
+	<li><strong>Fixed values and patterns</strong> — what a profile pins
+		down.</li>
+	<li><strong>Unknown elements</strong> — a name the profile does not
+		define. This is the check that catches a typo like
+		<code>genderr</code> or an element belonging to a different resource
+		type.</li>
+</ul>
+<p>Profiles a resource declares in <code>meta.profile</code> are applied
+automatically when the package defining them is installed. When it is not,
+the validator says so rather than quietly reporting a clean result — and
+when profiles did run, the report says that too, because "no findings" means
+very different things in the two cases.</p>
+<p><strong>Terminology is out of scope.</strong> A <code>required</code>
+binding can only be checked by expanding the ValueSet, which means shipping
+the terminology packages or calling a server. BridgeLab leaves bindings
+unchecked rather than half-checking them.</p>
+<p>Installing a package requires a Professional license. Packages already
+installed keep validating in every tier, so a lapsed trial never turns
+previously clean resources red.</p>
+
+<h3>Custom FHIR rules (Pro)</h3>
+<p><strong>Tools → FHIR validation rules…</strong> opens an editor for your
+own checks. They run alongside the built-in ones every time you validate a
+resource, and they are stored as an ordinary plugin pack
+(<code>plugins/fhir/user-rules.json</code>) you can copy between
+machines or commit to a repository.</p>
+<p>A rule takes one of two shapes:</p>
+<ul>
+	<li><strong>Expression must be true</strong> — a FHIRPath invariant, the
+		way FHIR writes its own constraints:
+		<code>identifier.exists()</code>, or
+		<code>value.exists() xor dataAbsentReason.exists()</code>.</li>
+	<li><strong>Path + check</strong> — a FHIRPath selector plus something to
+		assert about the values it picks up: must be present, how many,
+		matches a pattern, one of a list, contains text, or a length
+		bound.</li>
+</ul>
+<p>Set <strong>Resource type</strong> to scope a rule to Patient,
+Observation and so on, or leave it empty to apply it to everything. A rule
+scoped to a type also fires for the matching resources inside a Bundle,
+with the finding reported against <code>entry[n].resource.…</code>.</p>
+<p><strong>Test on open resource</strong> runs the rule you are editing
+against the resource in the active tab before you save it, and shows which
+values the selector actually picked up — the fastest way to tell a rule that
+passes from one that never ran. If the open resource is of a different type,
+the editor says so rather than reporting a pass.</p>
+<p>Rules you already have keep working in every tier; the editor itself
+requires a Professional license. Hand-written packs are documented in
+<code>docs/PLUGINS.md</code>.</p>
 
 <h3>FHIR templates</h3>
 <p><strong>File → New from template</strong> includes a FHIR category: a
@@ -266,6 +370,8 @@ hospitals.</p>
 	<tr><td>Anonymization masking</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Export JSON/CSV</td>
+		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>FHIR profile packages &amp; rules builder</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIRPath Evaluator + Bundle Visualizer</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>

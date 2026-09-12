@@ -47,6 +47,8 @@
 		onExportJson: () => void;
 		onExportCsv: () => void;
 		onExportXsd: () => void;
+		onShowFhirRules: () => void;
+		onShowFhirPackages: () => void;
 		onCompareMessages: () => void;
 		onBatchValidate: () => void;
 		onBatchAnonymize: () => void;
@@ -91,6 +93,8 @@
 		onExportJson,
 		onExportCsv,
 		onExportXsd,
+		onShowFhirRules,
+		onShowFhirPackages,
 		onCompareMessages,
 		onBatchValidate,
 		onBatchAnonymize,
@@ -345,6 +349,12 @@
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onExportXsd)}>
 					<span>{tr('menu.tools.exportXsd')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onShowFhirRules)}>
+					<span>{tr('menu.tools.fhirRules')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onShowFhirPackages)}>
+					<span>{tr('menu.tools.fhirPackages')}</span>
 				</button>
 			</div>
 		{/if}

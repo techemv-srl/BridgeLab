@@ -22,6 +22,8 @@
 //! | anonymize_mask     | ✗         | ✓   | ✓          |
 //! | export             | ✗         | ✓   | ✓          |
 //! | fhirpath           | ✗         | ✓   | ✓          |
+//! | fhir_rules_builder | ✗ (4)     | ✓   | ✓          |
+//! | fhir_profile_validation | ✗ (5) | ✓   | ✓          |
 //! | bundle_visualizer  | ✗         | ✓   | ✓          |
 //! | plugins_unlimited  | ✗ (3)     | ✓   | ✓          |
 //! | test_cases_unlimited| ✗ (3)    | ✓   | ✓          |
@@ -39,6 +41,12 @@
 //!     active and [`COMMUNITY_MAX_TEST_CASES`] saved test cases. Existing
 //!     data is never locked or deleted when a trial ends — the caps only
 //!     block *new* activations/saves beyond the limit.
+//! (4) `fhir_rules_builder` gates the in-app editor, not the rules: a FHIR
+//!     rule pack written by hand runs in every tier under the same plugin
+//!     cap, exactly as HL7 v2 packs already do.
+//! (5) `fhir_profile_validation` gates *installing* a profile package.
+//!     Packages already installed keep validating in every tier, so a
+//!     trial that lapses never turns previously clean resources red.
 
 use crate::licensing::{self, LicenseStatus, LicenseType};
 
@@ -63,6 +71,8 @@ const PRO_FEATURES: &[&str] = &[
     "anonymize_mask",
     "export",
     "fhirpath",
+    "fhir_rules_builder",
+    "fhir_profile_validation",
     "bundle_visualizer",
     "plugins_unlimited",
     "test_cases_unlimited",

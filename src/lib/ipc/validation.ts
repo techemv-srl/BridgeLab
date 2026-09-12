@@ -27,6 +27,12 @@ export interface FhirValidationReport {
 	error_count: number;
 	warning_count: number;
 	info_count: number;
+	/**
+	 * True when at least one installed StructureDefinition was applied.
+	 * "No profile findings" means something very different when no profile
+	 * ran, so the UI reports which it was.
+	 */
+	profiles_applied: boolean;
 }
 
 export async function validateMessage(messageId: string): Promise<ValidationReport> {

@@ -120,7 +120,7 @@
 					<span>{tr('xsd.version')}</span>
 					<select bind:value={selectedVersion} onchange={onVersionChange}>
 						{#each versions as v (v.key)}
-							<option value={v.key}>HL7 v{v.label}{v.tier === 'pro' ? ' (PRO)' : ''}</option>
+							<option value={v.key}>HL7 v{v.label}{v.aliased_from ? ` (= v${v.aliased_from})` : ''}{v.tier === 'pro' ? ' (PRO)' : ''}</option>
 						{/each}
 					</select>
 				</label>

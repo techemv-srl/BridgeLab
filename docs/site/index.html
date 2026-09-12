@@ -138,9 +138,13 @@
 				<h3>Validation &amp; FHIRPath</h3>
 				<p>
 					Structural, field-level and data-type validation out of
-					the box. FHIRPath evaluator for Bundles, Observations,
-					Patients. Your own rules drop in as declarative JSON
-					plugin packs &mdash; no recompile.
+					the box, plus FHIR conformance against the
+					StructureDefinitions in any FHIR package you install
+					&mdash; cardinality, element types, choice elements,
+					unknown elements. A full FHIRPath&nbsp;2.0 evaluator,
+					checked against the official HL7 test suite. Your own
+					rules drop in as declarative JSON plugin packs &mdash;
+					no recompile, no code execution.
 				</p>
 			</article>
 			<article class="feat">
@@ -528,8 +532,8 @@
 			<details>
 				<summary>Which HL7 versions are supported?</summary>
 				<p>
-					v2.3 through v2.7.1 for segment / field schemas
-					(seven versions, 1,964 message structures).
+					v2.1 through v2.7.1 for segment / field schemas
+					(ten versions, 2,320 message structures).
 					Custom (Z-) segments parse and edit cleanly, they
 					just fall back to raw values in the Field Inspector
 					unless you ship a plugin pack for them.

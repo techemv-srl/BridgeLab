@@ -4,6 +4,12 @@ export interface VersionOption {
 	key: string;
 	label: string;
 	tier: 'free' | 'pro';
+	/**
+	 * Set when the version reuses another release's definitions (HL7 v2.7.1
+	 * is a technical correction of v2.7 and ships identical tables), so the
+	 * dropdown can say so rather than imply distinct data.
+	 */
+	aliased_from: string | null;
 }
 
 export interface MessageOption {

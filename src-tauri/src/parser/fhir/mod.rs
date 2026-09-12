@@ -1,6 +1,7 @@
 pub mod bundle;
 pub mod xml;
 pub mod fhirpath;
+pub mod profile;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -31,7 +32,7 @@ pub struct FhirResource {
 }
 
 /// Validation issue for FHIR resources.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FhirValidationIssue {
     pub severity: String,
     pub message: String,
@@ -330,9 +331,10 @@ pub fn validate_fhir_json(resource: &FhirResource) -> Vec<FhirValidationIssue> {
         });
     }
 
-    // meta.profile declarations: canonical URLs are surfaced (conformance
-    // against the profile itself is not checked — that needs the profile
-    // package), malformed entries are flagged.
+    // meta.profile declarations: canonical URLs are surfaced and malformed
+    // entries flagged. Whether conformance against the profile is actually
+    // checked depends on the installed packages, so the caller reports that
+    // rather than this function claiming either way.
     if let Some(profiles) = json.get("meta").and_then(|m| m.get("profile")) {
         match profiles.as_array() {
             Some(list) => {
@@ -341,10 +343,7 @@ pub fn validate_fhir_json(resource: &FhirResource) -> Vec<FhirValidationIssue> {
                         Some(url) if is_absolute_uri(url) => {
                             issues.push(FhirValidationIssue {
                                 severity: "info".into(),
-                                message: format!(
-                                    "Declares profile {} (conformance not checked)",
-                                    url
-                                ),
+                                message: format!("Declares profile {}", url),
                                 path: format!("meta.profile[{}]", i),
                             });
                         }

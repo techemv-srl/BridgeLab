@@ -154,6 +154,9 @@ Before running tests:
 | BL-AUTO-03 | P1 | MSA-1 ACK codes | In MSA segment field 1 | AA, AE, AR suggested | |
 | BL-AUTO-04 | P1 | PID-8 gender suggestions | In PID-8 | M, F, O, U, A suggested | |
 | BL-AUTO-05 | P2 | Hover shows field info | Hover on any field | Tooltip with name, type, required flag | |
+| BL-AUTO-06 | P1 | Hints follow MSH-12 | Open a message declaring `2.3` in MSH-12, hover a PID field | Field metadata comes from the 2.3 tables, not 2.5 | |
+| BL-AUTO-07 | P1 | Hints for the oldest versions | MSH-12 = `2.1`, then `2.2`; hover a PID field | Tooltip still appears (regression: these lost hints entirely when they were added to the catalogue) | |
+| BL-AUTO-08 | P2 | Unknown version falls back | MSH-12 = `2.9` or empty | Hints still shown, from the default tables | |
 
 ## 7. Tree View
 
@@ -226,6 +229,8 @@ Before running tests:
 | BL-FHIR-04 | P1 | FHIR XML detection | Paste FHIR XML | Format "FHIR XML" detected | |
 | BL-FHIR-05 | P1 | FHIR validation | Load Patient, F6 | Validation report (error on bad gender, etc.) | |
 | BL-FHIR-06 | P1 | FHIR Bundle analysis | Load bundle, Tools > Bundle Visualizer | Modal opens with entries | |
+| BL-FHIR-07 | P1 | meta.profile surfaced | Load a resource declaring `meta.profile`, F6 | Info finding lists the canonical URL | |
+| BL-FHIR-08 | P1 | Unchecked conformance is stated | Same, with no profile package installed | Info finding says conformance was **not** checked and points at Tools → FHIR profile packages | |
 
 ## 12. FHIR Bundle Visualizer
 
@@ -257,9 +262,21 @@ Before running tests:
 | BL-FP-07 | P0 | where() filter | `Bundle.entry.where(resource.resourceType = 'Patient')` | Filtered entries | |
 | BL-FP-08 | P1 | select() | `Bundle.entry.select(resource.resourceType)` | List of types | |
 | BL-FP-09 | P1 | distinct() | `Bundle.entry.select(resource.resourceType).distinct()` | Unique types | |
-| BL-FP-10 | P1 | Invalid expression error | `Patient.name[` | Error message shown | |
+| BL-FP-10 | P1 | Invalid expression error | `Patient.name[` | Error names the problem, not a silent empty result | |
 | BL-FP-11 | P1 | Example chips work | Click an example | Expression run | |
 | BL-FP-12 | P2 | History persists | Run 3 queries | History chips show | |
+| BL-FP-13 | P0 | Boolean logic is three-valued | `true and {}` then `false and {}` | Empty collection, then `false` | |
+| BL-FP-14 | P0 | Operator precedence | `1 + 2 * 3` | `7` | |
+| BL-FP-15 | P0 | Choice element by base name | `Observation.value.unit` on a valueQuantity | Unit returned (no need to write `valueQuantity`) | |
+| BL-FP-16 | P1 | Partial-precision dates | `@2015-02-04 = @2015-02` | Empty collection (indeterminate), not true/false | |
+| BL-FP-17 | P1 | Quantity unit conversion | `4 'g' = 4000 'mg'` | `true` | |
+| BL-FP-18 | P1 | Date duration arithmetic | `Patient.birthDate + 18 years` | Date 18 years later, same precision | |
+| BL-FP-19 | P1 | resolve() follows a Reference | On a Bundle: `Bundle.entry.resource.ofType(Observation).subject.resolve().id` | Referenced Patient id | |
+| BL-FP-20 | P1 | sort() orders results | `(3 \| 1 \| 2).sort()` then `sort(-$this)` | Ascending, then descending | |
+| BL-FP-21 | P1 | trace() shows captures | `Patient.name.trace('names').count()` | Count returned **and** a "names" block listed under the result | |
+| BL-FP-22 | P1 | Unknown function reported | `Patient.nosuchfn()` | "Unknown function" error | |
+| BL-FP-23 | P2 | Singleton misuse reported | `Patient.name.given > 1` | Error mentioning a single value | |
+| BL-FP-24 | P2 | Conformance suite | `./scripts/fetch-fhirpath-suite.sh` then `BL_FHIRPATH_SUITE=… cargo test --test fhirpath_suite` | Pass rate at or above the recorded baseline | |
 
 ## 14. Communication - MLLP
 
@@ -511,7 +528,7 @@ Before running tests:
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
-| BL-PLUG-01 | P0 | Plugins dir auto-created | Open Settings → Plugins on fresh install | `validation/` and `anonymization/` subdirs exist under `<config>/BridgeLab/plugins` | |
+| BL-PLUG-01 | P0 | Plugins dir auto-created | Open Settings → Plugins on fresh install | `validation/`, `fhir/` and `anonymization/` subdirs exist under `<config>/BridgeLab/plugins` | |
 | BL-PLUG-02 | P0 | Open plugins folder button | Click "Open plugins folder" | OS file manager reveals the plugins directory | |
 | BL-PLUG-03 | P0 | Drop validation pack, reload | Copy `examples/plugins/validation/sample-validation.json` into plugins dir, click Reload | Pack appears in list with rule_count=4, kind=validation | |
 | BL-PLUG-04 | P0 | Custom rule fires on F6 | Load a PID without PID-3 populated, F6 | Validation panel includes `SAMPLE-PID-001` warning | |
@@ -597,6 +614,66 @@ Run full suite on each:
 | Ubuntu 22.04 | - | | | |
 | Fedora 39+ | - | | | |
 
+## 36. FHIR Validation Rules (builder)
+
+Rules live in `<config>/BridgeLab/plugins/fhir/*.json`; the builder owns
+`user-rules.json`. Reference pack: `examples/plugins/fhir/sample-fhir-rules.json`.
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-FRULE-01 | P0 | Editor opens | Tools → FHIR validation rules… | Dialog opens, lists existing rules and the pack path | |
+| BL-FRULE-02 | P0 | Preset creates a usable rule | Click "Must have identifier", Save | Rule saved; pack file exists on disk | |
+| BL-FRULE-03 | P0 | Invariant fires | Save `identifier.exists()` on Patient, open a Patient without one, F6 | Error finding with the rule's message | |
+| BL-FRULE-04 | P0 | Invariant passes | Same rule, Patient **with** an identifier | No finding | |
+| BL-FRULE-05 | P0 | Selector + check fires | `telecom.where(system='phone').value` + regex, open a Patient with an odd phone, F6 | Finding naming the offending value | |
+| BL-FRULE-06 | P0 | Cardinality check | `name` + cardinality min 1, Patient with no name | Finding says "expected at least 1, found 0" | |
+| BL-FRULE-07 | P0 | Bad FHIRPath rejected on save | Type `identifier.exists(` and Save | Save refused with a parse error; nothing written to disk | |
+| BL-FRULE-08 | P0 | Test on open resource | Load a Patient, edit a rule, click Test | Pass/fail shown **and** the values the selector matched | |
+| BL-FRULE-09 | P1 | Test says when a rule does not apply | Rule scoped to Observation, Patient open, Test | "Did not apply" — not a pass | |
+| BL-FRULE-10 | P1 | Rule reaches Bundle entries | Rule scoped to Patient, open a Bundle with a non-conforming Patient, F6 | Finding path starts `entry[n].resource.` | |
+| BL-FRULE-11 | P1 | Broken rule is reported | Hand-edit the pack to use `nosuchfn()`, Reload, F6 | Finding says the rule failed to evaluate (not silently skipped) | |
+| BL-FRULE-12 | P1 | Severity respected | One rule per severity | Error/warning/info counts increment correctly | |
+| BL-FRULE-13 | P1 | Hand-written pack loads | Copy the sample pack into `plugins/fhir/`, Reload | Appears in Settings → Plugins with kind `fhir` | |
+| BL-FRULE-14 | P2 | Delete a rule | Select a rule, Delete, Save | Rule gone from the file after reload | |
+| BL-FRULE-15 | P2 | Editor gated in Community | Community tier, open the editor and Save | Upgrade prompt; existing rules still run | |
+
+## 37. FHIR Profile Packages & Conformance
+
+Packages live in `<config>/BridgeLab/fhir-packages/`. Get
+`hl7.fhir.r4.core` from packages.fhir.org, or run
+`./scripts/fetch-fhir-core-package.sh`.
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-PROF-01 | P0 | Manager opens | Tools → FHIR profile packages… | Dialog opens, empty state explains where to get a package | |
+| BL-PROF-02 | P0 | Install core package | Install `hl7.fhir.r4.core` 4.0.1 `.tgz` | Row appears: name, version, FHIR 4.0.1, ~653 profiles | |
+| BL-PROF-03 | P0 | Survives restart | Restart the app, reopen the manager | Package still listed; no re-read of the archive | |
+| BL-PROF-04 | P0 | Conforming resource stays clean | Load a spec example Patient, F6 | No profile findings; report states profiles were applied | |
+| BL-PROF-05 | P0 | Unknown element caught | Change `gender` to `genderr`, F6 | Error: not defined by Patient | |
+| BL-PROF-06 | P0 | Wrong JSON type caught | `"active": "yes"`, F6 | Error: must be a boolean | |
+| BL-PROF-07 | P0 | Cardinality caught | `"gender": ["male","female"]`, F6 | Error: allows 0..1 but found 2 | |
+| BL-PROF-08 | P0 | Required element caught | Observation with no `status`/`code`, F6 | Error naming each required element | |
+| BL-PROF-09 | P0 | Choice element caught | Write `value` instead of `valueQuantity` on an Observation, F6 | Error: not defined (the plain form is not legal) | |
+| BL-PROF-10 | P1 | Two choice forms at once | Both `deceasedBoolean` and `deceasedDateTime`, F6 | Error: only one of its forms | |
+| BL-PROF-11 | P1 | Declared profile applied | Install a package defining a profile, declare it in `meta.profile`, F6 | That profile's constraints are enforced on top of the base | |
+| BL-PROF-12 | P1 | Missing profile reported | Declare a profile no installed package defines, F6 | Warning: declared but not installed | |
+| BL-PROF-13 | P1 | Nested type checked | Break a field inside `name` (e.g. add `nosuchfield`), F6 | Finding path points at `Patient.name[0].nosuchfield` | |
+| BL-PROF-14 | P1 | Remove a package | Click Remove | Row disappears; F6 no longer reports profile findings | |
+| BL-PROF-15 | P1 | Install gated in Community | Community tier, try to install | Upgrade prompt; already-installed packages keep validating | |
+| BL-PROF-16 | P2 | Bad archive rejected | Install a `.tgz` that is not a FHIR package | Clear error; existing packages unaffected | |
+| BL-PROF-17 | P2 | Whole-package regression | `BL_FHIR_PACKAGE=… BL_FHIR_EXAMPLES=… cargo test --test fhir_profiles` | Findings rate under the recorded threshold | |
+
+## 38. HL7 Version Catalogue
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-VER-01 | P0 | Ten versions offered | Tools → Export message schema as XSD… | Dropdown lists 2.1, 2.2, 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7, 2.7.1 | |
+| BL-VER-02 | P0 | v2.7.1 labelled as an alias | Look at the dropdown entry | Shown as `HL7 v2.7.1 (= v2.7)` | |
+| BL-VER-03 | P0 | Export works for a new version | Pick v2.5.1, choose a message, preview | XSD generated without error | |
+| BL-VER-04 | P1 | Oldest versions are small but real | Pick v2.1 | Message list is short (~39) and exports cleanly | |
+| BL-VER-05 | P1 | Tree follows MSH-12 | Open messages declaring 2.3 and 2.6 with schema-aware tree on | Placeholder rows differ per version | |
+| BL-VER-06 | P2 | Counts agree across the UI | Welcome card, manual, landing FAQ | All say ten versions / 2,320 structures | |
+
 ## Test Execution Log
 
 Log of test runs; append new sessions at bottom.
@@ -619,7 +696,7 @@ Add observations during testing here:
 Separately from this manual plan, the following automated tests run on every commit (see `.github/workflows/feature-tests.yml`):
 
 - **CLI feature tests** (BL-CLI-01..12) - validate, JSON, JUnit, info, anonymize, to-json, batch
-- **Rust core tests** - `cd src-tauri && cargo test` (unit + integration, ~75 tests)
+- **Rust core tests** - `cd src-tauri && cargo test --all` (unit + integration, 319 tests)
 - **Schema lookup** (BL-INSP-05 partial) - `get_segment_info` / `get_field_info` for MSH/PID/PV1
 - **Parser fixtures** (BL-PARSER-01/02/03, BL-PERF-03) - smoke over `tests/fixtures/hl7/` via CLI
 - **MLLP roundtrip** (BL-MLLP-04/05/09/10) - in-process listener with auto-ACK verified both from the
@@ -629,6 +706,21 @@ Separately from this manual plan, the following automated tests run on every com
 - **Keygen roundtrip** (BL-LIC-14) - generate keypair, sign a license, verify signature
 - **Frontend check** - `pnpm check` (svelte-check) runs with 0 errors threshold
 - **Frontend build** - `pnpm build` succeeds
+- **Frontend unit tests** - `pnpm test` (vitest: stores, MSH-12 version detection)
+
+Two conformance suites run against third-party corpora that are **not
+vendored**; both skip cleanly when the data is absent, so a plain
+`cargo test` stays offline:
+
+- **FHIRPath** (BL-FP-24) - `./scripts/fetch-fhirpath-suite.sh`, then
+  `BL_FHIRPATH_SUITE=.fhirpath-suite cargo test --test fhirpath_suite`.
+  Runs the official HL7 FHIRPath suite and fails if the pass rate drops
+  below the baseline recorded in the harness.
+- **FHIR profiles** (BL-PROF-17) - `./scripts/fetch-fhir-core-package.sh`,
+  then `BL_FHIR_PACKAGE=… BL_FHIR_EXAMPLES=… cargo test --test fhir_profiles`.
+  Validates every resource in the HL7 R4 core package; a findings rate
+  above the threshold means a validator bug, since HL7's own resources
+  conform to HL7's own definitions.
 
 ### Memory / performance tuning
 

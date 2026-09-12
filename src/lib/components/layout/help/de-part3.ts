@@ -52,9 +52,13 @@ HL7 v2.xml:</p>
 </ul>
 
 <h3>Abdeckung und Stufen</h3>
-<p>Sieben HL7-Versionen sind vollständig enthalten: <strong>2.3,
-2.3.1, 2.4, 2.5, 2.6, 2.7 und 2.7.1</strong> — insgesamt 1.964
-Nachrichtenstrukturen, wählbar über das Versions-Dropdown.</p>
+<p>Zehn HL7-Versionen sind vollständig enthalten: <strong>2.1, 2.2,
+2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7 und 2.7.1</strong> — insgesamt
+2.320 Nachrichtenstrukturen, wählbar über das Versions-Dropdown.</p>
+<p>HL7 v2.7.1 ist eine technische Korrekturversion von v2.7 und
+enthält dieselben Nachrichtendefinitionen; sie ist im Dropdown daher
+mit <strong>(= v2.7)</strong> gekennzeichnet und exportiert aus dem
+v2.7-Katalog.</p>
 <p>Die kostenlose Stufe exportiert vier häufig genutzte
 Nachrichtentypen in HL7 v2.5, womit der typische
 MLLP-Debugging-Workflow vollständig abgedeckt ist:</p>
@@ -130,19 +134,51 @@ Verfügbar bis 150 Einträge; größere Bundles verwenden die Liste.</p>
 <p><kbd>Ctrl</kbd>+<kbd>P</kbd> oder
 <strong>Werkzeuge → FHIRPath-Evaluator</strong> öffnet eine
 interaktive Konsole, in der Sie FHIRPath-Ausdrücke gegen die aktuelle
-Ressource eingeben. Unterstützte Operatoren sind unter anderem:</p>
+Ressource eingeben.</p>
+<p>Der Evaluator implementiert die Sprache FHIRPath 2.0: den vollen
+Operatorsatz mit der Präzedenz und der dreiwertigen Logik der
+Spezifikation sowie rund siebzig Funktionen.</p>
 <ul>
 	<li><strong>Navigation:</strong> <code>Patient.name.family</code>,
-		<code>Bundle.entry.resource</code></li>
+		<code>Bundle.entry.resource</code>; Choice-Elemente werden über
+		ihren Basisnamen erreicht — <code>Observation.value</code> findet
+		<code>valueQuantity</code></li>
 	<li><strong>Indizierung:</strong> <code>Patient.name[0].given</code></li>
-	<li><strong>Filter:</strong>
-		<code>Bundle.entry.where(resource.resourceType = 'Patient')</code></li>
-	<li><strong>Aggregate:</strong> <code>count()</code>,
-		<code>first()</code>, <code>last()</code>,
-		<code>distinct()</code></li>
-	<li><strong>Projektion:</strong>
-		<code>Bundle.entry.select(resource.id)</code></li>
+	<li><strong>Filter und Projektion:</strong> <code>where()</code>,
+		<code>select()</code>, <code>repeat()</code>,
+		<code>ofType()</code>, mit <code>$this</code> und
+		<code>$index</code> darin verfügbar</li>
+	<li><strong>Sammlungen:</strong> <code>count()</code>,
+		<code>first()</code>, <code>last()</code>, <code>tail()</code>,
+		<code>skip()</code>, <code>take()</code>, <code>distinct()</code>,
+		<code>sort()</code>, <code>union()</code>, <code>combine()</code>,
+		<code>intersect()</code>, <code>exclude()</code>,
+		<code>aggregate()</code></li>
+	<li><strong>Logik:</strong> <code>and</code>, <code>or</code>,
+		<code>xor</code>, <code>implies</code>, <code>not()</code>,
+		<code>exists()</code>, <code>all()</code>, <code>iif()</code> —
+		die leere Sammlung steht dabei für „unbekannt“</li>
+	<li><strong>Zeichenketten:</strong> <code>substring()</code>,
+		<code>matches()</code>, <code>replace()</code>,
+		<code>split()</code>, <code>join()</code>, <code>encode()</code>,
+		<code>escape()</code> und Verwandte</li>
+	<li><strong>Daten und Mengen:</strong> Literale mit Teilpräzision
+		(<code>@2015</code>, <code>@2015-02-04T14:34:28+10:00</code>),
+		Dauer-Arithmetik (<code>Patient.birthDate + 18 years</code>) und
+		Einheitenumrechnung innerhalb einer Dimension
+		(<code>4 'g' = 4000 'mg'</code>)</li>
+	<li><strong>FHIR-Ergänzungen:</strong> <code>extension(url)</code>,
+		<code>hasValue()</code> und <code>resolve()</code>, das einer
+		Reference zu einer contained- oder Bundle-Ressource folgt</li>
+	<li><strong>Fehlersuche:</strong> <code>trace('Label')</code> reicht
+		die Eingabe unverändert weiter und zeigt die Werte unter dem
+		Ergebnis — so sieht man, was ein langer Pfad auf halbem Weg
+		liefert</li>
 </ul>
+<p>Der Vergleich unterschiedlich präziser Werte liefert die leere
+Sammlung statt einer Vermutung: <code>@2015-02-04 = @2015-02</code> ist
+weder wahr noch falsch, denn der zweite Wert könnte dieser Tag oder ein
+anderer desselben Monats sein.</p>
 <p>Zuletzt verwendete Ausdrücke stehen in einem Verlaufs-Dropdown zur
 schnellen Wiederverwendung bereit.</p>
 
@@ -154,6 +190,78 @@ Probleme. Deklarierte kanonische <code>meta.profile</code>-URLs werden
 als Info-Befunde gelistet (die Profilkonformität selbst wird nicht
 geprüft); fehlerhaft aufgebaute Einträge werden als Warnungen
 markiert.</p>
+
+<h3>Profilvalidierung (Pro)</h3>
+<p>Standardmäßig wird eine FHIR-Ressource strukturell geprüft: Gibt es einen
+<code>resourceType</code>, gelten die ressourcenspezifischen Regeln. Der
+Abgleich mit einer <strong>StructureDefinition</strong> — der eigentlichen
+Definition dessen, was ein Patient enthalten darf — braucht diese
+Definitionen, und die werden als FHIR-NPM-Pakete verteilt.</p>
+<p><strong>Werkzeuge → FHIR-Profilpakete…</strong> installiert eines aus
+einer <code>.tgz</code>-Datei. Beginnen Sie mit
+<code>hl7.fhir.r4.core</code> von packages.fhir.org für die
+Basisdefinitionen und ergänzen Sie nationale oder hauseigene
+Implementierungsleitfäden.</p>
+<p>Mit einem installierten Paket prüft jede FHIR-Validierung zusätzlich:</p>
+<ul>
+	<li><strong>Kardinalität</strong> — ein fehlendes Pflichtelement oder ein
+		<code>0..1</code>-Element, das sich wiederholt.</li>
+	<li><strong>Elementtypen</strong> — ein Boolean als Zeichenkette, eine
+		Zahl, wo ein Objekt hingehört.</li>
+	<li><strong>Choice-Elemente</strong> — <code>value[x]</code> muss als
+		genau eine Form erscheinen: <code>valueQuantity</code>,
+		<code>valueString</code> und so weiter. Ein nacktes
+		<code>value</code> oder zwei Formen gleichzeitig werden gemeldet.</li>
+	<li><strong>Feste Werte und Muster</strong> — was das Profil
+		festlegt.</li>
+	<li><strong>Unbekannte Elemente</strong> — ein Name, den das Profil nicht
+		definiert. Diese Prüfung fängt Tippfehler wie <code>genderr</code>
+		oder Elemente eines anderen Ressourcentyps ab.</li>
+</ul>
+<p>In <code>meta.profile</code> deklarierte Profile werden automatisch
+angewandt, sofern das definierende Paket installiert ist. Ist es das nicht,
+sagt der Validator das, statt stillschweigend ein sauberes Ergebnis zu
+melden — und wenn Profile gelaufen sind, sagt er auch das, denn „keine
+Befunde“ bedeutet in beiden Fällen sehr Unterschiedliches.</p>
+<p><strong>Terminologie bleibt außen vor.</strong> Eine
+<code>required</code>-Bindung lässt sich nur durch Expansion des ValueSets
+prüfen, was die Terminologiepakete oder einen Server voraussetzt. BridgeLab
+lässt Bindungen ungeprüft, statt sie halb zu prüfen.</p>
+<p>Das Installieren eines Pakets erfordert eine Professional-Lizenz. Bereits
+installierte Pakete validieren in jeder Stufe weiter — eine abgelaufene
+Testphase färbt zuvor saubere Ressourcen nie rot.</p>
+
+<h3>Eigene FHIR-Regeln (Pro)</h3>
+<p><strong>Werkzeuge → FHIR-Validierungsregeln…</strong> öffnet einen Editor
+für eigene Prüfungen. Sie laufen bei jeder Validierung zusammen mit den
+eingebauten und werden als gewöhnliches Plugin-Pack gespeichert
+(<code>plugins/fhir/user-rules.json</code>), das Sie zwischen Rechnern
+kopieren oder versionieren können.</p>
+<p>Eine Regel hat eine von zwei Formen:</p>
+<ul>
+	<li><strong>Ausdruck muss wahr sein</strong> — eine FHIRPath-Invariante,
+		so wie FHIR seine eigenen Constraints schreibt:
+		<code>identifier.exists()</code> oder
+		<code>value.exists() xor dataAbsentReason.exists()</code>.</li>
+	<li><strong>Pfad + Prüfung</strong> — ein FHIRPath-Selektor und eine
+		Aussage über die gelieferten Werte: muss vorhanden sein, wie viele,
+		entspricht einem Muster, eines aus einer Liste, enthält einen Text
+		oder eine Längengrenze.</li>
+</ul>
+<p>Setzen Sie <strong>Ressourcentyp</strong>, um die Regel auf Patient,
+Observation usw. zu begrenzen, oder lassen Sie das Feld leer, damit sie für
+alles gilt. Eine auf einen Typ begrenzte Regel greift auch für die
+passenden Ressourcen in einem Bundle; der Befund wird dann unter
+<code>entry[n].resource.…</code> gemeldet.</p>
+<p><strong>An offener Ressource testen</strong> führt die bearbeitete Regel
+vor dem Speichern auf der Ressource des aktiven Tabs aus und zeigt, welche
+Werte der Selektor tatsächlich erfasst hat — der schnellste Weg, eine Regel
+die zutrifft von einer zu unterscheiden, die nie lief. Hat die offene
+Ressource einen anderen Typ, sagt der Editor das, statt einen Erfolg zu
+melden.</p>
+<p>Bereits geschriebene Regeln funktionieren in jeder Stufe; der Editor
+erfordert eine Professional-Lizenz. Von Hand geschriebene Packs sind in
+<code>docs/PLUGINS.md</code> dokumentiert.</p>
 
 <h3>FHIR-Vorlagen</h3>
 <p><strong>Datei → Neue Nachricht aus Vorlage</strong> enthält eine
@@ -285,6 +393,8 @@ freischalten, die Integrationsteams und Krankenhäuser benötigen.</p>
 	<tr><td>Anonymisierungsmaskierung</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>JSON-/CSV-Export</td>
+		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>FHIR-Profilpakete und Regeleditor</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIRPath-Evaluator + Bundle-Visualisierer</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>

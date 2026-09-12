@@ -1,0 +1,58 @@
+{
+  "id": "sample-fhir-rules",
+  "name": "Sample FHIR rules",
+  "description": "Reference pack showing both rule forms. Copy it into <config>/BridgeLab/plugins/fhir/ and validate a Patient to see the findings.",
+  "author": "TECHEMV SRL",
+  "version": "1.0",
+  "enabled": true,
+  "fhir_rules": [
+    {
+      "rule_id": "patient-has-identifier",
+      "severity": "error",
+      "resource": "Patient",
+      "expression": "identifier.exists()",
+      "message": "Patient must carry at least one identifier"
+    },
+    {
+      "rule_id": "patient-name-cardinality",
+      "severity": "error",
+      "resource": "Patient",
+      "path": "name",
+      "check": { "type": "cardinality", "min": 1 },
+      "message": "Patient must have a name"
+    },
+    {
+      "rule_id": "patient-gender-vocabulary",
+      "severity": "warning",
+      "resource": "Patient",
+      "path": "gender",
+      "check": {
+        "type": "one_of",
+        "values": ["male", "female", "other", "unknown"]
+      },
+      "message": "gender must come from the administrative-gender value set"
+    },
+    {
+      "rule_id": "patient-phone-format",
+      "severity": "warning",
+      "resource": "Patient",
+      "path": "telecom.where(system = 'phone').value",
+      "check": { "type": "regex", "pattern": "^[+0-9 ()./-]{6,}$" },
+      "message": "Phone number contains unexpected characters"
+    },
+    {
+      "rule_id": "observation-value-or-absent-reason",
+      "severity": "error",
+      "resource": "Observation",
+      "expression": "value.exists() xor dataAbsentReason.exists()",
+      "message": "Observation needs either a value or a dataAbsentReason, not both and not neither"
+    },
+    {
+      "rule_id": "narrative-is-generated",
+      "severity": "info",
+      "path": "text.status",
+      "check": { "type": "one_of", "values": ["generated", "extensions"] },
+      "message": "Narrative should be generated from the structured data"
+    }
+  ]
+}

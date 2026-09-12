@@ -16,6 +16,9 @@ pub struct VersionOption {
     pub label: String,
     /// "free" or "pro" — the tier required to export *any* message in this version.
     pub tier: String,
+    /// Set when this version reuses another release's definitions, so the UI
+    /// can say so instead of implying we hold distinct tables for it.
+    pub aliased_from: Option<String>,
 }
 
 /// A message type as exposed to the frontend dropdown.
@@ -37,6 +40,7 @@ pub fn hl7_schema_list_versions() -> Vec<VersionOption> {
             label: v.as_str().into(),
             // v2.5 carries the free whitelist; every other version is Pro-only
             tier: if *v == Hl7Version::V2_5 { "free" } else { "pro" }.into(),
+            aliased_from: v.aliases().map(|a| a.as_str().to_string()),
         })
         .collect()
 }
@@ -95,10 +99,13 @@ pub(crate) fn export_xsd(version_key: String, message_code: String) -> Result<St
 
 fn version_key(v: Hl7Version) -> &'static str {
     match v {
+        Hl7Version::V2_1 => "V2_1",
+        Hl7Version::V2_2 => "V2_2",
         Hl7Version::V2_3 => "V2_3",
         Hl7Version::V2_3_1 => "V2_3_1",
         Hl7Version::V2_4 => "V2_4",
         Hl7Version::V2_5 => "V2_5",
+        Hl7Version::V2_5_1 => "V2_5_1",
         Hl7Version::V2_6 => "V2_6",
         Hl7Version::V2_7 => "V2_7",
         Hl7Version::V2_7_1 => "V2_7_1",

@@ -17,13 +17,15 @@
 	// Common examples
 	const examples = [
 		"Patient.name.family",
-		"Patient.name.given",
-		"Patient.name[0].family",
+		"Patient.name.where(use = 'official').given",
 		"Patient.telecom.where(system = 'email').value",
-		"Bundle.entry.count()",
+		"Patient.name.family.join(', ')",
 		"Bundle.entry.where(resource.resourceType = 'Patient').count()",
-		"Bundle.entry.select(resource.resourceType).distinct()",
-		"Observation.valueQuantity.value",
+		"Bundle.entry.resource.ofType(Observation).value.ofType(Quantity).value",
+		"Bundle.entry.select(resource.resourceType).distinct().sort()",
+		"Observation.subject.resolve().name.family",
+		"Patient.name.exists() and Patient.birthDate.exists()",
+		"Patient.birthDate + 18 years",
 	];
 
 	async function evaluate() {
@@ -123,6 +125,19 @@
 						{/each}
 					</div>
 				{/if}
+				<!-- trace('label') is how you see what a long path produced
+				     halfway through; show those captures under the result. -->
+				{#if result.trace && result.trace.length > 0}
+					<div class="trace-block">
+						{#each result.trace as entry}
+							<div class="trace-entry">
+								<span class="trace-name">{entry.name}</span>
+								<span class="trace-count">{entry.values.length}</span>
+								<pre class="trace-values">{formatResult(entry.values)}</pre>
+							</div>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 		{:else}
 			<div class="fp-empty">Enter a FHIRPath expression and press Enter</div>
@@ -161,6 +176,11 @@
 
 	.result-empty { padding: 16px; text-align: center; color: var(--color-text-secondary); font-style: italic; }
 
+	.trace-block { margin-top: 8px; border-top: 1px dashed var(--color-border); padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+	.trace-entry { display: flex; gap: 8px; align-items: flex-start; padding: 4px 8px; background: var(--color-bg-tertiary); border-radius: 3px; }
+	.trace-name { font-weight: 600; color: var(--color-accent); font-size: 11px; }
+	.trace-count { font-size: 10px; color: var(--color-text-secondary); }
+	.trace-values { margin: 0; font-family: var(--font-mono, monospace); font-size: 11px; white-space: pre-wrap; word-break: break-word; flex: 1; }
 	.result-list { display: flex; flex-direction: column; gap: 4px; }
 	.result-item { display: flex; gap: 8px; padding: 4px 8px; background: var(--color-bg-tertiary); border-radius: 3px; }
 	.result-idx { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--color-text-secondary); font-weight: 700; min-width: 30px; }
