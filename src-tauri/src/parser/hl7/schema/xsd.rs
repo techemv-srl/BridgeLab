@@ -500,10 +500,23 @@ mod full_catalogue_tests {
             matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
                 && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
         }
+        // Per-version floor rather than one blanket number: the early
+        // standards are genuinely small (HL7 v2.1 defines 39 message
+        // structures, v2.2 defines 69), so a single threshold would either
+        // reject them or stop guarding the modern catalogues against
+        // truncation.
+        fn min_messages(v: Hl7Version) -> usize {
+            match v {
+                Hl7Version::V2_1 => 35,
+                Hl7Version::V2_2 => 65,
+                _ => 170,
+            }
+        }
+
         for v in Hl7Version::ALL {
             let schema = load(*v);
             assert!(
-                schema.messages.len() >= 170,
+                schema.messages.len() >= min_messages(*v),
                 "{:?}: suspiciously small catalogue ({} messages)",
                 v,
                 schema.messages.len()

@@ -17,3 +17,10 @@ junit*.xml
 # Private artifacts (the keygen source is tracked on dev, excluded on release/public)
 *.key
 *.pem
+
+# Word edition of the user manual: generated with scripts/manual-to-docx.mjs.
+# The public mirror carries the sources only; the private copy lives on the
+# internal notes branch.
+docs/BridgeLab-User-Manual-*.docx
+.fhirpath-suite/
+.fhir-packages/

@@ -47,6 +47,35 @@ const MESSAGE_TYPES = [
 	'ACK', 'DFT^P03', 'QBP^Q11', 'RSP^K11',
 ];
 
+/** Versions the backend ships definitions for (see Hl7Version::ALL). */
+const KNOWN_VERSIONS = ['2.1', '2.2', '2.3', '2.3.1', '2.4', '2.5', '2.5.1', '2.6', '2.7', '2.7.1'];
+
+/** Used when the message carries no usable MSH-12. */
+const DEFAULT_VERSION = '2.5';
+
+/**
+ * HL7 version of the message currently in the editor, read from MSH-12.
+ *
+ * The completion and hover providers only get a Monaco model, not the parse
+ * result, so the version is recovered from the text itself — otherwise every
+ * message would be described against v2.5 tables regardless of what it
+ * declares. MSH-1 is the field separator and MSH-2 the encoding characters,
+ * so splitting the header on '|' puts MSH-n at index n-1 for n >= 2; MSH-12
+ * may carry components (`2.5.1^...`), of which only the first matters.
+ */
+export function versionFromModel(model: MonacoTypes.editor.ITextModel): string {
+	// Scan a bounded prefix: MSH is the first segment of a well-formed
+	// message, and batch files put it just after FHS/BHS.
+	const maxLines = Math.min(model.getLineCount(), 5);
+	for (let line = 1; line <= maxLines; line++) {
+		const content = model.getLineContent(line);
+		if (!content.startsWith('MSH')) continue;
+		const declared = content.split('|')[11]?.split('^')[0]?.trim();
+		return declared && KNOWN_VERSIONS.includes(declared) ? declared : DEFAULT_VERSION;
+	}
+	return DEFAULT_VERSION;
+}
+
 /**
  * Register a completion provider for HL7 v2 language.
  */
@@ -95,7 +124,7 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 
 			// Load segment info from backend
 			try {
-				const info = await getSegmentInfo(segmentType, '2.5');
+				const info = await getSegmentInfo(segmentType, versionFromModel(model));
 				if (info) {
 					// Suggest completion based on field position
 					const field = info.fields.find(f => f.position === fieldPosition);
@@ -179,7 +208,7 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 			if (fieldPosition < 1) return null;
 
 			try {
-				const info = await getSegmentInfo(segmentType, '2.5');
+				const info = await getSegmentInfo(segmentType, versionFromModel(model));
 				if (info) {
 					const field = info.fields.find(f => f.position === fieldPosition);
 					if (field) {

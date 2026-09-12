@@ -8,5 +8,7 @@ export * from './licensing';
 export * from './templates';
 export * from './bundle';
 export * from './fhirpath';
+export * from './fhirRules';
+export * from './fhirPackages';
 export * from './testcases';
 export * from './schemaExport';

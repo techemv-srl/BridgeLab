@@ -4,9 +4,9 @@
 //! (segments → fields with named data types, composite types with
 //! components, primitive types as simple-type restrictions on xsd:string).
 //!
-//! Scope: v2.5, messages ADT^A01, ADT^A40, ORM^O01, ORU^R01, plus every
-//! segment, composite and primitive data type those four transitively
-//! reference.
+//! Scope: the full message catalogue for every HL7 v2.x release covered by
+//! the schema importer (v2.1 through v2.7.1), including every segment,
+//! composite and primitive data type those messages reference.
 
 pub mod v2_5;
 pub mod xsd;
@@ -17,10 +17,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Hl7Version {
+    V2_1,
+    V2_2,
     V2_3,
     V2_3_1,
     V2_4,
     V2_5,
+    V2_5_1,
     V2_6,
     V2_7,
     V2_7_1,
@@ -29,22 +32,50 @@ pub enum Hl7Version {
 impl Hl7Version {
     pub fn as_str(&self) -> &'static str {
         match self {
+            Hl7Version::V2_1 => "2.1",
+            Hl7Version::V2_2 => "2.2",
             Hl7Version::V2_3 => "2.3",
             Hl7Version::V2_3_1 => "2.3.1",
             Hl7Version::V2_4 => "2.4",
             Hl7Version::V2_5 => "2.5",
+            Hl7Version::V2_5_1 => "2.5.1",
             Hl7Version::V2_6 => "2.6",
             Hl7Version::V2_7 => "2.7",
             Hl7Version::V2_7_1 => "2.7.1",
         }
     }
 
+    /// True when this version has no definitions of its own and reuses an
+    /// earlier release's catalogue — see `aliases()`.
+    pub fn is_alias(&self) -> bool {
+        self.aliases().is_some()
+    }
+
+    /// The release whose definitions this version actually loads, when it
+    /// does not carry its own.
+    ///
+    /// HL7 v2.7.1 is a technical-correction release of v2.7 and the upstream
+    /// data source (hl7-dictionary) ships byte-identical definitions for the
+    /// two. Rather than embed the same 2 MB payload twice — or silently
+    /// pretend we hold real 2.7.1 tables — v2.7.1 is declared an alias of
+    /// v2.7 so MSH-12 = 2.7.1 still resolves to the closest correct
+    /// catalogue instead of falling back to the default version.
+    pub fn aliases(&self) -> Option<Hl7Version> {
+        match self {
+            Hl7Version::V2_7_1 => Some(Hl7Version::V2_7),
+            _ => None,
+        }
+    }
+
     /// All shipped versions, oldest first.
     pub const ALL: &'static [Hl7Version] = &[
+        Hl7Version::V2_1,
+        Hl7Version::V2_2,
         Hl7Version::V2_3,
         Hl7Version::V2_3_1,
         Hl7Version::V2_4,
         Hl7Version::V2_5,
+        Hl7Version::V2_5_1,
         Hl7Version::V2_6,
         Hl7Version::V2_7,
         Hl7Version::V2_7_1,
@@ -247,27 +278,40 @@ fn collect_segments(elements: &[MessageElement], out: &mut BTreeSet<String>) {
 
 /// Embedded JSON payloads, one per HL7 version.
 ///
-/// These files are bootstrapped from `v2_5::schema()` via the `dump_v25`
-/// example binary; the importer tool in `tools/hl7-schema-importer/` will
-/// eventually take over production of these files (F2, F3).
+/// Produced by `tools/hl7-schema-importer/` from hl7-dictionary (MIT): the
+/// Node converter emits the payload and the Rust importer validates
+/// referential integrity before the file ships. Regenerating any of them is
+/// reproducible — see that tool's README.
+const V2_1_JSON: &str = include_str!("../../../../resources/hl7/v2_1.json");
+const V2_2_JSON: &str = include_str!("../../../../resources/hl7/v2_2.json");
 const V2_3_JSON: &str = include_str!("../../../../resources/hl7/v2_3.json");
 const V2_3_1_JSON: &str = include_str!("../../../../resources/hl7/v2_3_1.json");
 const V2_4_JSON: &str = include_str!("../../../../resources/hl7/v2_4.json");
 const V2_5_JSON: &str = include_str!("../../../../resources/hl7/v2_5.json");
+const V2_5_1_JSON: &str = include_str!("../../../../resources/hl7/v2_5_1.json");
 const V2_6_JSON: &str = include_str!("../../../../resources/hl7/v2_6.json");
 const V2_7_JSON: &str = include_str!("../../../../resources/hl7/v2_7.json");
-const V2_7_1_JSON: &str = include_str!("../../../../resources/hl7/v2_7_1.json");
 
-pub fn load(version: Hl7Version) -> Hl7Schema {
-    let json = match version {
+/// Raw payload backing a version. Alias versions carry none of their own and
+/// resolve to the release they point at.
+fn payload(version: Hl7Version) -> &'static str {
+    match version.aliases().unwrap_or(version) {
+        Hl7Version::V2_1 => V2_1_JSON,
+        Hl7Version::V2_2 => V2_2_JSON,
         Hl7Version::V2_3 => V2_3_JSON,
         Hl7Version::V2_3_1 => V2_3_1_JSON,
         Hl7Version::V2_4 => V2_4_JSON,
         Hl7Version::V2_5 => V2_5_JSON,
+        Hl7Version::V2_5_1 => V2_5_1_JSON,
         Hl7Version::V2_6 => V2_6_JSON,
-        Hl7Version::V2_7 => V2_7_JSON,
-        Hl7Version::V2_7_1 => V2_7_1_JSON,
-    };
+        Hl7Version::V2_7 | Hl7Version::V2_7_1 => V2_7_JSON,
+    }
+}
+
+pub fn load(version: Hl7Version) -> Hl7Schema {
+    // The payload may come from an aliased release, but the schema keeps the
+    // requested version so callers still see what the message declared.
+    let json = payload(version);
     let hydrated: HydratedSchema = serde_json::from_str(json)
         .expect("shipped HL7 schema JSON is malformed — this is a build bug");
     hydrated.into_schema(version)
@@ -276,6 +320,64 @@ pub fn load(version: Hl7Version) -> Hl7Schema {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every shipped version must load, and every non-alias version must
+    /// carry its *own* definitions.
+    ///
+    /// Regression guard: v2.7.1 once shipped as a byte-identical copy of the
+    /// v2.7 payload — the app advertised a version whose tables it did not
+    /// hold. Duplicates are now only legal when declared via `aliases()`.
+    #[test]
+    fn non_alias_versions_have_distinct_catalogues() {
+        use std::collections::HashMap;
+
+        // Compare the embedded payloads, not their element counts: v2.5 and
+        // v2.5.1 happen to hold the same number of messages, segments and
+        // composites while differing in the definitions themselves.
+        let mut seen: HashMap<&'static str, Hl7Version> = HashMap::new();
+        for v in Hl7Version::ALL {
+            let s = load(*v);
+            assert_eq!(s.version, *v, "load() must preserve the requested version");
+            assert!(!s.messages.is_empty(), "{} has no messages", v.as_str());
+
+            if v.is_alias() {
+                continue;
+            }
+            if let Some(prev) = seen.insert(payload(*v), *v) {
+                panic!(
+                    "v{} and v{} embed byte-identical payloads — if that is \
+                     intentional, declare one an alias of the other",
+                    prev.as_str(),
+                    v.as_str()
+                );
+            }
+        }
+    }
+
+    /// An alias resolves to its source's data while keeping its own identity.
+    #[test]
+    fn v2_7_1_aliases_v2_7() {
+        assert_eq!(Hl7Version::V2_7_1.aliases(), Some(Hl7Version::V2_7));
+        assert!(!Hl7Version::V2_7.is_alias());
+
+        let alias = load(Hl7Version::V2_7_1);
+        let source = load(Hl7Version::V2_7);
+        assert_eq!(alias.version, Hl7Version::V2_7_1);
+        assert_eq!(alias.messages.len(), source.messages.len());
+        assert_eq!(alias.segments.len(), source.segments.len());
+    }
+
+    /// v2.5.1 is the US baseline profile and is a distinct release: it must
+    /// not silently resolve to the v2.5 catalogue.
+    #[test]
+    fn v2_5_1_is_its_own_release() {
+        assert!(!Hl7Version::V2_5_1.is_alias());
+        assert_ne!(
+            payload(Hl7Version::V2_5),
+            payload(Hl7Version::V2_5_1),
+            "v2.5 and v2.5.1 payloads are identical"
+        );
+    }
 
     #[test]
     fn v25_has_the_four_f1_messages() {

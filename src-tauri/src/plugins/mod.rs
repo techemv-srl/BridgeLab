@@ -2,11 +2,12 @@
 //!
 //! Users can drop `.json` files in:
 //!
-//!   <config_dir>/BridgeLab/plugins/validation/   - extra validation rules
+//!   <config_dir>/BridgeLab/plugins/validation/   - extra HL7 v2 rules
+//!   <config_dir>/BridgeLab/plugins/fhir/         - extra FHIR rules
 //!   <config_dir>/BridgeLab/plugins/anonymization/ - extra PHI fields
 //!
-//! Each file is a [`PluginPack`]. The loader scans both directories at
-//! startup (or on explicit `reload`) and the validator / anonymizer
+//! Each file is a [`PluginPack`]. The loader scans all three directories at
+//! startup (or on explicit `reload`) and the validators / anonymizer
 //! consume whatever is enabled.
 //!
 //! No code execution - plugins are pure data. JS / WASM plugins are a
@@ -42,6 +43,10 @@ pub struct PluginPack {
     /// Validation rules (only present in validation/*.json).
     #[serde(default)]
     pub validation_rules: Vec<ValidationRule>,
+
+    /// FHIR validation rules (only present in fhir/*.json).
+    #[serde(default)]
+    pub fhir_rules: Vec<FhirRule>,
 
     /// PHI entries (only present in anonymization/*.json).
     #[serde(default)]
@@ -91,6 +96,64 @@ pub enum CheckKind {
     Contains { value: String },
 }
 
+/// A user-defined FHIR validation rule.
+///
+/// Two shapes, matching the two ways people actually express these:
+///
+/// - an **invariant**, a single FHIRPath expression that must be true, the
+///   way FHIR's own constraints are written:
+///   `{ "expression": "identifier.exists()" }`
+/// - a **selector plus check**, which reads better for field-level rules and
+///   is what the in-app builder produces:
+///   `{ "path": "telecom.where(system = 'phone').value",
+///      "check": { "type": "regex", "pattern": "..." } }`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FhirRule {
+    pub rule_id: String,
+    #[serde(default = "default_severity")]
+    pub severity: String,
+    /// Resource type the rule applies to, e.g. "Patient". Omit to apply it
+    /// to every resource.
+    #[serde(default)]
+    pub resource: Option<String>,
+    /// Invariant form: a FHIRPath expression that must evaluate to true.
+    #[serde(default)]
+    pub expression: Option<String>,
+    /// Selector form: a FHIRPath expression picking the values to check.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// The check applied to each selected value. Required with `path`.
+    #[serde(default)]
+    pub check: Option<FhirCheck>,
+    pub message: String,
+}
+
+/// Checks a [`FhirRule`] can apply to the values its `path` selected.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FhirCheck {
+    /// At least one value, and none of them blank.
+    NotEmpty,
+    /// Every value matches the regular expression.
+    Regex { pattern: String },
+    /// Every value is at most `max` characters.
+    MaxLength { max: usize },
+    /// Every value is at least `min` characters.
+    MinLength { min: usize },
+    /// Every value is one of the listed ones.
+    OneOf { values: Vec<String> },
+    /// Every value contains the substring.
+    Contains { value: String },
+    /// The number of selected values falls in the range — cardinality,
+    /// without needing a StructureDefinition.
+    Cardinality {
+        #[serde(default)]
+        min: Option<usize>,
+        #[serde(default)]
+        max: Option<usize>,
+    },
+}
+
 /// An extra PHI field contributed by a plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhiRule {
@@ -109,6 +172,7 @@ pub fn plugins_root() -> Option<PathBuf> {
 /// Create the plugins directory tree if missing. Called lazily by the loader.
 fn ensure_plugins_dirs(root: &Path) -> std::io::Result<()> {
     fs::create_dir_all(root.join("validation"))?;
+    fs::create_dir_all(root.join("fhir"))?;
     fs::create_dir_all(root.join("anonymization"))?;
     Ok(())
 }
@@ -143,6 +207,7 @@ pub struct LoadedPlugin {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PluginKind {
     Validation,
+    Fhir,
     Anonymization,
 }
 
@@ -150,6 +215,7 @@ impl PluginKind {
     fn as_str(&self) -> &'static str {
         match self {
             PluginKind::Validation => "validation",
+            PluginKind::Fhir => "fhir",
             PluginKind::Anonymization => "anonymization",
         }
     }
@@ -184,6 +250,7 @@ impl PluginRegistry {
         let mut loaded = Vec::new();
         for (kind, sub) in [
             (PluginKind::Validation, "validation"),
+            (PluginKind::Fhir, "fhir"),
             (PluginKind::Anonymization, "anonymization"),
         ] {
             let dir = root.join(sub);
@@ -211,6 +278,7 @@ impl PluginRegistry {
                                 version: "0".into(),
                                 enabled: false,
                                 validation_rules: vec![],
+                                fhir_rules: vec![],
                                 phi_rules: vec![],
                             },
                             kind,
@@ -229,6 +297,7 @@ impl PluginRegistry {
                             version: "0".into(),
                             enabled: false,
                             validation_rules: vec![],
+                            fhir_rules: vec![],
                             phi_rules: vec![],
                         },
                         kind,
@@ -289,7 +358,9 @@ impl PluginRegistry {
         let mut out = Vec::new();
         if let Some(p) = plugins {
             for lp in p.iter() {
-                let rule_count = lp.pack.validation_rules.len() + lp.pack.phi_rules.len();
+                let rule_count = lp.pack.validation_rules.len()
+                    + lp.pack.fhir_rules.len()
+                    + lp.pack.phi_rules.len();
                 let enabled = self.is_enabled(&lp.pack) && lp.error.is_none();
                 out.push(PluginInfo {
                     id: lp.pack.id.clone(),
@@ -320,6 +391,19 @@ impl PluginRegistry {
             if lp.kind != PluginKind::Validation { continue; }
             if !active.contains(&lp.pack.id) { continue; }
             out.extend(lp.pack.validation_rules.clone());
+        }
+        out
+    }
+
+    /// Collect FHIR rules from the packs active under the given cap.
+    pub fn active_fhir_rules(&self, limit: Option<usize>) -> Vec<FhirRule> {
+        let active = self.active_ids(limit);
+        let guard = match self.plugins.read() { Ok(g) => g, Err(_) => return vec![] };
+        let mut out = Vec::new();
+        for lp in guard.iter() {
+            if lp.kind != PluginKind::Fhir { continue; }
+            if !active.contains(&lp.pack.id) { continue; }
+            out.extend(lp.pack.fhir_rules.clone());
         }
         out
     }
@@ -379,6 +463,172 @@ pub fn run_custom_validations(
         }
     }
     issues
+}
+
+/// Run the active FHIR rules against a parsed resource.
+///
+/// A Bundle is walked entry by entry as well as checked itself, so a rule
+/// scoped to `Patient` fires for the Patients inside a transaction Bundle —
+/// which is where they usually live.
+pub fn run_fhir_validations(
+    root: &serde_json::Value,
+    rules: &[FhirRule],
+) -> Vec<crate::parser::fhir::FhirValidationIssue> {
+    let mut issues = Vec::new();
+    for (target, prefix) in fhir_targets(root) {
+        for rule in rules {
+            if let Some(required) = &rule.resource {
+                if target.get("resourceType").and_then(|v| v.as_str()) != Some(required.as_str()) {
+                    continue;
+                }
+            }
+            if let Some(issue) = apply_fhir_rule(rule, target, &prefix) {
+                issues.push(issue);
+            }
+        }
+    }
+    issues
+}
+
+/// The resource itself plus, for a Bundle, every entry resource — each with
+/// the path prefix to report findings against.
+fn fhir_targets(root: &serde_json::Value) -> Vec<(&serde_json::Value, String)> {
+    let mut out = vec![(root, String::new())];
+    if root.get("resourceType").and_then(|v| v.as_str()) == Some("Bundle") {
+        if let Some(entries) = root.get("entry").and_then(|e| e.as_array()) {
+            for (i, entry) in entries.iter().enumerate() {
+                if let Some(resource) = entry.get("resource") {
+                    out.push((resource, format!("entry[{}].resource.", i)));
+                }
+            }
+        }
+    }
+    out
+}
+
+fn apply_fhir_rule(
+    rule: &FhirRule,
+    target: &serde_json::Value,
+    prefix: &str,
+) -> Option<crate::parser::fhir::FhirValidationIssue> {
+    use crate::parser::fhir::fhirpath;
+
+    let fail = |detail: Option<String>, path: String| {
+        Some(crate::parser::fhir::FhirValidationIssue {
+            severity: rule.severity.clone(),
+            message: match detail {
+                Some(d) => format!("{} ({})", rule.message, d),
+                None => rule.message.clone(),
+            },
+            path,
+        })
+    };
+
+    // Invariant form: the expression must come back true.
+    if let Some(expression) = &rule.expression {
+        let result = fhirpath::evaluate(expression, target);
+        if let Some(e) = result.error {
+            // A broken rule is worth reporting: silently passing would hide
+            // the fact that the check never ran.
+            return fail(
+                Some(format!("rule {} failed to evaluate: {}", rule.rule_id, e)),
+                format!("{}{}", prefix, expression),
+            );
+        }
+        let holds = matches!(result.results.as_slice(), [serde_json::Value::Bool(true)]);
+        return if holds {
+            None
+        } else {
+            fail(None, format!("{}{}", prefix, expression))
+        };
+    }
+
+    // Selector form: evaluate the path, then apply the check to the result.
+    let path = rule.path.as_deref()?;
+    let check = rule.check.as_ref()?;
+    let result = fhirpath::evaluate(path, target);
+    if let Some(e) = result.error {
+        return fail(
+            Some(format!("rule {} failed to evaluate: {}", rule.rule_id, e)),
+            format!("{}{}", prefix, path),
+        );
+    }
+
+    let values: Vec<String> = result
+        .results
+        .iter()
+        .map(|v| match v {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        })
+        .collect();
+
+    let failure = apply_fhir_check(check, &values);
+    match failure {
+        None => None,
+        Some(detail) => fail(detail, format!("{}{}", prefix, path)),
+    }
+}
+
+/// `None` when the check passes; `Some(detail)` when it fails, where the
+/// detail names the offending value if there is a single obvious one.
+fn apply_fhir_check(check: &FhirCheck, values: &[String]) -> Option<Option<String>> {
+    let first_bad = |mut failing: Vec<&String>| -> Option<String> {
+        match failing.len() {
+            0 => None,
+            1 => Some(format!("got '{}'", failing.remove(0))),
+            n => Some(format!("{} values do not match", n)),
+        }
+    };
+
+    match check {
+        FhirCheck::Cardinality { min, max } => {
+            let n = values.len();
+            if min.is_some_and(|m| n < m) || max.is_some_and(|m| n > m) {
+                let expected = match (min, max) {
+                    (Some(a), Some(b)) if a == b => format!("exactly {}", a),
+                    (Some(a), Some(b)) => format!("between {} and {}", a, b),
+                    (Some(a), None) => format!("at least {}", a),
+                    (None, Some(b)) => format!("at most {}", b),
+                    (None, None) => return None,
+                };
+                return Some(Some(format!("expected {}, found {}", expected, n)));
+            }
+            None
+        }
+        FhirCheck::NotEmpty => {
+            if values.is_empty() {
+                return Some(Some("no value present".into()));
+            }
+            let bad: Vec<&String> = values.iter().filter(|v| v.trim().is_empty()).collect();
+            (!bad.is_empty()).then(|| Some("value is blank".into()))
+        }
+        // Every other check is vacuously satisfied by nothing to check; a
+        // rule that also wants the value present pairs it with cardinality.
+        FhirCheck::Regex { pattern } => match regex::Regex::new(pattern) {
+            Err(e) => Some(Some(format!("invalid pattern: {}", e))),
+            Ok(re) => {
+                let bad: Vec<&String> = values.iter().filter(|v| !re.is_match(v)).collect();
+                (!bad.is_empty()).then(|| first_bad(bad))
+            }
+        },
+        FhirCheck::MaxLength { max } => {
+            let bad: Vec<&String> = values.iter().filter(|v| v.chars().count() > *max).collect();
+            (!bad.is_empty()).then(|| first_bad(bad))
+        }
+        FhirCheck::MinLength { min } => {
+            let bad: Vec<&String> = values.iter().filter(|v| v.chars().count() < *min).collect();
+            (!bad.is_empty()).then(|| first_bad(bad))
+        }
+        FhirCheck::OneOf { values: allowed } => {
+            let bad: Vec<&String> = values.iter().filter(|v| !allowed.contains(v)).collect();
+            (!bad.is_empty()).then(|| first_bad(bad))
+        }
+        FhirCheck::Contains { value: needle } => {
+            let bad: Vec<&String> = values.iter().filter(|v| !v.contains(needle)).collect();
+            (!bad.is_empty()).then(|| first_bad(bad))
+        }
+    }
 }
 
 fn apply_check(check: &CheckKind, value: &str) -> bool {
@@ -512,6 +762,143 @@ mod tests {
         assert!(run_custom_validations(&msg, &[contains]).is_empty());
     }
 
+    // ---- FHIR rules ---------------------------------------------------
+
+    fn fhir_patient() -> serde_json::Value {
+        serde_json::json!({
+            "resourceType": "Patient",
+            "id": "p1",
+            "gender": "female",
+            "telecom": [
+                {"system": "phone", "value": "555-1234"},
+                {"system": "email", "value": "jane@example.com"}
+            ]
+        })
+    }
+
+    fn fhir_rule(id: &str) -> FhirRule {
+        FhirRule {
+            rule_id: id.into(),
+            severity: "error".into(),
+            resource: Some("Patient".into()),
+            expression: None,
+            path: None,
+            check: None,
+            message: format!("{} failed", id),
+        }
+    }
+
+    #[test]
+    fn invariant_rule_passes_and_fails() {
+        let holds = FhirRule {
+            expression: Some("telecom.exists()".into()),
+            ..fhir_rule("has-telecom")
+        };
+        assert!(run_fhir_validations(&fhir_patient(), &[holds]).is_empty());
+
+        let broken = FhirRule {
+            expression: Some("identifier.exists()".into()),
+            ..fhir_rule("has-identifier")
+        };
+        let issues = run_fhir_validations(&fhir_patient(), &[broken]);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].severity, "error");
+        assert_eq!(issues[0].path, "identifier.exists()");
+    }
+
+    #[test]
+    fn a_rule_scoped_to_another_resource_does_not_fire() {
+        let rule = FhirRule {
+            resource: Some("Observation".into()),
+            expression: Some("false".into()),
+            ..fhir_rule("never-applies")
+        };
+        assert!(run_fhir_validations(&fhir_patient(), &[rule]).is_empty());
+    }
+
+    #[test]
+    fn selector_rules_apply_their_check_to_every_value() {
+        let rule = FhirRule {
+            path: Some("telecom.where(system = 'phone').value".into()),
+            check: Some(FhirCheck::Regex {
+                pattern: r"^\d{3}-\d{4}$".into(),
+            }),
+            ..fhir_rule("phone-format")
+        };
+        assert!(run_fhir_validations(&fhir_patient(), std::slice::from_ref(&rule)).is_empty());
+
+        let strict = FhirRule {
+            check: Some(FhirCheck::Regex {
+                pattern: r"^\+\d+$".into(),
+            }),
+            ..rule
+        };
+        let issues = run_fhir_validations(&fhir_patient(), &[strict]);
+        assert_eq!(issues.len(), 1);
+        // The failing value is named, so the message is actionable.
+        assert!(issues[0].message.contains("555-1234"), "{}", issues[0].message);
+    }
+
+    #[test]
+    fn cardinality_counts_the_selected_values() {
+        let at_least_three = FhirRule {
+            path: Some("telecom".into()),
+            check: Some(FhirCheck::Cardinality { min: Some(3), max: None }),
+            ..fhir_rule("three-contacts")
+        };
+        let issues = run_fhir_validations(&fhir_patient(), &[at_least_three]);
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].message.contains("at least 3, found 2"));
+
+        let at_most_five = FhirRule {
+            path: Some("telecom".into()),
+            check: Some(FhirCheck::Cardinality { min: None, max: Some(5) }),
+            ..fhir_rule("five-contacts")
+        };
+        assert!(run_fhir_validations(&fhir_patient(), &[at_most_five]).is_empty());
+    }
+
+    #[test]
+    fn rules_reach_the_resources_inside_a_bundle() {
+        let bundle = serde_json::json!({
+            "resourceType": "Bundle",
+            "type": "transaction",
+            "entry": [
+                {"resource": {"resourceType": "Patient", "id": "ok", "identifier": [{"value": "1"}]}},
+                {"resource": {"resourceType": "Patient", "id": "bad"}}
+            ]
+        });
+        let rule = FhirRule {
+            expression: Some("identifier.exists()".into()),
+            ..fhir_rule("has-identifier")
+        };
+        let issues = run_fhir_validations(&bundle, &[rule]);
+        assert_eq!(issues.len(), 1, "only the entry without an identifier");
+        assert!(issues[0].path.starts_with("entry[1].resource."), "{}", issues[0].path);
+    }
+
+    #[test]
+    fn a_rule_whose_expression_breaks_is_reported_not_silently_passed() {
+        let rule = FhirRule {
+            expression: Some("nosuchfunction()".into()),
+            ..fhir_rule("broken")
+        };
+        let issues = run_fhir_validations(&fhir_patient(), &[rule]);
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].message.contains("failed to evaluate"), "{}", issues[0].message);
+    }
+
+    #[test]
+    fn an_invariant_that_yields_no_boolean_counts_as_unsatisfied() {
+        // `gender` is a string, not a condition: the rule cannot be said to
+        // hold, so it fires rather than passing by accident.
+        let rule = FhirRule {
+            expression: Some("gender".into()),
+            ..fhir_rule("not-a-boolean")
+        };
+        assert_eq!(run_fhir_validations(&fhir_patient(), &[rule]).len(), 1);
+    }
+
     #[test]
     fn registry_override_disables_pack() {
         let reg = PluginRegistry::new();
@@ -524,6 +911,7 @@ mod tests {
             version: "1".into(),
             enabled: true,
             validation_rules: vec![],
+            fhir_rules: vec![],
             phi_rules: vec![],
         };
         assert!(!reg.is_enabled(&pack));
@@ -548,6 +936,7 @@ mod tests {
                     check: CheckKind::NotEmpty,
                     message: "x".into(),
                 }],
+                fhir_rules: vec![],
                 phi_rules: vec![],
             },
             kind: PluginKind::Validation,

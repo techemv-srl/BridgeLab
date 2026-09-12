@@ -14,6 +14,8 @@
 	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
 	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
 	import BundleVisualizer from '$lib/components/bundle/BundleVisualizer.svelte';
+	import FhirRulesDialog from '$lib/components/fhir/FhirRulesDialog.svelte';
+	import FhirPackagesDialog from '$lib/components/fhir/FhirPackagesDialog.svelte';
 	import TestCaseLibrary from '$lib/components/testcases/TestCaseLibrary.svelte';
 	import type { TestCase } from '$lib/ipc/testcases';
 	import type { LicenseStatus } from '$lib/ipc/licensing';
@@ -45,6 +47,8 @@
 		showActivation: boolean;
 		showSettings: boolean;
 		showSchemaExport: boolean;
+		showFhirRules: boolean;
+		showFhirPackages: boolean;
 		showBatch: boolean;
 		showBatchAnon: boolean;
 		showGenerate: boolean;
@@ -71,6 +75,8 @@
 		showActivation = $bindable(),
 		showSettings = $bindable(),
 		showSchemaExport = $bindable(),
+		showFhirRules = $bindable(),
+		showFhirPackages = $bindable(),
 		showBatch = $bindable(),
 		showBatchAnon = $bindable(),
 		showGenerate = $bindable(),
@@ -258,6 +264,21 @@
 			/>
 		</div>
 	</div>
+{/if}
+
+<!-- FHIR validation rules builder. The open resource is passed so a rule
+     can be tried before it is saved; it is null for HL7 v2 tabs. -->
+{#if showFhirRules}
+	<FhirRulesDialog
+		messageId={activeTab?.parseResult?.format?.startsWith('FHIR')
+			? activeTab.parseResult.message_id
+			: null}
+		onClose={() => { showFhirRules = false; }}
+	/>
+{/if}
+
+{#if showFhirPackages}
+	<FhirPackagesDialog onClose={() => { showFhirPackages = false; }} />
 {/if}
 
 <!-- Schema XSD export dialog -->

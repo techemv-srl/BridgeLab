@@ -51,9 +51,14 @@ HL7 v2.xml:</p>
 </ul>
 
 <h3>Cobertura y niveles</h3>
-<p>Se incluyen completas siete versiones de HL7: <strong>2.3, 2.3.1,
-2.4, 2.5, 2.6, 2.7 y 2.7.1</strong> — 1.964 estructuras de mensaje en
-total, seleccionables desde el desplegable de versiones.</p>
+<p>Se incluyen completas diez versiones de HL7: <strong>2.1, 2.2, 2.3,
+2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7 y 2.7.1</strong> — 2.320 estructuras
+de mensaje en total, seleccionables desde el desplegable de
+versiones.</p>
+<p>HL7 v2.7.1 es una versión de corrección técnica de la 2.7 y usa las
+mismas definiciones de mensaje, por lo que aparece marcada
+<strong>(= v2.7)</strong> en el desplegable y exporta desde el catálogo
+2.7.</p>
 <p>El nivel gratuito exporta cuatro tipos de mensaje de alto uso en HL7
 v2.5, de modo que el flujo típico de depuración MLLP queda totalmente
 cubierto:</p>
@@ -127,19 +132,51 @@ entradas; los bundles más grandes usan la lista.</p>
 <h3>Evaluador FHIRPath (Pro)</h3>
 <p><kbd>Ctrl</kbd>+<kbd>P</kbd> o <strong>Herramientas → Evaluador FHIRPath</strong>
 abre una consola interactiva donde escribes expresiones FHIRPath contra
-el recurso actual. Entre los operadores soportados:</p>
+el recurso actual.</p>
+<p>El evaluador implementa el lenguaje FHIRPath 2.0: el conjunto
+completo de operadores con la precedencia y la lógica de tres valores de
+la especificación, y unas setenta funciones.</p>
 <ul>
 	<li><strong>Navegación:</strong> <code>Patient.name.family</code>,
-		<code>Bundle.entry.resource</code></li>
+		<code>Bundle.entry.resource</code>; los elementos choice se
+		alcanzan por su nombre base — <code>Observation.value</code>
+		encuentra <code>valueQuantity</code></li>
 	<li><strong>Indexación:</strong> <code>Patient.name[0].given</code></li>
-	<li><strong>Filtros:</strong>
-		<code>Bundle.entry.where(resource.resourceType = 'Patient')</code></li>
-	<li><strong>Agregados:</strong> <code>count()</code>,
-		<code>first()</code>, <code>last()</code>,
-		<code>distinct()</code></li>
-	<li><strong>Proyección:</strong>
-		<code>Bundle.entry.select(resource.id)</code></li>
+	<li><strong>Filtros y proyección:</strong> <code>where()</code>,
+		<code>select()</code>, <code>repeat()</code>,
+		<code>ofType()</code>, con <code>$this</code> e
+		<code>$index</code> disponibles dentro</li>
+	<li><strong>Colecciones:</strong> <code>count()</code>,
+		<code>first()</code>, <code>last()</code>, <code>tail()</code>,
+		<code>skip()</code>, <code>take()</code>, <code>distinct()</code>,
+		<code>sort()</code>, <code>union()</code>, <code>combine()</code>,
+		<code>intersect()</code>, <code>exclude()</code>,
+		<code>aggregate()</code></li>
+	<li><strong>Lógica:</strong> <code>and</code>, <code>or</code>,
+		<code>xor</code>, <code>implies</code>, <code>not()</code>,
+		<code>exists()</code>, <code>all()</code>, <code>iif()</code> —
+		con la colección vacía como valor «desconocido»</li>
+	<li><strong>Cadenas:</strong> <code>substring()</code>,
+		<code>matches()</code>, <code>replace()</code>,
+		<code>split()</code>, <code>join()</code>, <code>encode()</code>,
+		<code>escape()</code> y afines</li>
+	<li><strong>Fechas y cantidades:</strong> literales de precisión
+		parcial (<code>@2015</code>,
+		<code>@2015-02-04T14:34:28+10:00</code>), aritmética con
+		duraciones (<code>Patient.birthDate + 18 years</code>) y
+		conversión de unidades dentro de una dimensión
+		(<code>4 'g' = 4000 'mg'</code>)</li>
+	<li><strong>Extras FHIR:</strong> <code>extension(url)</code>,
+		<code>hasValue()</code> y <code>resolve()</code>, que sigue una
+		Reference hacia un recurso contained o del Bundle</li>
+	<li><strong>Depuración:</strong> <code>trace('etiqueta')</code> deja
+		pasar su entrada y muestra los valores bajo el resultado, para ver
+		qué produce una ruta larga a mitad de camino</li>
 </ul>
+<p>Comparar valores de distinta precisión devuelve la colección vacía en
+lugar de adivinar: <code>@2015-02-04 = @2015-02</code> no es ni
+verdadero ni falso, porque el segundo valor podría ser ese día u otro
+del mismo mes.</p>
 <p>Las expresiones recientes se conservan en un desplegable de historial
 para reutilizarlas rápidamente.</p>
 
@@ -151,6 +188,76 @@ estructurales. Las URL canónicas declaradas en <code>meta.profile</code>
 se listan como hallazgos informativos (la conformidad con el perfil en
 sí no se comprueba); las entradas malformadas se señalan como
 advertencias.</p>
+
+<h3>Validación de perfiles (Pro)</h3>
+<p>Por defecto un recurso FHIR se comprueba estructuralmente: si hay
+<code>resourceType</code> y si se cumplen las reglas propias del recurso.
+Contrastarlo con una <strong>StructureDefinition</strong> — la definición
+real de lo que puede contener un Patient — requiere esas definiciones, que
+se distribuyen como paquetes FHIR NPM.</p>
+<p><strong>Herramientas → Paquetes de perfiles FHIR…</strong> instala uno
+desde un <code>.tgz</code>. Empieza con <code>hl7.fhir.r4.core</code> en
+packages.fhir.org para las definiciones base, y añade encima las guías de
+implementación nacionales o propias de tu centro.</p>
+<p>Con un paquete instalado, cada validación FHIR comprueba también:</p>
+<ul>
+	<li><strong>Cardinalidad</strong> — un elemento obligatorio ausente, o un
+		elemento <code>0..1</code> que se repite.</li>
+	<li><strong>Tipos de elementos</strong> — un booleano escrito como
+		cadena, un número donde corresponde un objeto.</li>
+	<li><strong>Elementos choice</strong> — <code>value[x]</code> debe
+		aparecer exactamente como una de <code>valueQuantity</code>,
+		<code>valueString</code>, etc. Un <code>value</code> pelado, o dos
+		formas a la vez, se informan.</li>
+	<li><strong>Valores fijos y patrones</strong> — lo que el perfil
+		fija.</li>
+	<li><strong>Elementos desconocidos</strong> — un nombre que el perfil no
+		define. Es la comprobación que caza una errata como
+		<code>genderr</code> o un elemento que pertenece a otro tipo de
+		recurso.</li>
+</ul>
+<p>Los perfiles declarados en <code>meta.profile</code> se aplican
+automáticamente si el paquete que los define está instalado. Si no lo está,
+el validador lo dice en lugar de informar en silencio un resultado limpio —
+y cuando los perfiles sí se aplicaron, también lo dice, porque «sin
+hallazgos» significa cosas muy distintas en cada caso.</p>
+<p><strong>La terminología queda fuera del alcance.</strong> Un binding
+<code>required</code> solo puede comprobarse expandiendo el ValueSet, lo que
+implica los paquetes de terminología o un servidor. BridgeLab deja los
+bindings sin comprobar en lugar de comprobarlos a medias.</p>
+<p>Instalar un paquete requiere una licencia Professional. Los paquetes ya
+instalados siguen validando en todos los niveles: una prueba caducada nunca
+pone en rojo recursos que antes estaban limpios.</p>
+
+<h3>Reglas FHIR personalizadas (Pro)</h3>
+<p><strong>Herramientas → Reglas de validación FHIR…</strong> abre un editor
+para tus propias comprobaciones. Se ejecutan junto a las integradas en cada
+validación y se guardan como un plugin pack normal
+(<code>plugins/fhir/user-rules.json</code>) que puedes copiar entre equipos o
+versionar.</p>
+<p>Una regla tiene una de dos formas:</p>
+<ul>
+	<li><strong>La expresión debe ser verdadera</strong> — un invariante
+		FHIRPath, como FHIR escribe sus propias restricciones:
+		<code>identifier.exists()</code>, o
+		<code>value.exists() xor dataAbsentReason.exists()</code>.</li>
+	<li><strong>Ruta + comprobación</strong> — un selector FHIRPath y algo
+		que afirmar sobre los valores obtenidos: debe estar presente,
+		cuántos, coincide con un patrón, uno de una lista, contiene un texto
+		o un límite de longitud.</li>
+</ul>
+<p>Indica <strong>Tipo de recurso</strong> para limitar la regla a Patient,
+Observation, etc., o déjalo vacío para aplicarla a todo. Una regla limitada
+a un tipo también se dispara para los recursos correspondientes dentro de un
+Bundle, informando el hallazgo en <code>entry[n].resource.…</code>.</p>
+<p><strong>Probar en el recurso abierto</strong> ejecuta la regla que estás
+editando sobre el recurso de la pestaña activa antes de guardarla, y muestra
+qué valores seleccionó realmente — la forma más rápida de distinguir una
+regla que pasa de una que nunca se ejecutó. Si el recurso abierto es de otro
+tipo, el editor lo dice en lugar de informar un éxito.</p>
+<p>Las reglas ya escritas funcionan en todos los niveles; el editor requiere
+una licencia Professional. Los packs escritos a mano están documentados en
+<code>docs/PLUGINS.md</code>.</p>
 
 <h3>Plantillas FHIR</h3>
 <p><strong>Archivo → Nuevo desde plantilla</strong> incluye una
@@ -281,6 +388,8 @@ integración y los hospitales.</p>
 	<tr><td>Enmascaramiento de anonimización</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Exportación JSON/CSV</td>
+		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Paquetes de perfiles FHIR y editor de reglas</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Evaluador FHIRPath + Visualizador de Bundle</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>

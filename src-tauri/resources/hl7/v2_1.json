@@ -1,0 +1,5539 @@
+{
+  "messages": [
+    {
+      "code": "ACK",
+      "event": "ACK",
+      "description": "General acknowledgment message",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "MSA",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "ERR",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADR_A19",
+      "event": "ADR^A19",
+      "description": "Patient query",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "MSA",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRD",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Group": {
+            "name": "QUERY_RESPONSE",
+            "required": true,
+            "repeats": true,
+            "elements": [
+              {
+                "Segment": {
+                  "code": "EVN",
+                  "required": false,
+                  "repeats": false
+                }
+              },
+              {
+                "Segment": {
+                  "code": "PID",
+                  "required": true,
+                  "repeats": false
+                }
+              },
+              {
+                "Segment": {
+                  "code": "PV1",
+                  "required": true,
+                  "repeats": false
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A01",
+      "event": "ADT^A01",
+      "description": "Admit/visit notification",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "NK1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A02",
+      "event": "ADT^A02",
+      "description": "Transfer a patient",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A03",
+      "event": "ADT^A03",
+      "description": "Discharge/end visit",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A04",
+      "event": "ADT^A04",
+      "description": "Register a patient",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "NK1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A05",
+      "event": "ADT^A05",
+      "description": "Pre-admit a patient",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "NK1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A06",
+      "event": "ADT^A06",
+      "description": "Change an outpatient to an inpatient",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A07",
+      "event": "ADT^A07",
+      "description": "Change an inpatient to an outpatient",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A08",
+      "event": "ADT^A08",
+      "description": "Update patient information",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "NK1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A09",
+      "event": "ADT^A09",
+      "description": "Patient departing - tracking",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A10",
+      "event": "ADT^A10",
+      "description": "Patient arriving - tracking",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A11",
+      "event": "ADT^A11",
+      "description": "Cancel admit/visit notification",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A12",
+      "event": "ADT^A12",
+      "description": "Cancel transfer",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A13",
+      "event": "ADT^A13",
+      "description": "Cancel discharge/end visit",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A15",
+      "event": "ADT^A15",
+      "description": "Pending transfer",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A16",
+      "event": "ADT^A16",
+      "description": "Pending discharge",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DG1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A17",
+      "event": "ADT^A17",
+      "description": "Swap patients",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Group": {
+            "name": "PATIENT",
+            "required": true,
+            "repeats": true,
+            "elements": [
+              {
+                "Segment": {
+                  "code": "PID",
+                  "required": true,
+                  "repeats": false
+                }
+              },
+              {
+                "Segment": {
+                  "code": "PV1",
+                  "required": true,
+                  "repeats": false
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A18",
+      "event": "ADT^A18",
+      "description": "Merge patient information",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "MRG",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A20",
+      "event": "ADT^A20",
+      "description": "Bed status update",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "NPU",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A21",
+      "event": "ADT^A21",
+      "description": "Patient goes on a \"leave of absence\"",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A22",
+      "event": "ADT^A22",
+      "description": "Patient returns from a \"leave of absence\"",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A23",
+      "event": "ADT^A23",
+      "description": "Delete a patient record",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ADT_A24",
+      "event": "ADT^A24",
+      "description": "Link patient information",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "BAR_P01",
+      "event": "BAR^P01",
+      "description": "Add patient accounts",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Group": {
+            "name": "VISIT",
+            "required": true,
+            "repeats": true,
+            "elements": [
+              {
+                "Segment": {
+                  "code": "PV1",
+                  "required": false,
+                  "repeats": false
+                }
+              },
+              {
+                "Segment": {
+                  "code": "DG1",
+                  "required": false,
+                  "repeats": true
+                }
+              },
+              {
+                "Segment": {
+                  "code": "PR1",
+                  "required": false,
+                  "repeats": true
+                }
+              },
+              {
+                "Segment": {
+                  "code": "GT1",
+                  "required": false,
+                  "repeats": true
+                }
+              },
+              {
+                "Segment": {
+                  "code": "NK1",
+                  "required": false,
+                  "repeats": true
+                }
+              },
+              {
+                "Segment": {
+                  "code": "IN1",
+                  "required": false,
+                  "repeats": true
+                }
+              },
+              {
+                "Segment": {
+                  "code": "ACC",
+                  "required": false,
+                  "repeats": false
+                }
+              },
+              {
+                "Segment": {
+                  "code": "UB1",
+                  "required": false,
+                  "repeats": false
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "BAR_P02",
+      "event": "BAR^P02",
+      "description": "Purge patient accounts",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Group": {
+            "name": "PATIENT",
+            "required": true,
+            "repeats": true,
+            "elements": [
+              {
+                "Segment": {
+                  "code": "PID",
+                  "required": true,
+                  "repeats": false
+                }
+              },
+              {
+                "Segment": {
+                  "code": "PV1",
+                  "required": false,
+                  "repeats": false
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "DFT_P03",
+      "event": "DFT^P03",
+      "description": "Post detail financial transaction",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "EVN",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PID",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "PV1",
+            "required": false,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "FT1",
+            "required": false,
+            "repeats": true
+          }
+        }
+      ]
+    },
+    {
+      "code": "DSR_Q01",
+      "event": "DSR^Q01",
+      "description": "Display response message",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "MSA",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRD",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRF",
+            "required": false,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSP",
+            "required": true,
+            "repeats": true
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "DSR_Q03",
+      "event": "DSR^Q03",
+      "description": "Deferred response to a query",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRD",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRF",
+            "required": false,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSP",
+            "required": true,
+            "repeats": true
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "MCF_Q02",
+      "event": "MCF^Q02",
+      "description": "Delayed acknowledgment",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "MSA",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ORM_O01",
+      "event": "ORM^O01",
+      "description": "Order message",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "NTE",
+            "required": false,
+            "repeats": true
+          }
+        },
+        {
+          "Group": {
+            "name": "PATIENT",
+            "required": false,
+            "repeats": false,
+            "elements": [
+              {
+                "Segment": {
+                  "code": "PID",
+                  "required": true,
+                  "repeats": false
+                }
+              },
+              {
+                "Segment": {
+                  "code": "NTE",
+                  "required": false,
+                  "repeats": true
+                }
+              },
+              {
+                "Segment": {
+                  "code": "PV1",
+                  "required": false,
+                  "repeats": false
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Group": {
+            "name": "ORDER",
+            "required": true,
+            "repeats": true,
+            "elements": [
+              {
+                "Segment": {
+                  "code": "ORC",
+                  "required": true,
+                  "repeats": false
+                }
+              },
+              {
+                "Group": {
+                  "name": "ORDER_DETAIL",
+                  "required": false,
+                  "repeats": false,
+                  "elements": [
+                    {
+                      "Choice": {
+                        "required": false,
+                        "repeats": true,
+                        "segments": [
+                          "OBR",
+                          "ORO",
+                          "RX1"
+                        ]
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "NTE",
+                        "required": false,
+                        "repeats": true
+                      }
+                    },
+                    {
+                      "Group": {
+                        "name": "OBSERVATION",
+                        "required": false,
+                        "repeats": true,
+                        "elements": [
+                          {
+                            "Segment": {
+                              "code": "OBX",
+                              "required": true,
+                              "repeats": false
+                            }
+                          },
+                          {
+                            "Segment": {
+                              "code": "NTE",
+                              "required": false,
+                              "repeats": true
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "Segment": {
+                  "code": "BLG",
+                  "required": false,
+                  "repeats": false
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "ORR_O02",
+      "event": "ORR^O02",
+      "description": "Order response",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "MSA",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "NTE",
+            "required": false,
+            "repeats": true
+          }
+        },
+        {
+          "Group": {
+            "name": "PATIENT",
+            "required": false,
+            "repeats": false,
+            "elements": [
+              {
+                "Segment": {
+                  "code": "PID",
+                  "required": false,
+                  "repeats": false
+                }
+              },
+              {
+                "Segment": {
+                  "code": "NTE",
+                  "required": false,
+                  "repeats": true
+                }
+              },
+              {
+                "Group": {
+                  "name": "ORDER",
+                  "required": true,
+                  "repeats": true,
+                  "elements": [
+                    {
+                      "Segment": {
+                        "code": "ORC",
+                        "required": true,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Choice": {
+                        "required": false,
+                        "repeats": true,
+                        "segments": [
+                          "OBR",
+                          "ORO",
+                          "RX1"
+                        ]
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "NTE",
+                        "required": false,
+                        "repeats": true
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "code": "ORU",
+      "event": "ORU",
+      "description": "Unsolicited transmission of an observation message",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Group": {
+            "name": "PATIENT_RESULT",
+            "required": true,
+            "repeats": true,
+            "elements": [
+              {
+                "Group": {
+                  "name": "PATIENT",
+                  "required": false,
+                  "repeats": false,
+                  "elements": [
+                    {
+                      "Segment": {
+                        "code": "PID",
+                        "required": true,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "NTE",
+                        "required": false,
+                        "repeats": true
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "PV1",
+                        "required": false,
+                        "repeats": false
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "Group": {
+                  "name": "ORDER_OBSERVATION",
+                  "required": true,
+                  "repeats": true,
+                  "elements": [
+                    {
+                      "Segment": {
+                        "code": "ORC",
+                        "required": false,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "OBR",
+                        "required": true,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "NTE",
+                        "required": false,
+                        "repeats": true
+                      }
+                    },
+                    {
+                      "Group": {
+                        "name": "OBSERVATION",
+                        "required": true,
+                        "repeats": true,
+                        "elements": [
+                          {
+                            "Segment": {
+                              "code": "OBX",
+                              "required": false,
+                              "repeats": false
+                            }
+                          },
+                          {
+                            "Segment": {
+                              "code": "NTE",
+                              "required": false,
+                              "repeats": true
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ORU_R01",
+      "event": "ORU^R01",
+      "description": "Unsolicited transmission of an observation message",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Group": {
+            "name": "PATIENT_RESULT",
+            "required": true,
+            "repeats": true,
+            "elements": [
+              {
+                "Group": {
+                  "name": "PATIENT",
+                  "required": false,
+                  "repeats": false,
+                  "elements": [
+                    {
+                      "Segment": {
+                        "code": "PID",
+                        "required": true,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "NTE",
+                        "required": false,
+                        "repeats": true
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "PV1",
+                        "required": false,
+                        "repeats": false
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "Group": {
+                  "name": "ORDER_OBSERVATION",
+                  "required": true,
+                  "repeats": true,
+                  "elements": [
+                    {
+                      "Segment": {
+                        "code": "ORC",
+                        "required": false,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "OBR",
+                        "required": true,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "NTE",
+                        "required": false,
+                        "repeats": true
+                      }
+                    },
+                    {
+                      "Group": {
+                        "name": "OBSERVATION",
+                        "required": true,
+                        "repeats": true,
+                        "elements": [
+                          {
+                            "Segment": {
+                              "code": "OBX",
+                              "required": false,
+                              "repeats": false
+                            }
+                          },
+                          {
+                            "Segment": {
+                              "code": "NTE",
+                              "required": false,
+                              "repeats": true
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "ORU_R03",
+      "event": "ORU^R03",
+      "description": "Unsolicited observation message",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Group": {
+            "name": "PATIENT_RESULT",
+            "required": true,
+            "repeats": true,
+            "elements": [
+              {
+                "Group": {
+                  "name": "PATIENT",
+                  "required": false,
+                  "repeats": false,
+                  "elements": [
+                    {
+                      "Segment": {
+                        "code": "PID",
+                        "required": true,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "NTE",
+                        "required": false,
+                        "repeats": true
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "PV1",
+                        "required": false,
+                        "repeats": false
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "Group": {
+                  "name": "ORDER_OBSERVATION",
+                  "required": true,
+                  "repeats": true,
+                  "elements": [
+                    {
+                      "Segment": {
+                        "code": "ORC",
+                        "required": false,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "OBR",
+                        "required": true,
+                        "repeats": false
+                      }
+                    },
+                    {
+                      "Segment": {
+                        "code": "NTE",
+                        "required": false,
+                        "repeats": true
+                      }
+                    },
+                    {
+                      "Group": {
+                        "name": "OBSERVATION",
+                        "required": true,
+                        "repeats": true,
+                        "elements": [
+                          {
+                            "Segment": {
+                              "code": "OBX",
+                              "required": false,
+                              "repeats": false
+                            }
+                          },
+                          {
+                            "Segment": {
+                              "code": "NTE",
+                              "required": false,
+                              "repeats": true
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": false,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "QRY_A19",
+      "event": "QRY^A19",
+      "description": "Patient query",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRD",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "QRY_Q01",
+      "event": "QRY^Q01",
+      "description": "Query sent for immediate response",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRD",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRF",
+            "required": false,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "QRY_Q02",
+      "event": "QRY^Q02",
+      "description": "Query sent for deferred response",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRD",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "QRF",
+            "required": false,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    },
+    {
+      "code": "UDM_Q05",
+      "event": "UDM^Q05",
+      "description": "Unsolicited display update message",
+      "elements": [
+        {
+          "Segment": {
+            "code": "MSH",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "URD",
+            "required": true,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "URS",
+            "required": false,
+            "repeats": false
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSP",
+            "required": true,
+            "repeats": true
+          }
+        },
+        {
+          "Segment": {
+            "code": "DSC",
+            "required": true,
+            "repeats": false
+          }
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "code": "ACC",
+      "name": "Accident",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Accident date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Accident code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Accident location",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "ADD",
+      "name": "Addendum",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Addendum continuation pointer",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "BHS",
+      "name": "Batch header",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Batch field separator",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Batch encoding characters",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Batch sending application",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Batch sending facility",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Batch receiving application",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Batch receiving facility",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Batch creation date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Batch security",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Batch name/id/type",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Batch comment",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Batch control id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Reference batch control id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "BLG",
+      "name": "Billing",
+      "fields": [
+        {
+          "position": 1,
+          "name": "When to charge",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Charge type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Account id",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "BTS",
+      "name": "Batch trailer",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Batch message count",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Batch comment",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Batch totals",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "DG1",
+      "name": "Diagnosis",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - diagnosis",
+          "data_type": "SI",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Diagnosis coding method",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Diagnosis code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Diagnosis description",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Diagnosis date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Diagnosis/drg type",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Major diagnostic category",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Diagnostic related group",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Drg approval indicator",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Drg grouper review code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Outlier type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Outlier days",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Outlier cost",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Grouper version and type",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "DSC",
+      "name": "Continuation pointer",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Continuation pointer",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "DSP",
+      "name": "Display data",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - display data",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Display level",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Data line",
+          "data_type": "TX",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Logical break point",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Result id",
+          "data_type": "TX",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "ERR",
+      "name": "Error",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Error code and location",
+          "data_type": "ID",
+          "required": true,
+          "repeats": true
+        }
+      ]
+    },
+    {
+      "code": "EVN",
+      "name": "Event type",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Event type code",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Date/time of event",
+          "data_type": "TS",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Date/time planned event",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Event reason code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "FHS",
+      "name": "File header",
+      "fields": [
+        {
+          "position": 1,
+          "name": "File field separator",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "File encoding characters",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "File sending application",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "File sending facility",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "File receiving application",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "File receiving facility",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Date/time of file creation",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "File security",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "File name/id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "File header comment",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "File control id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Reference file control id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "FT1",
+      "name": "Financial transaction",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - financial transaction",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Transaction id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Transaction batch id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Transaction date",
+          "data_type": "DT",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Transaction posting date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Transaction type",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Transaction code",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Transaction description",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Transaction description - alt",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Transaction amount - extended",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Transaction quantity",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Transaction amount - unit",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Department code",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Insurance plan id",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 15,
+          "name": "Insurance amount",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 16,
+          "name": "Patient location",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 17,
+          "name": "Fee schedule",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 18,
+          "name": "Patient type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 19,
+          "name": "Diagnosis code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 20,
+          "name": "Performed by code",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 21,
+          "name": "Ordered by code",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 22,
+          "name": "Unit cost",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "FTS",
+      "name": "File trailer",
+      "fields": [
+        {
+          "position": 1,
+          "name": "File batch count",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "File trailer comment",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "GT1",
+      "name": "Guarantor",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - guarantor",
+          "data_type": "SI",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Guarantor number",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Guarantor name",
+          "data_type": "PN",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Guarantor spouse name",
+          "data_type": "PN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Guarantor address",
+          "data_type": "AD",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Guarantor ph. num.- home",
+          "data_type": "TN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Guarantor ph. num-business",
+          "data_type": "TN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Guarantor date of birth",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Guarantor sex",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Guarantor type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Guarantor relationship",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Guarantor ssn",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Guarantor date - begin",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Guarantor date - end",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 15,
+          "name": "Guarantor priority",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 16,
+          "name": "Guarantor employer name",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 17,
+          "name": "Guarantor employer address",
+          "data_type": "AD",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 18,
+          "name": "Guarantor employ phone  ",
+          "data_type": "TN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 19,
+          "name": "Guarantor employee id num",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 20,
+          "name": "Guarantor employment status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "IN1",
+      "name": "Insurance",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - insurance",
+          "data_type": "SI",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Insurance plan id",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Insurance company id",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Insurance company name",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Insurance company address",
+          "data_type": "AD",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Insurance co. contact pers",
+          "data_type": "PN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Insurance co phone number",
+          "data_type": "TN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Group number",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Group name",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Insured's group emp. id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Insured's group emp. name",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Plan effective date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Plan expiration date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Authorization information",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 15,
+          "name": "Plan type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 16,
+          "name": "Name of insured",
+          "data_type": "PN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 17,
+          "name": "Insured's relationship to patient",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 18,
+          "name": "Insured's date of birth",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 19,
+          "name": "Insured's address",
+          "data_type": "AD",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 20,
+          "name": "Assignment of benefits",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 21,
+          "name": "Coordination of benefits",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 22,
+          "name": "Coord of ben. priority",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 23,
+          "name": "Notice of admission code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 24,
+          "name": "Notice of admission date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 25,
+          "name": "Rpt of eligibility code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 26,
+          "name": "Rpt of eligibility date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 27,
+          "name": "Release information code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 28,
+          "name": "Pre-admit cert.",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 29,
+          "name": "Verification date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 30,
+          "name": "Verification by",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 31,
+          "name": "Type of agreement code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 32,
+          "name": "Billing status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 33,
+          "name": "Lifetime reserve days",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 34,
+          "name": "Delay before l. r. day",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 35,
+          "name": "Company plan code",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 36,
+          "name": "Policy number",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 37,
+          "name": "Policy deductible",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 38,
+          "name": "Policy limit - amount",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 39,
+          "name": "Policy limit - days",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 40,
+          "name": "Room rate - semi-private",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 41,
+          "name": "Room rate - private",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 42,
+          "name": "Insured's employment status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 43,
+          "name": "Insured's sex",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 44,
+          "name": "Insured's employer address",
+          "data_type": "AD",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "MFI",
+      "name": "Master file identification",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Master file identifier",
+          "data_type": "CE",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Master file application identifier",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "File-level event code",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Entered date / time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Effective date / time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Response level code",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "MRG",
+      "name": "Merge patient information",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Prior patient id - internal",
+          "data_type": "CK",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Prior alternate patient id",
+          "data_type": "CK",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Prior patient account number",
+          "data_type": "CK",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "MSA",
+      "name": "Message acknowledgment",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Acknowledgment code",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Message control id",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Text message",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Expected sequence number",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Delayed acknowledgment type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "MSH",
+      "name": "Message header",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Field separator",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Encoding characters",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Sending application",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Sending facility",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Receiving application",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Receiving facility",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Date/time of message",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Security",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Message type",
+          "data_type": "CM_MSG",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Message control id",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Processing id",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Version id",
+          "data_type": "NM",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Sequence number",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Continuation pointer",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "NCK",
+      "name": "System clock",
+      "fields": [
+        {
+          "position": 1,
+          "name": "System date/time",
+          "data_type": "TS",
+          "required": true,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "NK1",
+      "name": "Next of kin",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - next of kin",
+          "data_type": "SI",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Next of kin name",
+          "data_type": "PN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Next of kin relationship",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Next of kin - address",
+          "data_type": "AD",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Next of kin - phone number",
+          "data_type": "TN",
+          "required": false,
+          "repeats": true
+        }
+      ]
+    },
+    {
+      "code": "NPU",
+      "name": "Non-patient update",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Bed location",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Bed status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "NSC",
+      "name": "Status change",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Network change type",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Current cpu",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Current fileserver",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Current application",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Current facility",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "New cpu",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "New fileserver",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "New application",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "New facility",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "NST",
+      "name": "Statistics",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Statistics available",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Source identifier",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Source type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Statistics start",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Statistics end",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Receive character count",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Send character count",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Messages received",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Messages sent",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Checksum errors received",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Length errors received",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Other errors received",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Connect timeouts",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Receive timeouts",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 15,
+          "name": "Network errors",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "NTE",
+      "name": "Notes and comments",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - notes and comments",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Source of comment",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Comment",
+          "data_type": "TX",
+          "required": true,
+          "repeats": true
+        }
+      ]
+    },
+    {
+      "code": "OBR",
+      "name": "Observation request",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - observation request",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Placer order  ",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Filler order  ",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Universal service ident.",
+          "data_type": "CE",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Priority",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Requested date-time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Observation date/time",
+          "data_type": "TS",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Observation end date/time",
+          "data_type": "TS",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Collection volume",
+          "data_type": "CQ",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Collector identifier",
+          "data_type": "CN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 11,
+          "name": "Specimen action code",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Danger code",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Relevant clinical info.",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Specimen received date/time",
+          "data_type": "TS",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 15,
+          "name": "Specimen source",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 16,
+          "name": "Ordering provider",
+          "data_type": "CN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 17,
+          "name": "Order call-back phone num",
+          "data_type": "TN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 18,
+          "name": "Placers field  1",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 19,
+          "name": "Placers field  2",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 20,
+          "name": "Fillers field  1",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 21,
+          "name": "Fillers field  2",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 22,
+          "name": "Results rpt/status chng - date/t",
+          "data_type": "TS",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 23,
+          "name": "Charge to practice",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 24,
+          "name": "Diagnostic serv sect id",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 25,
+          "name": "Result status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 26,
+          "name": "Linked results",
+          "data_type": "CE",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 27,
+          "name": "Quantity/timing",
+          "data_type": "CM",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 28,
+          "name": "Result copies to",
+          "data_type": "CN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 29,
+          "name": "Parent accession  ",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 30,
+          "name": "Transportation mode",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 31,
+          "name": "Reason for study",
+          "data_type": "CE",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 32,
+          "name": "Principal result interpreter",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 33,
+          "name": "Assistant result interpreter",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 34,
+          "name": "Technician",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 35,
+          "name": "Transcriptionist",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 36,
+          "name": "Scheduled - date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "OBX",
+      "name": "Result",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - observation simple",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Value type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Observation identifier",
+          "data_type": "CE",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Observation sub-id",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Observation results",
+          "data_type": "VARIES",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Units",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "References range",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Abnormal flags",
+          "data_type": "ST",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 9,
+          "name": "Probability",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Nature of abnormal test",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Observ result status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Date last obs normal values",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "ORC",
+      "name": "Common order",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Order control",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Placer order  ",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Filler order  ",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Placer group  ",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Order status",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Response flag",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Timing/quantity",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Parent",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Date/time of transaction",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Entered by",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Verified by",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Ordering provider",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Enterer's location",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Call back phone number",
+          "data_type": "TN",
+          "required": false,
+          "repeats": true
+        }
+      ]
+    },
+    {
+      "code": "ORO",
+      "name": "Order other",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Order item id",
+          "data_type": "CE",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Substitute allowed",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Results copies to",
+          "data_type": "CN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 4,
+          "name": "Stock location",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "PID",
+      "name": "Patient identification",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - patient id",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Patient id external",
+          "data_type": "CK",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Patient id internal",
+          "data_type": "CK",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Alternate patient id",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Patient name",
+          "data_type": "PN",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Mother's maiden name",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Date of birth",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Sex",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Patient alias",
+          "data_type": "PN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 10,
+          "name": "Ethnic group",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Patient address",
+          "data_type": "AD",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "County code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Phone number - home",
+          "data_type": "TN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 14,
+          "name": "Phone number - business",
+          "data_type": "TN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 15,
+          "name": "Language - patient",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 16,
+          "name": "Marital status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 17,
+          "name": "Religion",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 18,
+          "name": "Patient account number",
+          "data_type": "CK",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 19,
+          "name": "Ssn number - patient",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 20,
+          "name": "Driver's lic num - patient",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "PR1",
+      "name": "Procedures",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - procedure",
+          "data_type": "SI",
+          "required": true,
+          "repeats": true
+        },
+        {
+          "position": 2,
+          "name": "Procedure coding method.",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Procedure code",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Procedure description",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Procedure date/time",
+          "data_type": "TS",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Procedure type",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Procedure minutes",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Anesthesiologist",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Anesthesia code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Anesthesia minutes",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Surgeon",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Resident code",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Consent code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "PV1",
+      "name": "Patient visit",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - patient visit",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Patient class",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Assigned patient location",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Admission type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Pre-admit number",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Prior patient location",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Attending doctor",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Referring doctor",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Consulting doctor",
+          "data_type": "CN",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 10,
+          "name": "Hospital service",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Temporary location",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Pre-admit test indicator",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Re-admission indicator",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Admit source",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 15,
+          "name": "Ambulatory status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 16,
+          "name": "Vip indicator",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 17,
+          "name": "Admitting doctor",
+          "data_type": "CN",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 18,
+          "name": "Patient type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 19,
+          "name": "Visit number",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 20,
+          "name": "Financial class",
+          "data_type": "ID",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 21,
+          "name": "Charge price indicator",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 22,
+          "name": "Courtesy code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 23,
+          "name": "Credit rating",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 24,
+          "name": "Contract code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 25,
+          "name": "Contract effective date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 26,
+          "name": "Contract amount",
+          "data_type": "NM",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 27,
+          "name": "Contract period",
+          "data_type": "NM",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 28,
+          "name": "Interest code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 29,
+          "name": "Transfer to bad debt code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 30,
+          "name": "Transfer to bad debt date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 31,
+          "name": "Bad debt agency code",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 32,
+          "name": "Bad debt transfer amount",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 33,
+          "name": "Bad debt recovery amount",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 34,
+          "name": "Delete account indicator",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 35,
+          "name": "Delete account date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 36,
+          "name": "Discharge disposition",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 37,
+          "name": "Discharged to location",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 38,
+          "name": "Diet type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 39,
+          "name": "Servicing facility",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 40,
+          "name": "Bed status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 41,
+          "name": "Account status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 42,
+          "name": "Pending location",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 43,
+          "name": "Prior temporary location",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 44,
+          "name": "Admit date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 45,
+          "name": "Discharge date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 46,
+          "name": "Current patient balance",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 47,
+          "name": "Total charges",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 48,
+          "name": "Total adjustments",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 49,
+          "name": "Total payments",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "QRD",
+      "name": "Query definition",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Query date/time",
+          "data_type": "TS",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Query format code",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Query priority",
+          "data_type": "ID",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Query id",
+          "data_type": "ST",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Deferred response type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Deferred response date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Quantity limited request",
+          "data_type": "CQ",
+          "required": true,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Who subject filter",
+          "data_type": "ST",
+          "required": true,
+          "repeats": true
+        },
+        {
+          "position": 9,
+          "name": "What subject filter",
+          "data_type": "ID",
+          "required": true,
+          "repeats": true
+        },
+        {
+          "position": 10,
+          "name": "What department data code",
+          "data_type": "ST",
+          "required": true,
+          "repeats": true
+        },
+        {
+          "position": 11,
+          "name": "What data code value qual.",
+          "data_type": "ST",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 12,
+          "name": "Query results level",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "QRF",
+      "name": "Query filter",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Where subject filter",
+          "data_type": "ST",
+          "required": true,
+          "repeats": true
+        },
+        {
+          "position": 2,
+          "name": "When data start date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "When data end date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "What user qualifier",
+          "data_type": "ST",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 5,
+          "name": "Other qry subject filter",
+          "data_type": "ST",
+          "required": false,
+          "repeats": true
+        }
+      ]
+    },
+    {
+      "code": "RX1",
+      "name": "Pharmacy order",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Unused",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Unused",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Route",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Site administered",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Iv solution rate",
+          "data_type": "CQ",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Drug strength",
+          "data_type": "CQ",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Final concentration",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 8,
+          "name": "Final volume in ml.",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Drug dose",
+          "data_type": "CM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Drug role",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 11,
+          "name": "Prescription sequence  ",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Quantity dispensed",
+          "data_type": "CQ",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Unused",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Drug id",
+          "data_type": "CE",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 15,
+          "name": "Component drug ids",
+          "data_type": "ID",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 16,
+          "name": "Prescription type",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 17,
+          "name": "Substitution status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 18,
+          "name": "Rx order status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 19,
+          "name": "Number of refills",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 20,
+          "name": "Unused",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 21,
+          "name": "Refills remaining",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 22,
+          "name": "Dea class",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 23,
+          "name": "Ordering md's dea number",
+          "data_type": "NM",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 24,
+          "name": "Unused",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 25,
+          "name": "Last refill date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 26,
+          "name": "Rx number",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 27,
+          "name": "Prn status",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 28,
+          "name": "Pharmacy instructions",
+          "data_type": "TX",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 29,
+          "name": "Patient instructions",
+          "data_type": "TX",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 30,
+          "name": "Instructions",
+          "data_type": "TX",
+          "required": false,
+          "repeats": true
+        }
+      ]
+    },
+    {
+      "code": "UB1",
+      "name": "Ub82 data",
+      "fields": [
+        {
+          "position": 1,
+          "name": "Set id - ub82",
+          "data_type": "SI",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Blood deductible",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "Blood furn.-pints of",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "Blood replaced-pints",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 5,
+          "name": "Blood not rplcd-pints",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 6,
+          "name": "Co-insurance days",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 7,
+          "name": "Condition code",
+          "data_type": "ID",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 8,
+          "name": "Covered days -",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 9,
+          "name": "Non covered days -",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 10,
+          "name": "Value amount & code",
+          "data_type": "CM",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 11,
+          "name": "Number of grace days",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 12,
+          "name": "Spec. prog. indicator",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 13,
+          "name": "Psro/ur approval ind.",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 14,
+          "name": "Psro/ur aprvd stay-fm",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 15,
+          "name": "Psro/ur aprvd stay-to",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 16,
+          "name": "Occurrence",
+          "data_type": "ID",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 17,
+          "name": "Occurrence span",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 18,
+          "name": "Occurrence span start date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 19,
+          "name": "Occur. span end date",
+          "data_type": "DT",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 20,
+          "name": "Ub-82 locator 2",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 21,
+          "name": "Ub-82 locator 9",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 22,
+          "name": "Ub-82 locator 27",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 23,
+          "name": "Ub-82 locator 45",
+          "data_type": "ST",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "URD",
+      "name": "Results/update definition",
+      "fields": [
+        {
+          "position": 1,
+          "name": "R/u date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 2,
+          "name": "Report priority",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "R/u who subject definition",
+          "data_type": "ST",
+          "required": true,
+          "repeats": true
+        },
+        {
+          "position": 4,
+          "name": "R/u what subject definition",
+          "data_type": "ID",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 5,
+          "name": "R/u what department code",
+          "data_type": "ST",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 6,
+          "name": "R/u display/print locations",
+          "data_type": "ST",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 7,
+          "name": "R/u results level",
+          "data_type": "ID",
+          "required": false,
+          "repeats": false
+        }
+      ]
+    },
+    {
+      "code": "URS",
+      "name": "Unsolicited selection",
+      "fields": [
+        {
+          "position": 1,
+          "name": "R/u where subject definition",
+          "data_type": "ST",
+          "required": true,
+          "repeats": true
+        },
+        {
+          "position": 2,
+          "name": "R/u when data start date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 3,
+          "name": "R/u when data end date/time",
+          "data_type": "TS",
+          "required": false,
+          "repeats": false
+        },
+        {
+          "position": 4,
+          "name": "R/u what user qualifier",
+          "data_type": "ST",
+          "required": false,
+          "repeats": true
+        },
+        {
+          "position": 5,
+          "name": "R/u other results subject defini",
+          "data_type": "ST",
+          "required": false,
+          "repeats": true
+        }
+      ]
+    }
+  ],
+  "composites": [
+    {
+      "code": "AD",
+      "components": [
+        {
+          "position": 1,
+          "name": "Street Address",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 2,
+          "name": "Other Designation",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 3,
+          "name": "City",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 4,
+          "name": "State Or Province",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 5,
+          "name": "Zip",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 6,
+          "name": "Country",
+          "data_type": "ST",
+          "required": false
+        }
+      ]
+    },
+    {
+      "code": "CE",
+      "components": [
+        {
+          "position": 1,
+          "name": "Identifier",
+          "data_type": "ID",
+          "required": false
+        },
+        {
+          "position": 2,
+          "name": "Text",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 3,
+          "name": "Name Of Coding System",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 4,
+          "name": "Alternate Identifier",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 5,
+          "name": "Alternate Text",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 6,
+          "name": "Name Of Alternate Coding System",
+          "data_type": "ST",
+          "required": false
+        }
+      ]
+    },
+    {
+      "code": "CK",
+      "components": [
+        {
+          "position": 1,
+          "name": "ID Number",
+          "data_type": "NM",
+          "required": false
+        },
+        {
+          "position": 2,
+          "name": "Check Digit",
+          "data_type": "NM",
+          "required": false
+        },
+        {
+          "position": 3,
+          "name": "Code Identifying Check Digit Scheme Employed",
+          "data_type": "ID",
+          "required": false
+        }
+      ]
+    },
+    {
+      "code": "CM_MSG",
+      "components": [
+        {
+          "position": 1,
+          "name": "Message Type",
+          "data_type": "ID",
+          "required": false
+        },
+        {
+          "position": 2,
+          "name": "Trigger Event",
+          "data_type": "ID",
+          "required": false
+        }
+      ]
+    },
+    {
+      "code": "CN",
+      "components": [
+        {
+          "position": 1,
+          "name": "ID",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 2,
+          "name": "Family Name",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 3,
+          "name": "Given Name",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 4,
+          "name": "Middle Initial Or Name",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 5,
+          "name": "Degree",
+          "data_type": "ST",
+          "required": false
+        }
+      ]
+    },
+    {
+      "code": "CQ",
+      "components": [
+        {
+          "position": 1,
+          "name": "Quantity",
+          "data_type": "NM",
+          "required": false
+        },
+        {
+          "position": 2,
+          "name": "Units",
+          "data_type": "ST",
+          "required": false
+        }
+      ]
+    },
+    {
+      "code": "PN",
+      "components": [
+        {
+          "position": 1,
+          "name": "Family Name",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 2,
+          "name": "Given Name",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 3,
+          "name": "Middle Initial Or Name",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 4,
+          "name": "Suffix",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 5,
+          "name": "Prefix",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 6,
+          "name": "Degree",
+          "data_type": "ST",
+          "required": false
+        }
+      ]
+    },
+    {
+      "code": "TS",
+      "components": [
+        {
+          "position": 1,
+          "name": "Time Of An Event",
+          "data_type": "ST",
+          "required": false
+        },
+        {
+          "position": 2,
+          "name": "Degree Of Precision",
+          "data_type": "ST",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "primitives": [
+    {
+      "code": "CM"
+    },
+    {
+      "code": "DT"
+    },
+    {
+      "code": "FT"
+    },
+    {
+      "code": "ID"
+    },
+    {
+      "code": "IS"
+    },
+    {
+      "code": "NM"
+    },
+    {
+      "code": "SI"
+    },
+    {
+      "code": "ST"
+    },
+    {
+      "code": "TN"
+    },
+    {
+      "code": "TX"
+    },
+    {
+      "code": "VARIES"
+    }
+  ]
+}

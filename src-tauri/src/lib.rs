@@ -49,6 +49,12 @@ pub fn run() {
     // Best-effort plugin load; failures surface per-file via PluginInfo.error.
     let _ = plugins.reload();
 
+    // Installed FHIR profile packages. Loading is best-effort too: a package
+    // that fails to read leaves the others working rather than blocking
+    // startup.
+    let profiles = parser::fhir::profile::ProfileRegistry::new();
+    let _ = profiles.reload();
+
     let launch_files = collect_file_args(&std::env::args().collect::<Vec<_>>());
 
     tauri::Builder::default()
@@ -75,6 +81,7 @@ pub fn run() {
         .manage(LaunchFiles(Mutex::new(launch_files)))
         .manage(db)
         .manage(plugins)
+        .manage(profiles)
         .manage(ListenerState::new())
         .manage(licensing::telemetry::UsageCounters::new())
         .setup(|app| {
@@ -115,6 +122,15 @@ pub fn run() {
             commands::tables::get_composite_components,
             commands::validation::validate_message,
             commands::validation::validate_fhir,
+            commands::fhir_packages::fhir_packages_list,
+            commands::fhir_packages::fhir_packages_reload,
+            commands::fhir_packages::fhir_packages_install,
+            commands::fhir_packages::fhir_packages_remove,
+            commands::fhir_packages::fhir_packages_dir,
+            commands::fhir_rules::fhir_rules_list,
+            commands::fhir_rules::fhir_rules_save,
+            commands::fhir_rules::fhir_rule_check,
+            commands::fhir_rules::fhir_rule_test,
             commands::parser::parse_fhir_message,
             commands::parser::get_fhir_tree_children,
             commands::parser::analyze_fhir_bundle,

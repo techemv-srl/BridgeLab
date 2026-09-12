@@ -12,6 +12,10 @@ pub struct FhirValidationReport {
     pub error_count: usize,
     pub warning_count: usize,
     pub info_count: usize,
+    /// True when at least one StructureDefinition was applied. The UI says
+    /// so, because "no profile findings" means something very different
+    /// when no profile ran.
+    pub profiles_applied: bool,
 }
 
 /// Validate an HL7 message by its store ID.
@@ -51,9 +55,14 @@ pub fn validate_message(
 }
 
 /// Validate a FHIR JSON resource.
+///
+/// Runs the built-in structural checks followed by any active user-defined
+/// FHIR rules (files in `<config>/BridgeLab/plugins/fhir/*.json`).
 #[tauri::command]
 pub fn validate_fhir(
     content: String,
+    registry: State<'_, PluginRegistry>,
+    profiles: State<'_, fhir::profile::ProfileRegistry>,
     tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<FhirValidationReport, String> {
     tel.bump_mem("validations_fhir");
@@ -65,7 +74,43 @@ pub fn validate_fhir(
     } else {
         fhir::parse_fhir_json(&content)?
     };
-    let issues = fhir::validate_fhir_json(&resource);
+    let mut issues = fhir::validate_fhir_json(&resource);
+
+    let fhir_rules =
+        registry.active_fhir_rules(crate::licensing::feature_gate::active_plugin_limit());
+    if !fhir_rules.is_empty() {
+        if let Some(json) = &resource.json_value {
+            issues.extend(plugins::run_fhir_validations(json, &fhir_rules));
+        }
+    }
+
+    // Conformance against the installed StructureDefinitions, when any
+    // apply to this resource type.
+    let mut profiles_applied = false;
+    if let Some(json) = &resource.json_value {
+        if let Some(found) = profiles.validate(json) {
+            profiles_applied = true;
+            issues.extend(found);
+        }
+    }
+    // A resource that declares a profile and got no conformance findings
+    // looks clean; say plainly when that is because nothing was checked.
+    if !profiles_applied
+        && resource
+            .json_value
+            .as_ref()
+            .and_then(|j| j.get("meta"))
+            .and_then(|m| m.get("profile"))
+            .is_some()
+    {
+        issues.push(fhir::FhirValidationIssue {
+            severity: "info".into(),
+            message: "Profile conformance was not checked: no FHIR profile package is \
+                      installed. Add one under Tools → FHIR profile packages…"
+                .into(),
+            path: "meta.profile".into(),
+        });
+    }
 
     let error_count = issues.iter().filter(|i| i.severity == "error").count();
     let warning_count = issues.iter().filter(|i| i.severity == "warning").count();
@@ -76,5 +121,6 @@ pub fn validate_fhir(
         error_count,
         warning_count,
         info_count,
+        profiles_applied,
     })
 }

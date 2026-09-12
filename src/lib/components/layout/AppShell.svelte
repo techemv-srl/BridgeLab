@@ -48,6 +48,8 @@
 	let showSettings = $state(false);
 	let settingsSection = $state('editor');
 	let showSchemaExport = $state(false);
+	let showFhirRules = $state(false);
+	let showFhirPackages = $state(false);
 	let showCompare = $state(false);
 	let showBatch = $state(false);
 	let showBatchAnon = $state(false);
@@ -488,8 +490,20 @@
 				// the JSON path where a segment reference would go.
 				const { validateFhir } = await import('$lib/ipc/validation');
 				const fhirReport = await validateFhir(trimmed);
+				// Say when conformance was actually checked: a clean report
+				// with no profile applied is not the same reassurance.
+				const profileNote = fhirReport.profiles_applied
+					? [{
+						severity: 'info' as const,
+						rule_id: 'FHIR',
+						segment_idx: null,
+						segment_type: null,
+						field_position: null,
+						message: t('fhir.profilesApplied'),
+					}]
+					: [];
 				validationReport = {
-					issues: fhirReport.issues.map((i) => ({
+					issues: [...profileNote, ...fhirReport.issues.map((i) => ({
 						severity: (['error', 'warning', 'info'].includes(i.severity)
 							? i.severity
 							: 'info') as 'error' | 'warning' | 'info',
@@ -498,10 +512,10 @@
 						segment_type: i.path || null,
 						field_position: null,
 						message: i.message,
-					})),
+					}))],
 					error_count: fhirReport.error_count,
 					warning_count: fhirReport.warning_count,
-					info_count: fhirReport.info_count,
+					info_count: fhirReport.info_count + profileNote.length,
 				};
 			} catch (e) {
 				validationReport = buildSyntheticReport(content, String(e));
@@ -1125,6 +1139,8 @@
 		onCopyTruncated={handleCopyTruncated}
 		onExportJson={handleExportJson}
 		onExportXsd={() => { showSchemaExport = true; }}
+		onShowFhirRules={() => { showFhirRules = true; }}
+		onShowFhirPackages={() => { showFhirPackages = true; }}
 		onExportCsv={handleExportCsv}
 		onCompareMessages={handleCompareMessages}
 		onBatchValidate={() => { showBatch = true; }}
@@ -1351,6 +1367,8 @@
 		bind:showActivation
 		bind:showSettings
 		bind:showSchemaExport
+		bind:showFhirRules
+		bind:showFhirPackages
 		bind:showBatch
 		bind:showBatchAnon
 		bind:showGenerate

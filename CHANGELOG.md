@@ -2,7 +2,103 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
-## [Unreleased]
+## [1.5.0] — 2026-09-12
+
+### Added
+- **FHIR profile validation against installed StructureDefinitions.**
+  Until now `meta.profile` was listed and left unchecked — the official
+  HL7 validator is a Java tool, and requiring a JRE would undo the point
+  of an offline desktop app. BridgeLab now reads FHIR NPM packages
+  directly and validates against their StructureDefinitions in Rust.
+  - **Tools → FHIR profile packages…** installs a `.tgz`
+    (`hl7.fhir.r4.core` for the base definitions, then national or
+    site-specific implementation guides). Installing distils the package
+    once — the R4 core is 4581 files — so startup reads a compact index
+    rather than the archive.
+  - Every FHIR validation then also checks **cardinality** (a required
+    element missing, a `0..1` element repeating), **element types**,
+    **choice elements** (`value[x]` must appear as exactly one of
+    `valueQuantity`, `valueString`, … — a plain `value` or two forms at
+    once is reported), **fixed values and patterns**, and **unknown
+    elements**, which catches a typo like `genderr` or an element
+    belonging to a different resource type.
+  - Profiles declared in `meta.profile` are applied automatically when
+    the defining package is installed; when it is not, the validator says
+    so instead of quietly reporting a clean result. When profiles did
+    run, the report says that too.
+  - Terminology stays out of scope: a `required` binding can only be
+    checked by expanding the ValueSet, so bindings are left unchecked
+    rather than half-checked.
+  - Verified against hl7.fhir.r4.core 4.0.1: all **4578 resources in the
+    package validate with 14 findings, every one of them genuine** — 13
+    `SearchParameter` files that really do omit the required `base`, and
+    one ValueSet declaring a profile the core package does not contain.
+    `scripts/fetch-fhir-core-package.sh` sets the test up.
+  - Installing a package requires a Professional license; packages
+    already installed keep validating in every tier, so a lapsed trial
+    never turns previously clean resources red.
+- **Custom FHIR validation rules, with a builder.** The declarative plugin
+  packs that already extend the HL7 v2 validator now cover FHIR too:
+  `<config>/BridgeLab/plugins/fhir/*.json`. A rule is either a FHIRPath
+  invariant that must hold (`identifier.exists()`, the way FHIR writes its
+  own constraints) or a FHIRPath selector plus a check on the values it
+  picks up — must be present, how many, matches a pattern, one of a list,
+  contains text, length bounds. Rules run alongside the built-in checks on
+  every FHIR validation, still with no code execution.
+  - **Tools → FHIR validation rules…** (Pro) edits them in-app: it
+    validates the FHIRPath before saving and can run a rule against the
+    resource in the active tab, showing which values the selector actually
+    matched. A rule scoped to a type the open resource is not says so
+    rather than reporting a pass.
+  - A rule scoped to `Patient` also fires for the Patients inside a
+    Bundle, reported against `entry[n].resource.…`.
+  - A rule whose FHIRPath fails to evaluate is reported as a finding
+    instead of being silently skipped.
+  - Reference pack: `examples/plugins/fhir/sample-fhir-rules.json`; schema
+    in [docs/PLUGINS.md](docs/PLUGINS.md). Rules run in every tier under
+    the existing plugin-pack cap — only the editor is Pro.
+- **The FHIRPath evaluator now implements the FHIRPath 2.0 language.** It
+  was a path walker that understood navigation, `[n]`,
+  `where(field = 'value')` and a handful of functions; anything else
+  failed. It is now a real tokenizer, parser and evaluator with the
+  specification's full operator set and precedence, three-valued boolean
+  logic, partial-precision date/time literals, quantities with unit
+  conversion, `$this`/`$index`/`$total`, the `%resource` / `%ucum` /
+  `%ext-…` constants, and around seventy functions — including `sort()`,
+  `repeat()`, `aggregate()`, `iif()`, `ofType()`, the string and math
+  libraries, `extension()`, `hasValue()` and `resolve()`, which follows a
+  Reference to a contained or bundled resource.
+  - Comparing values of different precision now returns the empty
+    collection instead of a guess: `@2015-02-04 = @2015-02` is neither
+    true nor false.
+  - `trace('label')` passes its input through and shows what it captured
+    under the result, so a long path can be inspected halfway along.
+  - Errors name the problem — an unknown function, a missing bracket, an
+    operator given a collection where it needs one value — instead of
+    silently returning nothing.
+  - Verified against the **official HL7 FHIRPath test suite**: 836 of the
+    922 runnable cases pass. `scripts/fetch-fhirpath-suite.sh` downloads
+    it and `cargo test --test fhirpath_suite` runs it. The remaining gap
+    is `lowBoundary()`/`highBoundary()` (exact decimal arithmetic),
+    compound units, and cases that need the StructureDefinitions loaded.
+- **Three more HL7 versions in the schema catalogue: v2.1, v2.2 and
+  v2.5.1.** v2.5.1 is the baseline most US interfaces are written
+  against, and v2.1/v2.2 cover legacy feeds still in production. The
+  catalogue now spans **10 selectable versions and 2,320 message
+  structures** — XSD export, the schema-aware tree and the Field
+  Inspector all read from them.
+
+### Fixed
+- **HL7 v2.7.1 exported v2.7 data under its own name.** The shipped
+  v2.7.1 payload was a byte-identical copy of the v2.7 one. v2.7.1 is a
+  technical-correction release of v2.7 and genuinely carries the same
+  message definitions, so it is now declared an alias: it is marked
+  `(= v2.7)` in the version dropdown, exports from the v2.7 catalogue,
+  and no longer embeds a duplicate 2 MB payload in the binary.
+- **Editor autocomplete and hover always described fields against HL7
+  v2.5**, whatever version the open message declared. Both now read
+  MSH-12 and look the field up in the matching catalogue, so a v2.3 or
+  v2.7 message gets that version's field names, data types and lengths.
 
 ### Changed
 - **Windows installer artwork.** The NSIS sidebar and header images still

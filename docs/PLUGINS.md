@@ -11,7 +11,9 @@ top later.
 ```
 <config_dir>/BridgeLab/plugins/
 ├── validation/
-│   └── *.json     <- extra validation rules
+│   └── *.json     <- extra HL7 v2 validation rules
+├── fhir/
+│   └── *.json     <- extra FHIR validation rules
 └── anonymization/
     └── *.json     <- extra PHI fields
 ```
@@ -31,7 +33,8 @@ A reload is also triggered at every app startup.
 
 `Settings → Plugins`:
 
-- Lists every pack found, grouped by kind (`validation` / `anonymization`),
+- Lists every pack found, grouped by kind (`validation` / `fhir` /
+  `anonymization`),
   with author, version, rule count, and the full on-disk path.
 - Toggle individual packs on/off; the preference is persisted so the choice
   survives restarts.
@@ -107,6 +110,89 @@ Issue counts in the Validation panel reflect the merged report.
 Set `component` (1-based, `^`-separated) to narrow the check from the full
 field to a single component, e.g. component 1 of `PID-5` (family name).
 
+## FHIR pack schema
+
+Files in `fhir/` carry `fhir_rules`. Each rule takes one of two shapes.
+
+**Invariant** &ndash; a FHIRPath expression that must evaluate to `true`, the
+way FHIR writes its own constraints:
+
+```json
+{
+	"id": "acme-fhir-rules",
+	"name": "ACME FHIR rules",
+	"version": "1.0",
+	"enabled": true,
+	"fhir_rules": [
+		{
+			"rule_id": "patient-has-identifier",
+			"severity": "error",
+			"resource": "Patient",
+			"expression": "identifier.exists()",
+			"message": "Patient must carry at least one identifier"
+		}
+	]
+}
+```
+
+**Selector plus check** &ndash; a FHIRPath expression picking the values, and
+a check applied to each of them. This is what the in-app builder writes:
+
+```json
+{
+	"rule_id": "patient-phone-format",
+	"severity": "warning",
+	"resource": "Patient",
+	"path": "telecom.where(system = 'phone').value",
+	"check": { "type": "regex", "pattern": "^[+0-9 ()./-]{6,}$" },
+	"message": "Phone number contains unexpected characters"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `rule_id` | Identifier shown in the validation panel. Required. |
+| `severity` | `error`, `warning` or `info`. Default `warning`. |
+| `resource` | Resource type the rule applies to. Omit to apply it to every resource. |
+| `expression` | Invariant form. Mutually exclusive with `path`. |
+| `path` | Selector form. Requires `check`. |
+| `check` | What to assert about each selected value. |
+| `message` | Text emitted when the rule fires. Required. |
+
+### Supported `check.type` (FHIR)
+
+| Type | Extra fields | Passes when |
+|---|---|---|
+| `not_empty` | &ndash; | at least one value, none of them blank |
+| `cardinality` | `min`, `max` (either may be omitted) | the number of selected values is in range |
+| `regex` | `pattern` | every value matches |
+| `one_of` | `values` | every value is in the list |
+| `contains` | `value` | every value contains the substring |
+| `min_length` / `max_length` | `min` / `max` | every value is within the length bound |
+
+Two things worth knowing:
+
+- **A Bundle is walked entry by entry.** A rule scoped to `Patient` fires for
+  the Patients inside a transaction Bundle as well as for a standalone one,
+  and the reported path is prefixed with `entry[n].resource.`.
+- **A rule that fails to evaluate is reported, not skipped.** A typo in a
+  FHIRPath expression surfaces as a finding that says so, because a rule that
+  silently never runs is worse than one that complains.
+
+Every check except `not_empty` and `cardinality` is satisfied by a selector
+that returns nothing &ndash; there is no value to disagree with. Pair the two
+when a field must both exist and look right.
+
+### Building rules in the app
+
+**Tools → FHIR validation rules…** opens an editor that writes
+`plugins/fhir/user-rules.json`. It validates the FHIRPath before saving and
+can run a rule against the resource currently open, showing which values the
+selector picked up. Hand-written packs in the same folder load alongside it.
+
+The editor requires a Professional license; rules themselves run in every
+tier under the same plugin-pack cap as HL7 v2 packs.
+
 ## Anonymization pack schema
 
 ```json
@@ -136,6 +222,22 @@ Plugin PHI rules merge with the built-in catalogue. Duplicates (same segment
 + field already known to the built-in list) are silently skipped, so you
 never double-mask a value.
 
+## Not the same thing: FHIR profile packages
+
+Plugin packs are **your** rules, written as JSON, living under
+`<config_dir>/BridgeLab/plugins/`.
+
+FHIR **profile packages** are a different mechanism: published FHIR NPM
+packages (`hl7.fhir.r4.core`, a national IG, your site's own profiles)
+that BridgeLab validates resources against structurally &ndash;
+cardinality, element types, choice elements, fixed values, unknown
+elements. They live under `<config_dir>/BridgeLab/fhir-packages/` and are
+installed from **Tools &rarr; FHIR profile packages&hellip;**.
+
+Use a profile package when the rule you want is already written down in a
+StructureDefinition; use a `fhir/` plugin pack when it is your own
+convention and nobody has published it.
+
 ## Security notes
 
 - **No code execution.** Plugin packs are pure data parsed with `serde_json`.
@@ -148,6 +250,6 @@ never double-mask a value.
 
 ## Roadmap
 
-1. ✅ Declarative validation + anonymization packs (this doc)
+1. ✅ Declarative HL7 v2, FHIR and anonymization packs (this doc)
 2. Sandboxed JS plugins (QuickJS) for transformations and computed validation
 3. WASM plugins with a stable ABI for marketplace distribution

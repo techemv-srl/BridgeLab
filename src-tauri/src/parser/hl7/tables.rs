@@ -73,13 +73,38 @@ static TABLES: OnceLock<HashMap<String, Hl7Table>> = OnceLock::new();
 fn init_tables() -> HashMap<String, Hl7Table> {
     let mut tables = HashMap::new();
 
-    // Build tables for common versions
-    for version in &["2.3", "2.3.1", "2.4", "2.5", "2.5.1", "2.6", "2.7", "2.8"] {
-        let table = build_table(version);
-        tables.insert(version.to_string(), table);
+    // One entry per shipped version, taken from the schema catalogue rather
+    // than a hand-kept list: a version added there but forgotten here would
+    // silently lose autocomplete and hover for messages that declare it.
+    for version in crate::parser::hl7::schema::Hl7Version::ALL {
+        tables.insert(version.as_str().to_string(), build_table(version.as_str()));
     }
 
     tables
+}
+
+/// Table used for a version we hold no entry for.
+///
+/// `build_table` does not vary by version today, so this is the same data
+/// under a different key — but it means a message declaring an HL7 version
+/// BridgeLab does not ship (a future v2.8, or a typo in MSH-12) still gets
+/// field names and hover text instead of nothing at all.
+fn fallback_table(tables: &HashMap<String, Hl7Table>) -> Option<&Hl7Table> {
+    tables.get(DEFAULT_VERSION)
+}
+
+/// Version whose table stands in for anything unrecognised.
+const DEFAULT_VERSION: &str = "2.5";
+
+/// Exact version, then major.minor, then the default table.
+fn table_for<'a>(tables: &'a HashMap<String, Hl7Table>, version: &str) -> Option<&'a Hl7Table> {
+    tables
+        .get(version)
+        .or_else(|| {
+            let major_minor = version.split('.').take(2).collect::<Vec<_>>().join(".");
+            tables.get(&major_minor)
+        })
+        .or_else(|| fallback_table(tables))
 }
 
 /// Get the tables cache, initializing if needed.
@@ -89,12 +114,7 @@ fn get_tables() -> &'static HashMap<String, Hl7Table> {
 
 /// Look up segment info by segment code and version.
 pub fn get_segment_info(segment_type: &str, version: &str) -> Option<SegmentInfo> {
-    let tables = get_tables();
-    // Try exact version, then fall back to major.minor
-    let table = tables.get(version).or_else(|| {
-        let major_minor = version.split('.').take(2).collect::<Vec<_>>().join(".");
-        tables.get(&major_minor)
-    })?;
+    let table = table_for(get_tables(), version)?;
 
     let seg_def = table.segments.get(segment_type)?;
     Some(SegmentInfo {
@@ -107,11 +127,7 @@ pub fn get_segment_info(segment_type: &str, version: &str) -> Option<SegmentInfo
 
 /// Look up a specific field info.
 pub fn get_field_info(segment_type: &str, field_position: usize, version: &str) -> Option<FieldInfo> {
-    let tables = get_tables();
-    let table = tables.get(version).or_else(|| {
-        let major_minor = version.split('.').take(2).collect::<Vec<_>>().join(".");
-        tables.get(&major_minor)
-    })?;
+    let table = table_for(get_tables(), version)?;
 
     let seg_def = table.segments.get(segment_type)?;
     let field_def = seg_def.fields.iter().find(|f| f.position == field_position)?;
@@ -432,6 +448,33 @@ fn field(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every version the schema catalogue ships must resolve here too.
+    ///
+    /// Regression guard: the version list was hand-kept and stopped at 2.3,
+    /// so adding v2.1 and v2.2 to the catalogue silently removed field
+    /// completion and hover for any message declaring them — the lookup
+    /// missed on both the exact and the major.minor key and returned None.
+    #[test]
+    fn every_shipped_version_resolves() {
+        for version in crate::parser::hl7::schema::Hl7Version::ALL {
+            assert!(
+                get_segment_info("PID", version.as_str()).is_some(),
+                "no segment table for HL7 {}",
+                version.as_str()
+            );
+        }
+    }
+
+    /// An unrecognised version falls back rather than losing the hints.
+    #[test]
+    fn an_unknown_version_still_gets_a_table() {
+        assert!(get_segment_info("PID", "2.9").is_some());
+        assert!(get_segment_info("PID", "").is_some());
+        assert!(get_field_info("PID", 5, "nonsense").is_some());
+        // An unknown *segment* is still None: there is nothing to fall back to.
+        assert!(get_segment_info("ZZZ", "2.5").is_none());
+    }
 
     #[test]
     fn test_get_segment_info() {

@@ -3,6 +3,8 @@ pub mod batch;
 pub mod communication;
 pub mod licensing;
 pub mod templates;
+pub mod fhir_packages;
+pub mod fhir_rules;
 pub mod test_cases;
 pub mod database;
 pub mod fileio;

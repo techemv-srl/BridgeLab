@@ -19,7 +19,8 @@
 ## Features
 
 - **HL7 v2.x parser** - SIMD-accelerated streaming parser, handles 5-10MB messages with base64 sections smoothly
-- **FHIR support** - Parse and validate JSON/XML FHIR resources (Patient, Observation, Bundle, ...)
+- **FHIR support** - Parse and validate JSON/XML FHIR resources (Patient, Observation, Bundle, ...), with profile validation against installed FHIR NPM packages (cardinality, element types, choice elements, fixed values, unknown elements)
+- **FHIRPath 2.0** - Full operator set and ~70 functions, verified against the official HL7 FHIRPath test suite
 - **Smart truncation** - Large fields auto-truncated to `{...N bytes}`, expandable inline or all at once
 - **Validation** - Structural, field-level, data-type validation with 5 rule categories
 - **MLLP transport** - Client & server with custom framing, auto-ACK, encoding selection
@@ -70,6 +71,20 @@ pnpm build
 # Generate the QA Excel workbook from TEST_PLAN.md
 pip install openpyxl
 python scripts/test_plan_to_excel.py   # -> TEST_PLAN.xlsx (gitignored)
+
+# Export the in-app English manual as a Word document
+node scripts/manual-to-docx.mjs        # -> docs/BridgeLab-User-Manual-EN.docx (gitignored)
+
+# FHIRPath conformance against the official HL7 suite (third-party, not vendored)
+./scripts/fetch-fhirpath-suite.sh
+BL_FHIRPATH_SUITE=.fhirpath-suite cargo test --manifest-path src-tauri/Cargo.toml \
+    --test fhirpath_suite -- --nocapture
+
+# FHIR profile validation against the HL7 R4 core package (also not vendored)
+./scripts/fetch-fhir-core-package.sh
+BL_FHIR_PACKAGE=.fhir-packages/hl7.fhir.r4.core.tgz \
+BL_FHIR_EXAMPLES=.fhir-packages/examples \
+    cargo test --manifest-path src-tauri/Cargo.toml --test fhir_profiles -- --nocapture
 ```
 
 Full manual test catalogue lives in [`TEST_PLAN.md`](TEST_PLAN.md) (~300 cases
@@ -88,8 +103,12 @@ built-in validator and PHI anonymizer **without running any code**.
 
 ```
 <config_dir>/BridgeLab/plugins/
-├── validation/    *.json  - extra validation rules (not_empty, regex,
+├── validation/    *.json  - extra HL7 v2 rules (not_empty, regex,
 │                            one_of, max_length, min_length, contains)
+├── fhir/          *.json  - extra FHIR rules: a FHIRPath invariant, or a
+│                            FHIRPath selector plus a check (including
+│                            cardinality). Built in-app via
+│                            Tools → FHIR validation rules…
 └── anonymization/ *.json  - extra PHI fields merged with the built-in list
 ```
 

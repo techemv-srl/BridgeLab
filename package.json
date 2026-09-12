@@ -1,6 +1,6 @@
 {
   "name": "bridgelab",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "BridgeLab - HL7 made simple. A modern HL7/FHIR message editor.",
   "private": true,
   "type": "module",
@@ -14,11 +14,14 @@
     "tauri": "tauri"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@sveltejs/adapter-static": "^3.0.0",
     "@sveltejs/kit": "^2.70.3",
     "@sveltejs/vite-plugin-svelte": "^5.1.1",
     "@tailwindcss/vite": "^4.0.0",
     "@tauri-apps/cli": "^2.11.4",
+    "docx": "^9.7.1",
+    "node-html-parser": "^9.0.4",
     "svelte": "^5.56.10",
     "svelte-check": "^4.0.0",
     "tailwindcss": "^4.0.0",
