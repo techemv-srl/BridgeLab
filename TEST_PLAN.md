@@ -708,6 +708,17 @@ Separately from this manual plan, the following automated tests run on every com
 - **Frontend build** - `pnpm build` succeeds
 - **Frontend unit tests** - `pnpm test` (vitest: stores, MSH-12 version detection)
 
+Before every release, `pnpm e2e` runs the **acceptance suite** against the
+installed desktop application (see `e2e/README.md`). It drives the real
+binary through tauri-driver and covers, automatically, a large part of what
+this document describes by hand: the package itself (BL-PKG), the shell,
+HL7 parsing and validation, the version catalogue (BL-VER), the FHIRPath
+engine (BL-FP), the FHIR rules builder (BL-FRULE) and profile validation
+(BL-PROF). A case covered there does not need manual repetition; the manual
+plan stays authoritative for everything the suite cannot reach — native file
+dialogs, installers on Windows and macOS, MLLP and HTTP against real
+endpoints, and anything requiring human judgement about appearance.
+
 Two conformance suites run against third-party corpora that are **not
 vendored**; both skip cleanly when the data is absent, so a plain
 `cargo test` stays offline:

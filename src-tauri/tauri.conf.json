@@ -105,12 +105,11 @@
 		},
 		"linux": {
 			"deb": {
-				"depends": [
-					"libwebkit2gtk-4.1-0",
-					"libgtk-3-0"
-				],
 				"section": "utils",
-				"priority": "optional"
+				"priority": "optional",
+				"files": {
+					"/usr/share/mime/packages/bridgelab-hl7.xml": "linux/bridgelab-hl7.xml"
+				}
 			},
 			"appimage": {
 				"bundleMediaFramework": true
@@ -119,7 +118,10 @@
 				"depends": [
 					"webkit2gtk4.1",
 					"gtk3"
-				]
+				],
+				"files": {
+					"/usr/share/mime/packages/bridgelab-hl7.xml": "linux/bridgelab-hl7.xml"
+				}
 			}
 		}
 	},
