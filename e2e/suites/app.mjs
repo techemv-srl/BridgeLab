@@ -23,10 +23,16 @@ export async function appSuite() {
 			return `${n} menus`;
 		});
 		await r.check('first run shows the welcome screen with no tabs', async () => {
-			const state = await js(d, `return {
-				welcome: !!document.querySelector('.welcome'),
-				tabs: document.querySelectorAll('.tab').length,
-			};`);
+			// The welcome card renders only once startup finishes deciding
+			// whether to restore a session, which is later than the menu bar
+			// ready() waits for. Until then neither is on screen — correct
+			// behaviour, but it means settling has to be waited for, not
+			// sampled.
+			const state = await waitFor(d, `
+				const tabs = document.querySelectorAll('.tab').length;
+				const welcome = !!document.querySelector('.welcome');
+				return (tabs || welcome) ? { tabs, welcome } : null;
+			`, 20000, 'startup to settle');
 			// A restored session is legitimate too; only a tabless run must
 			// show the welcome card.
 			if (state.tabs === 0 && !state.welcome) throw new Error('no tabs and no welcome screen');
@@ -63,16 +69,21 @@ export async function appSuite() {
 		const versionLabels = () => js(d, `
 			return [...document.querySelectorAll('.xsd-controls select')[0].options].map(o => o.textContent.trim());
 		`);
+		// "HL7 v2.7.1 (= v2.7) (PRO)" exports 2.7.1 — the alias note and the
+		// tier badge are not versions on offer, so take the first token only.
+		// Matching the label as a substring would let v2.7.1's alias note
+		// stand in for a missing v2.7 entry.
+		const versionOf = (label) => {
+			const tok = label.split(/\s+/).find((t) => /^v\d/.test(t));
+			return tok ? tok.slice(1) : '';
+		};
+		const WANT = ['2.1', '2.2', '2.3', '2.3.1', '2.4', '2.5', '2.5.1', '2.6', '2.7', '2.7.1'];
 		await r.check('every shipped version is offered', async () => {
-			const opts = await versionLabels();
-			const want = ['2.1', '2.2', '2.3', '2.3.1', '2.4', '2.5', '2.5.1', '2.6', '2.7', '2.7.1'];
-			for (const v of want) {
-				if (!opts.some((o) => new RegExp(`v${v.replace(/\./g, '\\.')}(\\D|$)`).test(o))) {
-					throw new Error(`v${v} missing from: ${opts.join(', ')}`);
-				}
-			}
-			if (opts.length !== want.length) throw new Error(`expected ${want.length}, got ${opts.length}`);
-			return `${opts.length} versions`;
+			const offered = (await versionLabels()).map(versionOf);
+			const missing = WANT.filter((v) => !offered.includes(v));
+			if (missing.length) throw new Error(`missing v${missing.join(', v')}; offered: ${offered.join(', ')}`);
+			if (offered.length !== WANT.length) throw new Error(`expected ${WANT.length}, got ${offered.length}`);
+			return `${offered.length} versions`;
 		});
 		await r.check('v2.7.1 is marked as an alias of v2.7', async () => {
 			const hit = (await versionLabels()).find((o) => o.includes('2.7.1'));
@@ -80,11 +91,11 @@ export async function appSuite() {
 			return hit;
 		});
 		await r.check('the oldest catalogue exports', async () => {
+			const i = (await versionLabels()).map(versionOf).indexOf('2.1');
+			if (i < 0) throw new Error('no v2.1 option to select');
 			await js(d, `
 				const s = document.querySelectorAll('.xsd-controls select')[0];
-				const i = [...s.options].findIndex(o => /v2\\.1(\\D|$)/.test(o.textContent));
-				if (i < 0) throw new Error('no v2.1');
-				s.selectedIndex = i;
+				s.selectedIndex = ${i};
 				s.dispatchEvent(new Event('change', { bubbles: true }));
 			`);
 			const n = await waitFor(d, `
