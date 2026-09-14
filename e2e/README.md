@@ -103,3 +103,8 @@ Two traps this suite already accounts for, both of which cost an afternoon:
   reads the previous resource.
 - **Zero tabs is the intended first-run state**, not a failure. Monaco mounts
   when a document exists, so load one before expecting an editor.
+- **The shell is interactive before startup has settled.** The menu bar
+  mounts first; the welcome card waits for session restore to finish, so
+  there is a window with neither it nor an editor on screen. Wait for one of
+  the two states, don't sample once — a check that samples passes or fails by
+  how fast the machine is that day.
