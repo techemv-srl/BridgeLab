@@ -78,11 +78,31 @@ function runs(node, base = {}) {
 	return out;
 }
 
+const ENTITIES = {
+	// a real non-breaking space: the manual writes &nbsp; where a value and
+	// its unit must not be split across lines ("32&nbsp;MB")
+	'&nbsp;': '\u00a0',
+	'&lt;': '<',
+	'&gt;': '>',
+	'&quot;': '"',
+	'&#39;': "'",
+	'&rarr;': '→',
+	'&hellip;': '…',
+	'&mdash;': '—',
+	'&amp;': '&',
+};
+
+/**
+ * Resolve HTML entities in a single pass.
+ *
+ * Chained `.replace()` calls decode twice over: with `&amp;` expanded
+ * before `&lt;`, the text `&amp;lt;` becomes `&lt;` and then `<`, so a
+ * manual page that wants to *show* the string `&lt;` ends up emitting a
+ * literal tag. One regex with a lookup consumes each match exactly once —
+ * scanning resumes after the replacement, never inside it.
+ */
 function decode(s) {
-	return s
-		.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-		.replace(/&rarr;/g, '→').replace(/&hellip;/g, '…').replace(/&mdash;/g, '—');
+	return s.replace(/&(?:nbsp|lt|gt|quot|#39|rarr|hellip|mdash|amp);/g, (m) => ENTITIES[m]);
 }
 
 function svgToImage(svgMarkup) {
@@ -117,10 +137,12 @@ function blockToParagraphs(node, listCounters) {
 		return [new Paragraph({ spacing: { after: 140 }, children: runs(node) })];
 	}
 	if (tag === 'pre') {
-		// <pre> is a raw-text element for the parser, so its inner <code>
-		// markup survives in .text — strip tags first, decode entities after
-		// (the manual writes literal placeholders as &lt;config&gt;).
-		const raw = node.text.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+		// <pre> is a raw-text element for this parser, so its inner <code>
+		// markup survives in .text. Re-parse that fragment so the tags become
+		// real nodes and the text comes out of the tree: stripping them with a
+		// regex cannot be done correctly in one pass, because removing the
+		// inner match of `<<code>code>` leaves a valid tag behind.
+		const raw = parseHtml(node.innerHTML).text;
 		// each source line becomes its own paragraph: docx has no \n
 		const lines = decode(raw).replace(/\t/g, '    ').split('\n');
 		while (lines.length && !lines[0].trim()) lines.shift();
