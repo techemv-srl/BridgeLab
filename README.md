@@ -87,6 +87,29 @@ BL_FHIR_EXAMPLES=.fhir-packages/examples \
     cargo test --manifest-path src-tauri/Cargo.toml --test fhir_profiles -- --nocapture
 ```
 
+### Release acceptance
+
+Before tagging a release, build the packages, install one, and run the
+acceptance suite against the **installed** application:
+
+```bash
+pnpm tauri build --target x86_64-unknown-linux-gnu
+sudo dpkg -i src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/BridgeLab_<version>_amd64.deb
+
+# so profile conformance is exercised rather than skipped
+./scripts/fetch-fhir-core-package.sh
+cargo run --manifest-path src-tauri/Cargo.toml \
+    --example install-fhir-package -- .fhir-packages/hl7.fhir.r4.core.tgz
+
+pnpm e2e
+```
+
+It drives the real binary through tauri-driver (starting Xvfb and the driver
+itself) and checks the package too — version agreement, dependencies, the
+`.hl7` MIME association — then the shell, HL7 parsing and validation, the
+version catalogue, the FHIRPath engine, the FHIR rules builder and profile
+validation. Exits non-zero on any failure. See [`e2e/README.md`](e2e/README.md).
+
 Full manual test catalogue lives in [`TEST_PLAN.md`](TEST_PLAN.md) (~300 cases
 organized by feature area). CI automates the automatable slice:
 
@@ -138,7 +161,11 @@ Per-platform installer configuration lives in [`src-tauri/tauri.conf.json`](src-
 - **Linux .deb**: declares `libwebkit2gtk-4.1-0` + `libgtk-3-0` dependencies, `utils` section
 - **Linux AppImage**: bundles the media framework so GStreamer-dependent features work offline
 - **Linux .rpm**: declares `webkit2gtk4.1` + `gtk3` dependencies
-- **File association**: `.hl7` is registered so double-clicking a file opens BridgeLab
+- **File association**: `.hl7` is registered so double-clicking a file opens BridgeLab.
+  On Linux the `.deb`/`.rpm` also ship a shared-mime-info definition
+  ([`src-tauri/linux/bridgelab-hl7.xml`](src-tauri/linux/bridgelab-hl7.xml)) declaring
+  `application/hl7-v2` with a `*.hl7` glob and an `MSH|` magic rule — without it the
+  desktop entry's `MimeType=` claim has no type to match and the association never fires
 
 The MIT `LICENSE` file at the repo root is referenced from the bundle
 `licenseFile` field and included in the installer payload.

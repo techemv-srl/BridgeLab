@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Shared MIME definition for HL7 v2 message files.
+
+  The desktop entry declares `MimeType=application/hl7-v2`, which only says
+  "BridgeLab can open this type" — it does not tell the system what an .hl7
+  file *is*. Without this file nothing maps the extension to the type, so
+  double-clicking an .hl7 file never reaches BridgeLab on Linux.
+
+  Installed to /usr/share/mime/packages/; shared-mime-info owns a dpkg/rpm
+  trigger on that directory, so the MIME database is rebuilt automatically
+  at install and removal. No maintainer script needed.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+	<mime-type type="application/hl7-v2">
+		<comment>HL7 v2 message</comment>
+		<comment xml:lang="it">Messaggio HL7 v2</comment>
+		<comment xml:lang="fr">Message HL7 v2</comment>
+		<comment xml:lang="es">Mensaje HL7 v2</comment>
+		<comment xml:lang="de">HL7-v2-Nachricht</comment>
+
+		<!-- An HL7 v2 message is text, so editors and viewers that handle
+		     text/plain stay available as alternatives. -->
+		<sub-class-of type="text/plain"/>
+
+		<glob pattern="*.hl7"/>
+
+		<!-- Every HL7 v2 message opens with the MSH segment and its field
+		     separator, so content detection works even when the file was
+		     saved without an extension. -->
+		<magic priority="50">
+			<match type="string" value="MSH|" offset="0"/>
+		</magic>
+	</mime-type>
+</mime-info>

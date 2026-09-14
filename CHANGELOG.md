@@ -99,6 +99,13 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   v2.5**, whatever version the open message declared. Both now read
   MSH-12 and look the field up in the matching catalogue, so a v2.3 or
   v2.7 message gets that version's field names, data types and lengths.
+- **Double-clicking a `.hl7` file did not open BridgeLab on Linux.** The
+  desktop entry claimed `application/hl7-v2`, but nothing on the system
+  defined that type, so no file ever matched it. The `.deb` and `.rpm`
+  now ship a shared-mime-info definition registering the type with a
+  `*.hl7` glob and an `MSH|` content rule — the latter so a message saved
+  without an extension is still recognised. The MIME database is rebuilt
+  by the package manager on install.
 
 ### Changed
 - **Windows installer artwork.** The NSIS sidebar and header images still
