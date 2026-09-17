@@ -116,7 +116,10 @@
 					onclick={() => onIssueClick?.(issue)}
 				>
 					<span class="issue-icon">{severityIcon(issue.severity)}</span>
-					<span class="issue-location">
+					<span
+						class="issue-location"
+						title={issue.segment_type ? `${issue.segment_type}${issue.field_position ? `-${issue.field_position}` : ''}` : ''}
+					>
 						{#if issue.segment_type}
 							{issue.segment_type}{issue.field_position ? `-${issue.field_position}` : ''}
 						{:else}
@@ -231,9 +234,17 @@
 	.issue-row.warning .issue-icon { color: var(--color-warning); }
 	.issue-row.info .issue-icon { color: var(--color-accent); }
 
+	/* "PID-5" fits in 60px; a FHIR path such as
+	   Bundle.entry[0].resource.destination[0].endpoint does not, and must
+	   not paint over the message beside it. It grows to a cap, then
+	   ellipsises; the full path is in the tooltip. */
 	.issue-location {
-		flex-shrink: 0;
-		width: 60px;
+		flex: 0 1 auto;
+		min-width: 60px;
+		max-width: 280px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		font-weight: 600;
 		color: var(--color-segment);
 		font-family: 'JetBrains Mono', monospace;
