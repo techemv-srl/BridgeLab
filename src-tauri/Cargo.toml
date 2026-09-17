@@ -1,9 +1,14 @@
 [package]
 name = "bridgelab"
-version = "1.5.0"
+version = "1.6.0"
 edition = "2021"
 description = "BridgeLab - HL7 made simple"
 authors = ["1warpengine"]
+
+[[bin]]
+name = "bridgelab"
+path = "src/main.rs"
+required-features = ["desktop"]
 
 [lib]
 name = "bridgelab_lib"
@@ -11,22 +16,38 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 # Official TECHEMV builds ship with "pro" enabled. Building with
-# --no-default-features produces a Community-only binary that compiles
-# without the BUSL-licensed src/pro/ directory.
-default = ["pro"]
+# --no-default-features --features desktop produces a Community-only
+# binary that compiles without the BUSL-licensed src/pro/ directory;
+# --no-default-features alone builds the headless core library that
+# bridgelab-cli is built on (the binary needs `desktop`, see [[bin]]).
+default = ["pro", "desktop"]
 pro = []
+# Everything that needs a window: the IPC commands, the MLLP listener,
+# telemetry and online activation. Off, the crate is the headless core
+# that bridgelab-cli is built on.
+desktop = [
+    "dep:tauri",
+    "dep:tauri-plugin-dialog",
+    "dep:tauri-plugin-fs",
+    "dep:tauri-plugin-updater",
+    "dep:tauri-plugin-single-instance",
+    "dep:tauri-plugin-opener",
+    "dep:tauri-plugin-process",
+]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-single-instance = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-process = "2"
+# The desktop shell. Optional so that bridgelab-cli can depend on this
+# crate's parsers and validators without compiling Tauri, GTK or WebKit.
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-fs = { version = "2", optional = true }
+tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-single-instance = { version = "2", optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
+tauri-plugin-process = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

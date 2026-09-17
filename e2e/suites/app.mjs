@@ -209,22 +209,22 @@ export async function appSuite() {
 		await closeModal(d);
 
 		if (!installed) {
-			// No package installed: the honest behaviour is to say conformance
-			// was not checked rather than report a clean result.
-			await r.check('conformance is reported as NOT checked', async () => {
-				await paste(d, JSON.stringify({
-					resourceType: 'Patient', id: 'p1',
-					meta: { profile: ['http://example.org/StructureDefinition/x'] },
-				}, null, 1));
+			// The R4 core ships inside the binary, so an empty package manager
+			// means the embedded index failed to load — a build defect.
+			r.record('built-in FHIR R4 core is listed', false, 'package manager lists nothing');
+		} else {
+			await r.check('built-in FHIR R4 core is listed', () => {
+				if (!/hl7\.fhir\.r4\.core/.test(installed)) throw new Error(installed.slice(0, 120));
+				return installed.slice(0, 90);
+			});
+
+			// A type no package defines is the one honest "not checked" left.
+			await r.check('conformance is reported as NOT checked for an unknown type', async () => {
+				await paste(d, JSON.stringify({ resourceType: 'Patiend', id: 'p1' }, null, 1));
 				const txt = await validate(d);
-				if (!/not checked|no FHIR profile package/i.test(txt)) {
-					throw new Error(`no such note: ${txt.slice(0, 150)}`);
-				}
+				if (!/not checked/i.test(txt)) throw new Error(`no such note: ${txt.slice(0, 150)}`);
 				return 'note present';
 			});
-			console.log('  (install a FHIR package to exercise conformance itself)');
-		} else {
-			await r.check('installed package is listed', () => installed.slice(0, 90));
 
 			await r.check('a conforming resource produces no profile findings', async () => {
 				await paste(d, JSON.stringify({

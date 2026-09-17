@@ -63,9 +63,12 @@ als nummerierte <code>.hl7</code>-Dateien in einen Ordner — fertige
 Regressions-Fixtures für die Stapelvalidierung oben.</p>
 
 <h3>Validierung über die CLI</h3>
-<p>Das Begleitwerkzeug <code>bridgelab-cli</code> bietet denselben
-Validator für den Headless-Einsatz (CI-Pipelines, Batch-Screening):</p>
-<pre><code>bridgelab-cli validate message.hl7
+<p>Das Begleitwerkzeug <code>bridgelab-cli</code> führt dieselben
+Validatoren aus — HL7 v2 und FHIR, mit dem integrierten R4-Kern, den
+installierten Paketen und den Plugins — headless, für CI-Pipelines und
+Batch-Screening. Es liest keine Lizenz und verhält sich wie die
+Community-Edition. Jedem Release liegt ein Binary pro Plattform bei.</p>
+<pre><code>bridgelab-cli validate message.hl7 bundle.json
 bridgelab-cli validate '*.hl7' --format junit &gt; report.xml
 bridgelab-cli batch ./inbox --json</code></pre>
 `,

@@ -874,15 +874,22 @@ pub fn resolve_reference(reference: &str, root: &Value) -> Option<Value> {
         return find_in_array(root.get("contained"), id);
     }
 
+    let mut index: HashMap<String, Value> = HashMap::new();
+    collect_resources(root, &mut index);
+
+    // A bundle entry is reachable by its fullUrl as written — which for a
+    // message or transaction bundle is a urn:uuid, with no type or id in
+    // it to fall back on.
+    if let Some(found) = index.get(target) {
+        return Some(found.clone());
+    }
+
     // "Patient/p1" or a full URL ending in the same.
     let tail = target.rsplit('/').take(2).collect::<Vec<_>>();
     let (rtype, id) = match tail.as_slice() {
         [id, rtype] => (*rtype, *id),
         _ => return None,
     };
-
-    let mut index: HashMap<String, Value> = HashMap::new();
-    collect_resources(root, &mut index);
     index
         .get(&format!("{}/{}", rtype, id))
         .or_else(|| index.get(id))
@@ -904,6 +911,13 @@ fn collect_resources(value: &Value, out: &mut HashMap<String, Value>) {
         out.entry(format!("{}/{}", rt, id))
             .or_insert_with(|| value.clone());
         out.entry(id.to_string()).or_insert_with(|| value.clone());
+    }
+    // A Bundle entry: the fullUrl names the resource beside it.
+    if let (Some(url), Some(resource)) = (
+        value.get("fullUrl").and_then(|v| v.as_str()),
+        value.get("resource"),
+    ) {
+        out.entry(url.to_string()).or_insert_with(|| resource.clone());
     }
     match value {
         Value::Object(map) => {

@@ -12,7 +12,9 @@
 // Prerequisites: Xvfb, WebKitWebDriver, tauri-driver (cargo install tauri-driver).
 
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { APP_BINARY, DRIVER_URL } from './lib.mjs';
@@ -20,12 +22,17 @@ import { packageSuite } from './suites/package.mjs';
 import { appSuite } from './suites/app.mjs';
 
 const DISPLAY = process.env.BL_DISPLAY || ':99';
+// A release check is a fresh-install check: the app gets an empty profile
+// (no session, no packages, a new 14-day trial — which is what lets the Pro
+// features be exercised) unless the caller asks for their own.
+const KEEP_PROFILE = process.env.BL_KEEP_PROFILE === '1';
 const DEB = process.argv[2]
 	|| 'src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/BridgeLab_'
 		+ JSON.parse(await import('node:fs/promises').then((fs) => fs.readFile('package.json', 'utf8'))).version
 		+ '_amd64.deb';
 
 const children = [];
+let profileDir = null;
 
 function have(cmd) {
 	try { execFileSync('sh', ['-c', `command -v ${cmd}`], { stdio: 'ignore' }); return true; }
@@ -67,7 +74,20 @@ async function main() {
 		process.exit(2);
 	}
 
-	console.log(`BridgeLab release check\n  binary : ${APP_BINARY}\n  package: ${DEB}\n  display: ${DISPLAY}`);
+	const profileEnv = {};
+	if (!KEEP_PROFILE) {
+		// dirs::config_dir / data_dir / cache_dir honour these on Linux, so
+		// the app under test writes nowhere near the real profile. The cache
+		// directory matters: it holds the trial's anti-reset marker, and
+		// without redirecting it a machine whose trial has lapsed hands the
+		// "fresh" profile an already-expired trial — by design.
+		const home = mkdtempSync(join(tmpdir(), 'bridgelab-e2e-'));
+		profileEnv.XDG_CONFIG_HOME = join(home, 'config');
+		profileEnv.XDG_DATA_HOME = join(home, 'data');
+		profileEnv.XDG_CACHE_HOME = join(home, 'cache');
+		profileDir = home;
+	}
+	console.log(`BridgeLab release check\n  binary : ${APP_BINARY}\n  package: ${DEB}\n  display: ${DISPLAY}\n  profile: ${KEEP_PROFILE ? 'the current user\'s' : `fresh (${profileDir})`}`);
 
 	// A display left behind by a killed run makes Xvfb refuse to start.
 	const n = DISPLAY.replace(':', '');
@@ -77,7 +97,7 @@ async function main() {
 
 	start('Xvfb', [DISPLAY, '-screen', '0', '1600x1000x24', '-nolisten', 'tcp']);
 	await delay(1500);
-	start('tauri-driver', ['--port', '4444'], { DISPLAY });
+	start('tauri-driver', ['--port', '4444'], { DISPLAY, ...profileEnv });
 	if (!await waitForDriver()) {
 		console.error('tauri-driver did not come up on 4444');
 		stopAll();
@@ -105,5 +125,6 @@ try {
 } finally {
 	stopAll();
 	await delay(500);
+	if (profileDir) rmSync(profileDir, { recursive: true, force: true });
 }
 process.exit(ok ? 0 : 1);

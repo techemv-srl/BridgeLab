@@ -1,135 +1,128 @@
 # BridgeLab CLI
 
-Headless HL7 validation and tooling for CI/CD pipelines.
+The BridgeLab validators from the command line — for CI pipelines, batch
+screening and scripts.
+
+It is a thin front-end over the desktop app's library: the **same** HL7 v2
+parser and validator (version-aware, from MSH-12), the **same** FHIR checks
+and profile engine (the built-in FHIR R4 core, plus any package you install),
+the **same** plugin packs and PHI anonymiser. What the app reports, the CLI
+reports.
+
+**Edition.** The CLI reads no licence and is built without the `pro`
+feature: it behaves as the **Community** edition, by construction. That
+means the Community cap on active plugin packs applies, and packages beyond
+the built-in core are whatever is already in the app's package directory (or
+the directory you point it at).
 
 ## Installation
 
+Prebuilt binaries are attached to every
+[release](https://github.com/techemv-srl/BridgeLab/releases) as
+`bridgelab-cli-<target>` (Windows, macOS Intel and Apple Silicon, Linux).
+
+From source (needs Rust; no Tauri or WebKit — the desktop shell is not
+compiled):
+
 ```bash
 cd tools/bridgelab-cli
-cargo build --release
+cargo build --release          # → target/release/bridgelab-cli
 ```
-
-The binary is produced at `target/release/bridgelab-cli`.
 
 ## Commands
 
-### `validate` - Validate HL7 files
+### `validate` — HL7 v2 or FHIR, detected per file
 
 ```bash
-# Single file
 bridgelab-cli validate message.hl7
-
-# Multiple files with glob
-bridgelab-cli validate "./messages/*.hl7"
-
-# JSON output for automation
+bridgelab-cli validate "./messages/*.hl7" bundle.json
 bridgelab-cli validate message.hl7 --format json
-
-# JUnit XML for CI integration (GitHub Actions, Jenkins)
 bridgelab-cli validate "**/*.hl7" --format junit > results.xml
 ```
 
-Exit codes: 0 = all valid, 1 = errors found, 2 = usage error.
+- HL7 v2: structure, MSH, required fields, lengths and data types against
+  the catalogue of the version in MSH-12, plus any active plugin rules.
+- FHIR (JSON or XML): the built-in checks on the root **and every Bundle
+  entry and contained resource**; Bundle rules (fullUrl, identity,
+  references that must resolve); conformance against the built-in R4 core
+  and installed packages, including each resource's own `meta.profile`;
+  primitive formats; plugin FHIRPath rules. A resource type no package
+  defines is reported as *not checked*, never as clean.
 
-### `info` - Show message metadata
+Options: `--fhir-packages DIR` reads distilled packages from `DIR` instead of
+the app's config directory (the R4 core is always included); `--no-plugins`
+ignores plugin packs; `--strict` (default) exits 1 on errors.
+
+Exit codes: 0 = clean, 1 = errors found or a file failed to parse, 2 = usage.
+
+### `info` — message metadata
 
 ```bash
-# Table output
-bridgelab-cli info "./*.hl7"
-
-# JSON output
+bridgelab-cli info "./*.hl7" bundle.json
 bridgelab-cli info message.hl7 --json
 ```
 
-Displays: message type, HL7 version, segment count, file size.
+Kind (hl7/fhir), message type or resource type, version, segment or entry
+count, size.
 
-### `anonymize` - Mask PHI fields
+### `anonymize` — mask PHI fields (HL7 v2)
 
 ```bash
-# Print to stdout
 bridgelab-cli anonymize patient.hl7
-
-# Save to file
 bridgelab-cli anonymize patient.hl7 --output patient-safe.hl7
 ```
 
-Masks: PID-3/4/5/7/11/13/19, NK1-2/4/5, IN1-16/36, GT1-3/5/6/12.
+The app's 21 built-in PHI fields across PID/NK1/IN1/GT1, plus the extra
+fields of active plugin packs (`--no-plugins` to ignore them). Structure is
+preserved, so the output still parses and validates.
 
-### `to-json` - Convert HL7 to structured JSON
+### `to-json` — HL7 v2 to a structured JSON document
 
 ```bash
 bridgelab-cli to-json message.hl7 --output message.json
 ```
 
-Useful for downstream processing or documentation.
-
-### `batch` - Validate directory of messages
+### `batch` — a directory of messages
 
 ```bash
 bridgelab-cli batch ./messages --extension hl7
-
-# JSON summary for CI
-bridgelab-cli batch ./messages --json > batch-report.json
+bridgelab-cli batch ./fhir --extension json --json > batch-report.json
 ```
 
-## CI/CD Integration Examples
+Exit 1 if any file has errors.
+
+## CI/CD integration
 
 ### GitHub Actions
 
 ```yaml
-- name: Install BridgeLab CLI
-  run: cargo install --git https://github.com/1warpengine/HL7_editor bridgelab-cli
+- name: Validate HL7 and FHIR fixtures
+  run: |
+    curl -sSL -o bridgelab-cli https://github.com/techemv-srl/BridgeLab/releases/latest/download/bridgelab-cli-x86_64-unknown-linux-gnu
+    chmod +x bridgelab-cli
+    ./bridgelab-cli validate "test/fixtures/**/*.hl7" "test/fixtures/**/*.json" --format junit > junit.xml
 
-- name: Validate HL7 messages
-  run: bridgelab-cli validate "test/fixtures/*.hl7" --format junit > junit.xml
-
-- name: Publish results
-  uses: mikepenz/action-junit-report@v4
+- uses: mikepenz/action-junit-report@v4
   if: always()
   with:
-    report_paths: 'junit.xml'
-```
-
-### GitLab CI
-
-```yaml
-hl7-validation:
-  image: rust:latest
-  script:
-    - cargo install --git https://gitlab.com/yourorg/bridgelab-cli
-    - bridgelab-cli batch ./hl7-fixtures --json > report.json
-  artifacts:
-    paths: [report.json]
+    report_paths: junit.xml
 ```
 
 ### Pre-commit hook
 
 ```bash
 #!/bin/sh
-# .git/hooks/pre-commit
-files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.hl7$')
-if [ -n "$files" ]; then
-    bridgelab-cli validate $files --format text
-fi
+files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(hl7|json)$')
+[ -n "$files" ] && bridgelab-cli validate $files
 ```
 
-## Features
+### Air-gapped sites
 
-- Fast SIMD-accelerated HL7 parser (memchr)
-- Structural + MSH validation (STRUCT-00X, MSH-00X rules)
-- PHI anonymization (21 known field definitions)
-- JSON + JUnit XML + text output formats
-- Glob pattern support
-- Batch processing with summary statistics
-- Zero network dependencies - fully offline
+Copy the distilled packages the app produced (`<config>/BridgeLab/fhir-packages/`)
+next to your fixtures and point the CLI at them with `--fhir-packages`. Nothing
+is ever downloaded.
 
-## Limitations vs desktop BridgeLab
+## What the CLI does not do
 
-The CLI is a lightweight subset of the full desktop app. It does NOT include:
-- FHIR parsing / FHIRPath evaluation
-- MLLP/HTTP transport
-- License management
-- Message templates
-- Interactive features
-
-For those, use the desktop BridgeLab or the GUI's scripting hooks.
+MLLP/HTTP transport, the listener, licence activation, templates and every
+interactive feature stay in the desktop app.

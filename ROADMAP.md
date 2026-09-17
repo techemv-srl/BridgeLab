@@ -29,7 +29,7 @@ Shipped and available:
 - XSD schema export for HL7 v2 message types
 - Test-message generator, batch validation and batch anonymization
 - Test case library, message templates, side-by-side compare
-- `bridgelab-cli` for headless validation in CI
+- `bridgelab-cli` — the app's own HL7 v2 and FHIR validators, headless, for CI
 - 5-language UI (EN, IT, FR, ES, DE)
 - Offline Ed25519 license verification, online activation codes
 
@@ -68,12 +68,22 @@ Shipped and available:
       FHIRPath invariants or selector-plus-check rules, an in-app editor
       that tests a rule against the open resource before saving it, and no
       code execution
-- [x] FHIR profile validation — install FHIR NPM packages and validate
-      against their StructureDefinitions: cardinality, element types,
-      choice elements, fixed values and patterns, and unknown elements.
-      Profiles declared in `meta.profile` are applied automatically. A
-      Rust implementation rather than the official HL7 validator, which
-      is a Java tool and would not fit an offline desktop app
+- [x] FHIR profile validation — the FHIR R4 core is built into the binary
+      (offline, every tier, nothing to download) and FHIR NPM packages
+      install on top of it; resources are validated against the
+      StructureDefinitions: cardinality, element types, choice elements,
+      fixed values and patterns, unknown elements, primitive lexical
+      forms. Profiles declared in `meta.profile` are applied automatically,
+      version pins honoured, and every Bundle entry and contained resource
+      is validated as the resource it is, with the Bundle's own rules
+      (fullUrl, identity, references that must resolve). A Rust
+      implementation rather than the official HL7 validator, which is a
+      Java tool and would not fit an offline desktop app
+- [ ] Package dependencies — say at install time which `dependencies` of a
+      package are not installed, and during validation which types no
+      installed package defines; then an explicit, off-by-default fetch
+      from packages.fhir.org for machines that may use the network.
+      Nothing is ever downloaded silently
 - [ ] Terminology validation — `required` bindings need the ValueSet
       expanded, which means shipping the terminology packages or calling
       a server; both need a decision before it is worth building
@@ -82,7 +92,10 @@ Shipped and available:
 
 ### Integration & testing
 
-- [x] `bridgelab-cli` — headless validation for CI
+- [x] `bridgelab-cli` — the app's own validators headless: HL7 v2 and
+      FHIR (built-in R4 core plus installed packages), plugin packs, PHI
+      anonymisation; JSON and JUnit output; a binary per platform with
+      every release. Reads no licence: Community behaviour by construction
 - [x] Test case library (reusable HL7/FHIR scenarios)
 - [x] SOAP 1.1/1.2 client with WS-Security UsernameToken and WS-Addressing (Enterprise)
 - [ ] WSDL import for the SOAP client

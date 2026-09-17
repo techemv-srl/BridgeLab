@@ -39,6 +39,16 @@ the whole thing is one command. It exits non-zero if any check fails.
 | `BL_APP` | application to drive (default `/usr/bin/bridgelab`) |
 | `BL_DISPLAY` | X display to use (default `:99`) |
 | `BL_DRIVER_URL` | an already-running tauri-driver |
+| `BL_KEEP_PROFILE=1` | run against the current user's profile instead of a fresh one |
+
+By default the app under test gets a **fresh profile** — empty config, data
+and cache directories, thrown away afterwards (the cache holds the trial's
+anti-reset marker, so it must be part of the reset). That is what a release check is: a
+first launch, with no session to restore, no packages beyond the built-in
+core, and a new 14-day trial, which is what lets the Pro features (FHIRPath,
+the rules builder) be exercised. Running against a real profile whose trial
+has lapsed reports those checks as licence failures, which is the app
+behaving correctly and the suite asking the wrong question.
 
 A suite can also be run on its own:
 
@@ -68,25 +78,21 @@ double-clicking a message never reaches the app.
   strings, filtering, `resolve()` across a Bundle, choice elements by base
   name, `trace()`, and a named error for an unknown function.
 - **FHIR rules builder** — dialog, presets, both rule forms.
-- **Profile validation** — with a FHIR package installed: the package is
-  listed, a conforming resource comes back clean *and says so*, and a
-  misspelled element, a wrong JSON type, a choice element written plainly, a
-  missing required element and an uninstalled declared profile are each
-  caught. With no package installed, it checks the app reports conformance as
-  **not** checked rather than implying a clean result.
+- **Profile validation** — the built-in R4 core is listed as such in the
+  package manager, a conforming resource comes back clean *and says so*, and
+  a misspelled element, a wrong JSON type, a choice element written plainly,
+  a missing required element and an uninstalled declared profile are each
+  caught. A resource type no package defines is reported as **not** checked
+  rather than implied clean.
 
-To exercise conformance itself, install a package first. The in-app route is
-`Tools → FHIR profile packages…`, but that goes through a native file dialog
-WebDriver cannot drive, so for an automated run install it headlessly — same
+Installing an implementation guide on top goes through a native file dialog
+WebDriver cannot drive; for an automated run install it headlessly — same
 code, same distilled index, same location:
 
 ```bash
-./scripts/fetch-fhir-core-package.sh
 cargo run --manifest-path src-tauri/Cargo.toml \
-    --example install-fhir-package -- .fhir-packages/hl7.fhir.r4.core.tgz
+    --example install-fhir-package -- path/to/some.ig.tgz
 ```
-
-With the core package installed the app suite runs 36 checks instead of 30.
 
 ## Writing checks
 

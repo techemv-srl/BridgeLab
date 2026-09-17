@@ -142,7 +142,9 @@ export async function fhirpath(d, expr) {
 	await sleep(900);
 	return js(d, `
 		const err = document.querySelector('.result-error');
-		if (err) return { error: err.textContent.trim() };
+		// Keep the shape stable on an error so a check reports the error text
+		// instead of tripping over a missing values array.
+		if (err) return { error: err.textContent.trim(), values: [], empty: false, count: null };
 		const count = document.querySelector('.result-count');
 		return {
 			count: count ? count.textContent.trim() : null,

@@ -64,9 +64,12 @@ numerados — fixtures de regresión instantáneos para el validador por
 lotes de arriba.</p>
 
 <h3>Validación por CLI</h3>
-<p>El complemento <code>bridgelab-cli</code> ofrece el mismo validador
-para uso sin interfaz (pipelines de CI, cribado por lotes):</p>
-<pre><code>bridgelab-cli validate message.hl7
+<p>El complemento <code>bridgelab-cli</code> ejecuta los mismos
+validadores — HL7 v2 y FHIR, con el núcleo R4 integrado, los paquetes
+instalados y los plugins — sin interfaz, para pipelines de CI y cribado
+por lotes. No lee ninguna licencia y se comporta como la edición
+Community. Un binario por plataforma acompaña cada versión.</p>
+<pre><code>bridgelab-cli validate message.hl7 bundle.json
 bridgelab-cli validate '*.hl7' --format junit &gt; report.xml
 bridgelab-cli batch ./inbox --json</code></pre>
 `,

@@ -139,9 +139,10 @@
 				<p>
 					Structural, field-level and data-type validation out of
 					the box, plus FHIR conformance against the
-					StructureDefinitions in any FHIR package you install
-					&mdash; cardinality, element types, choice elements,
-					unknown elements. A full FHIRPath&nbsp;2.0 evaluator,
+					StructureDefinitions of the built-in R4 core and any
+					FHIR package you install on top &mdash; cardinality,
+					element types, choice elements, unknown elements,
+					Bundle references. A full FHIRPath&nbsp;2.0 evaluator,
 					checked against the official HL7 test suite. Your own
 					rules drop in as declarative JSON plugin packs &mdash;
 					no recompile, no code execution.
@@ -359,7 +360,7 @@
 				<div class="price-per">MIT core, free for commercial use</div>
 				<ul class="price-features">
 					<li>HL7 v2 + FHIR editing &amp; validation</li>
-					<li>MLLP send, HTTP GET</li>
+					<li>MLLP send, unauthenticated HTTP GET</li>
 					<li>PHI detection, community XSD set</li>
 					<li>Plugins &amp; test cases (limited)</li>
 				</ul>

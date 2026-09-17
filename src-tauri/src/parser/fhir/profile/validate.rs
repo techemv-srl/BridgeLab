@@ -57,11 +57,100 @@ pub fn validate_against(
 ///
 /// Returns `None` when nothing applicable is installed, so the caller can
 /// stay quiet rather than claim a resource passed checks that never ran.
+///
+/// A declared profile that cannot be applied — not installed, or installed
+/// at a different version than the one pinned — is reported and the rest
+/// still runs: the base definition can still catch a misspelled element,
+/// and one absent package must not hide that.
 pub fn validate_declared(
     resource: &Value,
     index: &ProfileIndex,
 ) -> Option<Vec<FhirValidationIssue>> {
+    use crate::parser::fhir::profile::model::Lookup;
+
     let resource_type = resource.get("resourceType")?.as_str()?;
+
+    let mut applied = Vec::new();
+    let mut issues = Vec::new();
+    if let Some(base) = index.base_for_type(resource_type) {
+        applied.push(base);
+    }
+    if let Some(declared) = resource
+        .get("meta")
+        .and_then(|m| m.get("profile"))
+        .and_then(|p| p.as_array())
+    {
+        for canonical in declared.iter().filter_map(|u| u.as_str()) {
+            let skipped = match index.lookup(canonical) {
+                Lookup::Found(profile) => {
+                    applied.push(profile);
+                    continue;
+                }
+                Lookup::Missing => format!(
+                    "Profile {} is declared but not installed — install the package \
+                     that defines it to check conformance",
+                    canonical
+                ),
+                Lookup::WrongVersion { installed } => {
+                    let (url, wanted) = canonical.split_once('|').unwrap_or((canonical, ""));
+                    let installed = installed
+                        .iter()
+                        .map(|v| if v.is_empty() { "an unversioned copy" } else { v.as_str() })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!(
+                        "Profile {} is pinned to version {} but only {} is installed — \
+                         conformance against another version would answer a different \
+                         question, so this profile was skipped",
+                        url, wanted, installed
+                    )
+                }
+            };
+            issues.push(FhirValidationIssue {
+                severity: "warning".into(),
+                message: skipped,
+                path: "meta.profile".into(),
+            });
+        }
+    }
+
+    if applied.is_empty() && issues.is_empty() {
+        return None;
+    }
+
+    for profile in applied {
+        issues.extend(validate_against(resource, profile, index));
+    }
+    Some(dedup_issues(issues))
+}
+
+/// How many resources may nest inside one another before the walk stops:
+/// a Bundle of Bundles of contained resources is legal, a runaway one is
+/// not worth hanging the UI over.
+const MAX_NESTING: usize = 4;
+
+/// Validate a resource found inside another one, against its own base
+/// definition and whatever it declares in `meta.profile`, reporting under
+/// `report_path`. Mirrors [`validate_declared`] for the document root.
+fn validate_nested(
+    resource: &Value,
+    report_path: &str,
+    index: &ProfileIndex,
+    depth: usize,
+    issues: &mut Vec<FhirValidationIssue>,
+) {
+    use crate::parser::fhir::profile::model::Lookup;
+
+    // `depth` counts element levels; each nested resource sits a few of
+    // those below its parent, so the element budget alone bounds nesting.
+    // The explicit cap keeps a pathological document from spending it all
+    // on resources-in-resources before any element is looked at.
+    if depth / 2 >= MAX_NESTING {
+        return;
+    }
+    let Some(resource_type) = resource.get("resourceType").and_then(|v| v.as_str()) else {
+        return;
+    };
 
     let mut applied = Vec::new();
     if let Some(base) = index.base_for_type(resource_type) {
@@ -72,35 +161,46 @@ pub fn validate_declared(
         .and_then(|m| m.get("profile"))
         .and_then(|p| p.as_array())
     {
-        for url in declared.iter().filter_map(|u| u.as_str()) {
-            match index.get(url) {
-                Some(profile) => applied.push(profile),
-                None => {
-                    // Saying the profile is missing is more useful than
-                    // silently validating against the base only.
-                    return Some(vec![FhirValidationIssue {
-                        severity: "warning".into(),
-                        message: format!(
-                            "Profile {} is declared but not installed — install the \
-                             package that defines it to check conformance",
-                            url
-                        ),
-                        path: "meta.profile".into(),
-                    }]);
-                }
+        for canonical in declared.iter().filter_map(|u| u.as_str()) {
+            match index.lookup(canonical) {
+                Lookup::Found(profile) => applied.push(profile),
+                Lookup::Missing => issues.push(issue(
+                    "warning",
+                    format!(
+                        "Profile {} is declared but not installed — install the package \
+                         that defines it to check conformance",
+                        canonical
+                    ),
+                    format!("{}.meta.profile", report_path),
+                )),
+                Lookup::WrongVersion { installed } => issues.push(issue(
+                    "warning",
+                    format!(
+                        "Profile {} is pinned to a version that is not installed (installed: {})",
+                        canonical,
+                        installed.join(", ")
+                    ),
+                    format!("{}.meta.profile", report_path),
+                )),
             }
         }
     }
 
-    if applied.is_empty() {
-        return None;
-    }
-
-    let mut issues = Vec::new();
     for profile in applied {
-        issues.extend(validate_against(resource, profile, index));
+        let root = profile.type_name.clone();
+        // A fresh branch: the cycle guard is per branch, and this resource's
+        // element paths start over from its own type.
+        walk(
+            resource,
+            profile,
+            &root,
+            report_path,
+            index,
+            depth + 1,
+            &mut Vec::new(),
+            issues,
+        );
     }
-    Some(dedup_issues(issues))
 }
 
 /// Walk one object level.
@@ -282,15 +382,14 @@ fn recurse(
     let Some(type_code) = applicable else {
         return;
     };
-    // A contained or referenced Resource carries its own type.
-    let type_code = if type_code == "Resource" || type_code == "DomainResource" {
-        match value.get("resourceType").and_then(|v| v.as_str()) {
-            Some(rt) => rt,
-            None => return,
-        }
-    } else {
-        type_code
-    };
+    // A nested resource — a Bundle entry, a contained resource, a
+    // Parameters part — is a root of its own: its type comes from the
+    // instance and its meta.profile declarations apply to it exactly as
+    // they would at the top of a document.
+    if type_code == "Resource" || type_code == "DomainResource" {
+        validate_nested(value, report_path, index, depth, issues);
+        return;
+    }
 
     if seen_types.contains(&type_code.to_string()) {
         return; // already expanded on this branch: stop before looping
@@ -427,6 +526,130 @@ fn check_type(
             ),
             report_path.to_string(),
         ));
+        return;
+    }
+
+    // The JSON kind is right; now the value itself, where the type says
+    // what a value looks like.
+    if let Some(text) = value.as_str() {
+        if let Some((severity, why)) = primitive_format_problem(declared, text, &element.path) {
+            issues.push(issue(
+                severity,
+                format!("{} {}", element.path, why),
+                report_path.to_string(),
+            ));
+        }
+    }
+    if let Some(n) = value.as_i64() {
+        let bad = match declared {
+            "positiveInt" if n < 1 => Some("must be a positive integer (1 or more)"),
+            "unsignedInt" if n < 0 => Some("must not be negative"),
+            _ => None,
+        };
+        if let Some(why) = bad {
+            issues.push(issue(
+                "error",
+                format!("{} {} but is {}", element.path, why, n),
+                report_path.to_string(),
+            ));
+        }
+    }
+}
+
+/// Lexical rules for the primitive types, as the specification states them.
+///
+/// Returns the severity and a description of what is wrong, or `None` when
+/// the value is well-formed. Everything here is a regular expression from
+/// the datatypes page, with one addition: a *warning* on an endpoint with
+/// no scheme. A relative url is legal in general — the core package itself
+/// stores bare type names in a `url`-typed extension — but an element whose
+/// whole purpose is to be connected to, written as `https//host`, is a typo
+/// nobody wants to find in production. So that check is confined to those
+/// elements.
+fn primitive_format_problem(
+    declared: &str,
+    text: &str,
+    element_path: &str,
+) -> Option<(&'static str, String)> {
+    use regex::Regex;
+    use std::sync::LazyLock;
+
+    const YEAR: &str = r"([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)";
+    const MONTH: &str = r"(0[1-9]|1[0-2])";
+    const DAY: &str = r"(0[1-9]|[1-2][0-9]|3[0-1])";
+    const TIME: &str = r"([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\.[0-9]+)?";
+    const TZ: &str = r"(Z|(\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00))";
+
+    static DATE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(&format!("^{YEAR}(-{MONTH}(-{DAY})?)?$")).unwrap());
+    static DATE_TIME: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(&format!("^{YEAR}(-{MONTH}(-{DAY}(T{TIME}{TZ})?)?)?$")).unwrap()
+    });
+    static INSTANT: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(&format!("^{YEAR}-{MONTH}-{DAY}T{TIME}{TZ}$")).unwrap());
+    static TIME_ONLY: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!("^{TIME}$")).unwrap());
+    static CODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[^\s]+( [^\s]+)*$").unwrap());
+    static ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9\-\.]{1,64}$").unwrap());
+    static OID: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^urn:oid:[0-2](\.(0|[1-9][0-9]*))+$").unwrap());
+    static UUID: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+            .unwrap()
+    });
+
+    let shown = || {
+        if text.chars().count() > 40 {
+            format!("{}…", text.chars().take(40).collect::<String>())
+        } else {
+            text.to_string()
+        }
+    };
+    let bad = |what: &str| Some(("error", format!("is a {} but '{}' is not a valid {}", declared, shown(), what)));
+
+    match declared {
+        "date" if !DATE.is_match(text) => bad("date (YYYY, YYYY-MM or YYYY-MM-DD)"),
+        "dateTime" if !DATE_TIME.is_match(text) => {
+            bad("dateTime (a date, or a date with a time and a time zone)")
+        }
+        "instant" if !INSTANT.is_match(text) => bad("instant (full date, time and time zone)"),
+        "time" if !TIME_ONLY.is_match(text) => bad("time (hh:mm:ss)"),
+        "code" if !CODE.is_match(text) => {
+            bad("code (no leading, trailing or doubled whitespace)")
+        }
+        "id" if !ID.is_match(text) => bad("id (letters, digits, '-' and '.', at most 64)"),
+        "oid" if !OID.is_match(text) => bad("oid (urn:oid:…)"),
+        "uuid" if !UUID.is_match(text) => bad("uuid (urn:uuid: with lowercase hex)"),
+        "uri" | "url" | "canonical" if text.chars().any(char::is_whitespace) => {
+            bad("URI (it contains whitespace)")
+        }
+        "url" if is_endpoint_element(element_path) && !looks_absolute(text) => Some((
+            "warning",
+            format!(
+                "is an endpoint and '{}' has no scheme — nothing can connect to it as written",
+                shown()
+            ),
+        )),
+        _ => None,
+    }
+}
+
+/// Elements that exist to be connected to: MessageHeader's source and
+/// destination endpoints, Endpoint.address, a Subscription channel.
+fn is_endpoint_element(path: &str) -> bool {
+    path.ends_with(".endpoint") || path == "Endpoint.address"
+}
+
+/// `scheme:` before any `/` — `https://x`, `urn:uuid:…`, `mailto:a@b`.
+fn looks_absolute(s: &str) -> bool {
+    match s.find(':') {
+        Some(i) => {
+            let scheme = &s[..i];
+            !scheme.is_empty()
+                && !scheme.contains('/')
+                && scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+        }
+        None => false,
     }
 }
 
@@ -798,6 +1021,88 @@ mod tests {
     }
 
     #[test]
+    fn validate_declared_keeps_checking_the_base_when_a_declared_profile_is_missing() {
+        let index = index_with(vec![patient_sd(), human_name_sd(), meta_sd()]);
+        let patient = json!({
+            "resourceType": "Patient",
+            "meta": {"profile": ["http://acme.org/StructureDefinition/Nope"]},
+            "active": "not a boolean"
+        });
+        let issues = validate_declared(&patient, &index).unwrap();
+        // The missing profile is reported, and so is the base finding that
+        // used to be swallowed by an early return.
+        assert!(issues.iter().any(|i| i.message.contains("not installed")), "{issues:?}");
+        assert!(issues.iter().any(|i| i.message.contains("must be a boolean")), "{issues:?}");
+    }
+
+    fn acme_patient_sd(version: &str, required: &str) -> Value {
+        json!({
+            "resourceType": "StructureDefinition",
+            "url": "http://acme.org/StructureDefinition/AcmePatient",
+            "version": version,
+            "name": "AcmePatient", "kind": "resource", "type": "Patient",
+            "derivation": "constraint",
+            "snapshot": { "element": [
+                {"path": "Patient", "min": 0, "max": "*"},
+                {"path": "Patient.meta", "min": 0, "max": "1", "type": [{"code": "Meta"}]},
+                {"path": format!("Patient.{required}"), "min": 1, "max": "1",
+                 "type": [{"code": if required == "active" { "boolean" } else { "code" }}]}
+            ]}
+        })
+    }
+
+    #[test]
+    fn validate_declared_honours_a_version_pin() {
+        // Two versions of the same profile: 1.0.0 requires gender, 2.0.0
+        // requires active. Which one runs must follow the pin, not luck.
+        let mut index = index_with(vec![patient_sd(), human_name_sd(), meta_sd()]);
+        index.add_package(ProfilePackage {
+            name: "acme.ig".into(),
+            version: "1.0.0".into(),
+            title: String::new(),
+            fhir_version: "4.0.1".into(),
+            profiles: vec![from_structure_definition(&acme_patient_sd("1.0.0", "gender")).unwrap()],
+        });
+        index.add_package(ProfilePackage {
+            name: "acme.ig".into(),
+            version: "2.0.0".into(),
+            title: String::new(),
+            fhir_version: "4.0.1".into(),
+            profiles: vec![from_structure_definition(&acme_patient_sd("2.0.0", "active")).unwrap()],
+        });
+        let declaring = |canonical: &str| {
+            json!({"resourceType": "Patient", "meta": {"profile": [canonical]}})
+        };
+        let url = "http://acme.org/StructureDefinition/AcmePatient";
+        let messages = |canonical: &str| {
+            validate_declared(&declaring(canonical), &index)
+                .unwrap()
+                .into_iter()
+                .map(|i| i.message)
+                .collect::<Vec<_>>()
+        };
+
+        let pinned_old = messages(&format!("{url}|1.0.0"));
+        assert!(pinned_old.iter().any(|m| m.contains("Patient.gender is required")), "{pinned_old:?}");
+        assert!(!pinned_old.iter().any(|m| m.contains("Patient.active")), "{pinned_old:?}");
+
+        let pinned_new = messages(&format!("{url}|2.0.0"));
+        assert!(pinned_new.iter().any(|m| m.contains("Patient.active is required")), "{pinned_new:?}");
+        assert!(!pinned_new.iter().any(|m| m.contains("Patient.gender")), "{pinned_new:?}");
+
+        // Unpinned: the newest installed version answers.
+        let unpinned = messages(url);
+        assert!(unpinned.iter().any(|m| m.contains("Patient.active is required")), "{unpinned:?}");
+
+        // Pinned to a version nobody installed: say so, name what is there,
+        // and do not quietly validate against something else.
+        let pinned_absent = messages(&format!("{url}|3.0.0"));
+        assert_eq!(pinned_absent.len(), 1, "{pinned_absent:?}");
+        assert!(pinned_absent[0].contains("pinned to version 3.0.0"), "{pinned_absent:?}");
+        assert!(pinned_absent[0].contains("2.0.0, 1.0.0"), "{pinned_absent:?}");
+    }
+
+    #[test]
     fn validate_declared_says_nothing_when_no_profile_is_installed() {
         let index = ProfileIndex::default();
         let patient = json!({"resourceType": "Patient"});
@@ -861,5 +1166,101 @@ mod tests {
         });
         // Terminates, and says nothing wrong about a well-formed tree.
         assert_eq!(validate_against(&deep, profile, &index), vec![]);
+    }
+
+    fn bundle_sd() -> Value {
+        json!({
+            "resourceType": "StructureDefinition",
+            "url": "http://hl7.org/fhir/StructureDefinition/Bundle",
+            "name": "Bundle", "kind": "resource", "type": "Bundle",
+            "derivation": "specialization",
+            "snapshot": { "element": [
+                {"path": "Bundle", "min": 0, "max": "*"},
+                {"path": "Bundle.type", "min": 1, "max": "1", "type": [{"code": "code"}]},
+                {"path": "Bundle.entry", "min": 0, "max": "*", "type": [{"code": "BackboneElement"}]},
+                {"path": "Bundle.entry.fullUrl", "min": 0, "max": "1", "type": [{"code": "uri"}]},
+                {"path": "Bundle.entry.resource", "min": 0, "max": "1", "type": [{"code": "Resource"}]}
+            ]}
+        })
+    }
+
+    #[test]
+    fn a_bundle_entry_is_validated_against_its_own_declared_profile() {
+        let index = index_with(vec![
+            patient_sd(), human_name_sd(), meta_sd(), bundle_sd(),
+            acme_patient_sd("1.0.0", "gender"),
+        ]);
+        let bundle = json!({
+            "resourceType": "Bundle", "type": "message",
+            "entry": [
+                {"fullUrl": "urn:uuid:aaaaaaaa-0000-4000-8000-000000000001",
+                 "resource": {"resourceType": "Patient",
+                              "meta": {"profile": ["http://acme.org/StructureDefinition/AcmePatient"]},
+                              "active": "not a boolean"}},
+                {"fullUrl": "urn:uuid:aaaaaaaa-0000-4000-8000-000000000002",
+                 "resource": {"resourceType": "Patient",
+                              "meta": {"profile": ["http://acme.org/StructureDefinition/Nope"]},
+                              "genderr": "female"}}
+            ]
+        });
+        let issues = validate_declared(&bundle, &index).unwrap();
+        let at = |path: &str| issues.iter().filter(|i| i.path == path).map(|i| i.message.clone()).collect::<Vec<_>>();
+        // Entry 0: the profile it declares (gender required) and the base (active type).
+        assert!(at("Bundle.entry[0].resource.gender").iter().any(|m| m.contains("is required")), "{issues:?}");
+        assert!(at("Bundle.entry[0].resource.active").iter().any(|m| m.contains("must be a boolean")), "{issues:?}");
+        // Entry 1: its profile is missing — said under its own path — and the base still runs.
+        assert!(at("Bundle.entry[1].resource.meta.profile").iter().any(|m| m.contains("not installed")), "{issues:?}");
+        assert!(at("Bundle.entry[1].resource.genderr").iter().any(|m| m.contains("not defined")), "{issues:?}");
+        // The bundle itself is fine.
+        assert!(!issues.iter().any(|i| i.path == "Bundle.type"), "{issues:?}");
+    }
+
+    #[test]
+    fn primitive_values_are_checked_for_their_lexical_form() {
+        let endpoint = json!({
+            "resourceType": "StructureDefinition",
+            "url": "http://acme.org/StructureDefinition/Thing",
+            "name": "Thing", "kind": "resource", "type": "Thing",
+            "derivation": "specialization",
+            "snapshot": { "element": [
+                {"path": "Thing", "min": 0, "max": "*"},
+                {"path": "Thing.id", "min": 0, "max": "1", "type": [{"code": "id"}]},
+                {"path": "Thing.endpoint", "min": 0, "max": "1", "type": [{"code": "url"}]},
+                {"path": "Thing.link", "min": 0, "max": "1", "type": [{"code": "url"}]},
+                {"path": "Thing.when", "min": 0, "max": "1", "type": [{"code": "dateTime"}]},
+                {"path": "Thing.stamp", "min": 0, "max": "1", "type": [{"code": "instant"}]},
+                {"path": "Thing.day", "min": 0, "max": "1", "type": [{"code": "date"}]},
+                {"path": "Thing.kind", "min": 0, "max": "1", "type": [{"code": "code"}]},
+                {"path": "Thing.rank", "min": 0, "max": "1", "type": [{"code": "positiveInt"}]}
+            ]}
+        });
+        let index = index_with(vec![endpoint]);
+        let profile = index.base_for_type("Thing").unwrap();
+        let good = json!({
+            "resourceType": "Thing", "id": "abc-1.2",
+            "endpoint": "https://fhir.example/Endpoint/x",
+            // A relative url is legal wherever the element is not an endpoint.
+            "link": "string",
+            "when": "2018-05-24T00:00:00+00:00", "stamp": "2018-05-24T10:20:30.5Z",
+            "day": "2018-05", "kind": "final", "rank": 1
+        });
+        assert_eq!(validate_against(&good, profile, &index), vec![]);
+
+        let bad = json!({
+            "resourceType": "Thing", "id": "has space",
+            "endpoint": "https//fhir.example/Endpoint/x",
+            "when": "2018-05-24T00:00:00", "stamp": "2018-05-24",
+            "day": "2018-13-40", "kind": " final", "rank": 0
+        });
+        let issues = validate_against(&bad, profile, &index);
+        let msg = |path: &str| issues.iter().find(|i| i.path == path).map(|i| (i.severity.as_str(), i.message.clone()));
+        assert!(msg("Thing.id").unwrap().1.contains("not a valid id"), "{issues:?}");
+        assert_eq!(msg("Thing.endpoint").unwrap().0, "warning", "{issues:?}");
+        assert!(msg("Thing.endpoint").unwrap().1.contains("no scheme"), "{issues:?}");
+        assert!(msg("Thing.when").unwrap().1.contains("time zone"), "{issues:?}");
+        assert!(msg("Thing.stamp").unwrap().1.contains("instant"), "{issues:?}");
+        assert!(msg("Thing.day").unwrap().1.contains("not a valid date"), "{issues:?}");
+        assert!(msg("Thing.kind").unwrap().1.contains("whitespace"), "{issues:?}");
+        assert!(msg("Thing.rank").unwrap().1.contains("positive"), "{issues:?}");
     }
 }

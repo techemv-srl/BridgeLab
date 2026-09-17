@@ -1,3 +1,12 @@
+//! BridgeLab's library crate.
+//!
+//! Two layers live here. The headless core — parsers, validators,
+//! anonymisation, plugin packs, FHIR profiles — is plain Rust and is what
+//! `bridgelab-cli` is built on. The desktop shell — IPC commands, the MLLP
+//! listener, telemetry, online activation and [`run`] — needs Tauri and is
+//! compiled only with the `desktop` feature (on by default).
+
+#[cfg(feature = "desktop")]
 pub mod commands;
 pub mod anonymization;
 pub mod communication;
@@ -7,27 +16,35 @@ pub mod message_store;
 pub mod parser;
 pub mod plugins;
 /// Proprietary (BUSL-1.1) feature implementations — see src/pro/LICENSE.
-/// Compiled out entirely in Community-only builds (--no-default-features);
-/// the MIT command shims in commands/ return a clear error instead.
+/// Compiled out entirely in Community-only builds (without the `pro`
+/// feature); the MIT command shims in commands/ return a clear error
+/// instead.
 #[cfg(feature = "pro")]
 pub mod pro;
 pub mod templates;
 pub mod utils;
 pub mod validation;
 
+#[cfg(feature = "desktop")]
 use std::sync::Mutex;
 
+#[cfg(feature = "desktop")]
 use communication::mllp_listener::ListenerState;
+#[cfg(feature = "desktop")]
 use database::Database;
+#[cfg(feature = "desktop")]
 use message_store::MessageStore;
+#[cfg(feature = "desktop")]
 use plugins::PluginRegistry;
 
 /// File paths the app was launched with (double-clicked / "open with").
 /// Drained once by the frontend via `get_launch_files`.
+#[cfg(feature = "desktop")]
 pub struct LaunchFiles(pub Mutex<Vec<String>>);
 
 /// Keep only arguments that are real files (skips the executable path and
 /// any flags a launcher might add).
+#[cfg(feature = "desktop")]
 fn collect_file_args(argv: &[String]) -> Vec<String> {
     argv.iter()
         .skip(1)
@@ -37,11 +54,13 @@ fn collect_file_args(argv: &[String]) -> Vec<String> {
         .collect()
 }
 
+#[cfg(feature = "desktop")]
 #[tauri::command]
 fn get_launch_files(state: tauri::State<'_, LaunchFiles>) -> Vec<String> {
     state.0.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
 }
 
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let db = Database::new().expect("Failed to initialize database");

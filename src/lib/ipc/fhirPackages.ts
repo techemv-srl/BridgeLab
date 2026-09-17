@@ -12,6 +12,8 @@ export interface FhirPackageInfo {
 	title: string;
 	fhir_version: string;
 	profile_count: number;
+	/** Carried by the binary (the FHIR R4 core): always present, not removable. */
+	builtin: boolean;
 }
 
 export async function listFhirPackages(): Promise<FhirPackageInfo[]> {

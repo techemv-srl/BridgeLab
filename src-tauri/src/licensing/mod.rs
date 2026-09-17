@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub mod feature_gate;
+#[cfg(feature = "desktop")]
 pub mod online;
+#[cfg(feature = "desktop")]
 pub mod telemetry;
 
 // =============================================================================
