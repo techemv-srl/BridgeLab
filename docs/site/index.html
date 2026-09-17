@@ -625,10 +625,11 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 <script>
 (function () {
 	// ---- FastSpring config --------------------------------------------
-	// Go-live: set enabled:true and environment:'live'. Nothing else changes.
+	// Live since 2026-09-17. To fall back to quote-only mode set
+	// enabled:false; ?checkout=test on the URL still forces the test store.
 	var FS_CFG = {
-		enabled: false,
-		environment: 'test',   // 'test' | 'live'
+		enabled: true,
+		environment: 'live',   // 'test' | 'live'
 		storefronts: {
 			test: 'techemv.test.onfastspring.com/popup-bridgelab-checkout',
 			live: 'techemv.onfastspring.com/popup-bridgelab-checkout'
