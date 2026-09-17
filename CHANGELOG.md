@@ -41,6 +41,10 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   resource type, use the newest installed version.
 - **Double-clicking a `.hl7` file did not open BridgeLab on Linux** —
   shipped in the 1.5.0 packages, recorded there.
+- **A long FHIR path overlapped the message in the validation panel.**
+  The location column was sized for `PID-5`; a Bundle finding's path
+  painted over the text beside it. It now ellipsises past 280 px, with
+  the full path in the tooltip. (Binaries rebuilt on the same tag.)
 
 ### Added
 - **The FHIR R4 core is built into the binary.** Profile conformance
