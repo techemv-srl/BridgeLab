@@ -181,11 +181,14 @@ flagged as warnings.</p>
 against a <strong>StructureDefinition</strong> — the real definition of what
 a Patient may contain — needs those definitions, and they ship as FHIR NPM
 packages.</p>
-<p><strong>Tools → FHIR profile packages…</strong> installs one from a
-<code>.tgz</code>. Start with <code>hl7.fhir.r4.core</code> from
-packages.fhir.org for the base resource definitions, and add national or
-site-specific implementation guides on top.</p>
-<p>Once a package is installed, every FHIR validation also checks:</p>
+<p>The FHIR R4 core (<code>hl7.fhir.r4.core</code> 4.0.1) is <strong>built
+in</strong>, so the base definitions are always there — offline, in every
+tier, nothing to download. <strong>Tools → FHIR profile packages…</strong>
+installs national or site-specific implementation guides on top from a
+<code>.tgz</code>; a package you install that carries the same definitions
+replaces the built-in ones, a newer version outranks them.</p>
+<p>Every FHIR validation checks, against the built-in core and whatever
+is installed on top:</p>
 <ul>
 	<li><strong>Cardinality</strong> — a required element that is missing, or
 		a <code>0..1</code> element that repeats.</li>
@@ -357,15 +360,19 @@ hospitals.</p>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIR parsing + tree view</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
-	<tr><td>MLLP send, HTTP GET</td>
+	<tr><td>MLLP send, HTTP GET without an auth header</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>FHIR R4 core conformance (built in)</td>
+		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>XSD export</td>
+		<td>4 v2.5 messages</td><td>Full catalogue</td><td>Full catalogue</td></tr>
 	<tr><td>PHI detection (view only)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Plugin packs (basic)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>MLLP listener</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
-	<tr><td>HTTP POST/PUT/DELETE + auth</td>
+	<tr><td>HTTP POST/PUT/DELETE/PATCH, and authentication on any method</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Anonymization masking</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>

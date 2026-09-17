@@ -1,17 +1,26 @@
 [package]
 name = "bridgelab-cli"
-version = "0.2.2"
+version = "1.6.0"
 edition = "2021"
-description = "BridgeLab CLI - headless HL7 validation and tooling for CI/CD"
+description = "BridgeLab CLI - the desktop app's HL7 v2 and FHIR validators, headless, for CI/CD"
+license = "MIT"
 
 [[bin]]
 name = "bridgelab-cli"
 path = "src/main.rs"
 
 [dependencies]
+# The same parsers, validators, anonymiser, plugin packs and FHIR profile
+# engine the desktop app runs — without the desktop shell (no Tauri, no
+# WebKit) and without the BUSL `pro` directory: the CLI is the Community
+# behaviour, by construction.
+bridgelab = { path = "../../src-tauri", default-features = false }
+clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-memchr = "2"
-clap = { version = "4", features = ["derive"] }
-walkdir = "2"
 glob = "0.3"
+walkdir = "2"
+
+[profile.release]
+strip = true
+lto = "thin"

@@ -54,9 +54,12 @@ to a folder as numbered <code>.hl7</code> files — instant regression
 fixtures for the batch validator above.</p>
 
 <h3>CLI validation</h3>
-<p>The <code>bridgelab-cli</code> companion offers the same validator for
-headless usage (CI pipelines, batch screening):</p>
-<pre><code>bridgelab-cli validate message.hl7
+<p>The <code>bridgelab-cli</code> companion runs the same validators —
+HL7 v2 and FHIR, with the built-in R4 core, installed packages and plugin
+packs — headless, for CI pipelines and batch screening. It reads no
+licence and behaves as the Community edition. A binary for each platform
+ships with every release.</p>
+<pre><code>bridgelab-cli validate message.hl7 bundle.json
 bridgelab-cli validate '*.hl7' --format junit &gt; report.xml
 bridgelab-cli batch ./inbox --json</code></pre>
 `,

@@ -2,6 +2,96 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [1.6.0] — 2026-09-17
+
+### Fixed
+- **A Bundle was validated as a Bundle and nothing else.** The built-in
+  FHIR checks ran on the root resource only, so a message Bundle whose
+  Observation had no `status` reported two notes about the Bundle itself
+  and ✗ 0 ⚠ 0 — the opposite of what was true. Every entry and every
+  `contained` resource is now checked as the resource it is, reported
+  under its path (`entry[3].resource.status`). With a profile package
+  installed, each entry is also validated against its own
+  `meta.profile`, not just its base type.
+- **Bundle rules the specification states are now checked**: every entry
+  carries a fullUrl (a POST request excepted); a persistent fullUrl agrees
+  with the resource's own type and id — while a `urn:uuid:` fullUrl is
+  the resource's identity and needs no id, so a message Bundle written
+  the NHS/IHE way stays clean; fullUrls are unique outside history
+  bundles; and every Reference inside the Bundle resolves — to an entry's
+  fullUrl, a `Type/id`, or a `#contained` — with a warning in message,
+  document, transaction, batch and collection bundles and a note in a
+  searchset, which may legitimately return part of a graph. A document
+  may not reference outside itself.
+- **`resolve()` did not follow `urn:uuid:` references.** FHIRPath's
+  `resolve()` matched only `Type/id`, so in a message Bundle — where every
+  reference is another entry's `urn:uuid:` fullUrl — it found nothing.
+  An entry is now reachable by its fullUrl as written.
+- **A missing profile hid every other FHIR finding.** When `meta.profile`
+  named a profile that was not installed, the validator reported that and
+  stopped — the base definition never ran, so a misspelled element in the
+  same resource went unreported. The missing profile is still reported;
+  the remaining checks now run alongside it.
+- **A version pin in `meta.profile` was ignored.** `…/StructureDefinition/X|1.2.0`
+  validated against whichever `X` was installed, and with two versions of
+  a package installed the one that won was decided by load order. A pinned
+  canonical now resolves to exactly that version; when it is not installed
+  the report says so and names the versions that are, instead of quietly
+  substituting one. An unpinned reference, and the base definition of a
+  resource type, use the newest installed version.
+- **Double-clicking a `.hl7` file did not open BridgeLab on Linux** —
+  shipped in the 1.5.0 packages, recorded there.
+
+### Added
+- **The FHIR R4 core is built into the binary.** Profile conformance
+  used to need `hl7.fhir.r4.core` installed by hand before it did
+  anything; the distilled index (about 200 KB compressed) now ships
+  inside BridgeLab, so cardinality, element types, choice elements and
+  unknown-element checks run against the base R4 definitions on a fresh
+  install, offline, in every tier — nothing to download. The package
+  manager lists it as built-in; a copy you install yourself replaces its
+  definitions, a newer version outranks it, and implementation guides
+  install on top as before (installing packages stays Pro). With the
+  core always present, the hand-written Observation `status`/`code` and
+  Patient `birthDate` checks were redundant with it and are gone — one
+  defect, one finding; the gender value check stays, because terminology
+  is the one thing the definitions do not carry.
+- **Primitive values are checked for their lexical form** during profile
+  conformance, with the specification's own patterns: `date`, `dateTime`
+  (a time needs a time zone), `instant`, `time`, `code` (no stray
+  whitespace), `id`, `oid`, `uuid`, URIs without whitespace, `positiveInt`
+  and `unsignedInt` ranges. One check goes beyond the letter of the
+  specification, on purpose: an endpoint — `MessageHeader.source.endpoint`,
+  `destination.endpoint`, `Endpoint.address` — written without a scheme
+  (`https//host`) is reported as a warning, because nothing can connect to
+  it as written. It is confined to endpoints: the core package itself
+  keeps bare type names in a `url`-typed extension, and those are fine.
+- **`bridgelab-cli` is now the app's own validators, headless.** The old
+  CLI was a separate, minimal reimplementation — structure and MSH checks
+  only, nothing else — while the manual called it "the same validator".
+  It is now a thin front-end over the library the desktop app is built
+  on: the same version-aware HL7 v2 validation, the same FHIR checks with
+  Bundle entries, references, the built-in R4 core and installed
+  packages, the same plugin packs and PHI anonymiser. `validate` and
+  `batch` detect HL7 v2 or FHIR per file; `--fhir-packages DIR` points at
+  a provisioned package folder for CI and air-gapped sites. The CLI reads
+  no licence and is built without the `pro` feature: it behaves as the
+  Community edition, by construction. Binaries ship with every release as
+  `bridgelab-cli-<target>`. Under the hood the library gained a `desktop`
+  feature that holds everything needing a window, so the CLI compiles
+  without Tauri or WebKit.
+- `cargo run --example validate-fhir -- <file>` validates a resource
+  headlessly the way the app does, including conformance against the
+  installed packages.
+
+### Changed
+- **Activation dialog describes the tiers by what they gate.** "Basic
+  MLLP/HTTP" and "full HTTP" are replaced with the actual split: MLLP send
+  and HTTP GET are Community; the listener, HTTP write methods and any
+  `Authorization` header need Pro. The welcome card for XSD export no longer
+  carries a blanket PRO badge — four v2.5 messages export in every tier —
+  and the manual's tier table gained the XSD row it was missing.
+
 ## [1.5.0] — 2026-09-12
 
 ### Added

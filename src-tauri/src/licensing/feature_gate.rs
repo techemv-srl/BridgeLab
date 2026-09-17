@@ -46,7 +46,9 @@
 //!     cap, exactly as HL7 v2 packs already do.
 //! (5) `fhir_profile_validation` gates *installing* a profile package.
 //!     Packages already installed keep validating in every tier, so a
-//!     trial that lapses never turns previously clean resources red.
+//!     trial that lapses never turns previously clean resources red. The
+//!     FHIR R4 core is built into the binary and validates in every tier;
+//!     what Pro buys is installing implementation guides on top of it.
 
 use crate::licensing::{self, LicenseStatus, LicenseType};
 

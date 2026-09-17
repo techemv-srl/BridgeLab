@@ -187,11 +187,15 @@ c'è il <code>resourceType</code>, valgono le regole specifiche della
 risorsa. Confrontarla con una <strong>StructureDefinition</strong> — la
 definizione vera di cosa può contenere un Patient — richiede quelle
 definizioni, che si distribuiscono come package FHIR NPM.</p>
-<p><strong>Strumenti → Package di profili FHIR…</strong> ne installa uno da
-un <code>.tgz</code>. Parti da <code>hl7.fhir.r4.core</code> su
-packages.fhir.org per le definizioni base, e aggiungi sopra le guide di
-implementazione nazionali o della tua struttura.</p>
-<p>Con un package installato, ogni validazione FHIR controlla anche:</p>
+<p>Il core FHIR R4 (<code>hl7.fhir.r4.core</code> 4.0.1) è
+<strong>integrato</strong>: le definizioni base ci sono sempre — offline,
+in ogni edizione, niente da scaricare. <strong>Strumenti → Package di
+profili FHIR…</strong> installa sopra, da un <code>.tgz</code>, le guide di
+implementazione nazionali o della tua struttura; un package installato che
+porta le stesse definizioni sostituisce quelle integrate, una versione più
+recente le scavalca.</p>
+<p>Ogni validazione FHIR controlla, contro il core integrato e ciò che è
+installato sopra:</p>
 <ul>
 	<li><strong>Cardinalità</strong> — un elemento obbligatorio assente, o un
 		elemento <code>0..1</code> che si ripete.</li>
@@ -365,15 +369,19 @@ team di integrazione e ospedali.</p>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Parsing FHIR + tree</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Invio MLLP, HTTP GET</td>
+	<tr><td>Invio MLLP, HTTP GET senza header di autenticazione</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Conformità al core FHIR R4 (integrato)</td>
+		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Export XSD</td>
+		<td>4 messaggi v2.5</td><td>Catalogo completo</td><td>Catalogo completo</td></tr>
 	<tr><td>Rilevamento PHI (solo visualizzazione)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Plugin pack (base)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Listener MLLP</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
-	<tr><td>HTTP POST/PUT/DELETE + auth</td>
+	<tr><td>HTTP POST/PUT/DELETE/PATCH, e autenticazione su qualsiasi metodo</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Mascheramento anonimizzazione</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>

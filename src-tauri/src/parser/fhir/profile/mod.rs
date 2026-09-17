@@ -38,6 +38,8 @@ pub struct PackageInfo {
     pub title: String,
     pub fhir_version: String,
     pub profile_count: usize,
+    /// Carried by the binary: listed, used, not removable.
+    pub builtin: bool,
 }
 
 impl ProfileRegistry {
@@ -47,10 +49,26 @@ impl ProfileRegistry {
         }
     }
 
-    /// Rebuild the index from what is installed on disk.
+    /// Rebuild the index: the core package the binary carries, then what
+    /// is installed on disk. Conformance against the base R4 definitions
+    /// therefore works on a fresh install, offline, with nothing to
+    /// download; installed packages add to it or supersede it by version.
     pub fn reload(&self) -> Result<usize, String> {
+        self.reload_from(None)
+    }
+
+    /// As [`reload`](Self::reload), reading installed packages from `root`
+    /// instead of the config directory when one is given.
+    pub fn reload_from(&self, root: Option<&std::path::Path>) -> Result<usize, String> {
         let mut index = ProfileIndex::default();
-        for package in package::load_installed() {
+        if let Some(core) = package::builtin() {
+            index.add_builtin(core);
+        }
+        let installed = match root {
+            Some(dir) => package::load_installed_from(dir),
+            None => package::load_installed(),
+        };
+        for package in installed {
             index.add_package(package);
         }
         let count = index.profile_count();
@@ -71,6 +89,7 @@ impl ProfileRegistry {
                 title: p.title.clone(),
                 fhir_version: p.fhir_version.clone(),
                 profile_count: p.profile_count,
+                builtin: p.builtin,
             })
             .collect()
     }

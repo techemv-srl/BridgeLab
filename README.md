@@ -19,7 +19,7 @@
 ## Features
 
 - **HL7 v2.x parser** - SIMD-accelerated streaming parser, handles 5-10MB messages with base64 sections smoothly
-- **FHIR support** - Parse and validate JSON/XML FHIR resources (Patient, Observation, Bundle, ...), with profile validation against installed FHIR NPM packages (cardinality, element types, choice elements, fixed values, unknown elements)
+- **FHIR support** - Parse and validate JSON/XML FHIR resources (Patient, Observation, Bundle, ...), with profile validation against the built-in FHIR R4 core and any installed FHIR NPM package (cardinality, element types, choice elements, fixed values, unknown elements, primitive formats, Bundle references) — offline, nothing to download
 - **FHIRPath 2.0** - Full operator set and ~70 functions, verified against the official HL7 FHIRPath test suite
 - **Smart truncation** - Large fields auto-truncated to `{...N bytes}`, expandable inline or all at once
 - **Validation** - Structural, field-level, data-type validation with 5 rule categories
@@ -80,12 +80,20 @@ node scripts/manual-to-docx.mjs        # -> docs/BridgeLab-User-Manual-EN.docx (
 BL_FHIRPATH_SUITE=.fhirpath-suite cargo test --manifest-path src-tauri/Cargo.toml \
     --test fhirpath_suite -- --nocapture
 
-# FHIR profile validation against the HL7 R4 core package (also not vendored)
+# FHIR profile validation against the HL7 R4 core package's 4578 examples
 ./scripts/fetch-fhir-core-package.sh
 BL_FHIR_PACKAGE=.fhir-packages/hl7.fhir.r4.core.tgz \
 BL_FHIR_EXAMPLES=.fhir-packages/examples \
     cargo test --manifest-path src-tauri/Cargo.toml --test fhir_profiles -- --nocapture
+
+# Validate one resource headlessly, the way the app does (built-in core + installed packages)
+cargo run --manifest-path src-tauri/Cargo.toml --example validate-fhir -- resource.json
 ```
+
+The FHIR R4 core (`hl7.fhir.r4.core` 4.0.1, CC0) ships **inside the binary**
+as a ~200 KB distilled index — `src-tauri/resources/fhir/` — so profile
+conformance works on a fresh install with nothing to download. To refresh it
+after a core update: `./scripts/refresh-bundled-fhir-core.sh`.
 
 ### Release acceptance
 
@@ -269,7 +277,9 @@ the Business Source License 1.1 (production use requires an active
 subscription; each converts to MIT four years after publication). See
 the root `LICENSE` file for the exact carve-out; everything published
 before those directories existed remains MIT. Building the Rust backend
-with `--no-default-features` produces a Community-only binary that
-compiles without the BUSL directories.
+with `--no-default-features --features desktop` produces a Community-only
+binary that compiles without the BUSL directories; `--no-default-features`
+alone builds the headless core library, which is what `bridgelab-cli`
+sits on — no Tauri, no WebKit, no BUSL code.
 
 Copyright (c) 2026 TECHEMV SRL

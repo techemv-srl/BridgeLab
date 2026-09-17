@@ -64,9 +64,12 @@ forme de fichiers <code>.hl7</code> numérotés — des jeux de régression
 instantanés pour le validateur par lots ci-dessus.</p>
 
 <h3>Validation en CLI</h3>
-<p>L'outil compagnon <code>bridgelab-cli</code> offre le même validateur
-pour un usage headless (pipelines CI, criblage par lots) :</p>
-<pre><code>bridgelab-cli validate message.hl7
+<p>L'outil compagnon <code>bridgelab-cli</code> exécute les mêmes
+validateurs — HL7 v2 et FHIR, avec le noyau R4 intégré, les packages
+installés et les plugins — en mode headless, pour les pipelines CI et le
+criblage par lots. Il ne lit aucune licence et se comporte comme l'édition
+Community. Un binaire par plateforme accompagne chaque version.</p>
+<pre><code>bridgelab-cli validate message.hl7 bundle.json
 bridgelab-cli validate '*.hl7' --format junit &gt; report.xml
 bridgelab-cli batch ./inbox --json</code></pre>
 `,

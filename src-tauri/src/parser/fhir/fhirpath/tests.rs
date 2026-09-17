@@ -528,6 +528,29 @@ fn resolve_finds_bundled_and_contained_resources() {
 }
 
 #[test]
+fn resolve_follows_a_urn_uuid_reference_to_the_entry_full_url() {
+    // A message bundle: no ids anywhere, every reference is the fullUrl of
+    // another entry.
+    let b = json!({
+        "resourceType": "Bundle", "type": "message",
+        "entry": [
+            {"fullUrl": "urn:uuid:7c7266e5-ac58-4485-a862-7561427be104",
+             "resource": {"resourceType": "Patient", "name": [{"family": "Wrexham"}]}},
+            {"fullUrl": "urn:uuid:6f198391-2f49-4a34-b20f-77450e1d01e3",
+             "resource": {"resourceType": "Observation", "status": "final",
+                          "subject": {"reference": "urn:uuid:7c7266e5-ac58-4485-a862-7561427be104"}}}
+        ]
+    });
+    assert_eq!(
+        one(
+            "Bundle.entry.resource.ofType(Observation).subject.resolve().name.family",
+            &b
+        ),
+        json!("Wrexham")
+    );
+}
+
+#[test]
 fn has_value_distinguishes_primitives_from_elements() {
     let p = patient();
     assert_eq!(one("Patient.gender.hasValue()", &p), json!(true));

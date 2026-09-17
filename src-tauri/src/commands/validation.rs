@@ -93,22 +93,20 @@ pub fn validate_fhir(
             issues.extend(found);
         }
     }
-    // A resource that declares a profile and got no conformance findings
-    // looks clean; say plainly when that is because nothing was checked.
-    if !profiles_applied
-        && resource
-            .json_value
-            .as_ref()
-            .and_then(|j| j.get("meta"))
-            .and_then(|m| m.get("profile"))
-            .is_some()
-    {
+    // A resource that got no conformance findings looks clean; say plainly
+    // when that is because nothing was checked. With the R4 core built in
+    // this now means a resource type no installed package defines — a
+    // typo, or a newer FHIR release than any package on this machine.
+    if !profiles_applied {
         issues.push(fhir::FhirValidationIssue {
             severity: "info".into(),
-            message: "Profile conformance was not checked: no FHIR profile package is \
-                      installed. Add one under Tools → FHIR profile packages…"
-                .into(),
-            path: "meta.profile".into(),
+            message: format!(
+                "Profile conformance was not checked: no installed package defines the \
+                 resource type '{}'. Built-in: FHIR R4 core; add others under \
+                 Tools → FHIR profile packages…",
+                resource.resource_type
+            ),
+            path: "resourceType".into(),
         });
     }
 

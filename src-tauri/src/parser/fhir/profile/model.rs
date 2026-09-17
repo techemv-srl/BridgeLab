@@ -6,6 +6,7 @@
 //! so loading a package at startup reads a few megabytes of the parts that
 //! matter rather than tens of megabytes of the parts that do not.
 
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -129,10 +130,22 @@ pub struct ProfilePackage {
 /// Profiles from every installed package, indexed for lookup.
 #[derive(Debug, Default)]
 pub struct ProfileIndex {
-    by_url: BTreeMap<String, Profile>,
+    /// Every installed version of a canonical, newest first, so an
+    /// unversioned reference gets the newest and a pinned one (`url|1.2.0`)
+    /// can be answered exactly.
+    by_url: BTreeMap<String, Vec<Profile>>,
     /// Base (non-constraint) definition per type name, e.g. "Patient".
     base_by_type: BTreeMap<String, String>,
     packages: Vec<PackageSummary>,
+}
+
+/// What a canonical reference resolved to.
+#[derive(Debug)]
+pub enum Lookup<'a> {
+    Found(&'a Profile),
+    /// The canonical is installed, just not at the version it was pinned to.
+    WrongVersion { installed: Vec<String> },
+    Missing,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -142,11 +155,35 @@ pub struct PackageSummary {
     pub title: String,
     pub fhir_version: String,
     pub profile_count: usize,
+    /// Shipped inside the binary rather than installed by the user: always
+    /// present, never removable.
+    pub builtin: bool,
 }
 
 impl ProfileIndex {
+    /// A package the user installed.
     pub fn add_package(&mut self, package: ProfilePackage) {
-        for profile in &package.profiles {
+        self.add(package, false);
+    }
+
+    /// The package the binary carries. Added first, so a user-installed
+    /// copy of the same version replaces its definitions and a newer one
+    /// outranks them — the built-in copy is a floor, not a ceiling.
+    pub fn add_builtin(&mut self, package: ProfilePackage) {
+        self.add(package, true);
+    }
+
+    fn add(&mut self, package: ProfilePackage, builtin: bool) {
+        let ProfilePackage {
+            name,
+            version,
+            title,
+            fhir_version,
+            profiles,
+        } = package;
+        let profile_count = profiles.len();
+
+        for profile in profiles {
             // The base definition of a type is the one that specialises it;
             // constraints on top are found through meta.profile instead.
             if !profile.is_constraint() && !profile.type_name.is_empty() {
@@ -154,29 +191,66 @@ impl ProfileIndex {
                     .entry(profile.type_name.clone())
                     .or_insert_with(|| profile.url.clone());
             }
-            self.by_url.insert(profile.url.clone(), profile.clone());
+            let versions = self.by_url.entry(profile.url.clone()).or_default();
+            // The same version shipped by two packages is one definition;
+            // the later install replaces the earlier copy rather than
+            // sitting beside it.
+            versions.retain(|p| p.version != profile.version);
+            versions.push(profile);
+            versions.sort_by(|a, b| compare_versions(&b.version, &a.version));
         }
         self.packages.push(PackageSummary {
-            name: package.name,
-            version: package.version,
-            title: package.title,
-            fhir_version: package.fhir_version,
-            profile_count: package.profiles.len(),
+            name,
+            version,
+            title,
+            fhir_version,
+            profile_count,
+            builtin,
         });
     }
 
-    pub fn get(&self, url: &str) -> Option<&Profile> {
-        // A versioned canonical (`…|4.0.1`) refers to the same definition.
-        self.by_url
-            .get(url)
-            .or_else(|| self.by_url.get(url.split('|').next().unwrap_or(url)))
+    /// Resolve a canonical reference, honouring a `|version` pin.
+    ///
+    /// An unversioned reference gets the newest installed version. A pinned
+    /// one gets exactly that version or [`Lookup::WrongVersion`] — never a
+    /// silent substitute, which would answer a different question than the
+    /// one the resource asked.
+    pub fn lookup(&self, canonical: &str) -> Lookup<'_> {
+        let (url, pinned) = match canonical.split_once('|') {
+            Some((url, version)) => (url, Some(version)),
+            None => (canonical, None),
+        };
+        let Some(versions) = self.by_url.get(url) else {
+            return Lookup::Missing;
+        };
+        match pinned {
+            None => versions.first().map(Lookup::Found).unwrap_or(Lookup::Missing),
+            Some(wanted) => versions
+                .iter()
+                .find(|p| p.version == wanted)
+                .map(Lookup::Found)
+                .unwrap_or_else(|| Lookup::WrongVersion {
+                    installed: versions.iter().map(|p| p.version.clone()).collect(),
+                }),
+        }
     }
 
-    /// The base definition for a resource or data type name.
+    /// [`lookup`](Self::lookup) as an `Option`, for callers that only need
+    /// the profile when it resolves exactly.
+    pub fn get(&self, canonical: &str) -> Option<&Profile> {
+        match self.lookup(canonical) {
+            Lookup::Found(profile) => Some(profile),
+            _ => None,
+        }
+    }
+
+    /// The base definition for a resource or data type name — the newest
+    /// installed version of it.
     pub fn base_for_type(&self, type_name: &str) -> Option<&Profile> {
         self.base_by_type
             .get(type_name)
             .and_then(|url| self.by_url.get(url))
+            .and_then(|versions| versions.first())
     }
 
     pub fn packages(&self) -> &[PackageSummary] {
@@ -187,9 +261,49 @@ impl ProfileIndex {
         self.by_url.is_empty()
     }
 
+    /// Installed profiles, counting each version of a canonical.
     pub fn profile_count(&self) -> usize {
-        self.by_url.len()
+        self.by_url.values().map(Vec::len).sum()
     }
+}
+
+/// Order two version strings, newest last: numeric segments compare as
+/// numbers ("4.10.0" after "4.9.0"), other segments as text, and a release
+/// ranks above its own pre-release ("4.0.1" after "4.0.1-snapshot").
+fn compare_versions(a: &str, b: &str) -> Ordering {
+    let split = |s: &str| {
+        s.split(['.', '-'])
+            .map(|seg| match seg.parse::<u64>() {
+                Ok(n) => (Some(n), seg.to_string()),
+                Err(_) => (None, seg.to_string()),
+            })
+            .collect::<Vec<_>>()
+    };
+    let (a, b) = (split(a), split(b));
+    for i in 0..a.len().max(b.len()) {
+        match (a.get(i), b.get(i)) {
+            (Some(x), Some(y)) => {
+                let ord = match (&x.0, &y.0) {
+                    (Some(m), Some(n)) => m.cmp(n),
+                    _ => x.1.cmp(&y.1),
+                };
+                if ord != Ordering::Equal {
+                    return ord;
+                }
+            }
+            // "4.0.1" vs "4.0.1-snapshot": the extra segment is a
+            // pre-release tag, so the shorter one is newer. "4.0" vs
+            // "4.0.1": the extra segment is numeric, so the longer is.
+            (None, Some(extra)) => {
+                return if extra.0.is_some() { Ordering::Less } else { Ordering::Greater };
+            }
+            (Some(extra), None) => {
+                return if extra.0.is_some() { Ordering::Greater } else { Ordering::Less };
+            }
+            (None, None) => break,
+        }
+    }
+    Ordering::Equal
 }
 
 /// Distil a StructureDefinition into a [`Profile`].
@@ -415,5 +529,82 @@ mod tests {
         assert!(index.base_for_type("Observation").is_none());
         assert_eq!(index.packages().len(), 1);
         assert_eq!(index.profile_count(), 1);
+    }
+
+    fn package(name: &str, version: &str, sds: Vec<Value>) -> ProfilePackage {
+        ProfilePackage {
+            name: name.into(),
+            version: version.into(),
+            title: String::new(),
+            fhir_version: "4.0.1".into(),
+            profiles: sds.iter().filter_map(from_structure_definition).collect(),
+        }
+    }
+
+    #[test]
+    fn a_pinned_canonical_gets_exactly_that_version_and_an_unpinned_one_the_newest() {
+        let mut old = patient_sd();
+        old["version"] = json!("4.0.1");
+        let mut new = patient_sd();
+        new["version"] = json!("4.3.0");
+        let mut index = ProfileIndex::default();
+        // Installed older-first on purpose: order of installation must not
+        // decide which version answers.
+        index.add_package(package("hl7.fhir.r4.core", "4.0.1", vec![old]));
+        index.add_package(package("hl7.fhir.r4b.core", "4.3.0", vec![new]));
+
+        let url = "http://hl7.org/fhir/StructureDefinition/Patient";
+        assert_eq!(index.get(url).unwrap().version, "4.3.0");
+        assert_eq!(index.get(&format!("{url}|4.0.1")).unwrap().version, "4.0.1");
+        assert_eq!(index.get(&format!("{url}|4.3.0")).unwrap().version, "4.3.0");
+        assert_eq!(index.base_for_type("Patient").unwrap().version, "4.3.0");
+        assert_eq!(index.profile_count(), 2);
+
+        match index.lookup(&format!("{url}|5.0.0")) {
+            Lookup::WrongVersion { installed } => {
+                assert_eq!(installed, vec!["4.3.0".to_string(), "4.0.1".to_string()]);
+            }
+            other => panic!("expected WrongVersion, got {other:?}"),
+        }
+        assert!(matches!(
+            index.lookup("http://acme.org/StructureDefinition/Nope|1.0"),
+            Lookup::Missing
+        ));
+    }
+
+    #[test]
+    fn the_same_version_installed_twice_is_one_definition() {
+        let mut index = ProfileIndex::default();
+        index.add_package(package("a", "1.0", vec![patient_sd()]));
+        index.add_package(package("b", "1.0", vec![patient_sd()]));
+        assert_eq!(index.profile_count(), 1);
+        assert_eq!(index.packages().len(), 2);
+    }
+
+    #[test]
+    fn versions_order_numerically_with_pre_releases_below_their_release() {
+        let mut versions = vec!["4.9.0", "4.10.0", "4.0.1-snapshot", "4.0.1", "4.0"];
+        versions.sort_by(|a, b| compare_versions(b, a));
+        assert_eq!(versions, vec!["4.10.0", "4.9.0", "4.0.1", "4.0.1-snapshot", "4.0"]);
+    }
+
+    #[test]
+    fn a_built_in_package_is_a_floor_the_user_can_replace_or_outrank() {
+        let mut index = ProfileIndex::default();
+        index.add_builtin(package("hl7.fhir.r4.core", "4.0.1", vec![patient_sd()]));
+        assert!(index.packages()[0].builtin);
+
+        // Installing the same version again swaps the definitions in place.
+        index.add_package(package("hl7.fhir.r4.core", "4.0.1", vec![patient_sd()]));
+        assert_eq!(index.profile_count(), 1);
+        assert_eq!(index.packages().len(), 2);
+        assert!(!index.packages()[1].builtin);
+
+        // A newer one outranks it for unpinned lookups.
+        let mut newer = patient_sd();
+        newer["version"] = json!("4.3.0");
+        index.add_package(package("hl7.fhir.r4b.core", "4.3.0", vec![newer]));
+        assert_eq!(index.base_for_type("Patient").unwrap().version, "4.3.0");
+        assert_eq!(index.profile_count(), 2);
     }
 }

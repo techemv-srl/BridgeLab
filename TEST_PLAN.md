@@ -230,7 +230,16 @@ Before running tests:
 | BL-FHIR-05 | P1 | FHIR validation | Load Patient, F6 | Validation report (error on bad gender, etc.) | |
 | BL-FHIR-06 | P1 | FHIR Bundle analysis | Load bundle, Tools > Bundle Visualizer | Modal opens with entries | |
 | BL-FHIR-07 | P1 | meta.profile surfaced | Load a resource declaring `meta.profile`, F6 | Info finding lists the canonical URL | |
-| BL-FHIR-08 | P1 | Unchecked conformance is stated | Same, with no profile package installed | Info finding says conformance was **not** checked and points at Tools → FHIR profile packages | |
+| BL-FHIR-08 | P1 | Unchecked conformance is stated | Load a resource whose `resourceType` no package defines (e.g. a typo), F6 | Info finding says conformance was **not** checked for that type and points at Tools → FHIR profile packages | |
+| BL-FHIR-09 | P0 | Bundle entries are validated | Load a `message` Bundle whose entry Observation has no `status`, F6 | Error "Observation.status is required" at `Bundle.entry[n].resource.status` from the built-in core; status bar counts it | |
+| BL-FHIR-10 | P0 | urn:uuid entries need no id | Same Bundle: `urn:uuid:` fullUrls, no `id` anywhere | No finding about ids on entries (only the root's info) | |
+| BL-FHIR-11 | P1 | Persistent fullUrl agrees with id | Entry `fullUrl` `http://…/Patient/1` with resource `id` `2` | Warning at `entry[n].fullUrl` ("disagrees") | |
+| BL-FHIR-12 | P1 | Dangling reference in a message Bundle | `DiagnosticReport.result.reference` → a urn no entry carries | Warning at `entry[n].resource.result[0].reference` ("does not resolve") | |
+| BL-FHIR-13 | P1 | Contained resources are validated | Observation with a `contained` Patient whose `gender` is `yes` | Error at `contained[0].gender`; the built-in core also reports the contained resource's structure | |
+| BL-FHIR-14 | P1 | Entry profile honoured | Package installed; entry declares a profile requiring `gender`, none given | Error at `Bundle.entry[n].resource.gender` | |
+| BL-FHIR-15 | P1 | Endpoint without scheme | Package installed; `MessageHeader.destination.endpoint` = `https//host/x` | Warning "no scheme" on that element; a `url` elsewhere written relatively is not reported | |
+| BL-FHIR-16 | P2 | Primitive lexical checks | Package installed; `birthDate` `2018-13-40`, a `dateTime` without time zone | Errors naming the type and the expected form | |
+| BL-FHIR-17 | P1 | resolve() over urn:uuid | Message Bundle, FHIRPath `Bundle.entry.resource.ofType(Observation).subject.resolve().name.family` | The Patient's family name | |
 
 ## 12. FHIR Bundle Visualizer
 
@@ -443,6 +452,11 @@ Before running tests:
 | BL-CLI-11 | P1 | Batch directory | `batch ./messages` | Summary printed | |
 | BL-CLI-12 | P1 | Batch --json | `batch ./dir --json` | JSON summary | |
 | BL-CLI-13 | P2 | Help text | `bridgelab-cli --help` | All commands listed | |
+| BL-CLI-14 | P0 | FHIR file validated | `bridgelab-cli validate tests/fixtures/fhir/bundle_patient.json` | Report kind FHIR; entries validated; exit 0 | |
+| BL-CLI-15 | P0 | Same findings as the app | Validate the same HL7 and FHIR files in the app (F6) and in the CLI | Identical findings and counts | |
+| BL-CLI-16 | P1 | Packages directory override | `validate x.json --fhir-packages <dir with a distilled IG>` | The IG's profiles are applied; built-in R4 core still present | |
+| BL-CLI-17 | P1 | Community behaviour without licence | Machine with a Pro licence activated; run the CLI | Plugin cap of the Community edition applies; no licence read | |
+| BL-CLI-18 | P1 | Release asset | Download `bridgelab-cli-<target>` from a release | Runs; `--version` prints the CLI version | |
 
 ## 26. Updater
 
@@ -658,10 +672,12 @@ Packages live in `<config>/BridgeLab/fhir-packages/`. Get
 | BL-PROF-11 | P1 | Declared profile applied | Install a package defining a profile, declare it in `meta.profile`, F6 | That profile's constraints are enforced on top of the base | |
 | BL-PROF-12 | P1 | Missing profile reported | Declare a profile no installed package defines, F6 | Warning: declared but not installed | |
 | BL-PROF-13 | P1 | Nested type checked | Break a field inside `name` (e.g. add `nosuchfield`), F6 | Finding path points at `Patient.name[0].nosuchfield` | |
-| BL-PROF-14 | P1 | Remove a package | Click Remove | Row disappears; F6 no longer reports profile findings | |
+| BL-PROF-14 | P1 | Remove a package | Click Remove on an installed IG | Row disappears; its profiles are no longer applied. The built-in core row has no Remove button | |
 | BL-PROF-15 | P1 | Install gated in Community | Community tier, try to install | Upgrade prompt; already-installed packages keep validating | |
 | BL-PROF-16 | P2 | Bad archive rejected | Install a `.tgz` that is not a FHIR package | Clear error; existing packages unaffected | |
 | BL-PROF-17 | P2 | Whole-package regression | `BL_FHIR_PACKAGE=… BL_FHIR_EXAMPLES=… cargo test --test fhir_profiles` | Findings rate under the recorded threshold | |
+| BL-PROF-18 | P0 | Built-in core listed and applied | Fresh install, Tools → FHIR profile packages… | `hl7.fhir.r4.core 4.0.1` listed as built-in, 653 profiles; F6 on a Patient with `genderr` reports the unknown element with no package installed | |
+| BL-PROF-19 | P1 | Installed copy supersedes the built-in | Install `hl7.fhir.r4.core` 4.0.1 by hand | Two rows (built-in + installed), profile count unchanged; remove the installed copy and the built-in keeps validating | |
 
 ## 38. HL7 Version Catalogue
 
@@ -696,7 +712,7 @@ Add observations during testing here:
 Separately from this manual plan, the following automated tests run on every commit (see `.github/workflows/feature-tests.yml`):
 
 - **CLI feature tests** (BL-CLI-01..12) - validate, JSON, JUnit, info, anonymize, to-json, batch
-- **Rust core tests** - `cd src-tauri && cargo test --all` (unit + integration, 319 tests)
+- **Rust core tests** - `cd src-tauri && cargo test --all` (unit + integration, 335 tests)
 - **Schema lookup** (BL-INSP-05 partial) - `get_segment_info` / `get_field_info` for MSH/PID/PV1
 - **Parser fixtures** (BL-PARSER-01/02/03, BL-PERF-03) - smoke over `tests/fixtures/hl7/` via CLI
 - **MLLP roundtrip** (BL-MLLP-04/05/09/10) - in-process listener with auto-ACK verified both from the

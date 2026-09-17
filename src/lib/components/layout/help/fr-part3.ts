@@ -191,11 +191,15 @@ malformées sont signalées comme avertissements.</p>
 tiennent-elles. La confronter à une <strong>StructureDefinition</strong> —
 la définition réelle de ce qu'un Patient peut contenir — demande ces
 définitions, distribuées sous forme de packages FHIR NPM.</p>
-<p><strong>Outils → Packages de profils FHIR…</strong> en installe un depuis
-un <code>.tgz</code>. Commencez par <code>hl7.fhir.r4.core</code> sur
-packages.fhir.org pour les définitions de base, puis ajoutez les guides
-d'implémentation nationaux ou propres à votre site.</p>
-<p>Une fois un package installé, chaque validation FHIR contrôle aussi :</p>
+<p>Le noyau FHIR R4 (<code>hl7.fhir.r4.core</code> 4.0.1) est
+<strong>intégré</strong> : les définitions de base sont toujours là — hors
+ligne, dans toutes les éditions, rien à télécharger. <strong>Outils →
+Packages de profils FHIR…</strong> installe par-dessus, depuis un
+<code>.tgz</code>, les guides d'implémentation nationaux ou propres à votre
+site ; un package installé portant les mêmes définitions remplace celles
+intégrées, une version plus récente les supplante.</p>
+<p>Chaque validation FHIR contrôle, contre le noyau intégré et ce qui est
+installé par-dessus :</p>
 <ul>
 	<li><strong>Cardinalité</strong> — un élément requis absent, ou un
 		élément <code>0..1</code> qui se répète.</li>
@@ -374,15 +378,19 @@ d'intégration et les hôpitaux.</p>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Analyse FHIR + arborescence</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Envoi MLLP, HTTP GET</td>
+	<tr><td>Envoi MLLP, HTTP GET sans en-tête d'authentification</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Conformité au noyau FHIR R4 (intégré)</td>
+		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Export XSD</td>
+		<td>4 messages v2.5</td><td>Catalogue complet</td><td>Catalogue complet</td></tr>
 	<tr><td>Détection PHI (visualisation seule)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Packs de plugins (base)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Listener MLLP</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
-	<tr><td>HTTP POST/PUT/DELETE + authentification</td>
+	<tr><td>HTTP POST/PUT/DELETE/PATCH, et authentification sur toute méthode</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Masquage d'anonymisation</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>

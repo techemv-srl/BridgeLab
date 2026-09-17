@@ -237,9 +237,14 @@ fn install_and_reload_round_trips_through_the_registry() {
 
     let registry = bridgelab_lib::parser::fhir::profile::ProfileRegistry::new();
     let loaded = registry.reload().expect("reload");
+    // The binary carries the same package: the installed copy replaces its
+    // definitions one for one, so the count is unchanged, and the package
+    // manager lists both — the built-in floor and the installed copy.
     assert_eq!(loaded, installed.profiles.len(), "every profile survives the round trip");
     assert!(!registry.is_empty());
-    assert_eq!(registry.packages().len(), 1);
+    let packages = registry.packages();
+    assert_eq!(packages.len(), 2);
+    assert!(packages.iter().any(|p| p.builtin) && packages.iter().any(|p| !p.builtin));
 
     // And it validates through the same entry point the command uses.
     let broken = json!({"resourceType": "Patient", "genderr": "female"});

@@ -164,11 +164,32 @@ pub fn remove(name: &str, version: &str) -> Result<(), String> {
 ///
 /// A file that fails to parse is skipped rather than failing the load: one
 /// bad package should not take the others with it.
+/// The distilled `hl7.fhir.r4.core` the binary carries, so base R4
+/// conformance needs no download and no installation. Produced by
+/// `cargo run --example distil-fhir-package`; ~200 KB compressed, the same
+/// index an installation of the `.tgz` would write.
+const BUILTIN_CORE: &[u8] = include_bytes!("../../../../resources/fhir/hl7.fhir.r4.core-4.0.1.json.gz");
+
+/// The built-in core package, decoded. `None` only if the embedded bytes
+/// fail to decode, which a build with a corrupt resource would show at
+/// once in the tests.
+pub fn builtin() -> Option<ProfilePackage> {
+    let decoder = flate2::read::GzDecoder::new(BUILTIN_CORE);
+    serde_json::from_reader(decoder).ok()
+}
+
 pub fn load_installed() -> Vec<ProfilePackage> {
-    let Some(root) = packages_root() else {
-        return vec![];
-    };
-    let Ok(entries) = fs::read_dir(&root) else {
+    match packages_root() {
+        Some(root) => load_installed_from(&root),
+        None => vec![],
+    }
+}
+
+/// The distilled packages under `root` — the app's config directory by
+/// default, any directory for a CI checkout or an air-gapped provisioning
+/// folder.
+pub fn load_installed_from(root: &Path) -> Vec<ProfilePackage> {
+    let Ok(entries) = fs::read_dir(root) else {
         return vec![];
     };
 
@@ -311,5 +332,20 @@ mod tests {
     fn stored_names_are_filesystem_safe() {
         assert_eq!(stored_name("hl7.fhir.r4.core", "4.0.1"), "hl7.fhir.r4.core#4.0.1.json");
         assert_eq!(stored_name("a/b", "1:0"), "a_b#1_0.json");
+    }
+
+    #[test]
+    fn the_built_in_core_decodes_and_carries_the_base_definitions() {
+        let core = builtin().expect("embedded core decodes");
+        assert_eq!(core.name, "hl7.fhir.r4.core");
+        assert_eq!(core.version, "4.0.1");
+        assert_eq!(core.fhir_version, "4.0.1");
+        assert!(core.profiles.len() > 500, "{} profiles", core.profiles.len());
+        let mut index = super::super::model::ProfileIndex::default();
+        index.add_builtin(core);
+        for t in ["Patient", "Observation", "Bundle", "MessageHeader", "Quantity", "Reference"] {
+            assert!(index.base_for_type(t).is_some(), "{t} missing from the built-in core");
+        }
+        assert!(index.packages()[0].builtin);
     }
 }

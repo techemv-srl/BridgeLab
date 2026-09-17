@@ -98,19 +98,22 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each packages as pkg (pkg.name + pkg.version)}
+						{#each packages as pkg ((pkg.builtin ? 'builtin:' : 'installed:') + pkg.name + '@' + pkg.version)}
 							<tr>
 								<td>
 									<span class="pkg-name">{pkg.name}</span>
+									{#if pkg.builtin}<span class="pkg-builtin">{t('fhirPackages.builtin')}</span>{/if}
 									{#if pkg.title}<span class="pkg-title">{pkg.title}</span>{/if}
 								</td>
 								<td>{pkg.version}</td>
 								<td>{pkg.fhir_version || '—'}</td>
 								<td class="num">{pkg.profile_count}</td>
 								<td>
-									<button class="btn small danger" onclick={() => remove(pkg)}>
-										{t('fhirPackages.remove')}
-									</button>
+									{#if !pkg.builtin}
+										<button class="btn small danger" onclick={() => remove(pkg)}>
+											{t('fhirPackages.remove')}
+										</button>
+									{/if}
 								</td>
 							</tr>
 						{/each}
@@ -149,6 +152,7 @@
 	.packages th { text-align: left; font-size: 10px; text-transform: uppercase; color: var(--color-text-secondary); padding: 4px 8px; border-bottom: 1px solid var(--color-border); }
 	.packages td { padding: 6px 8px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
 	.packages .num { text-align: right; }
+	.pkg-builtin { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 18%, transparent); vertical-align: middle; }
 	.pkg-name { display: block; font-family: var(--font-mono, monospace); }
 	.pkg-title { display: block; font-size: 10px; color: var(--color-text-secondary); }
 

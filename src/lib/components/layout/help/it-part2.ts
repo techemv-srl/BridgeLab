@@ -61,9 +61,12 @@ numerati — fixture di regressione istantanee per la validazione batch
 qui sopra.</p>
 
 <h3>Validazione da CLI</h3>
-<p>Il tool <code>bridgelab-cli</code> offre lo stesso validator per uso
-headless (pipeline CI, screening batch):</p>
-<pre><code>bridgelab-cli validate message.hl7
+<p>Il tool <code>bridgelab-cli</code> esegue gli stessi validatori — HL7
+v2 e FHIR, con il core R4 integrato, i package installati e i plugin —
+in modalità headless, per pipeline CI e screening batch. Non legge alcuna
+licenza e si comporta come l'edizione Community. Un binario per
+piattaforma accompagna ogni release.</p>
+<pre><code>bridgelab-cli validate message.hl7 bundle.json
 bridgelab-cli validate '*.hl7' --format junit &gt; report.xml
 bridgelab-cli batch ./inbox --json</code></pre>
 `,

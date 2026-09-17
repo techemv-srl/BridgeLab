@@ -26,11 +26,16 @@
 		onShowGenerate, onShowBatchAnonymize, onShowCommunication, onShowSchemaExport,
 	}: Props = $props();
 
+	// `pro` means the dialog behind the card cannot be used at all without a
+	// licence. XSD export is not one of those: four v2.5 messages export in
+	// every tier, and the dialog marks each version and message that needs Pro
+	// on the option itself — so a blanket badge here would contradict both the
+	// card's own description and what the user sees one click later.
 	const discoverCards = [
 		{ icon: '⚗', key: 'generator', pro: false, action: () => onShowGenerate() },
 		{ icon: '🛡', key: 'anonymize', pro: true, action: () => onShowBatchAnonymize() },
 		{ icon: '⇄', key: 'listener', pro: true, action: () => onShowCommunication() },
-		{ icon: '⬡', key: 'xsd', pro: true, action: () => onShowSchemaExport() },
+		{ icon: '⬡', key: 'xsd', pro: false, action: () => onShowSchemaExport() },
 	];
 </script>
 
