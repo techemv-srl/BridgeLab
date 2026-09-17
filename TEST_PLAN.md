@@ -464,7 +464,7 @@ Before running tests:
 |----|----------|-------------|-------|-----------------|--------|
 | BL-UPD-01 | P2 | Check for updates | Help > Check for Updates | Shows "latest version" or update available | |
 | BL-UPD-02 | P2 | No update dialog | If no update | Alert "You are running the latest version" | |
-| BL-UPD-03 | P2 | Update download | If update available | Downloads and prompts restart | |
+| BL-UPD-03 | P2 | Update available | Run an older build; Help > Check for Updates | Dialog names the newer version and opens the GitHub release page on confirm. (In-app download and restart need signed artifacts and a `latest.json`, which the release pipeline does not produce.) | |
 
 ## 27. Tree ↔ Editor Navigation
 
@@ -568,7 +568,7 @@ Before running tests:
 | BL-PKG-05 | P1 | macOS DMG opens with background | Mount `.dmg` | Window shows app icon + Applications shortcut laid out | |
 | BL-PKG-06 | P1 | Linux .deb lists correct deps | `dpkg -I *.deb` | `Depends:` includes libwebkit2gtk-4.1-0, libgtk-3-0 | |
 | BL-PKG-07 | P1 | Linux .deb section utils | `dpkg -I *.deb` | `Section: utils`, `Priority: optional` | |
-| BL-PKG-08 | P1 | AppImage bundles media framework | Run AppImage offline | GStreamer-dependent features work | |
+| BL-PKG-08 | P1 | AppImage runs without GStreamer bundled | Run the AppImage on a distro without GStreamer, offline | App starts, parses and validates; about 20 MB | |
 | BL-PKG-09 | P2 | File association `.hl7` | Install, double-click .hl7 | Opens in BridgeLab | |
 | BL-PKG-10 | P2 | About dialog version matches installer | Launch installed build | About shows 0.1.0 (or current) | |
 

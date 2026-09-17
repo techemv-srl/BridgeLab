@@ -29,6 +29,7 @@
 	"bundle": {
 		"active": true,
 		"targets": "all",
+		"createUpdaterArtifacts": false,
 		"category": "DeveloperTool",
 		"shortDescription": "Modern HL7/FHIR message editor",
 		"longDescription": "BridgeLab is a professional HL7/FHIR message editor for healthcare integration. It handles large messages (5-10MB with base64 payloads), MLLP/HTTP transport with listener support, anonymization, validation against the HL7 standard, FHIR Bundle visualization and FHIRPath evaluation. Multi-language UI (EN, IT, FR, ES, DE).",
@@ -78,11 +79,7 @@
 			},
 			"wix": {
 				"language": [
-					"en-US",
-					"it-IT",
-					"fr-FR",
-					"es-ES",
-					"de-DE"
+					"en-US"
 				]
 			}
 		},
@@ -112,7 +109,7 @@
 				}
 			},
 			"appimage": {
-				"bundleMediaFramework": true
+				"bundleMediaFramework": false
 			},
 			"rpm": {
 				"depends": [
