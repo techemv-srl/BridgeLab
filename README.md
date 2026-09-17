@@ -164,10 +164,13 @@ Per-platform installer configuration lives in [`src-tauri/tauri.conf.json`](src-
 
 - **Windows NSIS**: shows the MIT license page, a language selector (EN/IT/FR/ES/DE),
   installs to `%LOCALAPPDATA%\Programs\BridgeLab` by default (current user), LZMA compression
-- **Windows MSI (WiX)**: multi-language (en-US/it-IT/fr-FR/es-ES/de-DE)
+- **Windows MSI (WiX)**: one `en-US` package for managed deployment (GPO, Intune, silent
+  install). The installer language only affects the installer's own dialogs — the app is
+  multilingual either way — so the per-language MSIs were dropped
 - **macOS DMG**: presents a drag-to-Applications layout with the app + Applications icons
 - **Linux .deb**: declares `libwebkit2gtk-4.1-0` + `libgtk-3-0` dependencies, `utils` section
-- **Linux AppImage**: bundles the media framework so GStreamer-dependent features work offline
+- **Linux AppImage**: distro-agnostic; does not bundle GStreamer (BridgeLab plays no media).
+  Most of its ~78 MB is the WebKitGTK and GTK stack it has to carry to run anywhere
 - **Linux .rpm**: declares `webkit2gtk4.1` + `gtk3` dependencies
 - **File association**: `.hl7` is registered so double-clicking a file opens BridgeLab.
   On Linux the `.deb`/`.rpm` also ship a shared-mime-info definition

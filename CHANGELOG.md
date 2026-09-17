@@ -2,6 +2,21 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [Unreleased]
+
+### Changed
+- **A release now ships 12 assets instead of 19, about 450 MB instead of
+  1.4 GB.** The five per-language MSIs are one `en-US` MSI — the
+  installer language only affects the installer's own dialogs, the app
+  is multilingual either way, and the NSIS `setup.exe` already carries a
+  language selector; the MSI stays for managed deployment. The two
+  macOS `.app.tar.gz` updater bundles are gone: nothing consumed them —
+  release artifacts are not signed, there is no `latest.json`, and
+  *Help → Check for updates* has always fallen back to comparing against
+  the latest GitHub release, which it still does. The AppImage no longer
+  bundles GStreamer, which BridgeLab never used: 78 MB instead of 91 —
+  the rest is the WebKitGTK and GTK stack it carries to run on any distro.
+
 ## [1.6.0] — 2026-09-17
 
 ### Fixed
