@@ -6,11 +6,17 @@
 ![License](https://img.shields.io/badge/License-Open%20Core-green)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
+Free and open-source core (MIT), free for commercial use. **Pro** adds the MLLP
+listener, batch validation, PHI masking and the full XSD catalogue - EUR 249 per
+seat per year, EUR 199 for the first year (first 20 licenses).
+[Download or buy](https://techemv-srl.github.io/BridgeLab/)
+
 ## Links
 
-- **Landing page**: [docs/site/](docs/site/) - deployed to GitHub Pages
-  via [`.github/workflows/pages.yml`](.github/workflows/pages.yml). Preview
-  locally with `python3 -m http.server --directory docs/site 4173`.
+- **Website**: <https://techemv-srl.github.io/BridgeLab/> - downloads, pricing
+  and FAQ. Source in [docs/site/](docs/site/), deployed to GitHub Pages via
+  [`.github/workflows/pages.yml`](.github/workflows/pages.yml); preview locally
+  with `python3 -m http.server --directory docs/site 4173`.
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Plugin docs**: [docs/PLUGINS.md](docs/PLUGINS.md)
 - **Test plan**: [TEST_PLAN.md](TEST_PLAN.md)
@@ -198,11 +204,12 @@ this machine, then everything works offline. Each seat allows a limited
 number of activations; use *Deactivate* to free the seat before moving to
 another machine.
 
+Licenses can be bought from the website; for invoices, purchase orders or
+multi-seat quotes, write to info@techemv.it.
+
 **Offline keys** — for air-gapped sites, send your Hardware ID (shown in
 the activation dialog) to **info@techemv.it** and receive a signed key by
 e-mail. No network access is ever required with this flow.
-
-Contact **TECHEMV SRL** (info@techemv.it) for license purchases.
 
 ## Project Structure
 
@@ -268,8 +275,10 @@ The choice is remembered for in-place upgrades.
 - Email: [info@techemv.it](mailto:info@techemv.it)
 - Web: [www.techemv.it](https://www.techemv.it)
 
-For license purchases, enterprise inquiries, integration support and bug
-reports outside GitHub Issues, reach us at the email above.
+Licenses are bought from the [website](https://techemv-srl.github.io/BridgeLab/).
+For invoices, purchase orders, multi-seat quotes, enterprise inquiries,
+integration support and bug reports outside GitHub Issues, reach us at the
+email above.
 
 ## License
 
