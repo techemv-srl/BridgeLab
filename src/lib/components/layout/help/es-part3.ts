@@ -53,8 +53,7 @@ HL7 v2.xml:</p>
 <h3>Cobertura y niveles</h3>
 <p>Se incluyen completas diez versiones de HL7: <strong>2.1, 2.2, 2.3,
 2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7 y 2.7.1</strong> — 2.320 estructuras
-de mensaje en total, seleccionables desde el desplegable de
-versiones.</p>
+de mensaje seleccionables desde el desplegable de versiones.</p>
 <p>HL7 v2.7.1 es una versión de corrección técnica de la 2.7 y usa las
 mismas definiciones de mensaje, por lo que aparece marcada
 <strong>(= v2.7)</strong> en el desplegable y exporta desde el catálogo

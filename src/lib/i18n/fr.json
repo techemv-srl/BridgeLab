@@ -251,7 +251,7 @@
 	"welcome.card.listener": "Écouteur MLLP",
 	"welcome.card.listenerDesc": "Recevez du trafic en direct avec console, auto-ACK et inspection par message.",
 	"welcome.card.xsd": "Export XSD",
-	"welcome.card.xsdDesc": "Schémas pour 10 versions HL7 — 4 messages v2.5 courants gratuits, catalogue complet (2 320 structures) avec Pro.",
+	"welcome.card.xsdDesc": "Schémas pour 10 versions HL7 — 4 messages v2.5 courants gratuits, catalogue complet (2 320 structures sélectionnables) avec Pro.",
 	"editor.initFailed": "Échec du chargement de l'éditeur.",
 	"editor.retry": "Réessayer",
 	"tmpl.none": "Aucun modèle disponible",

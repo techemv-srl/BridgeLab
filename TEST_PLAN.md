@@ -688,7 +688,7 @@ Packages live in `<config>/BridgeLab/fhir-packages/`. Get
 | BL-VER-03 | P0 | Export works for a new version | Pick v2.5.1, choose a message, preview | XSD generated without error | |
 | BL-VER-04 | P1 | Oldest versions are small but real | Pick v2.1 | Message list is short (~39) and exports cleanly | |
 | BL-VER-05 | P1 | Tree follows MSH-12 | Open messages declaring 2.3 and 2.6 with schema-aware tree on | Placeholder rows differ per version | |
-| BL-VER-06 | P2 | Counts agree across the UI | Welcome card, manual, landing FAQ | All say ten versions / 2,320 structures | |
+| BL-VER-06 | P2 | Counts agree across the UI | Welcome card, manual, landing FAQ, README | All say ten versions / 2,320 **selectable** message structures; the README also gives 1,965 distinct definitions | |
 
 ## Test Execution Log
 

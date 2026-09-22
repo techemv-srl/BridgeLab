@@ -48,8 +48,8 @@ vedi l'anteprima e salva con un clic.</p>
 
 <h3>Copertura e tier</h3>
 <p>Dieci versioni HL7 sono incluse al completo: <strong>2.1, 2.2, 2.3,
-2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7 e 2.7.1</strong> — in totale 2.320
-strutture di messaggio, selezionabili dal dropdown delle versioni.</p>
+2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7 e 2.7.1</strong> — 2.320 strutture di
+messaggio selezionabili dal dropdown delle versioni.</p>
 <p>HL7 v2.7.1 è una release di correzione tecnica della 2.7 e usa le
 stesse definizioni di messaggio: nel dropdown è quindi marcata
 <strong>(= v2.7)</strong> ed esporta dal catalogo 2.7.</p>
