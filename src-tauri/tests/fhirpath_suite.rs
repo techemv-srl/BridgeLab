@@ -290,9 +290,25 @@ fn parse_suite(xml: &str) -> Result<Vec<TestCase>, String> {
                     _ => {}
                 }
             }
+            // quick-xml 0.41 splits text at entity references: an
+            // expression such as `a &lt; b` arrives as Text, GeneralRef,
+            // Text, and each piece is appended to the current field.
             Event::Text(t) => {
                 if field.is_some() {
-                    text.push_str(&t.unescape().map_err(|e| e.to_string())?);
+                    text.push_str(&t.xml10_content().map_err(|e| e.to_string())?);
+                }
+            }
+            Event::GeneralRef(r) => {
+                if field.is_some() {
+                    if let Some(ch) = r.resolve_char_ref().map_err(|e| e.to_string())? {
+                        text.push(ch);
+                    } else {
+                        let name = r.decode().map_err(|e| e.to_string())?;
+                        match quick_xml::escape::resolve_predefined_entity(&name) {
+                            Some(s) => text.push_str(s),
+                            None => return Err(format!("unknown entity &{};", name)),
+                        }
+                    }
                 }
             }
             Event::CData(t) => {
@@ -335,7 +351,7 @@ fn attributes(e: &quick_xml::events::BytesStart) -> Result<BTreeMap<String, Stri
         let attr = attr.map_err(|e| e.to_string())?;
         let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
         let value = attr
-            .unescape_value()
+            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
             .map_err(|e| e.to_string())?
             .to_string();
         out.insert(key, value);
