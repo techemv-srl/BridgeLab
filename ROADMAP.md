@@ -15,8 +15,8 @@ Shipped and available:
 - Native HL7 v2 and FHIR (JSON/XML) parsing, tree view and field inspector
 - 10 MB+ message handling with smart truncation (base64 payloads included)
 - HL7 v2 schema catalogue for ten versions, v2.1 through v2.7.1 —
-  2,320 message structures behind the tree, the Field Inspector and the
-  XSD export
+  2,320 selectable message structures behind the tree, the Field
+  Inspector and the XSD export
 - Validation against the HL7 standard, plugin packs for custom rules
 - FHIR validation: structural checks, custom rules, and conformance against
   installed StructureDefinitions (cardinality, types, choice elements, fixed
@@ -41,9 +41,9 @@ Shipped and available:
 
 - [x] Full HL7 v2.5 message catalogue (248 messages, 149 segments, 78 composites)
 - [x] Additional HL7 versions via the same importer — v2.1, v2.2, v2.3,
-      v2.3.1, v2.4, v2.5.1, v2.6, v2.7 and v2.7.1 (2,320 message structures
-      in total; v2.7.1 is a technical correction of v2.7 and shares its
-      definitions)
+      v2.3.1, v2.4, v2.5.1, v2.6, v2.7 and v2.7.1 (2,320 selectable message
+      structures, 1,965 distinct definitions; v2.7.1 is a technical
+      correction of v2.7 and shares its definitions)
 - [ ] HL7 v2.8 and later — needs a second data source; hl7-dictionary, the
       MIT-licensed source behind the versions above, stops at v2.7
 - [x] Keyboard shortcut customization (rebind any command, persisted, reset

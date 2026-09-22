@@ -89,7 +89,8 @@ are always internally consistent.
 - [x] `bridgelab-json` round-trip (useful to re-format / validate existing files).
 - [x] hl7-dictionary conversion via `scripts/convert-hl7-dictionary.mjs`, then
       validated here — every version hl7-dictionary covers is shipped (see
-      the table above): 2,320 message structures across 10 selectable versions.
+      the table above): 1,965 message definitions, 2,320 selectable message
+      structures across 10 versions (v2.7.1 aliases v2.7's catalogue).
 - [ ] Native Rust `hl7-dictionary` ingestor, dropping the Node step: parse
       `lib/<version>/{messages,segments,fields}.js` directly.
 - [ ] `hapi-conf` ingestor: parse HAPI's `.conf` XML bundles. Needed for

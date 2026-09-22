@@ -251,7 +251,7 @@
 	"welcome.card.listener": "MLLP-Listener",
 	"welcome.card.listenerDesc": "Live-Traffic empfangen mit Konsole, Auto-ACK und Einzelinspektion.",
 	"welcome.card.xsd": "XSD-Export",
-	"welcome.card.xsdDesc": "Schemata für 10 HL7-Versionen — 4 gängige v2.5-Nachrichten frei, Gesamtkatalog (2.320 Strukturen) mit Pro.",
+	"welcome.card.xsdDesc": "Schemata für 10 HL7-Versionen — 4 gängige v2.5-Nachrichten frei, Gesamtkatalog (2.320 wählbare Strukturen) mit Pro.",
 	"editor.initFailed": "Der Editor konnte nicht geladen werden.",
 	"editor.retry": "Erneut versuchen",
 	"tmpl.none": "Keine Vorlagen verfügbar",

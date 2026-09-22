@@ -46,8 +46,8 @@ convention:</p>
 
 <h3>Coverage and tiers</h3>
 <p>Ten HL7 versions ship complete: <strong>2.1, 2.2, 2.3, 2.3.1, 2.4,
-2.5, 2.5.1, 2.6, 2.7 and 2.7.1</strong> — 2,320 message structures in
-total, selectable from the version dropdown.</p>
+2.5, 2.5.1, 2.6, 2.7 and 2.7.1</strong> — 2,320 selectable message
+structures in the version dropdown.</p>
 <p>HL7 v2.7.1 is a technical-correction release of v2.7 and carries the
 same message definitions, so it is marked <strong>(= v2.7)</strong> in
 the dropdown and exports from the v2.7 catalogue.</p>
