@@ -25,6 +25,11 @@ seat per year, EUR 199 for the first year (first 20 licenses).
 ## Features
 
 - **HL7 v2.x parser** - SIMD-accelerated streaming parser, handles 5-10MB messages with base64 sections smoothly
+- **HL7 versions** - Schema catalogue for **v2.1, v2.2, v2.3, v2.3.1, v2.4, v2.5, v2.5.1, v2.6, v2.7 and v2.7.1**
+  — ten selectable versions, 1,965 message definitions. The version is read from MSH-12, so field names,
+  data types and lengths come from the catalogue the message itself declares; v2.7.1 is a technical correction
+  of v2.7 and shares its definitions, so it is offered as an alias. HL7 v2.8+ is not covered:
+  [hl7-dictionary](https://github.com/Ensighten/hl7-dictionary), the MIT-licensed source behind these, stops at v2.7
 - **FHIR support** - Parse and validate JSON/XML FHIR resources (Patient, Observation, Bundle, ...), with profile validation against the built-in FHIR R4 core and any installed FHIR NPM package (cardinality, element types, choice elements, fixed values, unknown elements, primitive formats, Bundle references) — offline, nothing to download
 - **FHIRPath 2.0** - Full operator set and ~70 functions, verified against the official HL7 FHIRPath test suite
 - **Smart truncation** - Large fields auto-truncated to `{...N bytes}`, expandable inline or all at once
