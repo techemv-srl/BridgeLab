@@ -110,8 +110,13 @@ after a core update: `./scripts/refresh-bundled-fhir-core.sh`.
 
 ### Release acceptance
 
-Before tagging a release, build the packages, install one, and run the
-acceptance suite against the **installed** application:
+Before tagging a release, run exactly what CI runs — `cargo check
+--all-targets` and `cargo test --all` in `src-tauri/`, `pnpm check`,
+`pnpm build` — not just `cargo test --lib`: the integration tests under
+`src-tauri/tests/` compile against the same dependencies, and a lib-only
+run once shipped a release whose test job failed on the public mirror.
+Then build the packages, install one, and run the acceptance suite
+against the **installed** application:
 
 ```bash
 pnpm tauri build --target x86_64-unknown-linux-gnu
@@ -139,6 +144,23 @@ organized by feature area). CI automates the automatable slice:
 - [`feature-tests.yml`](.github/workflows/feature-tests.yml) - CLI feature
   tests, HL7 fixtures (parser/info/validate/anonymize/batch/JUnit), FHIR
   fixture integrity, schema-lookup Rust tests, license keygen roundtrip
+
+Two more checks belong to every release, neither automatable:
+
+- **The comparison table on the landing page** (`docs/site/index.html`,
+  section *Why a new HL7 editor*) is comparative advertising under
+  Directive 2006/114/EC (D.Lgs. 145/2007 in Italy): it may state only
+  material, **verifiable** facts — never a judgement of someone else's
+  software — with the source and the date. At each release, re-check
+  every cell on the vendor's own site (FHIR, platforms, XSD export, list
+  price, latest release), write "Not advertised" where the site does not
+  mention a feature and "Quote on request" where no price is published,
+  and update the date in the footnote. A cell that cannot be verified is
+  removed, not guessed.
+- **Dependency advisories**: `cargo audit` on `src-tauri/`,
+  `tools/bridgelab-cli/` and `tools/hl7-schema-importer/`, `pnpm audit`
+  at the root. Fix what has a fix; note in the CHANGELOG what does not
+  (today `glib` 0.18 and `rand` 0.7, transitive through Tauri).
 
 ## Plugin packs (declarative rules)
 

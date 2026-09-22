@@ -707,6 +707,17 @@ Packages live in `<config>/BridgeLab/fhir-packages/`. Get
 | BL-VER-05 | P1 | Tree follows MSH-12 | Open messages declaring 2.3 and 2.6 with schema-aware tree on | Placeholder rows differ per version | |
 | BL-VER-06 | P2 | Counts agree across the UI | Welcome card, manual, landing FAQ, README | All say ten versions / 2,320 **selectable** message structures; the README also gives 1,965 distinct definitions | |
 
+## 39. Release Checklist
+
+Run before every tag; none of these is a feature test, all three have bitten a release.
+
+| ID | Priority | Description | Steps | Expected Result | Status |
+|----|----------|-------------|-------|-----------------|--------|
+| BL-REL-01 | P0 | Local checks equal CI | In `src-tauri/`: `cargo check --all-targets`, `cargo test --all`; root: `pnpm check`, `pnpm build` | All clean — the integration tests under `src-tauri/tests/` compile too (a lib-only run let 1.7.0 ship with a red test job on the mirror) | |
+| BL-REL-02 | P0 | Comparison table verified | Open every vendor site linked in the footnote of the landing's *Why a new HL7 editor* table; re-check FHIR, platforms, XSD export, list price, latest release per row | Every cell matches the vendor's site today; "Not advertised" / "Quote on request" where the site is silent; footnote date updated; no judgement words ("slow", "struggles", "minimal") anywhere in the table — Directive 2006/114/EC | |
+| BL-REL-03 | P1 | Dependency advisories | `cargo audit` in `src-tauri/`, `tools/bridgelab-cli/`, `tools/hl7-schema-importer/`; `pnpm audit` at the root | No fixable advisory left; unfixable ones (transitive through Tauri) named in the CHANGELOG | |
+| BL-REL-04 | P1 | Release assets | After the release workflow on the mirror: count the assets | 12 assets, no `.app.tar.gz`, one `en-US` MSI, CLI binary per platform | |
+
 ## Test Execution Log
 
 Log of test runs; append new sessions at bottom.
