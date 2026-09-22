@@ -162,14 +162,31 @@ HL7. Elige izquierda/derecha en los desplegables, usa el botón ⇆ para
 intercambiar los lados y pulsa <kbd>Esc</kbd> para cerrar. Debe haber al
 menos dos pestañas abiertas.</p>
 
-<h3>Valores permitidos en campos codificados</h3>
-<p>Cuando el campo seleccionado está respaldado por una tabla de valores
-HL7 (PID-8 Administrative Sex, PV1-2 Patient Class, MSA-1 Acknowledgment
-Code, ORC-1 Order Control, OBX-11 Result Status, …), el inspector lista
-los <strong>valores permitidos</strong> con su significado y resalta el
-que está presente en el mensaje. Si el valor actual no figura en la
-tabla, aparece una advertencia — una forma rápida de detectar códigos no
-estándar antes de que el sistema receptor los rechace.</p>
+<h3>Campos codificados: qué significa un código</h3>
+<p>BridgeLab incluye las tablas de valores HL7 — 394 tablas, unos 5.000
+códigos — y sabe de qué tabla toma sus valores cada campo y componente
+codificado, por versión. Un valor codificado se explica allí donde lo
+encuentres: el árbol muestra el significado junto al valor
+(<code>M — Male</code>, <code>ADT — ADT message</code>,
+<code>F — Final results</code>), el hover sobre el campo en el editor
+lo repite, y el autocompletado en un campo codificado ofrece todos los
+valores de su tabla. Los componentes también están cubiertos: MSH-9.2 se
+explica con la tabla de eventos, PID-3.5 con la de tipos de
+identificador.</p>
+<p>El Inspector de Campo lista la tabla completa del campo o componente
+seleccionado y resalta el valor actual. Que un valor fuera de la tabla
+sea un problema depende del tipo de dato, y el inspector indica en qué
+caso estás: un campo <code>ID</code> toma sus valores de una tabla
+definida por HL7 (<em>Valores permitidos</em>) y un valor no listado es
+no estándar — aparece una advertencia; un campo <code>IS</code> los toma
+de una tabla definida por el usuario (<em>Valores sugeridos</em>), donde
+cada centro añade sus propios códigos y la ausencia no significa nada.
+Algunas tablas de usuario no tienen ningún valor estándar (IN1-2
+Insurance Plan ID): esos campos no muestran lista.</p>
+<p class="note">Qué tabla usa un campo sigue la versión HL7 declarada; el
+contenido de las tablas es un único conjunto para todas las versiones,
+tal como lo distribuye la fuente original. Un código añadido en una
+versión posterior se acepta, por tanto, también en una anterior.</p>
 
 <h3>Árbol consciente del esquema</h3>
 <p><strong>Ver → Mostrar campos del estándar</strong> inserta filas

@@ -17,6 +17,10 @@ Shipped and available:
 - HL7 v2 schema catalogue for ten versions, v2.1 through v2.7.1 —
   2,320 selectable message structures behind the tree, the Field
   Inspector and the XSD export
+- The 394 HL7 value tables, mapped per version to every coded field
+  and component: what a code means shown inline in the tree, on hover
+  and in auto-completion; the Field Inspector tells HL7-defined tables
+  from user-defined ones
 - Validation against the HL7 standard, plugin packs for custom rules
 - FHIR validation: structural checks, custom rules, and conformance against
   installed StructureDefinitions (cardinality, types, choice elements, fixed
@@ -48,6 +52,29 @@ Shipped and available:
       MIT-licensed source behind the versions above, stops at v2.7
 - [x] Keyboard shortcut customization (rebind any command, persisted, reset
       to defaults)
+- [x] Full HL7 value tables — the 394 tables of the standard, imported
+      from the same MIT-licensed source as the catalogue, with each
+      version's fields and components pointing at the table they draw
+      from. The tree shows what a code means next to the value
+      (`M — Male`), the editor explains it on hover and completes it, the
+      Field Inspector lists the table and distinguishes an HL7-defined
+      table (`ID`, a value outside it is non-standard) from a
+      user-defined one (`IS`, suggestions). Field metadata, hover and the
+      built-in validation now read the full catalogue of the declared
+      version rather than a hand-written list of fifteen segments
+- [ ] Message interpretation panel — the open message read as
+      sentences ("Patient SMITH, JOHN, male, born 1980-01-01, admitted
+      as inpatient to ward 3…"), each sentence linked to the field it
+      comes from in the editor. A generic rendering driven by the
+      catalogue and the value tables first, then event-specific wording
+      for the common ADT / ORU / ORM messages
+- [ ] Sample message library — curated, version-tagged examples of the
+      common message types (ADT A01/A04/A08, ORU R01, ORM O01, SIU, MDM,
+      DFT, VXU…) reachable from the Welcome screen, on top of the
+      built-in templates
+- [ ] Segment grid — a read-only table view of a repeating segment's
+      occurrences (the forty OBX of an ORU, one row each, fields as
+      columns) for scanning results at a glance
 - [ ] Theme editor — custom colour schemes beyond the built-in dark/light
 - [ ] Open-source the HL7 parser core as a separate crate on crates.io
 - [ ] Documentation site and short video tutorials
@@ -102,6 +129,9 @@ Shipped and available:
 - [x] Message generator with realistic fake data (seeded; ADT/ORU/ORM)
 - [x] Batch validation with CSV report
 - [x] Batch anonymization
+- [x] ACK filters with counts on the listener console and the send
+      history (AA / AE / AR / no ACK / failed); MLLP sends record the
+      ACK code they got back
 - [ ] Test case pack export/import (share scenarios via a folder or Git)
 - [ ] Git integration (save messages to a repo, diff across commits)
 
@@ -137,6 +167,28 @@ Shipped and available:
 - [ ] Automated interface documentation
 
 ---
+
+## What BridgeLab is not
+
+Some requests come up often enough to answer here. BridgeLab is a
+desktop workbench for the people who build and debug interfaces; it
+runs on your machine, offline, and stays that way. It is not:
+
+- **An integration engine.** It sends, receives and validates messages
+  so you can test an interface; it does not route them in production.
+  Queues, retries, transformations at scale, high availability and
+  24/7 monitoring are what Mirth Connect, Rhapsody or Iguana do, and
+  BridgeLab is meant to sit next to one of them, not replace it. The
+  Mirth importer on the list above is about bringing messages *out* of
+  an engine to look at them.
+- **A web platform.** There is no server-side BridgeLab that stores
+  millions of messages. For volume, the CLI validates whole folders in
+  CI, and a Docker image for it is on the list; the optional cloud
+  sync above is for settings and templates, encrypted end to end, and
+  nothing else.
+- **A DICOM viewer.** DICOM is a different standard with a different
+  set of tools. BridgeLab covers HL7 v2 and FHIR, the messages that
+  carry orders and results between systems.
 
 Have a need that is not listed? Open an issue on GitHub or write to
 info@techemv.it.

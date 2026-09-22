@@ -287,12 +287,28 @@ L'organisation est la suivante :</p>
 ├── validation/
 │   ├── hospital-adt-rules.json
 │   └── z-segment-checks.json
+├── fhir/
+│   └── user-rules.json
 └── anonymization/
     └── eu-national-id.json</code></pre>
 
 <p>Sous Windows la racine est <code>%APPDATA%\\BridgeLab\\plugins</code>,
 sous macOS <code>~/Library/Application Support/BridgeLab/plugins</code>,
 sous Linux <code>~/.config/BridgeLab/plugins</code>.</p>
+
+<p>Trois sortes de packs y vivent : les règles de validation HL7 v2
+(<code>validation/</code>, ci-dessous), les règles de validation FHIR
+(<code>fhir/</code> — un invariant FHIRPath, ou un sélecteur plus une
+vérification ; voir <em>Support FHIR → Règles FHIR
+personnalisées</em>) et les champs PHI supplémentaires de l'anonymiseur
+(<code>anonymization/</code>, ci-dessous).</p>
+
+<p><strong>Chaque édition dispose de tout le mécanisme</strong> — les trois
+sortes, chaque type de vérification, le rechargement et l'activation pack
+par pack. La seule différence est le nombre de packs actifs en même temps :
+jusqu'à <strong>3</strong> en Community, illimité en Pro et Enterprise.
+L'éditeur intégré qui écrit les packs FHIR est Pro ; un pack FHIR écrit à
+la main s'exécute en Community comme n'importe quel autre.</p>
 
 <h3>Pack de règles de validation</h3>
 <pre><code>{
@@ -386,8 +402,8 @@ d'intégration et les hôpitaux.</p>
 		<td>4 messages v2.5</td><td>Catalogue complet</td><td>Catalogue complet</td></tr>
 	<tr><td>Détection PHI (visualisation seule)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Packs de plugins (base)</td>
-		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Packs de plugins (toutes sortes, toutes vérifications)</td>
+		<td>3 actifs à la fois</td><td>Illimités</td><td>Illimités</td></tr>
 	<tr><td>Listener MLLP</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>HTTP POST/PUT/DELETE/PATCH, et authentification sur toute méthode</td>
@@ -400,8 +416,8 @@ d'intégration et les hôpitaux.</p>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Évaluateur FHIRPath + Visualiseur de Bundle</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Plugins et cas de test illimités</td>
-		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Cas de test enregistrés</td>
+		<td>10</td><td>Illimités</td><td>Illimités</td></tr>
 	<tr><td>SOAP + support prioritaire</td>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>

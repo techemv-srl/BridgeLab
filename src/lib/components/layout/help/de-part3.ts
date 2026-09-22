@@ -292,6 +292,8 @@ Aufbau:</p>
 ├── validation/
 │   ├── hospital-adt-rules.json
 │   └── z-segment-checks.json
+├── fhir/
+│   └── user-rules.json
 └── anonymization/
     └── eu-national-id.json</code></pre>
 
@@ -299,6 +301,20 @@ Aufbau:</p>
 <code>%APPDATA%\\BridgeLab\\plugins</code>, unter macOS in
 <code>~/Library/Application Support/BridgeLab/plugins</code>, unter
 Linux in <code>~/.config/BridgeLab/plugins</code>.</p>
+
+<p>Dort liegen drei Arten von Packs: HL7-v2-Validierungsregeln
+(<code>validation/</code>, unten), FHIR-Validierungsregeln
+(<code>fhir/</code> — eine FHIRPath-Invariante oder ein Selektor plus
+Prüfung; siehe <em>FHIR-Unterstützung → Eigene FHIR-Regeln</em>)
+und zusätzliche PHI-Felder für den Anonymisierer
+(<code>anonymization/</code>, unten).</p>
+
+<p><strong>Jede Edition hat den gesamten Mechanismus</strong> — alle drei
+Arten, jeden Prüftyp, Neuladen und das Schalten einzelner Packs. Der
+einzige Unterschied ist, wie viele Packs gleichzeitig aktiv sein können:
+bis zu <strong>3</strong> in Community, unbegrenzt in Pro und Enterprise.
+Der integrierte Editor, der FHIR-Packs schreibt, ist Pro; ein von Hand
+geschriebenes FHIR-Pack läuft in Community wie jedes andere.</p>
 
 <h3>Validierungsregel-Pack</h3>
 <pre><code>{
@@ -391,8 +407,8 @@ freischalten, die Integrationsteams und Krankenhäuser benötigen.</p>
 		<td>4 v2.5-Nachrichten</td><td>Vollständiger Katalog</td><td>Vollständiger Katalog</td></tr>
 	<tr><td>PHI-Erkennung (nur Anzeige)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Plugin-Packs (Basis)</td>
-		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Plugin-Packs (alle Arten, jeder Prüftyp)</td>
+		<td>3 gleichzeitig aktiv</td><td>Unbegrenzt</td><td>Unbegrenzt</td></tr>
 	<tr><td>MLLP-Listener</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>HTTP POST/PUT/DELETE/PATCH, und Authentifizierung bei jeder Methode</td>
@@ -405,8 +421,8 @@ freischalten, die Integrationsteams und Krankenhäuser benötigen.</p>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIRPath-Evaluator + Bundle-Visualisierer</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Unbegrenzte Plugins &amp; Testfälle</td>
-		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Gespeicherte Testfälle</td>
+		<td>10</td><td>Unbegrenzt</td><td>Unbegrenzt</td></tr>
 	<tr><td>SOAP + Prioritätsunterstützung</td>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>

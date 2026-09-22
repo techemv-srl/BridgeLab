@@ -156,14 +156,32 @@ affiancato di due tab aperti con evidenziazione HL7. Scegli
 sinistra/destra dai menu, usa il pulsante ⇆ per scambiare i lati,
 <kbd>Esc</kbd> per chiudere. Servono almeno due tab aperti.</p>
 
-<h3>Valori ammessi per i campi codificati</h3>
-<p>Quando il campo selezionato è associato a una tabella valori HL7
-(PID-8 Sesso, PV1-2 Classe paziente, MSA-1 Codice ACK, ORC-1 Order
-Control, OBX-11 Stato risultato, …), l'ispettore elenca i
-<strong>valori ammessi</strong> con il loro significato ed evidenzia
-quello presente nel messaggio. Se il valore corrente non è nella
-tabella compare un avviso — un modo rapido per scovare codici non
-standard prima che il sistema ricevente li rifiuti.</p>
+<h3>Campi codificati: cosa significa un codice</h3>
+<p>BridgeLab include le tabelle valori HL7 — 394 tabelle, circa 5.000
+codici — e sa da quale tabella attinge ogni campo e componente
+codificato, per versione. Un valore codificato viene spiegato ovunque
+lo incontri: l'albero mostra il significato accanto al valore
+(<code>M — Male</code>, <code>ADT — ADT message</code>,
+<code>F — Final results</code>), l'hover sul campo nell'editor lo
+riporta, e l'auto-completamento in un campo codificato propone tutti i
+valori della sua tabella. Anche i componenti sono coperti: MSH-9.2 è
+spiegato dalla tabella degli eventi, PID-3.5 da quella dei tipi di
+identificativo.</p>
+<p>L'Ispettore Campo elenca l'intera tabella del campo o componente
+selezionato ed evidenzia il valore corrente. Se un valore fuori tabella
+sia un problema dipende dal tipo di dato, e l'ispettore dice in quale
+caso sei: un campo <code>ID</code> attinge da una tabella definita da
+HL7 (<em>Valori ammessi</em>) e un valore non elencato è non standard —
+compare un avviso; un campo <code>IS</code> attinge da una tabella
+definita dall'utente (<em>Valori suggeriti</em>), dove ogni sito
+aggiunge i propri codici e l'assenza non significa nulla. Alcune tabelle
+utente non hanno alcun valore standard (IN1-2 Insurance Plan ID): quei
+campi non mostrano nessun elenco.</p>
+<p class="note">Quale tabella usa un campo segue la versione HL7
+dichiarata; il contenuto delle tabelle è un unico insieme per tutte le
+versioni, così come lo distribuisce la fonte a monte. Un codice
+aggiunto in una release successiva è quindi accettato anche per una
+precedente.</p>
 
 <h3>Tree consapevole dello schema</h3>
 <p><strong>Visualizza → Mostra campi dello standard</strong> inserisce

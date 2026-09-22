@@ -11,6 +11,13 @@ export interface TreeNode {
 	has_children: boolean;
 	is_truncated: boolean;
 	child_count: number;
+	/** The code a coded element is matched against its HL7 table by — first
+	 *  component, first repetition, split on the message's own delimiters
+	 *  ("ADT" for MSH-9 = "ADT^A01"). Present whenever the element has a
+	 *  table, listed in it or not. HL7 v2 only. */
+	code?: string;
+	/** Meaning of that code from its HL7 table ("Male" for PID-8 = M), when listed. */
+	code_desc?: string;
 }
 
 /** Result from parse_message IPC command */

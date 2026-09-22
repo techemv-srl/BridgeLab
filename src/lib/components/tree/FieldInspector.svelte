@@ -73,9 +73,14 @@
 			try {
 				if (p.fieldPosition !== null) {
 					fieldInfo = await getFieldInfo(segmentType, p.fieldPosition, version);
-					// Coded field? Load its HL7 value table for the allowed-values list.
-					valueTable = fieldInfo?.table_id
-						? await getHl7Table(fieldInfo.table_id).catch(() => null)
+					// Coded element? Load its HL7 value table for the allowed-values
+					// list. A component node uses the component's own table (MSH-9.2
+					// → 0003); the field node uses the field's, which for a composite
+					// is its first component's (MSH-9 → 0076). Whether the table is
+					// exhaustive follows the data type of that same element.
+					const coded = codedElement(fieldInfo, p.componentIdx);
+					valueTable = coded
+						? await getHl7Table(coded.tableId, coded.dataType).catch(() => null)
 						: null;
 				} else if (selectedNode.node_type === 'segment') {
 					segmentInfo = await getSegmentInfo(segmentType, version);
@@ -104,29 +109,34 @@
 		}
 	}
 
-	/** The table belongs to the FIELD; a selected component node carries only
-	 *  its own value (MSH-9.2 is "A01", not "ADT"). Match codes only for the
-	 *  field itself or its first component — otherwise show the table without
-	 *  highlight or warning. */
-	let selectedComponentIdx = $derived.by(() => {
-		if (!selectedNode) return null;
-		return parseNodeId(selectedNode.id).componentIdx;
-	});
+	/** The value table and data type of the selected element: the component
+	 *  when a component node is selected, otherwise the field. */
+	function codedElement(info: FieldInfo | null, componentIdx: number | null): { tableId: string; dataType: string } | null {
+		if (!info) return null;
+		if (componentIdx !== null) {
+			const comp = info.components[componentIdx - 1];
+			return comp?.table_id ? { tableId: comp.table_id, dataType: comp.data_type } : null;
+		}
+		if (!info.table_id) return null;
+		// A composite field's table is its first component's, so the first
+		// component's type says whether the table is closed (MSG.1 is an ID).
+		return { tableId: info.table_id, dataType: info.components[0]?.data_type ?? info.data_type };
+	}
 
-	let codeCheckApplies = $derived(
-		selectedComponentIdx === null || selectedComponentIdx === 1
-	);
-
-	/** First component of the current value, for matching against table codes
-	 *  (MSH-9 carries "ADT^A01"; table 0076 codes are the "ADT" part). */
+	/** The code the table is matched against: the first component of a field
+	 *  value (MSH-9 carries "ADT^A01"; table 0076 codes are the "ADT" part),
+	 *  the first repetition of a repeating one, the first subcomponent of a
+	 *  component. The backend extracts it with the message's own delimiters
+	 *  (`node.code`); the split on the standard ones is only for nodes that
+	 *  predate the field. */
 	let currentCode = $derived.by(() => {
-		if (!codeCheckApplies) return '';
-		const v = selectedNode?.value_preview ?? '';
-		return v.split('^')[0].trim();
+		if (!selectedNode) return '';
+		if (selectedNode.code !== undefined) return selectedNode.code;
+		return (selectedNode.value_preview ?? '').split(/[\^~&]/)[0].trim();
 	});
 
 	let codeInTable = $derived.by(() => {
-		// Non-exhaustive tables (0076 Message Type) list only common values —
+		// User-defined tables (IS fields) list suggestions, not the legal set —
 		// absence there is not evidence of a non-standard code.
 		if (!valueTable || !currentCode || !valueTable.exhaustive) return null;
 		return valueTable.values.some((tv) => tv.code === currentCode);
@@ -213,7 +223,7 @@
 			{#if valueTable}
 				<div class="table-section">
 					<div class="value-label">
-						{tr('inspector.tableValues')}
+						{valueTable.exhaustive ? tr('inspector.tableValues') : tr('inspector.tableSuggested')}
 						<span class="table-id">HL7 {valueTable.id} — {valueTable.name}</span>
 					</div>
 					{#if codeInTable === false}

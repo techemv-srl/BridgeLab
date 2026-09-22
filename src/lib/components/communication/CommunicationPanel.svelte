@@ -116,6 +116,51 @@
 		listenInboxCount = 0;
 	}
 
+	// --- Outcome filters: the same chips over the listener console and the
+	// send history, each with a live count so a bad batch stands out
+	// ("AE 12") before anyone scrolls.
+	type AckFilter = 'all' | 'AA' | 'AE' | 'AR' | 'noack' | 'fail';
+	const ACK_FILTERS: AckFilter[] = ['all', 'AA', 'AE', 'AR', 'noack', 'fail'];
+	let consoleFilter = $state<AckFilter>('all');
+	let historyFilter = $state<AckFilter>('all');
+
+	function filterLabel(f: AckFilter, forHistory: boolean): string {
+		switch (f) {
+			case 'all': return tr('comm.filterAll');
+			case 'noack': return tr('comm.filterNoAck');
+			case 'fail': return forHistory ? tr('comm.filterFailed') : tr('comm.filterErrors');
+			default: return f;
+		}
+	}
+
+	/** Console rows: `fail` is a listener error row, `noack` a message received
+	 *  with auto-ACK off. */
+	function consoleMatches(e: ConsoleEntry, f: AckFilter): boolean {
+		switch (f) {
+			case 'all': return true;
+			case 'fail': return e.kind === 'error';
+			case 'noack': return e.kind === 'msg' && !e.ack;
+			default: return e.kind === 'msg' && e.ack === f;
+		}
+	}
+
+	/** History rows: `fail` is a request that never got a reply, `noack` an
+	 *  MLLP send that got one without a readable MSA-1 (HTTP and SOAP have no
+	 *  ACK code and only ever match `all` and `fail`). */
+	function historyMatches(e: HistoryEntry, f: AckFilter): boolean {
+		switch (f) {
+			case 'all': return true;
+			case 'fail': return e.status === 'FAILED';
+			case 'noack': return e.profile_type === 'mllp' && e.status !== 'FAILED' && !e.ack_code;
+			default: return e.ack_code === f;
+		}
+	}
+
+	let consoleCounts = $derived(
+		Object.fromEntries(ACK_FILTERS.map((f) => [f, consoleEntries.filter((e) => consoleMatches(e, f)).length])) as Record<AckFilter, number>
+	);
+	let visibleConsole = $derived(consoleEntries.filter((e) => consoleMatches(e, consoleFilter)));
+
 	function localTime(iso: string): string {
 		try { return new Date(iso).toLocaleTimeString(); } catch { return iso; }
 	}
@@ -168,6 +213,10 @@
 	// History state
 	let history = $state<HistoryEntry[]>([]);
 	let selectedHistoryId = $state<string | null>(null);
+	let historyCounts = $derived(
+		Object.fromEntries(ACK_FILTERS.map((f) => [f, history.filter((e) => historyMatches(e, f)).length])) as Record<AckFilter, number>
+	);
+	let visibleHistory = $derived(history.filter((e) => historyMatches(e, historyFilter)));
 
 	// --- Connection profiles ---
 	// The backend (DB table + save/get/delete commands) predates this UI;
@@ -457,6 +506,23 @@
 	}
 </script>
 
+{#snippet ackFilterChips(filters: AckFilter[], current: AckFilter, counts: Record<AckFilter, number>, forHistory: boolean, pick: (f: AckFilter) => void)}
+	<div class="ack-filters" role="group">
+		{#each filters as f (f)}
+			<button
+				class="ack-chip"
+				class:active={current === f}
+				class:ok={f === 'AA'}
+				class:err={f === 'AE' || f === 'AR' || f === 'fail'}
+				disabled={f !== 'all' && counts[f] === 0 && current !== f}
+				onclick={() => pick(f)}
+			>
+				{filterLabel(f, forHistory)}<span class="n">{counts[f]}</span>
+			</button>
+		{/each}
+	</div>
+{/snippet}
+
 <div class="comm-panel">
 	<!-- Sub-tabs -->
 	<div class="comm-tabs">
@@ -664,6 +730,7 @@
 						<div class="console-header">
 							<span class="console-title">{tr('comm.console')}</span>
 							<span class="console-count">{consoleEntries.length}</span>
+							{@render ackFilterChips(ACK_FILTERS, consoleFilter, consoleCounts, false, (f) => { consoleFilter = f; })}
 							<button class="btn btn-sm" onclick={clearConsole} disabled={consoleEntries.length === 0}>
 								{tr('comm.consoleClear')}
 							</button>
@@ -672,7 +739,7 @@
 							<div class="console-empty">{tr('comm.consoleEmpty')}</div>
 						{:else}
 							<div class="console-list">
-								{#each consoleEntries as entry (entry.id)}
+								{#each visibleConsole as entry (entry.id)}
 									{#if entry.kind === 'msg'}
 										<button
 											class="console-row"
@@ -951,9 +1018,10 @@
 					{:else}
 						<div class="history-toolbar">
 							<span class="history-count">{tr('comm.entries', { count: history.length })}</span>
+							{@render ackFilterChips(ACK_FILTERS, historyFilter, historyCounts, true, (f) => { historyFilter = f; })}
 							<button class="btn btn-sm" onclick={handleClearHistory}>{tr('comm.clearHistory')}</button>
 						</div>
-						{#each history as entry (entry.id)}
+						{#each visibleHistory as entry (entry.id)}
 							<button
 								class="history-row"
 								class:selected={selectedHistoryId === entry.id}
@@ -962,6 +1030,9 @@
 								<span class="h-type">{entry.profile_type.toUpperCase()}</span>
 								<span class="h-dir">{entry.direction === 'send' ? '\u2191' : '\u2193'}</span>
 								<span class="h-status" class:ok={entry.status.startsWith('OK') || entry.status.startsWith('2')} class:fail={entry.status === 'FAILED'}>{entry.status}</span>
+								{#if entry.ack_code}
+									<span class="c-ack" class:ack-ok={entry.ack_code === 'AA' || entry.ack_code === 'CA'} class:ack-err={entry.ack_code === 'AE' || entry.ack_code === 'AR' || entry.ack_code === 'CE' || entry.ack_code === 'CR'}>{entry.ack_code}</span>
+								{/if}
 								<span class="h-target">{entry.profile_name}</span>
 								<span class="h-time">{entry.response_time_ms}ms</span>
 								<span class="h-ts">{formatTimestamp(entry.timestamp)}</span>
@@ -976,7 +1047,7 @@
 							<span class="dl">{tr('comm.protocol')}</span><span class="dv">{selectedHistory.profile_type.toUpperCase()}</span>
 							<span class="dl">{tr('comm.direction')}</span><span class="dv">{selectedHistory.direction === 'send' ? tr('comm.outgoing') : tr('comm.incoming')}</span>
 							<span class="dl">{tr('comm.target')}</span><span class="dv">{selectedHistory.profile_name}</span>
-							<span class="dl">{tr('comm.status')}</span><span class="dv">{selectedHistory.status}</span>
+							<span class="dl">{tr('comm.status')}</span><span class="dv">{selectedHistory.status}{selectedHistory.ack_code ? ` · ACK ${selectedHistory.ack_code}` : ''}</span>
 							<span class="dl">{tr('comm.responseTime')}</span><span class="dv">{selectedHistory.response_time_ms}ms</span>
 							<span class="dl">{tr('comm.timestamp')}</span><span class="dv">{formatTimestamp(selectedHistory.timestamp)}</span>
 						</div>
@@ -1071,6 +1142,16 @@
 	.dv { color: var(--color-text-primary); font-family: 'JetBrains Mono', monospace; }
 	.detail-body { font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-all; margin: 0; padding: 4px; background: var(--color-bg-primary); border-radius: 3px; max-height: 80px; overflow-y: auto; color: var(--color-text-primary); }
 	.comm-empty { padding: 16px; text-align: center; color: var(--color-text-secondary); font-style: italic; }
+
+	/* Outcome filter chips (console + history) */
+	.ack-filters { display: flex; gap: 3px; flex-wrap: wrap; }
+	.ack-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border: 1px solid var(--color-border); border-radius: 9px; background: none; color: var(--color-text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 16px; cursor: pointer; }
+	.ack-chip:hover { background: var(--color-bg-tertiary); }
+	.ack-chip.active { background: var(--color-bg-primary); color: var(--color-text-primary); border-color: var(--color-accent); }
+	.ack-chip.ok { color: var(--color-success); }
+	.ack-chip.err { color: var(--color-error); }
+	.ack-chip:disabled { opacity: 0.45; cursor: default; }
+	.ack-chip .n { opacity: 0.8; }
 
 	/* Listener console */
 	.console { margin-top: 6px; border: 1px solid var(--color-border); border-radius: 4px; overflow: hidden; }

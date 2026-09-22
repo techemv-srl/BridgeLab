@@ -67,6 +67,13 @@ impl Hl7Version {
         }
     }
 
+    /// The version a message declares in MSH-12, if it is one we ship.
+    /// Accepts the bare number ("2.5.1") or the full VID ("2.5.1^ISO^…").
+    pub fn parse(declared: &str) -> Option<Hl7Version> {
+        let number = version_number(declared);
+        Self::ALL.iter().copied().find(|v| v.as_str() == number)
+    }
+
     /// All shipped versions, oldest first.
     pub const ALL: &'static [Hl7Version] = &[
         Hl7Version::V2_1,
@@ -80,6 +87,20 @@ impl Hl7Version {
         Hl7Version::V2_7,
         Hl7Version::V2_7_1,
     ];
+}
+
+/// The version number at the start of an MSH-12 value: "2.5.1" out of
+/// "2.5.1^ISO^…" — or "2.5.1#ISO" in a message that declares its own
+/// component separator, which is why this stops at the first character
+/// that is not part of a version number rather than splitting on `^`.
+pub fn version_number(declared: &str) -> &str {
+    let s = declared.trim_start();
+    let end = s
+        .char_indices()
+        .find(|(_, c)| !(c.is_ascii_digit() || *c == '.'))
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    &s[..end]
 }
 
 /// Structural element inside a message definition. Supports both sequences
@@ -126,6 +147,15 @@ pub struct FieldSpec {
     pub data_type: String,
     pub required: bool,
     pub repeats: bool,
+    /// Maximum length the standard gives, when it gives one (v2.7 dropped
+    /// most of them; OBX-5 never had one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+    /// HL7 value table backing a coded field, as a four-digit id ("0001").
+    /// Some referenced tables are user-defined and have no standard
+    /// values — `value_tables::get_table` returns None for those.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,6 +172,11 @@ pub struct ComponentSpec {
     /// Data type reference (composite or primitive).
     pub data_type: String,
     pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+    /// Value table of a coded component (MSG.1 → 0076, XPN.7 → 0200).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,6 +238,32 @@ impl Hl7Schema {
 
     pub fn is_primitive(&self, code: &str) -> bool {
         self.primitives.iter().any(|p| p.code == code)
+    }
+
+    pub fn field(&self, segment: &str, position: usize) -> Option<&FieldSpec> {
+        self.segment(segment)?.fields.iter().find(|f| f.position == position)
+    }
+
+    pub fn component(&self, data_type: &str, position: usize) -> Option<&ComponentSpec> {
+        self.composite(data_type)?.components.iter().find(|c| c.position == position)
+    }
+
+    /// The value table behind a field's *value*: the field's own table for
+    /// a primitive coded field (PID-8 → 0001), or its first component's for
+    /// a composite whose leading component is coded (MSH-9 is MSG, whose
+    /// MSG.1 is 0076 — the "ADT" of "ADT^A01").
+    pub fn table_for_field(&self, segment: &str, position: usize) -> Option<&str> {
+        let f = self.field(segment, position)?;
+        if let Some(t) = f.table.as_deref() {
+            return Some(t);
+        }
+        self.component(&f.data_type, 1)?.table.as_deref()
+    }
+
+    /// The value table behind component `position` of a field.
+    pub fn table_for_component(&self, segment: &str, field: usize, position: usize) -> Option<&str> {
+        let f = self.field(segment, field)?;
+        self.component(&f.data_type, position)?.table.as_deref()
     }
 
     /// Flatten all segment codes referenced by `message_code` (groups,
@@ -317,6 +378,30 @@ pub fn load(version: Hl7Version) -> Hl7Schema {
     hydrated.into_schema(version)
 }
 
+/// The catalogue for a version, parsed once per process.
+///
+/// `load` deserialises up to 2 MB of JSON on every call, which is fine for
+/// an export but not for the per-field lookups behind the tree, the Field
+/// Inspector, hover and validation. An alias resolves to its source's
+/// catalogue, so the returned schema's `version` is the source release.
+pub fn cached(version: Hl7Version) -> &'static Hl7Schema {
+    use std::sync::OnceLock;
+    const N: usize = Hl7Version::ALL.len();
+    static CACHE: [OnceLock<Hl7Schema>; N] = [const { OnceLock::new() }; N];
+    let source = version.aliases().unwrap_or(version);
+    let slot = Hl7Version::ALL
+        .iter()
+        .position(|v| *v == source)
+        .expect("every version is listed in Hl7Version::ALL");
+    CACHE[slot].get_or_init(|| load(source))
+}
+
+/// The catalogue a message's MSH-12 selects, falling back to v2.5 (the most
+/// widely deployed release) for a missing or unknown version.
+pub fn for_declared(declared: &str) -> &'static Hl7Schema {
+    cached(Hl7Version::parse(declared).unwrap_or(Hl7Version::V2_5))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -377,6 +462,70 @@ mod tests {
             payload(Hl7Version::V2_5_1),
             "v2.5 and v2.5.1 payloads are identical"
         );
+    }
+
+    #[test]
+    fn declared_versions_parse_with_or_without_vid_components() {
+        assert_eq!(Hl7Version::parse("2.5.1"), Some(Hl7Version::V2_5_1));
+        assert_eq!(Hl7Version::parse("2.3^ISO"), Some(Hl7Version::V2_3));
+        assert_eq!(Hl7Version::parse(" 2.7.1 "), Some(Hl7Version::V2_7_1));
+        // Codex review: a message with its own component separator.
+        assert_eq!(Hl7Version::parse("2.3#ISO#HL7"), Some(Hl7Version::V2_3));
+        assert_eq!(version_number("2.5.1^ISO"), "2.5.1");
+        assert_eq!(version_number(""), "");
+        assert_eq!(version_number("ISO"), "");
+        assert_eq!(Hl7Version::parse("2.9"), None);
+        assert_eq!(Hl7Version::parse(""), None);
+        assert_eq!(for_declared("nonsense").version, Hl7Version::V2_5);
+        assert_eq!(for_declared("2.7.1").version, Hl7Version::V2_7, "alias resolves to its source");
+    }
+
+    #[test]
+    fn cached_catalogue_is_shared_and_matches_load() {
+        let a = cached(Hl7Version::V2_3);
+        let b = cached(Hl7Version::V2_3);
+        assert!(std::ptr::eq(a, b));
+        assert_eq!(a.messages.len(), load(Hl7Version::V2_3).messages.len());
+    }
+
+    /// The dictionary import carries the table and length of every field
+    /// and component that has one — the data behind inline code
+    /// descriptions and the Field Inspector's allowed-values list.
+    #[test]
+    fn coded_fields_and_components_carry_their_tables() {
+        let s = cached(Hl7Version::V2_5);
+        assert_eq!(s.field("PID", 8).unwrap().table.as_deref(), Some("0001"));
+        assert_eq!(s.field("PID", 8).unwrap().max_length, Some(1));
+        assert_eq!(s.field("PID", 5).unwrap().table, None);
+        assert_eq!(s.field("OBX", 5).unwrap().max_length, None, "OBX-5 is unbounded");
+        assert_eq!(s.component("MSG", 1).unwrap().table.as_deref(), Some("0076"));
+        assert_eq!(s.component("XPN", 7).unwrap().table.as_deref(), Some("0200"));
+        // A composite field resolves to its first component's table…
+        assert_eq!(s.table_for_field("MSH", 9), Some("0076"));
+        assert_eq!(s.table_for_component("MSH", 9, 2), Some("0003"));
+        // …but a primitive field to its own.
+        assert_eq!(s.table_for_field("MSA", 1), Some("0008"));
+        assert_eq!(s.table_for_component("MSA", 1, 1), None);
+        // Every version carries tables, including the oldest.
+        for v in Hl7Version::ALL {
+            let s = cached(*v);
+            let coded = s.segments.iter().flat_map(|sg| &sg.fields).filter(|f| f.table.is_some()).count();
+            assert!(coded >= 90, "v{} has only {} coded fields", v.as_str(), coded);
+        }
+    }
+
+    /// Codex review: the upstream source carries component tables only
+    /// from v2.5 on; the importer inherits them for older versions from
+    /// the same composite (CM_MSG → MSG) at the same position, so MSH-9
+    /// and PID-3.5 are explained in a v2.3 message too.
+    #[test]
+    fn older_catalogues_inherit_component_tables() {
+        for v in [Hl7Version::V2_1, Hl7Version::V2_2, Hl7Version::V2_3, Hl7Version::V2_3_1, Hl7Version::V2_4] {
+            let s = cached(v);
+            assert_eq!(s.table_for_field("MSH", 9), Some("0076"), "v{} MSH-9", v.as_str());
+            assert_eq!(s.table_for_component("MSH", 9, 2), Some("0003"), "v{} MSH-9.2", v.as_str());
+        }
+        assert_eq!(cached(Hl7Version::V2_3).table_for_component("PID", 3, 5), Some("0203"), "v2.3 CX.5");
     }
 
     #[test]

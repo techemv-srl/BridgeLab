@@ -53,6 +53,29 @@ export async function appSuite() {
 			`, 15000, 'tree rows');
 			return `${n} nodes`;
 		});
+		await r.check('coded values are explained inline in the tree', async () => {
+			// Expanding a segment loads its fields from the backend, which
+			// attaches each coded value's meaning from its HL7 table. One
+			// segment at a time, as a user would: the expansion is async and
+			// the row list is rebuilt when it lands.
+			const expand = (code) => js(d, `
+				for (const row of document.querySelectorAll('.tree-node.segment')) {
+					const label = row.querySelector('.label')?.textContent.trim() ?? '';
+					if (label.startsWith('${code} ')) { row.click(); return true; }
+				}
+				return false;
+			`);
+			const descs = () => js(d, `
+				return [...document.querySelectorAll('.tree-node .code-desc')].map((e) => e.textContent.trim());
+			`);
+			for (const [code, want] of [['PID', '— Female'], ['PV1', '— Inpatient']]) {
+				if (!await expand(code)) throw new Error(`no ${code} row to expand`);
+				await waitFor(d, `
+					return [...document.querySelectorAll('.tree-node .code-desc')].some((e) => e.textContent.trim() === '${want}') || null;
+				`, 15000, `${code} code descriptions`);
+			}
+			return (await descs()).join(', ');
+		});
 		await r.check('HL7 validation produces a report', async () => {
 			const txt = await validate(d);
 			if (!/severity|error|warning|info/i.test(txt)) throw new Error(txt.slice(0, 120));

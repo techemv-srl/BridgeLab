@@ -5,9 +5,38 @@ use crate::licensing::feature_gate;
 use crate::message_store::MessageStore;
 use crate::parser::fhir;
 use crate::parser::hl7::lexer::Hl7Lexer;
+use crate::parser::hl7::delimiters::Delimiters;
 use crate::parser::hl7::message::{TreeNode, TreeNodeType};
+use crate::parser::hl7::schema;
+use crate::parser::hl7::value_tables::describe_code;
 use crate::parser::truncation;
 use crate::utils::error::BridgeLabError;
+
+/// The code a coded value is looked up by: the first component of the
+/// first repetition. MSH-9 carries "ADT^A01" and table 0076 knows "ADT";
+/// a repeating coded field ("H~A" in OBX-8) is described by its first
+/// value, the same one the tree shows first.
+fn leading_code<'a>(value: &'a str, d: &Delimiters) -> &'a str {
+    value
+        .split(|c: char| c == d.component as char || c == d.repetition as char || c == d.subcomponent as char)
+        .next()
+        .unwrap_or("")
+        .trim()
+}
+
+/// `(code, meaning)` for an element drawing from value table `table`: the
+/// code whenever the element is coded and non-empty, the meaning only when
+/// the table lists it. `(None, None)` for an element with no table.
+fn coded(table: Option<&str>, value: &str, d: &Delimiters) -> (Option<String>, Option<String>) {
+    let Some(table) = table else {
+        return (None, None);
+    };
+    let code = leading_code(value, d);
+    if code.is_empty() {
+        return (None, None);
+    }
+    (Some(code.to_string()), describe_code(table, code).map(str::to_string))
+}
 
 #[derive(Debug, Serialize)]
 pub struct ParseResult {
@@ -90,7 +119,15 @@ pub fn get_tree_children(
     let msg = store
         .get(&message_id)
         .ok_or_else(|| BridgeLabError::MessageNotFound(message_id.clone()))?;
+    tree_children(&msg, &node_id)
+}
 
+/// Children of tree node `node_id` ("seg{N}" → its fields, "seg{N}.f{P}" →
+/// its components), described against the catalogue MSH-12 selects.
+fn tree_children(
+    msg: &crate::parser::hl7::message::Hl7Message,
+    node_id: &str,
+) -> Result<Vec<TreeNode>, BridgeLabError> {
     let parts: Vec<&str> = node_id.split('.').collect();
 
     match parts.len() {
@@ -105,6 +142,7 @@ pub fn get_tree_children(
                 .get(seg_idx)
                 .ok_or_else(|| BridgeLabError::ParseError("Segment not found".to_string()))?;
 
+            let schema = schema::for_declared(&msg.version);
             let nodes: Vec<TreeNode> = segment
                 .fields
                 .iter()
@@ -116,6 +154,11 @@ pub fn get_tree_children(
                     } else {
                         value.to_string()
                     };
+                    let (code, code_desc) = coded(
+                        schema.table_for_field(&segment.segment_type, field.position),
+                        value,
+                        &msg.delimiters,
+                    );
 
                     let has_components = field
                         .repetitions
@@ -139,6 +182,8 @@ pub fn get_tree_children(
                         } else {
                             0
                         },
+                        code,
+                        code_desc,
                     }
                 })
                 .collect();
@@ -175,6 +220,7 @@ pub fn get_tree_children(
                 .first()
                 .ok_or_else(|| BridgeLabError::ParseError("No repetitions".to_string()))?;
 
+            let schema = schema::for_declared(&msg.version);
             let nodes: Vec<TreeNode> = rep
                 .components
                 .iter()
@@ -182,6 +228,11 @@ pub fn get_tree_children(
                 .map(|(i, comp)| {
                     let value = comp.span.as_str(&msg.raw).to_string();
                     let has_subs = !comp.subcomponents.is_empty();
+                    let (code, code_desc) = coded(
+                        schema.table_for_component(&segment.segment_type, field_pos, i + 1),
+                        &value,
+                        &msg.delimiters,
+                    );
 
                     TreeNode {
                         id: format!("seg{}.f{}.c{}", seg_idx, field_pos, i + 1),
@@ -192,6 +243,8 @@ pub fn get_tree_children(
                         has_children: has_subs,
                         is_truncated: false,
                         child_count: comp.subcomponents.len(),
+                        code,
+                        code_desc,
                     }
                 })
                 .collect();
@@ -342,6 +395,8 @@ fn build_segment_tree_nodes(
                 has_children: !seg.fields.is_empty(),
                 is_truncated: false,
                 child_count: seg.fields.len(),
+                code: None,
+                code_desc: None,
             }
         })
         .collect()
@@ -667,5 +722,82 @@ mod tests {
         let msg = Hl7Lexer::new().parse(raw.into_bytes()).unwrap();
         let hits = search_in_message(&msg, "a");
         assert!(hits.len() <= MAX_SEARCH_HITS);
+    }
+
+    fn desc_of(nodes: &[TreeNode], id: &str) -> Option<String> {
+        nodes.iter().find(|n| n.id == id).expect(id).code_desc.clone()
+    }
+
+    /// Coded values come with what they mean, from the value table the
+    /// catalogue assigns to the field or component.
+    #[test]
+    fn tree_nodes_describe_coded_values() {
+        let msg = sample_msg();
+        let msh = tree_children(&msg, "seg0").unwrap();
+        // MSH-9 is a composite (MSG): described by its first component's table 0076.
+        assert_eq!(desc_of(&msh, "seg0.f9").as_deref(), Some("ADT message"));
+        assert_eq!(desc_of(&msh, "seg0.f11").as_deref(), Some("Production"));
+        assert_eq!(desc_of(&msh, "seg0.f10"), None, "a control id is free text");
+
+        let pid = tree_children(&msg, "seg1").unwrap();
+        assert_eq!(desc_of(&pid, "seg1.f8").as_deref(), Some("Male"));
+        assert_eq!(desc_of(&pid, "seg1.f5"), None);
+
+        let pv1 = tree_children(&msg, "seg2").unwrap();
+        assert_eq!(desc_of(&pv1, "seg2.f2").as_deref(), Some("Inpatient"));
+
+        // Components: MSH-9.1 → 0076, MSH-9.2 → 0003 (event type).
+        let msh9 = tree_children(&msg, "seg0.f9").unwrap();
+        assert_eq!(desc_of(&msh9, "seg0.f9.c1").as_deref(), Some("ADT message"));
+        assert_eq!(
+            desc_of(&msh9, "seg0.f9.c2").as_deref(),
+            Some("ADT/ACK - Admit/visit notification")
+        );
+        // PID-3 (CX): the id itself is free text, the identifier type (CX.5) is coded.
+        let pid3 = tree_children(&msg, "seg1.f3").unwrap();
+        assert_eq!(desc_of(&pid3, "seg1.f3.c1"), None);
+        assert_eq!(desc_of(&pid3, "seg1.f3.c5").as_deref(), Some("Medical record number"));
+    }
+
+    /// A value outside the table gets no description; a repeating coded
+    /// field is described by its first value; the lookup honours MSH-12.
+    #[test]
+    fn code_descriptions_follow_value_and_version() {
+        let raw = "MSH|^~\\&|A|B|C|D|20260101||ORU^R01|M1|P|2.3\rPID|1||1||X^Y||19800101|Q\rOBX|1|NM|1||5|||H~A|||F"
+            .to_string();
+        let msg = Hl7Lexer::new().parse(raw.into_bytes()).unwrap();
+        let pid = tree_children(&msg, "seg1").unwrap();
+        assert_eq!(desc_of(&pid, "seg1.f8"), None, "Q is not an administrative sex");
+        let obx = tree_children(&msg, "seg2").unwrap();
+        assert_eq!(desc_of(&obx, "seg2.f8").as_deref(), Some("Above high normal"), "first repetition");
+        assert_eq!(desc_of(&obx, "seg2.f11").as_deref(), Some("Final results; Can only be changed with a corrected result."));
+        // v2.3 has the table too; the catalogue is version-specific, the tables are not.
+        assert_eq!(desc_of(&obx, "seg2.f2").as_deref(), Some("Numeric"));
+    }
+
+    /// Codex review: the code is split on the message's own delimiters, and
+    /// handed to the frontend so the Field Inspector need not guess them.
+    #[test]
+    fn codes_follow_the_message_delimiters() {
+        // '#' as component separator, '!' as repetition separator.
+        let raw = "MSH|#!\\&|A|B|C|D|20260101||ADT#A01|M1|P|2.5\rPID|1||1||X#Y||19800101|Q\rOBX|1|NM|1||5|||H!A|||F"
+            .to_string();
+        let msg = Hl7Lexer::new().parse(raw.into_bytes()).unwrap();
+        let code_of = |nodes: &[TreeNode], id: &str| nodes.iter().find(|n| n.id == id).expect(id).code.clone();
+
+        let msh = tree_children(&msg, "seg0").unwrap();
+        assert_eq!(code_of(&msh, "seg0.f9").as_deref(), Some("ADT"));
+        assert_eq!(desc_of(&msh, "seg0.f9").as_deref(), Some("ADT message"));
+        assert_eq!(code_of(&msh, "seg0.f10"), None, "free text carries no code");
+        let pid = tree_children(&msg, "seg1").unwrap();
+        // Coded but unknown: the code is there for the inspector to warn on, no meaning.
+        assert_eq!(code_of(&pid, "seg1.f8").as_deref(), Some("Q"));
+        assert_eq!(desc_of(&pid, "seg1.f8"), None);
+        assert_eq!(code_of(&pid, "seg1.f2"), None, "empty coded field carries no code");
+        let obx = tree_children(&msg, "seg2").unwrap();
+        assert_eq!(code_of(&obx, "seg2.f8").as_deref(), Some("H"));
+        assert_eq!(desc_of(&obx, "seg2.f8").as_deref(), Some("Above high normal"));
+        let msh9 = tree_children(&msg, "seg0.f9").unwrap();
+        assert_eq!(code_of(&msh9, "seg0.f9.c2").as_deref(), Some("A01"));
     }
 }

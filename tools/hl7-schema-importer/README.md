@@ -26,13 +26,24 @@ hl7-schema-importer \
 # CommonJS modules, so the conversion runs in Node; this tool then
 # validates the output (referential integrity) before it ships:
 npm pack hl7-dictionary && tar xzf hl7-dictionary-*.tgz
-node scripts/convert-hl7-dictionary.mjs ./package 2.5 /tmp/v2_5.json
+node scripts/convert-hl7-dictionary.mjs ./package 2.5 /tmp/v2_5.json /tmp/tables.json
 hl7-schema-importer \
     --format bridgelab-json \
     --source-dir /tmp \
     --hl7-version 2.5 \
+    --tables /tmp/tables.json \
     --output ../../src-tauri/resources/hl7/v2_5.json
+cp /tmp/tables.json ../../src-tauri/resources/hl7/tables.json
 ```
+
+The optional fourth argument of the converter writes the **HL7 value
+tables** (`lib/tables.js`: 394 tables, about 5,000 codes, one set for
+every version — the dictionary does not version them) as
+`resources/hl7/tables.json`. Fields and components carry the id of the
+table they draw from (`"table": "0001"`) and their maximum length; with
+`--tables` the importer reports how many referenced tables have standard
+values and lists the ones that do not (user-defined tables such as 0072
+Insurance Plan ID, legitimately empty).
 
 ## Shipped versions
 
@@ -76,8 +87,17 @@ The tool emits a `HydratedSchema` with four arrays:
 
 - **messages**: `[{ code, event, description, elements: [...] }]` where
   each `element` is one of `Segment`, `Group`, `Choice` (externally-tagged).
-- **segments**: `[{ code, name, fields: [{ position, name, data_type, required, repeats }] }]`.
-- **composites**: `[{ code, components: [{ position, name, data_type, required }] }]`.
+- **segments**: `[{ code, name, fields: [{ position, name, data_type, required, repeats, max_length?, table? }] }]`.
+- **composites**: `[{ code, components: [{ position, name, data_type, required, max_length?, table? }] }]`.
+
+`max_length` and `table` are present only where the standard gives one
+(v2.7 dropped most lengths; OBX-5 never had one). The dictionary records
+component tables only from v2.5 on, so for older versions the converter
+inherits a coded component's table from the newest version that defines
+the same composite (`CM_MSG` counts as `MSG`) with a component of the
+same position, name and data type; the run reports how many it inherited. `tables.json` is
+`{ tables: [{ id, name, values: [{ code, description }] }] }`, ids
+zero-padded to four digits.
 - **primitives**: `[{ code }]`.
 
 Validation failures (undefined segment references, undefined data types,

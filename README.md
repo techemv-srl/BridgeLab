@@ -42,6 +42,8 @@ seat per year, EUR 199 for the first year (first 20 licenses).
 - **5 Languages** - English, Italian, French, Spanish, German
 - **Licensing** - Ed25519-signed offline license verification, hardware binding, 14-day trial
 - **Field Inspector** - Side panel showing HL7 standard metadata (name, type, required, max length, description) for the selected tree node
+- **HL7 value tables** - All 394 HL7 tables (about 5,000 codes) ship with the app, mapped per version to every coded field and component: the tree shows what a code means next to the value (`M — Male`), the editor explains it on hover and completes it, the inspector lists the whole table and tells an HL7-defined table (a value outside it is non-standard) from a user-defined one (suggestions)
+- **ACK filters** - The listener console and the send history filter by outcome (AA / AE / AR / no ACK / failed) with live counts; MLLP sends record the ACK code they got back
 - **Schema-aware Tree** - Optional view that injects placeholder rows for every field defined by the standard so you see what _could_ be populated
 - **Precise Editor ↔ Tree navigation** - Right-click a field in the editor to highlight it in the tree, or right-click a tree node to select the matching range in Monaco
 
@@ -158,6 +160,16 @@ Manage packs from **Settings → Plugins**: list, toggle on/off (persisted),
 Reload, "Open plugins folder". See [docs/PLUGINS.md](docs/PLUGINS.md) for
 the full schema and examples; ready-to-copy reference packs live under
 [`examples/plugins/`](examples/plugins).
+
+**Tiers.** The whole mechanism is in every tier — all three pack kinds,
+every check type, live reload, per-pack toggles. The only difference is
+how many packs can be **active at the same time**: up to **3** in
+Community, unlimited in Pro and Enterprise (the same split applies to
+saved test cases: 10 in Community). Nothing is ever locked or deleted:
+packs enabled beyond the cap show an "inactive" badge and start
+contributing rules again as soon as a slot frees up. The in-app editor
+that writes FHIR packs (*Tools → FHIR validation rules…*) is Pro; a FHIR
+pack written by hand runs in Community like any other.
 
 Scripted plugins (sandboxed JS, WASM) are on the roadmap as layers on top
 of this declarative baseline.

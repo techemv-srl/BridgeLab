@@ -56,6 +56,14 @@ pub async fn mllp_send(
 
     let preview: String = message.chars().take(100).collect();
     let status = if result.success { "OK" } else { "FAILED" };
+    // What the receiver answered, so the history can be filtered by
+    // outcome: a send that reached the peer and got an AE back is "OK" at
+    // the transport level and a rejection at the application level.
+    let ack_code = if result.success {
+        crate::parser::hl7::ack::ack_code_of(&result.response)
+    } else {
+        None
+    };
     let entry = HistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
         profile_name: profile_name.unwrap_or_else(|| format!("{}:{}", host, port)),
@@ -65,6 +73,7 @@ pub async fn mllp_send(
         status: status.into(),
         response_time_ms: result.response_time_ms,
         timestamp: chrono::Utc::now().to_rfc3339(),
+        ack_code,
     };
     let _ = db.add_history_entry(&entry);
 
@@ -159,6 +168,7 @@ pub async fn http_request(
         status,
         response_time_ms: result.response_time_ms,
         timestamp: chrono::Utc::now().to_rfc3339(),
+        ack_code: None,
     };
     let _ = db.add_history_entry(&entry);
 

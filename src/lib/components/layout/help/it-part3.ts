@@ -280,6 +280,8 @@ per aprire la directory nel file manager. Il layout è:</p>
 ├── validation/
 │   ├── ospedale-adt-rules.json
 │   └── z-segment-checks.json
+├── fhir/
+│   └── user-rules.json
 └── anonymization/
     └── codice-fiscale-it.json</code></pre>
 
@@ -287,6 +289,20 @@ per aprire la directory nel file manager. Il layout è:</p>
 <code>%APPDATA%\\BridgeLab\\plugins</code>, su macOS
 <code>~/Library/Application Support/BridgeLab/plugins</code>, su Linux
 <code>~/.config/BridgeLab/plugins</code>.</p>
+
+<p>Nella cartella vivono tre tipi di pack: regole di validazione HL7 v2
+(<code>validation/</code>, sotto), regole di validazione FHIR
+(<code>fhir/</code> — un invariante FHIRPath, oppure un selettore più un
+controllo; vedi <em>Supporto FHIR → Regole FHIR personalizzate</em>)
+e campi PHI aggiuntivi per l'anonimizzatore (<code>anonymization/</code>,
+sotto).</p>
+
+<p><strong>Ogni tier ha l'intero meccanismo</strong> — tutti e tre i tipi,
+ogni tipo di controllo, ricarica e attivazione per singolo pack. L'unica
+differenza è quanti pack possono essere attivi contemporaneamente: fino a
+<strong>3</strong> in Community, illimitati in Pro ed Enterprise. L'editor
+in-app che scrive i pack FHIR è Pro; un pack FHIR scritto a mano gira in
+Community come qualsiasi altro.</p>
 
 <h3>Pack di regole di validazione</h3>
 <pre><code>{
@@ -377,8 +393,8 @@ team di integrazione e ospedali.</p>
 		<td>4 messaggi v2.5</td><td>Catalogo completo</td><td>Catalogo completo</td></tr>
 	<tr><td>Rilevamento PHI (solo visualizzazione)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Plugin pack (base)</td>
-		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Plugin pack (tutti i tipi, ogni controllo)</td>
+		<td>3 attivi alla volta</td><td>Illimitati</td><td>Illimitati</td></tr>
 	<tr><td>Listener MLLP</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>HTTP POST/PUT/DELETE/PATCH, e autenticazione su qualsiasi metodo</td>
@@ -391,8 +407,8 @@ team di integrazione e ospedali.</p>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Valutatore FHIRPath + Visualizzatore Bundle</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Plugin e test case illimitati</td>
-		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Test case salvati</td>
+		<td>10</td><td>Illimitati</td><td>Illimitati</td></tr>
 	<tr><td>SOAP + supporto prioritario</td>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>

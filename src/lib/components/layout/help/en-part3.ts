@@ -272,12 +272,27 @@ reveal the directory in your file manager. The layout is:</p>
 ├── validation/
 │   ├── hospital-adt-rules.json
 │   └── z-segment-checks.json
+├── fhir/
+│   └── user-rules.json
 └── anonymization/
     └── eu-national-id.json</code></pre>
 
 <p>On Windows the root is <code>%APPDATA%\\BridgeLab\\plugins</code>, on
 macOS <code>~/Library/Application Support/BridgeLab/plugins</code>, on
 Linux <code>~/.config/BridgeLab/plugins</code>.</p>
+
+<p>Three kinds of pack live there: HL7 v2 validation rules
+(<code>validation/</code>, below), FHIR validation rules
+(<code>fhir/</code> — a FHIRPath invariant, or a selector plus a check;
+see <em>FHIR Support → Custom FHIR rules</em>) and extra PHI fields
+for the anonymizer (<code>anonymization/</code>, below).</p>
+
+<p><strong>Every tier has the whole mechanism</strong> — all three kinds,
+every check type, reload and per-pack toggles. The only difference is how
+many packs can be active at the same time: up to <strong>3</strong> in
+Community, unlimited in Pro and Enterprise. The in-app editor that writes
+FHIR packs is Pro; a FHIR pack written by hand runs in Community like any
+other.</p>
 
 <h3>Validation rule pack</h3>
 <pre><code>{
@@ -368,8 +383,8 @@ hospitals.</p>
 		<td>4 v2.5 messages</td><td>Full catalogue</td><td>Full catalogue</td></tr>
 	<tr><td>PHI detection (view only)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Plugin packs (basic)</td>
-		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Plugin packs (all kinds, every check type)</td>
+		<td>3 active at once</td><td>Unlimited</td><td>Unlimited</td></tr>
 	<tr><td>MLLP listener</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>HTTP POST/PUT/DELETE/PATCH, and authentication on any method</td>
@@ -382,8 +397,8 @@ hospitals.</p>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIRPath Evaluator + Bundle Visualizer</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Unlimited plugins &amp; test cases</td>
-		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Saved test cases</td>
+		<td>10</td><td>Unlimited</td><td>Unlimited</td></tr>
 	<tr><td>SOAP + priority support</td>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>

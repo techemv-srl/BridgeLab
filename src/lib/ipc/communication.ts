@@ -38,6 +38,9 @@ export interface HistoryEntry {
 	status: string;
 	response_time_ms: number;
 	timestamp: string;
+	/** MSA-1 of the ACK an MLLP send got back ("AA", "AE", "AR"…); null when
+	 *  there was no ACK to read — a failed send, or an HTTP/SOAP request. */
+	ack_code: string | null;
 }
 
 // --- MLLP ---

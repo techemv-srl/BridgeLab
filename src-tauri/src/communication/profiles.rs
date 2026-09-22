@@ -37,4 +37,9 @@ pub struct HistoryEntry {
     pub status: String,
     pub response_time_ms: u64,
     pub timestamp: String,
+    /// MSA-1 of the acknowledgment an MLLP send received ("AA", "AE",
+    /// "AR", or a commit-mode code). None when there was no ACK to read:
+    /// a failed send, or an HTTP/SOAP request.
+    #[serde(default)]
+    pub ack_code: Option<String>,
 }

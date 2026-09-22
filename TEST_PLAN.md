@@ -157,6 +157,9 @@ Before running tests:
 | BL-AUTO-06 | P1 | Hints follow MSH-12 | Open a message declaring `2.3` in MSH-12, hover a PID field | Field metadata comes from the 2.3 tables, not 2.5 | |
 | BL-AUTO-07 | P1 | Hints for the oldest versions | MSH-12 = `2.1`, then `2.2`; hover a PID field | Tooltip still appears (regression: these lost hints entirely when they were added to the catalogue) | |
 | BL-AUTO-08 | P2 | Unknown version falls back | MSH-12 = `2.9` or empty | Hints still shown, from the default tables | |
+| BL-AUTO-09 | P1 | Any coded field completes from its table | In OBX-11, then ORC-1, then PV1-2 | Every value of table 0085 / 0119 / 0004 offered with its meaning; no hand-coded list involved | |
+| BL-AUTO-10 | P1 | Hover explains the code | Hover PID-8 = `M`, then MSA-1 = `AE` | Tooltip ends with `M — Male (HL7 table 0001)` / `AE — …`; hover a segment the old 15-segment list never had (RXA-5) and the name still shows | |
+| BL-AUTO-11 | P2 | Hover flags a value outside a closed table | MSA-1 = `XX` (ID), then PID-8 = `X` (IS) | MSA-1 tooltip says `XX is not in HL7 table 0008`; PID-8 says nothing about the table (user-defined) | |
 
 ## 7. Tree View
 
@@ -174,6 +177,9 @@ Before running tests:
 | BL-TREE-10 | P1 | Tree panel hideable | Ctrl+B | Panel hides, editor takes full width | |
 | BL-TREE-11 | P2 | Badge shows field count | Check unexpanded segments | Count badge shown | |
 | BL-TREE-12 | P2 | Click node navigates editor | Click segment in tree | Editor scrolls to corresponding line | |
+| BL-TREE-13 | P1 | Coded values explained inline | Expand PID, MSH, PV1 of an ADT^A01 | Rows read `PID-8  M — Male`, `MSH-9  ADT^A01 — ADT message`, `MSH-11  P — Production`, `PV1-2  I — Inpatient`; free-text fields (PID-5) have no suffix | |
+| BL-TREE-14 | P1 | Components explained from their own table | Expand MSH-9, then PID-3 | `MSH-9.2  A01 — ADT/ACK - Admit/visit notification`; `PID-3.5  MR — Medical record number`; `PID-3.1` has no suffix | |
+| BL-TREE-15 | P2 | Unknown code has no suffix; first repetition rules | PID-8 = `Q`; OBX-8 = `H~A` | PID-8 shows just `Q`; OBX-8 reads `H~A — Above high normal` | |
 
 ## 8. Multi-Tab Support
 
@@ -218,6 +224,8 @@ Before running tests:
 | BL-VALID-10 | P1 | Sort by severity/segment | Use sort dropdown | Issues reorder | |
 | BL-VALID-11 | P2 | Click issue navigates to field | Click issue | Editor jumps to relevant location (when implemented) | |
 | BL-VALID-12 | P1 | Close validation panel | Click X or Ctrl+J | Panel hides | |
+| BL-VALID-13 | P1 | Required fields for every standard segment | ORU^R01 with an OBX lacking OBX-11; VXU with RXA lacking RXA-5 | `REQ-OBX-11` and `REQ-RXA-5` errors (neither segment was in the old fixed list); `adt_a01_small.hl7` still validates with no issues | |
+| BL-VALID-14 | P2 | Required fields follow the declared version | Same PID in a message declaring `2.1` and one declaring `2.5` | Findings differ where the standards differ; no crash on a v2.1 message with fields beyond its 20 | |
 
 ## 11. FHIR Support
 
@@ -304,6 +312,7 @@ Before running tests:
 | BL-MLLP-11 | P1 | Received message opens in new tab | Listener receives | New tab with received content | |
 | BL-MLLP-12 | P1 | Advanced settings toggle | Click "Advanced MLLP Settings" | Panel expands with extra fields | |
 | BL-MLLP-13 | P2 | Custom framing chars | Change start/end chars | Used in MLLP frame | |
+| BL-MLLP-14 | P1 | Console filters by outcome | Listener with ACK code AA receives 2 messages; switch to AE, receive 1; turn auto-ACK off, receive 1; send garbage bytes | Chips read `All 5 · AA 2 · AE 1 · AR 0 · No ACK 1 · Errors 1`; each chip narrows the rows to that outcome; `Clear` resets counts to 0 | |
 
 ## 15. Communication - HTTP
 
@@ -328,6 +337,9 @@ Before running tests:
 | BL-HIST-03 | P1 | Click entry shows detail | Click in history | Detail panel shows all fields | |
 | BL-HIST-04 | P1 | Clear history | Click Clear All | List empties | |
 | BL-HIST-05 | P2 | Persists across restart | Close, reopen app | History still present | |
+| BL-HIST-06 | P1 | MLLP send records its ACK code | Send to a listener answering AA, then to one answering AE (Listen tab, ACK code = AE) | Rows show a green `AA` / red `AE` badge after the OK status; detail says `OK · ACK AE`; an HTTP row has no badge | |
+| BL-HIST-07 | P1 | Filter chips with counts | With the rows above, click `AE`, then `Failed`, then `All` | Chips read e.g. `All 3 · AA 1 · AE 1 · AR 0 · No ACK 0 · Failed 1`; `AE` shows the one row; a chip whose count is 0 is disabled; `All` restores the list | |
+| BL-HIST-08 | P2 | Upgrade keeps old rows | Open a database written before this version | History still lists; old rows have no ACK badge and fall under `No ACK` only when they are MLLP OK rows | |
 
 ## 17. Anonymization
 
@@ -498,6 +510,11 @@ Before running tests:
 | BL-INSP-11 | P1 | Z-segment schema unknown | Click a ZDS field node | Inspector shows "Not in HL7 standard (Z-segment or custom)" | |
 | BL-INSP-12 | P1 | Inspector translates | Switch to FR/IT/ES/DE | All inspector labels localized | |
 | BL-INSP-13 | P2 | No selection fallback | Deselect / reload | Shows placeholder text | |
+| BL-INSP-14 | P1 | Closed table: allowed values + warning | Select MSA-1 (ID, table 0008), value `AA`; then edit it to `XX` | Header "Allowed values · HL7 0008"; `AA` row highlighted; with `XX` the "not in the HL7 table" warning appears | |
+| BL-INSP-15 | P1 | Open table: suggested values, never a warning | Select PID-8 (IS, table 0001), value `X` | Header "Suggested values (user-defined table) · HL7 0001"; no warning; the six standard codes listed | |
+| BL-INSP-16 | P1 | Component has its own table | Expand MSH-9, select MSH-9.2 (`A01`) | Table 0003 Event type listed, `A01` highlighted; select MSH-9.1 → table 0076 | |
+| BL-INSP-17 | P2 | User-defined table without standard values | Select IN1-2 (table 0072) | No table section; the rest of the metadata shown | |
+| BL-INSP-18 | P1 | Any standard segment has metadata | Select RXA-5 in a VXU, then a field of a v2.1 message | Name, type and length shown (the old fixed list had no RXA); v2.1 metadata differs from v2.5 where the standard does (PID has 20 fields in v2.1) | |
 
 ## 29. Schema-aware Tree
 

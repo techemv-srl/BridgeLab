@@ -126,6 +126,11 @@ verwendete Zeichenkodierung und die erste Zeile der Nachricht.
 <strong>Klicken Sie auf eine Zeile, um diese Nachricht erneut in einem
 Tab zu öffnen.</strong> Listener-Fehler erscheinen inline als rote
 Zeilen.</p>
+<p>Die Chips in der Kopfzeile der Konsole filtern die Zeilen nach
+Ergebnis — <em>AA</em>, <em>AE</em>, <em>AR</em>, <em>Ohne ACK</em>
+(empfangen bei ausgeschaltetem Auto-ACK), <em>Fehler</em> — und jeder
+trägt einen laufenden Zähler, sodass „AE&nbsp;12“ von 300 auffällt,
+bevor jemand scrollt. Dieselben Chips gibt es im Tab Verlauf.</p>
 <p>Der Schalter <em>„Empfangene Nachrichten in neuem Tab öffnen“</em>
 (standardmäßig aktiv) lässt sich bei Tests mit hohem Volumen
 deaktivieren: Die Nachrichten landen dann nur in der Konsole, und Sie
@@ -181,7 +186,15 @@ WSDL-Import ist als nächster Schritt geplant.</p>
 <p>Jeder Sende- und Empfangsvorgang wird protokolliert (Host, Port,
 Größe, Antwortcode, Umlaufzeit). Die letzten 100 Einträge bleiben über
 Neustarts hinweg erhalten; ein Klick auf eine Zeile zeigt Anfrage und
-Antwort vollständig an.</p>
+Antwort vollständig an. Ein MLLP-Versand hält zusätzlich den
+<strong>ACK-Code</strong> fest, mit dem der Empfänger geantwortet hat
+(MSA-1), als grünes oder rotes Abzeichen in der Zeile: ein Versand, der
+den Peer erreicht und ein <code>AE</code> zurückbekommt, ist auf
+Transportebene „OK“ und auf Anwendungsebene eine Ablehnung — das
+Abzeichen unterscheidet beides. Die Filter-Chips über der Liste —
+<em>AA</em>, <em>AE</em>, <em>AR</em>, <em>Ohne ACK</em>,
+<em>Fehlgeschlagen</em> — tragen Zähler und beschränken die Liste auf
+ein Ergebnis.</p>
 
 <h3>Verbindungsprofile</h3>
 <p>Speichern Sie häufig genutzte Endpunkte als benannte Profile über

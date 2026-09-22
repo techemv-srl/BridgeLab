@@ -1,5 +1,5 @@
 import type * as MonacoTypes from 'monaco-editor';
-import { getSegmentInfo } from '$lib/ipc/tables';
+import { getSegmentInfo, getHl7Table, type FieldDef, type ValueTable } from '$lib/ipc/tables';
 
 /** Common HL7 segment types for quick suggestion */
 const COMMON_SEGMENTS = [
@@ -26,16 +26,6 @@ const COMMON_SEGMENTS = [
 	{ code: 'AIS', desc: 'Appointment Information - Service' },
 	{ code: 'AIL', desc: 'Appointment Information - Location' },
 	{ code: 'AIP', desc: 'Appointment Information - Personnel' },
-];
-
-/** Common ACK codes */
-const ACK_CODES = [
-	{ code: 'AA', desc: 'Application Accept' },
-	{ code: 'AE', desc: 'Application Error' },
-	{ code: 'AR', desc: 'Application Reject' },
-	{ code: 'CA', desc: 'Commit Accept' },
-	{ code: 'CE', desc: 'Commit Error' },
-	{ code: 'CR', desc: 'Commit Reject' },
 ];
 
 /** Common message types */
@@ -69,11 +59,67 @@ export function versionFromModel(model: MonacoTypes.editor.ITextModel): string {
 	const maxLines = Math.min(model.getLineCount(), 5);
 	for (let line = 1; line <= maxLines; line++) {
 		const content = model.getLineContent(line);
-		if (!content.startsWith('MSH')) continue;
-		const declared = content.split('|')[11]?.split('^')[0]?.trim();
+		if (!content.startsWith('MSH') || content.length < 4) continue;
+		// MSH-1 is the field separator itself, so the header splits on
+		// whatever character follows "MSH"; the version number is the
+		// leading digits-and-dots of MSH-12, whatever the VID's own
+		// component separator.
+		const declared = content.split(content[3])[11]?.match(/^\s*[\d.]+/)?.[0]?.trim();
 		return declared && KNOWN_VERSIONS.includes(declared) ? declared : DEFAULT_VERSION;
 	}
 	return DEFAULT_VERSION;
+}
+
+/**
+ * The HL7 value table behind a field, when it has one. Tables are small
+ * and few, so a per-session cache keeps completion and hover free of
+ * repeated IPC round-trips for the same field.
+ */
+const tableCache = new Map<string, Promise<ValueTable | null>>();
+function tableFor(field: FieldDef): Promise<ValueTable | null> {
+	if (!field.table_id) return Promise.resolve(null);
+	// The table is closed or open by the type of the element it belongs
+	// to: MSH-9 is MSG, its 0076 is MSG.1's, an ID.
+	const type = field.table_data_type ?? field.data_type;
+	const key = `${field.table_id}|${type}`;
+	let p = tableCache.get(key);
+	if (!p) {
+		p = getHl7Table(field.table_id, type).catch(() => null);
+		tableCache.set(key, p);
+	}
+	return p;
+}
+
+/** Occurrences of the field separator in `text` — the field position the
+ *  cursor sits in, for a segment that is not MSH. */
+function countFieldSeparators(text: string, sep: string): number {
+	let n = 0;
+	for (const c of text) if (c === sep) n++;
+	return n;
+}
+
+/** The message's delimiters, read from MSH-1/MSH-2 of the model: `|^~\&`
+ *  by default, but a message may declare its own and then `^` is an
+ *  ordinary character. Same bounded scan as `versionFromModel`. */
+export function delimitersFromModel(model: MonacoTypes.editor.ITextModel): { field: string; component: string; repetition: string; subcomponent: string } {
+	const std = { field: '|', component: '^', repetition: '~', subcomponent: '&' };
+	const maxLines = Math.min(model.getLineCount(), 5);
+	for (let line = 1; line <= maxLines; line++) {
+		const content = model.getLineContent(line);
+		if (!content.startsWith('MSH') || content.length < 8) continue;
+		// MSH|^~\&|: field separator at index 3, then component, repetition,
+		// escape, subcomponent.
+		return { field: content[3], component: content[4], repetition: content[5], subcomponent: content[7] };
+	}
+	return std;
+}
+
+/** The code a field value is looked up by: its first component, first repetition. */
+function leadingCode(value: string, d: ReturnType<typeof delimitersFromModel>): string {
+	const cut = [d.component, d.repetition, d.subcomponent]
+		.map((sep) => value.indexOf(sep))
+		.filter((i) => i >= 0);
+	return (cut.length ? value.slice(0, Math.min(...cut)) : value).trim();
 }
 
 /**
@@ -97,7 +143,7 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 			const suggestions: MonacoTypes.languages.CompletionItem[] = [];
 
 			// If at the start of a line, suggest segment types
-			if (textBefore.length <= 3 && !textBefore.includes('|')) {
+			if (textBefore.length <= 3 && !textBefore.includes(delimitersFromModel(model).field)) {
 				for (const seg of COMMON_SEGMENTS) {
 					suggestions.push({
 						label: seg.code,
@@ -117,8 +163,10 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 			if (!segMatch) return { suggestions: [] };
 			const segmentType = segMatch[1];
 
-			// Count pipes to determine field position
-			const pipeCount = (textBefore.match(/\|/g) || []).length;
+			// Count field separators to determine the field position — the
+			// message's own separator, which is "|" unless MSH-1 says otherwise.
+			const delims = delimitersFromModel(model);
+			const pipeCount = countFieldSeparators(textBefore, delims.field);
 			const isMsh = segmentType === 'MSH';
 			const fieldPosition = isMsh ? pipeCount + 1 : pipeCount;
 
@@ -131,7 +179,8 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 					if (field) {
 						// Add field-specific suggestions
 						if (segmentType === 'MSH' && fieldPosition === 9) {
-							// Message Type field
+							// Message Type field: the common type^event pairs, more
+							// useful here than the 128 bare codes of table 0076.
 							for (const mt of MESSAGE_TYPES) {
 								suggestions.push({
 									label: mt,
@@ -141,31 +190,17 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 									range,
 								});
 							}
-						} else if (segmentType === 'MSA' && fieldPosition === 1) {
-							// ACK code
-							for (const ack of ACK_CODES) {
+						} else {
+							// Any coded field: every value of its HL7 table (MSA-1
+							// acknowledgment codes, PID-8 sex, OBX-11 result status…).
+							const table = await tableFor(field);
+							for (const tv of table?.values ?? []) {
 								suggestions.push({
-									label: ack.code,
+									label: tv.code,
 									kind: monaco.languages.CompletionItemKind.EnumMember,
-									detail: ack.desc,
-									insertText: ack.code,
-									range,
-								});
-							}
-						} else if (segmentType === 'PID' && fieldPosition === 8) {
-							// Gender
-							for (const g of [
-								{ v: 'M', d: 'Male' },
-								{ v: 'F', d: 'Female' },
-								{ v: 'O', d: 'Other' },
-								{ v: 'U', d: 'Unknown' },
-								{ v: 'A', d: 'Ambiguous' },
-							]) {
-								suggestions.push({
-									label: g.v,
-									kind: monaco.languages.CompletionItemKind.EnumMember,
-									detail: g.d,
-									insertText: g.v,
+									detail: tv.description,
+									documentation: `HL7 table ${table!.id} — ${table!.name}`,
+									insertText: tv.code,
 									range,
 								});
 							}
@@ -201,7 +236,8 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 			const segmentType = segMatch[1];
 			const column = position.column;
 			const textBefore = lineContent.substring(0, column - 1);
-			const pipeCount = (textBefore.match(/\|/g) || []).length;
+			const delims = delimitersFromModel(model);
+			const pipeCount = countFieldSeparators(textBefore, delims.field);
 			const isMsh = segmentType === 'MSH';
 			const fieldPosition = isMsh ? pipeCount + 1 : pipeCount;
 
@@ -212,13 +248,26 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 				if (info) {
 					const field = info.fields.find(f => f.position === fieldPosition);
 					if (field) {
-						return {
-							contents: [
-								{ value: `**${segmentType}-${fieldPosition}**: ${field.name}` },
-								{ value: `Type: \`${field.data_type}\`${field.required ? ' · **required**' : ''}${field.max_length ? ' · max ' + field.max_length : ''}` },
-								{ value: field.description },
-							],
-						};
+						const contents = [
+							{ value: `**${segmentType}-${fieldPosition}**: ${field.name}` },
+							{ value: `Type: \`${field.data_type}\`${field.required ? ' · **required**' : ''}${field.max_length ? ' · max ' + field.max_length : ''}` },
+							{ value: field.description },
+						];
+						// A coded value is explained from its HL7 table; one the
+						// closed table does not list is called out.
+						const table = await tableFor(field);
+						if (table) {
+							// MSH-1 is the separator itself; for n >= 2 the value sits at index n-1.
+							const raw = lineContent.split(delims.field)[isMsh ? fieldPosition - 1 : fieldPosition] ?? '';
+							const code = leadingCode(raw, delims);
+							const hit = code ? table.values.find((tv) => tv.code === code) : undefined;
+							if (hit) {
+								contents.push({ value: `\`${hit.code}\` — ${hit.description} *(HL7 table ${table.id})*` });
+							} else if (code && table.exhaustive) {
+								contents.push({ value: `\`${code}\` is not in HL7 table ${table.id} (${table.name})` });
+							}
+						}
+						return { contents };
 					}
 				}
 			} catch {

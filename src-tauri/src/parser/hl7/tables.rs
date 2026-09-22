@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use super::schema::{self, Hl7Version};
+
 /// HL7 field definition from the standard.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldDef {
@@ -19,6 +21,16 @@ pub struct FieldDef {
     pub repeating: bool,
     /// Description (short)
     pub description: String,
+    /// HL7 value table behind the field's value ("0001" for PID-8; for a
+    /// composite, its first component's table), when it is coded.
+    #[serde(default)]
+    pub table_id: Option<String>,
+    /// Data type of the element `table_id` belongs to — the field's own
+    /// for a primitive, the first component's for a composite (MSH-9 is
+    /// MSG, its table is MSG.1's, an `ID`). It decides whether the table
+    /// is closed (`ID`) or a list of suggestions.
+    #[serde(default)]
+    pub table_data_type: Option<String>,
 }
 
 /// Segment definition from the HL7 standard.
@@ -63,6 +75,20 @@ pub struct FieldInfo {
     pub description: String,
     /// HL7 value table backing this coded field (e.g. "0001" for PID-8),
     /// resolvable via the `get_hl7_table` command. None for free-text fields.
+    /// For a composite field this is its first component's table (MSH-9 →
+    /// 0076), the one its leading value is checked against.
+    pub table_id: Option<String>,
+    /// The field's components when its data type is composite, each with
+    /// its own table where coded (MSH-9.2 → 0003). Empty for primitives.
+    pub components: Vec<ComponentInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ComponentInfo {
+    pub position: usize,
+    pub name: String,
+    pub data_type: String,
+    pub max_length: Option<usize>,
     pub table_id: Option<String>,
 }
 
@@ -77,7 +103,7 @@ fn init_tables() -> HashMap<String, Hl7Table> {
     // than a hand-kept list: a version added there but forgotten here would
     // silently lose autocomplete and hover for messages that declare it.
     for version in crate::parser::hl7::schema::Hl7Version::ALL {
-        tables.insert(version.as_str().to_string(), build_table(version.as_str()));
+        tables.insert(version.as_str().to_string(), build_table(*version));
     }
 
     tables
@@ -85,10 +111,9 @@ fn init_tables() -> HashMap<String, Hl7Table> {
 
 /// Table used for a version we hold no entry for.
 ///
-/// `build_table` does not vary by version today, so this is the same data
-/// under a different key — but it means a message declaring an HL7 version
-/// BridgeLab does not ship (a future v2.8, or a typo in MSH-12) still gets
-/// field names and hover text instead of nothing at all.
+/// A message declaring an HL7 version BridgeLab does not ship (a future
+/// v2.8, or a typo in MSH-12) still gets field names and hover text from
+/// the default catalogue instead of nothing at all.
 fn fallback_table(tables: &HashMap<String, Hl7Table>) -> Option<&Hl7Table> {
     tables.get(DEFAULT_VERSION)
 }
@@ -97,11 +122,18 @@ fn fallback_table(tables: &HashMap<String, Hl7Table>) -> Option<&Hl7Table> {
 const DEFAULT_VERSION: &str = "2.5";
 
 /// Exact version, then major.minor, then the default table.
+///
+/// `version` is MSH-12 as the message carries it, which may be a full VID
+/// (`2.3^ISO^…`, or `2.3#ISO` under a custom component separator): the
+/// version number is its leading part. Now that the tables are genuinely
+/// version-specific, a VID left unparsed would fall through to v2.5
+/// definitions for a v2.3 message.
 fn table_for<'a>(tables: &'a HashMap<String, Hl7Table>, version: &str) -> Option<&'a Hl7Table> {
+    let number = schema::version_number(version);
     tables
-        .get(version)
+        .get(number)
         .or_else(|| {
-            let major_minor = version.split('.').take(2).collect::<Vec<_>>().join(".");
+            let major_minor = number.split('.').take(2).collect::<Vec<_>>().join(".");
             tables.get(&major_minor)
         })
         .or_else(|| fallback_table(tables))
@@ -132,6 +164,22 @@ pub fn get_field_info(segment_type: &str, field_position: usize, version: &str) 
     let seg_def = table.segments.get(segment_type)?;
     let field_def = seg_def.fields.iter().find(|f| f.position == field_position)?;
 
+    let components = schema::for_declared(&table.version)
+        .composite(&field_def.data_type)
+        .map(|c| {
+            c.components
+                .iter()
+                .map(|comp| ComponentInfo {
+                    position: comp.position,
+                    name: comp.name.clone(),
+                    data_type: comp.data_type.clone(),
+                    max_length: comp.max_length,
+                    table_id: comp.table.clone(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     Some(FieldInfo {
         segment_code: segment_type.to_string(),
         position: field_def.position,
@@ -141,14 +189,76 @@ pub fn get_field_info(segment_type: &str, field_position: usize, version: &str) 
         required: field_def.required,
         repeating: field_def.repeating,
         description: field_def.description.clone(),
-        table_id: super::value_tables::table_for_field(segment_type, field_position)
-            .map(str::to_string),
+        table_id: field_def.table_id.clone(),
+        components,
     })
 }
 
-/// Build a table for a given version with common segments.
-/// These definitions cover the most commonly used segments across HL7 v2.x.
-fn build_table(version: &str) -> Hl7Table {
+/// The field table of one HL7 version: every segment of that version's
+/// catalogue, with the curated one-line descriptions layered on top for
+/// the segments and fields an integration engineer meets daily. Names,
+/// types, cardinality, lengths and value tables come from the catalogue,
+/// so they follow the declared version; only the prose is hand-written.
+fn build_table(version: Hl7Version) -> Hl7Table {
+    let catalogue = schema::cached(version);
+    let curated = curated_descriptions();
+
+    let segments = catalogue
+        .segments
+        .iter()
+        .map(|seg| {
+            let prose = curated.get(&seg.code);
+            let fields = seg
+                .fields
+                .iter()
+                .map(|f| {
+                    let field_prose = prose.and_then(|p| p.fields.iter().find(|pf| pf.position == f.position));
+                    let table_id = catalogue.table_for_field(&seg.code, f.position).map(str::to_string);
+                    let table_data_type = table_id.as_ref().map(|_| {
+                        if f.table.is_some() {
+                            f.data_type.clone()
+                        } else {
+                            catalogue
+                                .component(&f.data_type, 1)
+                                .map(|c| c.data_type.clone())
+                                .unwrap_or_else(|| f.data_type.clone())
+                        }
+                    });
+                    FieldDef {
+                        position: f.position,
+                        name: f.name.clone(),
+                        data_type: f.data_type.clone(),
+                        max_length: f.max_length,
+                        required: f.required,
+                        repeating: f.repeats,
+                        description: field_prose
+                            .map(|p| p.description.clone())
+                            .unwrap_or_else(|| f.name.clone()),
+                        table_id,
+                        table_data_type,
+                    }
+                })
+                .collect();
+            let def = SegmentDef {
+                code: seg.code.clone(),
+                name: seg.name.clone(),
+                description: prose.map(|p| p.description.clone()).unwrap_or_else(|| seg.name.clone()),
+                fields,
+            };
+            (seg.code.clone(), def)
+        })
+        .collect();
+
+    Hl7Table {
+        version: version.as_str().to_string(),
+        segments,
+    }
+}
+
+/// Hand-written descriptions for the common segments and fields. Only the
+/// `description` strings are used; the structural attributes in here are
+/// the historical bootstrap and are superseded by the catalogue.
+fn curated_descriptions() -> HashMap<String, SegmentDef> {
     let mut segments = HashMap::new();
 
     // MSH - Message Header
@@ -418,10 +528,7 @@ fn build_table(version: &str) -> Hl7Table {
         ],
     });
 
-    Hl7Table {
-        version: version.to_string(),
-        segments,
-    }
+    segments
 }
 
 /// Helper to create a FieldDef concisely.
@@ -442,6 +549,8 @@ fn field(
         required,
         repeating,
         description: description.to_string(),
+        table_id: None,
+        table_data_type: None,
     }
 }
 
@@ -490,6 +599,83 @@ mod tests {
         assert_eq!(info.name, "Patient Name");
         assert_eq!(info.data_type, "XPN");
         assert!(info.required);
+        assert_eq!(info.max_length, Some(250));
+        assert_eq!(info.table_id, None);
+        // XPN.7 (name type code) is coded even though the field is not.
+        let name_type = info.components.iter().find(|c| c.position == 7).expect("XPN.7");
+        assert_eq!(name_type.table_id.as_deref(), Some("0200"));
+    }
+
+    /// The field table is the whole catalogue, not the fifteen curated
+    /// segments: any standard segment resolves, in every version, and the
+    /// curated prose is layered on where it exists.
+    #[test]
+    fn every_catalogue_segment_resolves() {
+        for version in Hl7Version::ALL {
+            let catalogue = schema::cached(*version);
+            for seg in &catalogue.segments {
+                let info = get_segment_info(&seg.code, version.as_str())
+                    .unwrap_or_else(|| panic!("{} missing in {}", seg.code, version.as_str()));
+                assert_eq!(info.fields.len(), seg.fields.len(), "{} {}", seg.code, version.as_str());
+            }
+        }
+        // RXA was never hand-coded; it comes from the catalogue.
+        let rxa = get_field_info("RXA", 5, "2.5").expect("RXA-5");
+        assert_eq!(rxa.name, "Administered Code");
+        assert_eq!(rxa.data_type, "CE");
+        // Curated prose survives for PID-8; a field without any falls back to its name.
+        assert_eq!(get_field_info("PID", 8, "2.5").unwrap().description, "Patient sex (M/F/O/U)");
+        assert_eq!(get_field_info("PID", 8, "2.5").unwrap().table_id.as_deref(), Some("0001"));
+        assert_eq!(rxa.description, rxa.name);
+    }
+
+    /// Structure follows the declared version: PID had 20 fields in v2.1
+    /// and 39 in v2.7.
+    #[test]
+    fn field_tables_are_version_specific() {
+        let old = get_segment_info("PID", "2.1").unwrap().fields.len();
+        let new = get_segment_info("PID", "2.7").unwrap().fields.len();
+        assert!(old < new, "v2.1 PID has {} fields, v2.7 has {}", old, new);
+        assert!(get_segment_info("RXA", "2.1").is_none(), "RXA did not exist in v2.1");
+    }
+
+    /// Codex review: MSH-12 may be a full VID ("2.3^ISO^…"); it must select
+    /// the v2.3 tables, not fall back to v2.5.
+    #[test]
+    fn a_full_vid_selects_its_own_version() {
+        let vid = get_segment_info("PID", "2.1^ISO^HL7").unwrap();
+        let bare = get_segment_info("PID", "2.1").unwrap();
+        let default = get_segment_info("PID", "2.5").unwrap();
+        assert_eq!(vid.fields.len(), bare.fields.len());
+        assert_ne!(vid.fields.len(), default.fields.len());
+        assert!(get_segment_info("RXA", "2.1^ISO").is_none());
+        assert!(get_segment_info("RXA", "2.1#ISO").is_none(), "custom component separator");
+    }
+
+    /// The type the table is closed or open by is that of the element
+    /// holding the table: MSH-9 is MSG, but its 0076 belongs to MSG.1 (ID).
+    #[test]
+    fn field_defs_carry_the_coded_element_type() {
+        let msh = get_segment_info("MSH", "2.5").unwrap();
+        let f9 = msh.fields.iter().find(|f| f.position == 9).unwrap();
+        assert_eq!(f9.table_id.as_deref(), Some("0076"));
+        assert_eq!(f9.table_data_type.as_deref(), Some("ID"));
+        let pid = get_segment_info("PID", "2.5").unwrap();
+        let f8 = pid.fields.iter().find(|f| f.position == 8).unwrap();
+        assert_eq!(f8.table_data_type.as_deref(), Some("IS"));
+        assert_eq!(pid.fields.iter().find(|f| f.position == 5).unwrap().table_data_type, None);
+    }
+
+    #[test]
+    fn composite_fields_report_their_leading_table() {
+        let msh9 = get_field_info("MSH", 9, "2.5").unwrap();
+        assert_eq!(msh9.data_type, "MSG");
+        assert_eq!(msh9.table_id.as_deref(), Some("0076"));
+        assert_eq!(msh9.components.len(), 3);
+        assert_eq!(msh9.components[1].table_id.as_deref(), Some("0003"));
+        let msa1 = get_field_info("MSA", 1, "2.5").unwrap();
+        assert_eq!(msa1.table_id.as_deref(), Some("0008"));
+        assert!(msa1.components.is_empty(), "ID is primitive");
     }
 
     #[test]

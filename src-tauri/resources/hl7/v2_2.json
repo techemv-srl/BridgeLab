@@ -4731,21 +4731,25 @@
           "name": "Accident date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 2,
           "name": "Accident code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0050"
         },
         {
           "position": 3,
           "name": "Accident location",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         }
       ]
     },
@@ -4758,7 +4762,8 @@
           "name": "Addendum Continuation Pointer",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 65536
         }
       ]
     },
@@ -4771,42 +4776,50 @@
           "name": "Set ID - Allergy",
           "data_type": "SI",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Allergy Type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0127"
         },
         {
           "position": 3,
           "name": "Allergy code / mnemonic / description",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Allergy Severity",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0128"
         },
         {
           "position": 5,
           "name": "Allergy Reaction",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 6,
           "name": "Identification Date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         }
       ]
     },
@@ -4819,84 +4832,96 @@
           "name": "Batch Field Separator",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 2,
           "name": "Batch Encoding Characters",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Batch Sending Application",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 4,
           "name": "Batch Sending Facility",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 5,
           "name": "Batch Receiving Application",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 6,
           "name": "Batch Receiving Facility",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 7,
           "name": "Batch creation date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 8,
           "name": "Batch Security",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 9,
           "name": "Batch name / ID / type",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 10,
           "name": "Batch Comment",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 11,
           "name": "Batch Control ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 12,
           "name": "Reference Batch Control ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -4909,21 +4934,25 @@
           "name": "When to Charge",
           "data_type": "CM_CCD",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 2,
           "name": "Charge Type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 50,
+          "table": "0122"
         },
         {
           "position": 3,
           "name": "Account ID",
           "data_type": "CK",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         }
       ]
     },
@@ -4936,21 +4965,24 @@
           "name": "Batch Message Count",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 2,
           "name": "Batch Comment",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 3,
           "name": "Batch Totals",
           "data_type": "CM_BATCH_TOTAL",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 100
         }
       ]
     },
@@ -4963,112 +4995,134 @@
           "name": "Set ID - diagnosis",
           "data_type": "SI",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Diagnosis coding method",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0053"
         },
         {
           "position": 3,
           "name": "Diagnosis code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8,
+          "table": "0051"
         },
         {
           "position": 4,
           "name": "Diagnosis description",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 5,
           "name": "Diagnosis date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 6,
           "name": "Diagnosis / DRG type",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0052"
         },
         {
           "position": 7,
           "name": "Major diagnostic category",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 8,
           "name": "Diagnostic related group",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4,
+          "table": "0055"
         },
         {
           "position": 9,
           "name": "DRG approval indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 10,
           "name": "DRG grouper review code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0056"
         },
         {
           "position": 11,
           "name": "Outlier type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60,
+          "table": "0083"
         },
         {
           "position": 12,
           "name": "Outlier days",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 13,
           "name": "Outlier cost",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 14,
           "name": "Grouper version and type",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 15,
           "name": "Diagnosis / DRG priority",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 16,
           "name": "Diagnosing clinician",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -5081,7 +5135,8 @@
           "name": "Continuation Pointer",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 180
         }
       ]
     },
@@ -5094,35 +5149,40 @@
           "name": "Set ID - Display Data",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Display Level",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Data Line",
           "data_type": "TX",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 300
         },
         {
           "position": 4,
           "name": "Logical Break Point",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 5,
           "name": "Result ID",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -5135,7 +5195,8 @@
           "name": "Error Code and Location",
           "data_type": "CM_ELD",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 80
         }
       ]
     },
@@ -5148,35 +5209,43 @@
           "name": "Event Type Code",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0003"
         },
         {
           "position": 2,
           "name": "Date / time of event",
           "data_type": "TS",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 3,
           "name": "Date / time planned event",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 4,
           "name": "Event Reason Code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0062"
         },
         {
           "position": 5,
           "name": "Operator ID",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 5,
+          "table": "0188"
         }
       ]
     },
@@ -5189,84 +5258,96 @@
           "name": "File Field Separator",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 2,
           "name": "File Encoding Characters",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "File Sending Application",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 4,
           "name": "File Sending Facility",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 5,
           "name": "File Receiving Application",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 6,
           "name": "File Receiving Facility",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 7,
           "name": "File creation date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 8,
           "name": "File Security",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 9,
           "name": "File name / ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 10,
           "name": "File Header Comment",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 11,
           "name": "File Control ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 12,
           "name": "Reference File Control ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -5279,161 +5360,188 @@
           "name": "Set ID - financial transaction",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Transaction ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 3,
           "name": "Transaction batch ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 4,
           "name": "Transaction date",
           "data_type": "DT",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 5,
           "name": "Transaction posting date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 6,
           "name": "Transaction type",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8,
+          "table": "0017"
         },
         {
           "position": 7,
           "name": "Transaction code",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 8,
           "name": "Transaction description",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 9,
           "name": "Transaction description - alternate",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 10,
           "name": "Transaction quantity",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 11,
           "name": "Transaction amount - extended",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 12,
           "name": "Transaction amount - unit",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 13,
           "name": "Department code",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 14,
           "name": "Insurance plan ID",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8,
+          "table": "0072"
         },
         {
           "position": 15,
           "name": "Insurance amount",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 16,
           "name": "Assigned Patient Location",
           "data_type": "CM_INTERNAL_LOCATION",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 17,
           "name": "Fee schedule",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0024"
         },
         {
           "position": 18,
           "name": "Patient type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0018"
         },
         {
           "position": 19,
           "name": "Diagnosis code",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 8
         },
         {
           "position": 20,
           "name": "Performed by code",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 21,
           "name": "Ordered by code",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 22,
           "name": "Unit cost",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 23,
           "name": "Filler Order Number",
           "data_type": "CM_FILLER",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 75
         }
       ]
     },
@@ -5446,14 +5554,16 @@
           "name": "File Batch Count",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 2,
           "name": "File Trailer Comment",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         }
       ]
     },
@@ -5466,147 +5576,172 @@
           "name": "Set ID - guarantor",
           "data_type": "SI",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Guarantor number",
           "data_type": "CK",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 3,
           "name": "Guarantor name",
           "data_type": "PN",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 4,
           "name": "Guarantor spouse name",
           "data_type": "PN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 5,
           "name": "Guarantor address",
           "data_type": "AD",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 106
         },
         {
           "position": 6,
           "name": "Guarantor phone number - home",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 7,
           "name": "Guarantor phone number - business",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 8,
           "name": "Guarantor date of birth",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 9,
           "name": "Guarantor sex",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0001"
         },
         {
           "position": 10,
           "name": "Guarantor type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0068"
         },
         {
           "position": 11,
           "name": "Guarantor relationship",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0063"
         },
         {
           "position": 12,
           "name": "Guarantor social security number",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 11
         },
         {
           "position": 13,
           "name": "Guarantor date - begin",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 14,
           "name": "Guarantor date - end",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 15,
           "name": "Guarantor priority",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 16,
           "name": "Guarantor employer name",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 45
         },
         {
           "position": 17,
           "name": "Guarantor employer address",
           "data_type": "AD",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 106
         },
         {
           "position": 18,
           "name": "Guarantor employ phone number",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 19,
           "name": "Guarantor employee ID number",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 20,
           "name": "Guarantor employment status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0066"
         },
         {
           "position": 21,
           "name": "Guarantor organization",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -5619,322 +5754,380 @@
           "name": "Set ID - insurance",
           "data_type": "SI",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Insurance plan ID",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8,
+          "table": "0072"
         },
         {
           "position": 3,
           "name": "Insurance company ID",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 9
         },
         {
           "position": 4,
           "name": "Insurance company name",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 45
         },
         {
           "position": 5,
           "name": "Insurance company address",
           "data_type": "AD",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 106
         },
         {
           "position": 6,
           "name": "Insurance company contact pers",
           "data_type": "PN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 7,
           "name": "Insurance company phone number",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 8,
           "name": "Group number",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 9,
           "name": "Group name",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 35
         },
         {
           "position": 10,
           "name": "Insured's group employer ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 11,
           "name": "Insured's group employer name",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 45
         },
         {
           "position": 12,
           "name": "Plan effective date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 13,
           "name": "Plan expiration date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 14,
           "name": "Authorization information",
           "data_type": "CM_AUI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 55
         },
         {
           "position": 15,
           "name": "Plan type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 5,
+          "table": "0086"
         },
         {
           "position": 16,
           "name": "Name of insured",
           "data_type": "PN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 17,
           "name": "Insured's relationship to patient",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0063"
         },
         {
           "position": 18,
           "name": "Insured's date of birth",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 19,
           "name": "Insured's address",
           "data_type": "AD",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 106
         },
         {
           "position": 20,
           "name": "Assignment of benefits",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0135"
         },
         {
           "position": 21,
           "name": "Coordination of benefits",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0173"
         },
         {
           "position": 22,
           "name": "Coordination of benefits - priority",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 23,
           "name": "Notice of admission code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0136"
         },
         {
           "position": 24,
           "name": "Notice of admission date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 25,
           "name": "Report of eligibility code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 26,
           "name": "Report of eligibility date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 27,
           "name": "Release information code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0093"
         },
         {
           "position": 28,
           "name": "Pre-admit certification",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 29,
           "name": "Verification date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 30,
           "name": "Verification by",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 31,
           "name": "Type of agreement code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0098"
         },
         {
           "position": 32,
           "name": "Billing status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0022"
         },
         {
           "position": 33,
           "name": "Lifetime reserve days",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 34,
           "name": "Delay before lifetime reserve days",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 35,
           "name": "Company plan code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8,
+          "table": "0042"
         },
         {
           "position": 36,
           "name": "Policy number",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 37,
           "name": "Policy deductible",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 38,
           "name": "Policy limit - amount",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 39,
           "name": "Policy limit - days",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 40,
           "name": "Room rate - semi-private",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 41,
           "name": "Room rate - private",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 42,
           "name": "Insured's employment status",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 43,
           "name": "Insured's sex",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0001"
         },
         {
           "position": 44,
           "name": "Insured's employer address",
           "data_type": "AD",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 106
         },
         {
           "position": 45,
           "name": "Verification status",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 46,
           "name": "Prior insurance plan ID",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8,
+          "table": "0072"
         }
       ]
     },
@@ -5947,210 +6140,250 @@
           "name": "Insured's employee ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 2,
           "name": "Insured's social security number",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 9
         },
         {
           "position": 3,
           "name": "Insured's employer name",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Employer information data",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0139"
         },
         {
           "position": 5,
           "name": "Mail claim party",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0137"
         },
         {
           "position": 6,
           "name": "Medicare health insurance card number",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 7,
           "name": "Medicaid case name",
           "data_type": "PN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 8,
           "name": "Medicaid case number",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 9,
           "name": "Champus sponsor name",
           "data_type": "PN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 10,
           "name": "Champus ID number",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 11,
           "name": "Dependent of champus recipient",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 12,
           "name": "Champus organization",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         },
         {
           "position": 13,
           "name": "Champus station",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         },
         {
           "position": 14,
           "name": "Champus service",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 14,
+          "table": "0140"
         },
         {
           "position": 15,
           "name": "Champus rank / grade",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0141"
         },
         {
           "position": 16,
           "name": "Champus status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0142"
         },
         {
           "position": 17,
           "name": "Champus retire date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 18,
           "name": "Champus non-availability certification on file",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 19,
           "name": "Baby coverage",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 20,
           "name": "Combine baby bill",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 21,
           "name": "Blood deductible",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 22,
           "name": "Special coverage approval name",
           "data_type": "PN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 23,
           "name": "Special coverage approval title",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 24,
           "name": "Non-covered insurance code",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 8,
+          "table": "0143"
         },
         {
           "position": 25,
           "name": "Payor ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 6
         },
         {
           "position": 26,
           "name": "Payor subscriber ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 6
         },
         {
           "position": 27,
           "name": "Eligibility source",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0144"
         },
         {
           "position": 28,
           "name": "Room coverage type / amount",
           "data_type": "CM_RMC",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 25
         },
         {
           "position": 29,
           "name": "Policy type / amount",
           "data_type": "CM_PTA",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 25
         },
         {
           "position": 30,
           "name": "Daily deductible",
           "data_type": "CM_DDI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         }
       ]
     },
@@ -6163,175 +6396,203 @@
           "name": "Set ID - insurance certification",
           "data_type": "SI",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Certification number",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         },
         {
           "position": 3,
           "name": "Certified by",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Certification required",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 5,
           "name": "Penalty",
           "data_type": "CM_PEN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 6,
           "name": "Certification date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 7,
           "name": "Certification modify date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 8,
           "name": "Operator",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 9,
           "name": "Certification begin date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 10,
           "name": "Certification end date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 11,
           "name": "Days",
           "data_type": "CM_DTN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 12,
           "name": "Non-concur code / description",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 13,
           "name": "Non-concur effective date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 14,
           "name": "Physician reviewer",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 15,
           "name": "Certification contact",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 16,
           "name": "Certification contact phone number",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 17,
           "name": "Appeal reason",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 18,
           "name": "Certification agency",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 19,
           "name": "Certification agency phone number",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 20,
           "name": "Pre-certification required / window",
           "data_type": "CM_PCF",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 21,
           "name": "Case manager",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 22,
           "name": "Second opinion date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 23,
           "name": "Second opinion status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0151"
         },
         {
           "position": 24,
           "name": "Second opinion documentation received",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0152"
         },
         {
           "position": 25,
           "name": "Second opinion practitioner",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -6344,35 +6605,41 @@
           "name": "Record-level event code",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0180"
         },
         {
           "position": 2,
           "name": "MFN control ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 3,
           "name": "Event completion date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 4,
           "name": "Error return code and/or text",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 5,
           "name": "Primary key value",
           "data_type": "CE",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         }
       ]
     },
@@ -6385,28 +6652,33 @@
           "name": "Record-level event code",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0180"
         },
         {
           "position": 2,
           "name": "MFN control ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 3,
           "name": "Effective date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 4,
           "name": "Primary key value",
           "data_type": "CE",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         }
       ]
     },
@@ -6419,42 +6691,51 @@
           "name": "Master file identifier",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 2,
           "name": "Master file application identifier",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 6,
+          "table": "0176"
         },
         {
           "position": 3,
           "name": "File-level event code",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0178"
         },
         {
           "position": 4,
           "name": "Entered date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 5,
           "name": "Effective date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 6,
           "name": "Response level code",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0179"
         }
       ]
     },
@@ -6467,28 +6748,32 @@
           "name": "Prior Patient ID - Internal",
           "data_type": "CM_PAT_ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 2,
           "name": "Prior Alternate Patient ID",
           "data_type": "CM_PAT_ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 16
         },
         {
           "position": 3,
           "name": "Prior Patient Account Number",
           "data_type": "CK",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 4,
           "name": "Prior Patient ID - External",
           "data_type": "CK",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 16
         }
       ]
     },
@@ -6501,42 +6786,50 @@
           "name": "Acknowledgement code",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0008"
         },
         {
           "position": 2,
           "name": "Message Control ID",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 3,
           "name": "Text Message",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 4,
           "name": "Expected Sequence Number",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 5,
           "name": "Delayed Acknowledgement type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0102"
         },
         {
           "position": 6,
           "name": "Error Condition",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         }
       ]
     },
@@ -6549,119 +6842,140 @@
           "name": "Field Separator",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 2,
           "name": "Encoding characters",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Sending application",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 4,
           "name": "Sending facility",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 5,
           "name": "Receiving application",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 6,
           "name": "Receiving facility",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 7,
           "name": "Date / Time of message",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 8,
           "name": "Security",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 9,
           "name": "Message type",
           "data_type": "CM_MSG",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 7
         },
         {
           "position": 10,
           "name": "Message Control ID",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 11,
           "name": "Processing ID",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0103"
         },
         {
           "position": 12,
           "name": "Version ID",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8,
+          "table": "0104"
         },
         {
           "position": 13,
           "name": "Sequence number",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 14,
           "name": "Continuation pointer",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 180
         },
         {
           "position": 15,
           "name": "Accept acknowledgement type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0155"
         },
         {
           "position": 16,
           "name": "Application acknowledgement type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0155"
         },
         {
           "position": 17,
           "name": "Country code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         }
       ]
     },
@@ -6674,7 +6988,8 @@
           "name": "System Date/Time",
           "data_type": "TS",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         }
       ]
     },
@@ -6687,91 +7002,104 @@
           "name": "Set ID - Next of Kin",
           "data_type": "SI",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "NK Name",
           "data_type": "PN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 3,
           "name": "Relationship",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Address",
           "data_type": "AD",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 106
         },
         {
           "position": 5,
           "name": "Phone Number",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 6,
           "name": "Business Phone Number",
           "data_type": "TN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 7,
           "name": "Contact Role",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 8,
           "name": "Start Date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 9,
           "name": "End Date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 10,
           "name": "Next of Kin",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 11,
           "name": "Next of kin job code / class",
           "data_type": "CM_JOB_CODE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 12,
           "name": "Next of Kin Employee Number",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 13,
           "name": "Organization Name",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -6784,14 +7112,17 @@
           "name": "Bed Location",
           "data_type": "CM_INTERNAL_LOCATION",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 2,
           "name": "Bed Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0116"
         }
       ]
     },
@@ -6804,63 +7135,72 @@
           "name": "Network Change Type",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Current CPU",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 3,
           "name": "Current Fileserver",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 4,
           "name": "Current Application",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 5,
           "name": "Current Facility",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 6,
           "name": "New CPU",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 7,
           "name": "New Fileserver",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 8,
           "name": "New Application",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 9,
           "name": "New Facility",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         }
       ]
     },
@@ -6873,105 +7213,121 @@
           "name": "Statistics Available",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 2,
           "name": "Source Identifier",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 3,
           "name": "Source Type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 4,
           "name": "Statistics Start",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 5,
           "name": "Statistics End",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 6,
           "name": "Receive Character Count",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 7,
           "name": "Send Character Count",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 8,
           "name": "Message Received",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 9,
           "name": "Message Sent",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 10,
           "name": "Checksum Errors Received",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 11,
           "name": "Length Errors Received",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 12,
           "name": "Other Errors Received",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 13,
           "name": "Connect Timeouts",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 14,
           "name": "Receive Timeouts",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 15,
           "name": "Network Errors",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         }
       ]
     },
@@ -6984,21 +7340,25 @@
           "name": "Set ID - Notes and Comments",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Source of Comment",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8,
+          "table": "0105"
         },
         {
           "position": 3,
           "name": "Comment",
           "data_type": "FT",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 65536
         }
       ]
     },
@@ -7011,252 +7371,292 @@
           "name": "Set ID - Observation Request",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Placer Order Number",
           "data_type": "CM_PLACER",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 75
         },
         {
           "position": 3,
           "name": "Filler Order Number",
           "data_type": "CM_FILLER",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 75
         },
         {
           "position": 4,
           "name": "Universal Service ID",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 5,
           "name": "Priority",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 6,
           "name": "Requested date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 7,
           "name": "Observation date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 8,
           "name": "Observation end date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 9,
           "name": "Collection Volume",
           "data_type": "CQ_QUANTITY",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 10,
           "name": "Collector Identifier",
           "data_type": "CN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 11,
           "name": "Specimen action code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0065"
         },
         {
           "position": 12,
           "name": "Danger Code",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 13,
           "name": "Relevant clinical information",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 300
         },
         {
           "position": 14,
           "name": "Specimen received date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 15,
           "name": "Specimen source",
           "data_type": "CM_SPS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 300
         },
         {
           "position": 16,
           "name": "Ordering Provider",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 17,
           "name": "Order Callback Phone Number",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 18,
           "name": "Placer field 1",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 19,
           "name": "Placer field 2",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 20,
           "name": "Filler Field 1",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 21,
           "name": "Filler Field 2",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 22,
           "name": "Results report / status change - date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 23,
           "name": "Charge to Practice",
           "data_type": "CM_MOC",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 24,
           "name": "Diagnostic service section ID",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10,
+          "table": "0074"
         },
         {
           "position": 25,
           "name": "Result Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0123"
         },
         {
           "position": 26,
           "name": "Parent Result",
           "data_type": "CM_PARENT_RESULT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 27,
           "name": "Quantity / timing",
           "data_type": "TQ",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 28,
           "name": "Result Copies To",
           "data_type": "CN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 150
         },
         {
           "position": 29,
           "name": "Parent Number",
           "data_type": "CM_EIP",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 150
         },
         {
           "position": 30,
           "name": "Transportation Mode",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20,
+          "table": "0124"
         },
         {
           "position": 31,
           "name": "Reason for Study",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 300
         },
         {
           "position": 32,
           "name": "Principal Result Interpreter",
           "data_type": "CM_NDL",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 33,
           "name": "Assistant Result Interpreter",
           "data_type": "CM_NDL",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 34,
           "name": "Technician",
           "data_type": "CM_NDL",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 35,
           "name": "Transcriptionist",
           "data_type": "CM_NDL",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 36,
           "name": "Scheduled date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         }
       ]
     },
@@ -7269,112 +7669,132 @@
           "name": "Set ID - Observational Simple",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Value Type",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0125"
         },
         {
           "position": 3,
           "name": "Observation Identifier",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 4,
           "name": "Observation Sub-ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 5,
           "name": "Observation Value",
           "data_type": "VARIES",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 65536
         },
         {
           "position": 6,
           "name": "Units",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 7,
           "name": "References Range",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 8,
           "name": "Abnormal Flags",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 10,
+          "table": "0078"
         },
         {
           "position": 9,
           "name": "Probability",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 5
         },
         {
           "position": 10,
           "name": "Nature of Abnormal Test",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 5,
+          "table": "0080"
         },
         {
           "position": 11,
           "name": "Observation result status",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0085"
         },
         {
           "position": 12,
           "name": "Effective date last observation normal values",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 13,
           "name": "User Defined Access Checks",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 14,
           "name": "Date / time of the observation",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 15,
           "name": "Producer's ID",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 16,
           "name": "Responsible Observer",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -7387,28 +7807,33 @@
           "name": "Type",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0159"
         },
         {
           "position": 2,
           "name": "Service Period",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 3,
           "name": "Diet, Supplement, or Preference Code",
           "data_type": "CE",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Text Instruction",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 80
         }
       ]
     },
@@ -7421,21 +7846,24 @@
           "name": "Tray Type",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 2,
           "name": "Service Period",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 3,
           "name": "Text Instruction",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 80
         }
       ]
     },
@@ -7448,294 +7876,344 @@
           "name": "Segment Type ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 2,
           "name": "Sequence Number - Test/ Observation Master File",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Producer's test / observation ID",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 4,
           "name": "Permitted Data Types",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12,
+          "table": "0125"
         },
         {
           "position": 5,
           "name": "Specimen Required",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 6,
           "name": "Producer ID",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 7,
           "name": "Observation Description",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 8,
           "name": "Other test / observation IDs for the observation",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 9,
           "name": "Other Names",
           "data_type": "ST",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 10,
           "name": "Preferred Report Name for the Observation",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 11,
           "name": "Preferred Short Name or Mnemonic for Observation",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 12,
           "name": "Preferred Long Name for the Observation",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 13,
           "name": "Orderability",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 14,
           "name": "Identity of instrument used to perform this study",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 15,
           "name": "Coded Representation of Method",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 16,
           "name": "Portable",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 17,
           "name": "Observation producing department / section",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 1
         },
         {
           "position": 18,
           "name": "Telephone Number of Section",
           "data_type": "TN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 40
         },
         {
           "position": 19,
           "name": "Nature of test / observation",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0174"
         },
         {
           "position": 20,
           "name": "Report Subheader",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 21,
           "name": "Report Display Order",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 22,
           "name": "Date / time stamp for any change in definition for obs",
           "data_type": "TS",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 23,
           "name": "Effective date / time of change",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 24,
           "name": "Typical Turn-around Time",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 25,
           "name": "Processing Time",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 26,
           "name": "Processing Priority",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40,
+          "table": "0168"
         },
         {
           "position": 27,
           "name": "Reporting Priority",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 5,
+          "table": "0169"
         },
         {
           "position": 28,
           "name": "Outside Site",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 29,
           "name": "Address of Outside Site",
           "data_type": "AD",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 1000
         },
         {
           "position": 30,
           "name": "Phone Number of Outside Site",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 400
         },
         {
           "position": 31,
           "name": "Confidentiality Code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0177"
         },
         {
           "position": 32,
           "name": "Observations required to interpret the observation",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 33,
           "name": "Interpretation of Observations",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 65536
         },
         {
           "position": 34,
           "name": "Contraindications to Observations",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 65536
         },
         {
           "position": 35,
           "name": "Reflex tests / observations",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 36,
           "name": "Rules that Trigger Reflex Testing",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 37,
           "name": "Fixed Canned Message",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 65536
         },
         {
           "position": 38,
           "name": "Patient Preparation",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 39,
           "name": "Procedure Medication",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 40,
           "name": "Factors that may affect the observation",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 41,
           "name": "Test / observation performance schedule",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 42,
           "name": "Description of Test Methods",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 65536
         }
       ]
     },
@@ -7748,77 +8226,88 @@
           "name": "Segment Type ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 2,
           "name": "Sequence Number - Test/ Observation Master File",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Units of Measure",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Range of Decimal Precision",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 5,
           "name": "Corresponding SI Units of Measure",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 6,
           "name": "SI Conversion Factor",
           "data_type": "TX",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 7,
           "name": "Reference",
           "data_type": "CM_RFR",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 8,
           "name": "Critical range for ordinal and continuous observations",
           "data_type": "CM_RANGE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 9,
           "name": "Absolute range for ordinal and continuous observations",
           "data_type": "CM_ABS_RANGE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 10,
           "name": "Delta Check Criteria",
           "data_type": "CM_DLT",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 11,
           "name": "Minimum Meaningful Increments",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -7831,56 +8320,64 @@
           "name": "Segment Type ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 2,
           "name": "Sequence Number - Test/ Observation Master File",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Preferred Coding System",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 5
         },
         {
           "position": 4,
           "name": "Valid coded answers",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 5,
           "name": "Normal test codes for categorical observations",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 6,
           "name": "Abnormal test codes for categorical observations",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 7,
           "name": "Critical test codes for categorical observations",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 8,
           "name": "Data Type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         }
       ]
     },
@@ -7893,105 +8390,122 @@
           "name": "Segment Type ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 2,
           "name": "Sequence Number - Test/ Observation Master File",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Derived Specimen",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0170"
         },
         {
           "position": 4,
           "name": "Container Description",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 5,
           "name": "Container Volume",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 6,
           "name": "Container Units",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 7,
           "name": "Specimen",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 8,
           "name": "Additive",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 9,
           "name": "Preparation",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10240
         },
         {
           "position": 10,
           "name": "Special Handling Requirements",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10240
         },
         {
           "position": 11,
           "name": "Normal Collection Volume",
           "data_type": "CQ_QUANTITY",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 12,
           "name": "Minimum Collection Volume",
           "data_type": "CQ_QUANTITY",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 13,
           "name": "Specimen Requirements",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10240
         },
         {
           "position": 14,
           "name": "Specimen Priorities",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60,
+          "table": "0027"
         },
         {
           "position": 15,
           "name": "Specimen Retention Time",
           "data_type": "CQ_QUANTITY",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -8004,28 +8518,32 @@
           "name": "Segment Type ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 2,
           "name": "Sequence Number - Test/ Observation Master File",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Tests / observations included within an ordered test battery",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 4,
           "name": "Observation ID Suffixes",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         }
       ]
     },
@@ -8038,21 +8556,24 @@
           "name": "Segment Type ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 2,
           "name": "Sequence Number - Test/ Observation Master File",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Derivation Rule",
           "data_type": "TX",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10240
         }
       ]
     },
@@ -8065,133 +8586,155 @@
           "name": "Order Control",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0119"
         },
         {
           "position": 2,
           "name": "Placer Order Number",
           "data_type": "CM_PLACER",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 75
         },
         {
           "position": 3,
           "name": "Filler Order Number",
           "data_type": "CM_FILLER",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 75
         },
         {
           "position": 4,
           "name": "Placer Group Number",
           "data_type": "CM_GROUP_ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 75
         },
         {
           "position": 5,
           "name": "Order Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0038"
         },
         {
           "position": 6,
           "name": "Response Flag",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0121"
         },
         {
           "position": 7,
           "name": "Quantity / timing",
           "data_type": "TQ",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 8,
           "name": "Parent Order",
           "data_type": "CM_EIP",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 9,
           "name": "Date / time of transaction",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 10,
           "name": "Entered By",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 11,
           "name": "Verified By",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 12,
           "name": "Ordering Provider",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 13,
           "name": "Enterer's Location",
           "data_type": "CM_PARENT_RESULT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         },
         {
           "position": 14,
           "name": "Call Back Phone Number",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 15,
           "name": "Order effective date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 16,
           "name": "Order Control Code Reason",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 17,
           "name": "Entering Organization",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 18,
           "name": "Entering Device",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 19,
           "name": "Action by",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 80
         }
       ]
     },
@@ -8204,189 +8747,222 @@
           "name": "Set ID - Patient ID",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Patient ID",
           "data_type": "CK",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 16
         },
         {
           "position": 3,
           "name": "Patient ID",
           "data_type": "CM_PAT_ID",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 4,
           "name": "Alternate Patient ID",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 5,
           "name": "Patient Name",
           "data_type": "PN",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 6,
           "name": "Mother's Maiden Name",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 7,
           "name": "Date of Birth",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 8,
           "name": "Sex",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0001"
         },
         {
           "position": 9,
           "name": "Patient Alias",
           "data_type": "PN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 48
         },
         {
           "position": 10,
           "name": "Race",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0005"
         },
         {
           "position": 11,
           "name": "Patient Address",
           "data_type": "AD",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 106
         },
         {
           "position": 12,
           "name": "County code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 13,
           "name": "Phone Number - Home",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 14,
           "name": "Phone Number - Business",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 15,
           "name": "Language - Patient",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         },
         {
           "position": 16,
           "name": "Marital Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0002"
         },
         {
           "position": 17,
           "name": "Religion",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0006"
         },
         {
           "position": 18,
           "name": "Patient Account Number",
           "data_type": "CK",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 19,
           "name": "Social security number - patient",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 16
         },
         {
           "position": 20,
           "name": "Driver's license number - patient",
           "data_type": "CM_LICENSE_NO",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         },
         {
           "position": 21,
           "name": "Mother's Identifier",
           "data_type": "CK",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 22,
           "name": "Ethnic Group",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0189"
         },
         {
           "position": 23,
           "name": "Birth Place",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         },
         {
           "position": 24,
           "name": "Multiple Birth Indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 25,
           "name": "Birth Order",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 26,
           "name": "Citizenship",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 3,
+          "table": "0171"
         },
         {
           "position": 27,
           "name": "Veterans Military Status",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -8399,98 +8975,117 @@
           "name": "Set ID - procedure",
           "data_type": "SI",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Procedure coding method",
           "data_type": "ID",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 2,
+          "table": "0089"
         },
         {
           "position": 3,
           "name": "Procedure code",
           "data_type": "ID",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 10,
+          "table": "0088"
         },
         {
           "position": 4,
           "name": "Procedure description",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 5,
           "name": "Procedure date / time",
           "data_type": "TS",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 6,
           "name": "Procedure type",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0090"
         },
         {
           "position": 7,
           "name": "Procedure minutes",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 8,
           "name": "Anesthesiologist",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 9,
           "name": "Anesthesia code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0019"
         },
         {
           "position": 10,
           "name": "Anesthesia minutes",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 11,
           "name": "Surgeon",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 12,
           "name": "Procedure Practitioner",
           "data_type": "CM_PRACTITIONER",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 13,
           "name": "Consent code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0059"
         },
         {
           "position": 14,
           "name": "Procedure priority",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         }
       ]
     },
@@ -8503,49 +9098,58 @@
           "name": "PRA - primary key value",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 2,
           "name": "Practitioner group",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 3,
           "name": "Practitioner Category",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 3,
+          "table": "0186"
         },
         {
           "position": 4,
           "name": "Provider Billing",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0187"
         },
         {
           "position": 5,
           "name": "Specialty",
           "data_type": "CM_SPD",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 100
         },
         {
           "position": 6,
           "name": "Practitioner ID Numbers",
           "data_type": "CM_PLN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 100
         },
         {
           "position": 7,
           "name": "Privileges",
           "data_type": "CM_PIP",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         }
       ]
     },
@@ -8558,350 +9162,422 @@
           "name": "Set ID - Patient Visit",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Patient Class",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0004"
         },
         {
           "position": 3,
           "name": "Assigned Patient Location",
           "data_type": "CM_INTERNAL_LOCATION",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 4,
           "name": "Admission Type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0007"
         },
         {
           "position": 5,
           "name": "Preadmit Number",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 6,
           "name": "Prior Patient Location",
           "data_type": "CM_INTERNAL_LOCATION",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 7,
           "name": "Attending Doctor",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 8,
           "name": "Referring Doctor",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 9,
           "name": "Consulting Doctor",
           "data_type": "CN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 10,
           "name": "Hospital Service",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0069"
         },
         {
           "position": 11,
           "name": "Temporary Location",
           "data_type": "CM_INTERNAL_LOCATION",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 12,
           "name": "Preadmit Test Indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0087"
         },
         {
           "position": 13,
           "name": "Readmission indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0092"
         },
         {
           "position": 14,
           "name": "Admit Source",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0023"
         },
         {
           "position": 15,
           "name": "Ambulatory Status",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 2,
+          "table": "0009"
         },
         {
           "position": 16,
           "name": "VIP Indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0099"
         },
         {
           "position": 17,
           "name": "Admitting Doctor",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 18,
           "name": "Patient type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0018"
         },
         {
           "position": 19,
           "name": "Visit Number",
           "data_type": "CM_PAT_ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 15
         },
         {
           "position": 20,
           "name": "Financial Class",
           "data_type": "CM_FINANCE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 50
         },
         {
           "position": 21,
           "name": "Charge Price Indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0032"
         },
         {
           "position": 22,
           "name": "Courtesy Code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0045"
         },
         {
           "position": 23,
           "name": "Credit Rating",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0046"
         },
         {
           "position": 24,
           "name": "Contract Code",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 2,
+          "table": "0044"
         },
         {
           "position": 25,
           "name": "Contract Effective Date",
           "data_type": "DT",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 8
         },
         {
           "position": 26,
           "name": "Contract Amount",
           "data_type": "NM",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12
         },
         {
           "position": 27,
           "name": "Contract Period",
           "data_type": "NM",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 3
         },
         {
           "position": 28,
           "name": "Interest Code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0073"
         },
         {
           "position": 29,
           "name": "Transfer to bad debt - code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0110"
         },
         {
           "position": 30,
           "name": "Transfer to bad debt - date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 31,
           "name": "Bad Debt Agency Code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10,
+          "table": "0021"
         },
         {
           "position": 32,
           "name": "Bad Debt Transfer Amount",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 33,
           "name": "Bad Debt Recovery Amount",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 34,
           "name": "Delete Account Indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0111"
         },
         {
           "position": 35,
           "name": "Delete Account Date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 36,
           "name": "Discharge Disposition",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3,
+          "table": "0112"
         },
         {
           "position": 37,
           "name": "Discharged to Location",
           "data_type": "CM_DLD",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         },
         {
           "position": 38,
           "name": "Diet Type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0114"
         },
         {
           "position": 39,
           "name": "Servicing Facility",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4,
+          "table": "0115"
         },
         {
           "position": 40,
           "name": "Bed Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0116"
         },
         {
           "position": 41,
           "name": "Account Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0117"
         },
         {
           "position": 42,
           "name": "Pending Location",
           "data_type": "CM_INTERNAL_LOCATION",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 43,
           "name": "Prior Temporary Location",
           "data_type": "CM_INTERNAL_LOCATION",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 44,
           "name": "Admit date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 45,
           "name": "Discharge date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 46,
           "name": "Current Patient Balance",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 47,
           "name": "Total Charges",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 48,
           "name": "Total Adjustments",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 49,
           "name": "Total Payments",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 50,
           "name": "Alternate Visit ID",
           "data_type": "CM_PAT_ID_0192",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -8914,63 +9590,73 @@
           "name": "Prior Pending Location",
           "data_type": "CM_INTERNAL_LOCATION",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 2,
           "name": "Accommodation Code",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 3,
           "name": "Admit Reason",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Transfer Reason",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 5,
           "name": "Patient Valuables",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 25
         },
         {
           "position": 6,
           "name": "Patient Valuables Location",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 25
         },
         {
           "position": 7,
           "name": "Visit User Code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2,
+          "table": "0130"
         },
         {
           "position": 8,
           "name": "Expected Admit Date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 9,
           "name": "Expected Discharge Date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         }
       ]
     },
@@ -8983,84 +9669,101 @@
           "name": "Query date / time",
           "data_type": "TS",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 2,
           "name": "Query Format Code",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0106"
         },
         {
           "position": 3,
           "name": "Query Priority",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0091"
         },
         {
           "position": 4,
           "name": "Query ID",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 5,
           "name": "Deferred Response Type",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0107"
         },
         {
           "position": 6,
           "name": "Deferred response date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 7,
           "name": "Quantity Limited Request",
           "data_type": "CQ_QUANTITY",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 8,
           "name": "Who Subject Filter",
           "data_type": "ST",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 9,
           "name": "What Subject Filter",
           "data_type": "ID",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 3,
+          "table": "0048"
         },
         {
           "position": 10,
           "name": "What Department Data Code",
           "data_type": "ST",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 11,
           "name": "What data code value qualifier",
           "data_type": "CM_VR",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 12,
           "name": "Query Results Level",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0108"
         }
       ]
     },
@@ -9073,56 +9776,67 @@
           "name": "Where Subject Filter",
           "data_type": "ST",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 2,
           "name": "When data start date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 3,
           "name": "When data end date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 4,
           "name": "What User Qualifier",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 5,
           "name": "Other QRY Subject Filter",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 6,
           "name": "Which date / time qualifier",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12,
+          "table": "0156"
         },
         {
           "position": 7,
           "name": "Which date / time status qualifier",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12,
+          "table": "0157"
         },
         {
           "position": 8,
           "name": "Date / time selection qualifier",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12,
+          "table": "0158"
         }
       ]
     },
@@ -9135,49 +9849,58 @@
           "name": "Anticipated Price",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 2,
           "name": "Manufacturer ID",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 3,
           "name": "Manufacturer's Catalog",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 16
         },
         {
           "position": 4,
           "name": "Vendor ID",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 5,
           "name": "Vendor Catalog",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 16
         },
         {
           "position": 6,
           "name": "Taxable",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         },
         {
           "position": 7,
           "name": "Substitute Allowed",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0136"
         }
       ]
     },
@@ -9190,70 +9913,80 @@
           "name": "Requisition Line Number",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Item Code - Internal",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 3,
           "name": "Item Code - External",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Hospital Item Code",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 5,
           "name": "Requisition Quantity",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 6
         },
         {
           "position": 6,
           "name": "Requisition Unit of measure",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 7,
           "name": "Department cost center",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 8,
           "name": "Item Natural Account Code",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 9,
           "name": "Deliver-to ID",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 10,
           "name": "Date Needed",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         }
       ]
     },
@@ -9266,84 +9999,96 @@
           "name": "Give Sub-ID Counter",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Administration Sub-ID Counter",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Date / time start of administration",
           "data_type": "TS",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 4,
           "name": "Date / time end of administration",
           "data_type": "TS",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 5,
           "name": "Administered Code",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         },
         {
           "position": 6,
           "name": "Administered Amount",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 7,
           "name": "Administered Units",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 8,
           "name": "Administered Dosage Form",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 9,
           "name": "Administration Notes",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 10,
           "name": "Administering Provider",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 11,
           "name": "Administered-at Location",
           "data_type": "CM_LA1",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 12,
           "name": "Administered Per",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -9356,28 +10101,33 @@
           "name": "RX Component Type",
           "data_type": "ID",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0166"
         },
         {
           "position": 2,
           "name": "Component Code",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         },
         {
           "position": 3,
           "name": "Component Amount",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 4,
           "name": "Component Units",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -9390,105 +10140,121 @@
           "name": "Dispense Sub-ID Counter",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Dispense / give code",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         },
         {
           "position": 3,
           "name": "Date / time dispensed",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 4,
           "name": "Actual Dispense Amount",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 5,
           "name": "Actual Dispense Units",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 6,
           "name": "Actual Dosage Form",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 7,
           "name": "Prescription Number",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 8,
           "name": "Number of Refills Remaining",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 9,
           "name": "Dispense Notes",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 10,
           "name": "Dispensing Provider",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 11,
           "name": "Substitution Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0167"
         },
         {
           "position": 12,
           "name": "Total Daily Dose",
           "data_type": "CQ_QUANTITY",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 13,
           "name": "Deliver-to location",
           "data_type": "CM_LA1",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 14,
           "name": "Needs Human Review",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 15,
           "name": "Pharmacy Special Dispensing Instructions",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         }
       ]
     },
@@ -9501,168 +10267,193 @@
           "name": "Quantity / timing",
           "data_type": "TQ",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 2,
           "name": "Give Code",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         },
         {
           "position": 3,
           "name": "Give Amount - Minimum",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 4,
           "name": "Give Amount - Maximum",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 5,
           "name": "Give Units",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 6,
           "name": "Give Dosage Form",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 7,
           "name": "Provider's Administration Instructions",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 8,
           "name": "Deliver-to location",
           "data_type": "CM_LA1",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 9,
           "name": "Substitution Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0167"
         },
         {
           "position": 10,
           "name": "Dispense Amount",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 11,
           "name": "Dispense Units",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 12,
           "name": "Number of Refills",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 13,
           "name": "Ordering Provider's DEA Number",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 14,
           "name": "Pharmacist Verifier ID",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 15,
           "name": "Prescription Number",
           "data_type": "ST",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 16,
           "name": "Number of Refills Remaining",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 17,
           "name": "Number of refills / doses dispensed",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 18,
           "name": "Date / time of most recent refill or dose dispensed",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 19,
           "name": "Total Daily Dose",
           "data_type": "CQ_QUANTITY",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 10
         },
         {
           "position": 20,
           "name": "Needs Human Review",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 21,
           "name": "Pharmacy Special Dispensing Instructions",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 22,
           "name": "Give Per",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 23,
           "name": "Give Rate Amount",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 6
         },
         {
           "position": 24,
           "name": "Give Rate Units",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -9675,112 +10466,129 @@
           "name": "Give Sub-ID Counter",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Dispense Sub-ID Counter",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 3,
           "name": "Quantity / timing",
           "data_type": "TQ",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 4,
           "name": "Give Code",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         },
         {
           "position": 5,
           "name": "Give Amount - Minimum",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 6,
           "name": "Give Amount - Maximum",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 7,
           "name": "Give Units",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 8,
           "name": "Give Dosage Form",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 9,
           "name": "Administration Notes",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 200
         },
         {
           "position": 10,
           "name": "Substitution Status",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0167"
         },
         {
           "position": 11,
           "name": "Deliver-to location",
           "data_type": "CM_LA1",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 12,
           "name": "Needs Human Review",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 13,
           "name": "Pharmacy Special Administration Instructions",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 14,
           "name": "Give Per",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 15,
           "name": "Give Rate Amount",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 6
         },
         {
           "position": 16,
           "name": "Give Rate Units",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -9793,119 +10601,137 @@
           "name": "Requested Give Code",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         },
         {
           "position": 2,
           "name": "Requested Give Amount - Minimum",
           "data_type": "NM",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 3,
           "name": "Requested Give Amount - Maximum",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 4,
           "name": "Requested Give Units",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 5,
           "name": "Requested Dosage Form",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 6,
           "name": "Provider's Pharmacy Instructions",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 7,
           "name": "Provider's Administration Instructions",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 8,
           "name": "Deliver-to location",
           "data_type": "CM_LA1",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 12
         },
         {
           "position": 9,
           "name": "Allow Substitutions",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0161"
         },
         {
           "position": 10,
           "name": "Requested Dispense Code",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 100
         },
         {
           "position": 11,
           "name": "Requested Dispense Amount",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         },
         {
           "position": 12,
           "name": "Requested Dispense Units",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 13,
           "name": "Number of Refills",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 14,
           "name": "Ordering Provider's DEA Number",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 15,
           "name": "Pharmacist Verifier ID",
           "data_type": "CN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 16,
           "name": "Needs Human Review",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 17,
           "name": "Requested Give Per",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 20
         }
       ]
     },
@@ -9918,28 +10744,32 @@
           "name": "Route",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 2,
           "name": "Site",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 3,
           "name": "Administration Device",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 4,
           "name": "Administration Method",
           "data_type": "CE",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         }
       ]
     },
@@ -9952,112 +10782,132 @@
           "name": "STF - primary key value",
           "data_type": "CE",
           "required": true,
-          "repeats": false
+          "repeats": false,
+          "max_length": 60
         },
         {
           "position": 2,
           "name": "Staff ID Code",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 3,
           "name": "Staff Name",
           "data_type": "PN",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 48
         },
         {
           "position": 4,
           "name": "Staff Type",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 2,
+          "table": "0182"
         },
         {
           "position": 5,
           "name": "Sex",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0001"
         },
         {
           "position": 6,
           "name": "Date of Birth",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 7,
           "name": "Active / inactive",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0183"
         },
         {
           "position": 8,
           "name": "Department",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 9,
           "name": "Service",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 200
         },
         {
           "position": 10,
           "name": "Phone",
           "data_type": "TN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 11,
           "name": "Office / home address",
           "data_type": "AD",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 106
         },
         {
           "position": 12,
           "name": "Activation Date",
           "data_type": "CM_DIN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 19
         },
         {
           "position": 13,
           "name": "Inactivation Date",
           "data_type": "CM_DIN",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 19
         },
         {
           "position": 14,
           "name": "Backup Person ID",
           "data_type": "CE",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 60
         },
         {
           "position": 15,
           "name": "E-mail Address",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 40
         },
         {
           "position": 16,
           "name": "Preferred method of Contact",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0185"
         }
       ]
     },
@@ -10070,161 +10920,185 @@
           "name": "Set ID - UB82",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Blood deductible",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 3,
           "name": "Blood furnished pints of",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 4,
           "name": "Blood replaced pints",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 5,
           "name": "Blood not replaced pints",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 6,
           "name": "Co-insurance days",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 7,
           "name": "Condition code",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 2,
+          "table": "0043"
         },
         {
           "position": 8,
           "name": "Covered days",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 9,
           "name": "Non-covered days",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 10,
           "name": "Value amount and code",
           "data_type": "CM_UVC",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12
         },
         {
           "position": 11,
           "name": "Number of grace days",
           "data_type": "NM",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 12,
           "name": "Special program indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 13,
           "name": "PSRO / UR approval indicator",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1
         },
         {
           "position": 14,
           "name": "PSRO / UR approved stay - from",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 15,
           "name": "PSRO / UR approved stay - to",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 16,
           "name": "Occurrence",
           "data_type": "CM_OCD",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 17,
           "name": "Occurrence span",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 2
         },
         {
           "position": 18,
           "name": "Occurrence span start date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 19,
           "name": "Occurrence span end date",
           "data_type": "DT",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 20,
           "name": "UB-82 locator 2",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 30
         },
         {
           "position": 21,
           "name": "UB-82 locator 9",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 7
         },
         {
           "position": 22,
           "name": "UB-82 locator 27",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 8
         },
         {
           "position": 23,
           "name": "UB-82 locator 45",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 17
         }
       ]
     },
@@ -10237,112 +11111,129 @@
           "name": "Set ID - UB92",
           "data_type": "SI",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 2,
           "name": "Co-insurance days",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 3,
           "name": "Condition code",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 2,
+          "table": "0043"
         },
         {
           "position": 4,
           "name": "Covered days",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 3
         },
         {
           "position": 5,
           "name": "Non-covered days",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 4
         },
         {
           "position": 6,
           "name": "Value amount and code",
           "data_type": "CM_UVC",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 11
         },
         {
           "position": 7,
           "name": "Occurrence code and date",
           "data_type": "CM_OCD",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 11
         },
         {
           "position": 8,
           "name": "Occurrence span code / dates",
           "data_type": "CM_OSP",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 28
         },
         {
           "position": 9,
           "name": "UB92 locator 2",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 29
         },
         {
           "position": 10,
           "name": "UB92 locator 11",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12
         },
         {
           "position": 11,
           "name": "UB92 locator 31",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 5
         },
         {
           "position": 12,
           "name": "Document control number",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 23
         },
         {
           "position": 13,
           "name": "UB92 locator 49",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 4
         },
         {
           "position": 14,
           "name": "UB92 locator 56",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 14
         },
         {
           "position": 15,
           "name": "UB92 locator 57",
           "data_type": "ST",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 27
         },
         {
           "position": 16,
           "name": "UB92 Locator 78",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 2
         }
       ]
     },
@@ -10355,49 +11246,59 @@
           "name": "R/U date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 2,
           "name": "Report Priority",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0109"
         },
         {
           "position": 3,
           "name": "R/U Who Subject Definition",
           "data_type": "ST",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 4,
           "name": "R/U What Subject Definition",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 3,
+          "table": "0048"
         },
         {
           "position": 5,
           "name": "R/U What Department Code",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 6,
           "name": "R/U display / print locations",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 7,
           "name": "R/U Results Level",
           "data_type": "ID",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 1,
+          "table": "0108"
         }
       ]
     },
@@ -10410,56 +11311,67 @@
           "name": "R/U Where Subject Definition",
           "data_type": "ST",
           "required": true,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 2,
           "name": "R/U when data start date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 3,
           "name": "R/U when data end date / time",
           "data_type": "TS",
           "required": false,
-          "repeats": false
+          "repeats": false,
+          "max_length": 26
         },
         {
           "position": 4,
           "name": "R/U What User Qualifier",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 5,
           "name": "R/U Other Results Subject Definition",
           "data_type": "ST",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 20
         },
         {
           "position": 6,
           "name": "R/U which date / time qualifier",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12,
+          "table": "0156"
         },
         {
           "position": 7,
           "name": "R/U which date / time status qualifier",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12,
+          "table": "0157"
         },
         {
           "position": 8,
           "name": "R/U date / time selection qualifier",
           "data_type": "ID",
           "required": false,
-          "repeats": true
+          "repeats": true,
+          "max_length": 12,
+          "table": "0158"
         }
       ]
     }
@@ -10502,7 +11414,8 @@
           "position": 6,
           "name": "Country",
           "data_type": "ID",
-          "required": false
+          "required": false,
+          "table": "0399"
         },
         {
           "position": 7,
@@ -11031,13 +11944,15 @@
           "position": 1,
           "name": "Message Type",
           "data_type": "ID",
-          "required": false
+          "required": false,
+          "table": "0076"
         },
         {
           "position": 2,
           "name": "Trigger Event",
           "data_type": "ID",
-          "required": false
+          "required": false,
+          "table": "0003"
         }
       ]
     },
@@ -11199,7 +12114,8 @@
           "position": 5,
           "name": "Type",
           "data_type": "ID",
-          "required": false
+          "required": false,
+          "table": "0192"
         }
       ]
     },
@@ -11359,13 +12275,15 @@
           "position": 1,
           "name": "Policy Type",
           "data_type": "ID",
-          "required": false
+          "required": false,
+          "table": "0147"
         },
         {
           "position": 2,
           "name": "Amount Class",
           "data_type": "ID",
-          "required": false
+          "required": false,
+          "table": "0193"
         },
         {
           "position": 3,
@@ -11826,7 +12744,8 @@
           "position": 9,
           "name": "Conjunction",
           "data_type": "ID",
-          "required": false
+          "required": false,
+          "table": "0472"
         },
         {
           "position": 10,
