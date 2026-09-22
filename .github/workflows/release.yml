@@ -164,15 +164,23 @@ jobs:
             echo "macOS signing: disabled (no Apple secrets configured) - building unsigned"
           fi
 
+      # No updater artifacts: tauri.conf.json says so, and the 1.7.0 run
+      # still uploaded the macOS .app.tar.gz pair, so the setting is
+      # repeated on the command line (a --config overlay wins over the
+      # file), the action is told not to build a latest.json, and the
+      # updater signing key is kept out of the build — without a key the
+      # bundler cannot produce a signed updater bundle at all, so a
+      # regression fails the job instead of quietly re-adding the assets.
+      # The in-app "Check for updates" compares against the latest GitHub
+      # release and needs none of this.
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          args: --target ${{ matrix.platform.target }}
+          includeUpdaterJson: false
+          args: --target ${{ matrix.platform.target }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       # The CLI is the same validators without the desktop shell; it builds
       # on the headless core, so no WebKit is involved, and ships beside the

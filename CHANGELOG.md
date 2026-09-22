@@ -2,6 +2,17 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [Unreleased]
+
+### Fixed
+- **The macOS `.app.tar.gz` updater bundles were still uploaded with
+  1.7.0**, although `createUpdaterArtifacts` is off in `tauri.conf.json`.
+  The release workflow now repeats the setting on the `tauri build`
+  command line, tells the action not to build a `latest.json`, and no
+  longer hands the updater signing key to the build — without a key no
+  signed updater bundle can be produced, so a regression fails the job
+  instead of quietly re-adding the assets.
+
 ## [1.7.0] — 2026-09-22
 
 ### Security
@@ -61,10 +72,11 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   installer language only affects the installer's own dialogs, the app
   is multilingual either way, and the NSIS `setup.exe` already carries a
   language selector; the MSI stays for managed deployment. The two
-  macOS `.app.tar.gz` updater bundles are gone: nothing consumed them —
-  release artifacts are not signed, there is no `latest.json`, and
+  macOS `.app.tar.gz` updater bundles were meant to go: nothing consumes
+  them — release artifacts are not signed, there is no `latest.json`, and
   *Help → Check for updates* has always fallen back to comparing against
-  the latest GitHub release, which it still does. The AppImage no longer
+  the latest GitHub release, which it still does. (They still appeared on
+  the 1.7.0 release; see *Unreleased*.) The AppImage no longer
   bundles GStreamer, which BridgeLab never used: 78 MB instead of 91 —
   the rest is the WebKitGTK and GTK stack it carries to run on any distro.
 
