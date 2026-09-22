@@ -148,14 +148,30 @@ of any two open tabs with HL7 syntax highlighting. Pick left/right from
 the dropdowns, use the ⇆ button to swap sides, press <kbd>Esc</kbd> to
 close. At least two tabs must be open.</p>
 
-<h3>Allowed values for coded fields</h3>
-<p>When the selected field is backed by an HL7 value table (PID-8
-Administrative Sex, PV1-2 Patient Class, MSA-1 Acknowledgment Code,
-ORC-1 Order Control, OBX-11 Result Status, …), the inspector lists the
-<strong>allowed values</strong> with their meanings and highlights the
-one currently in the message. If the current value is not in the table,
-a warning appears — a quick way to spot non-standard codes before the
-receiving system rejects them.</p>
+<h3>Coded fields: what a code means</h3>
+<p>BridgeLab ships the HL7 value tables — 394 tables, about 5,000
+codes — and knows which table every coded field and component draws
+from, per version. A coded value is explained wherever you meet it:
+the tree shows the meaning next to the value (<code>M — Male</code>,
+<code>ADT — ADT message</code>, <code>F — Final results</code>),
+hovering the field in the editor says it too, and auto-completion in a
+coded field offers every value of its table. Components are covered as
+well: MSH-9.2 is explained from the event-type table, PID-3.5 from the
+identifier-type table.</p>
+<p>The Field Inspector lists the whole table for the selected field or
+component and highlights the current value. Whether a value outside the
+table is a problem depends on the field's data type, and the inspector
+says which case you are in: an <code>ID</code> field draws from an
+HL7-defined table (<em>Allowed values</em>) and a value not listed is
+non-standard — a warning appears; an <code>IS</code> field draws from a
+user-defined table (<em>Suggested values</em>), where sites add their own
+codes and absence means nothing. Some user-defined tables have no
+standard values at all (IN1-2 Insurance Plan ID); those fields show no
+list.</p>
+<p class="note">Which table a field uses follows the declared HL7
+version; the table contents are one set for all versions, as the
+upstream source ships them. A code added in a later release is
+therefore accepted for an earlier one.</p>
 
 <h3>Schema-aware tree</h3>
 <p><strong>View → Show Schema Fields</strong> injects placeholder rows

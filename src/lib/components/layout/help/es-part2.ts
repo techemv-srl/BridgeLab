@@ -126,6 +126,12 @@ está desactivado), la codificación de caracteres usada y la primera
 línea del mensaje. <strong>Haz clic en una fila para reabrir ese mensaje
 en una pestaña.</strong> Los errores del listener aparecen en línea como
 filas rojas.</p>
+<p>Los chips de la cabecera de la consola filtran las filas por
+resultado — <em>AA</em>, <em>AE</em>, <em>AR</em>, <em>Sin ACK</em>
+(recibidos con el auto-ACK desactivado), <em>Errores</em> — y cada uno
+lleva un contador actualizado, de modo que "AE&nbsp;12" de 300 salta a
+la vista antes de desplazarse. Los mismos chips están en la pestaña
+Historial.</p>
 <p>El interruptor <em>"Abrir los mensajes recibidos en una pestaña
 nueva"</em> (activado por defecto) puede desactivarse durante pruebas de
 alto volumen: los mensajes quedan entonces solo en la consola y tú
@@ -181,7 +187,14 @@ importación de WSDL está prevista como paso siguiente.</p>
 <p>Cada envío y cada recepción quedan registrados (host, puerto, tamaño,
 código de respuesta, tiempo de ida y vuelta). Las últimas 100 entradas
 se conservan entre reinicios; haz clic en cualquier fila para ver la
-petición y la respuesta completas.</p>
+petición y la respuesta completas. Un envío MLLP registra además el
+<strong>código ACK</strong> con el que respondió el receptor (MSA-1),
+mostrado como insignia verde o roja en la fila: un envío que llegó al
+par y recibió un <code>AE</code> es "OK" a nivel de transporte y un
+rechazo a nivel de aplicación, y la insignia distingue ambos casos. Los
+chips de filtro sobre la lista — <em>AA</em>, <em>AE</em>, <em>AR</em>,
+<em>Sin ACK</em>, <em>Fallidos</em> — llevan contadores y reducen la
+lista a un solo resultado.</p>
 
 <h3>Perfiles de conexión</h3>
 <p>Guarda los endpoints de uso frecuente como perfiles con nombre desde

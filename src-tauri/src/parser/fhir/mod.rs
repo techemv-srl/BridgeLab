@@ -163,6 +163,8 @@ fn build_json_tree(value: &Value, _resource_type: &str, _depth: u32) -> Vec<Tree
                 has_children,
                 is_truncated: false,
                 child_count,
+                code: None,
+                code_desc: None,
             });
             // Safety: cap at 200 top-level nodes
             if i >= 200 {
@@ -249,6 +251,8 @@ pub fn get_fhir_children(resource: &FhirResource, node_id: &str) -> Vec<TreeNode
                         has_children,
                         is_truncated: false,
                         child_count,
+                        code: None,
+                        code_desc: None,
                     }
                 })
                 .collect()
@@ -268,6 +272,8 @@ pub fn get_fhir_children(resource: &FhirResource, node_id: &str) -> Vec<TreeNode
                         has_children,
                         is_truncated: false,
                         child_count,
+                        code: None,
+                        code_desc: None,
                     }
                 })
                 .collect()
@@ -287,6 +293,8 @@ fn build_xml_tree_simple(xml: &str, resource_type: &str) -> Vec<TreeNode> {
         has_children: false,
         is_truncated: false,
         child_count: 0,
+        code: None,
+        code_desc: None,
     }]
 }
 

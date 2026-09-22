@@ -288,12 +288,28 @@ estructura es:</p>
 ├── validation/
 │   ├── hospital-adt-rules.json
 │   └── z-segment-checks.json
+├── fhir/
+│   └── user-rules.json
 └── anonymization/
     └── eu-national-id.json</code></pre>
 
 <p>En Windows la raíz es <code>%APPDATA%\\BridgeLab\\plugins</code>, en
 macOS <code>~/Library/Application Support/BridgeLab/plugins</code>, en
 Linux <code>~/.config/BridgeLab/plugins</code>.</p>
+
+<p>Allí viven tres tipos de pack: reglas de validación HL7 v2
+(<code>validation/</code>, abajo), reglas de validación FHIR
+(<code>fhir/</code> — un invariante FHIRPath, o un selector más una
+comprobación; véase <em>Soporte FHIR → Reglas FHIR
+personalizadas</em>) y campos PHI adicionales para el anonimizador
+(<code>anonymization/</code>, abajo).</p>
+
+<p><strong>Todos los niveles tienen el mecanismo completo</strong> — los
+tres tipos, cada comprobación, recarga y activación por pack. La única
+diferencia es cuántos packs pueden estar activos a la vez: hasta
+<strong>3</strong> en Community, ilimitados en Pro y Enterprise. El editor
+integrado que escribe packs FHIR es Pro; un pack FHIR escrito a mano se
+ejecuta en Community como cualquier otro.</p>
 
 <h3>Pack de reglas de validación</h3>
 <pre><code>{
@@ -386,8 +402,8 @@ integración y los hospitales.</p>
 		<td>4 mensajes v2.5</td><td>Catálogo completo</td><td>Catálogo completo</td></tr>
 	<tr><td>Detección de PHI (solo visualización)</td>
 		<td>✓</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Packs de plugins (básico)</td>
-		<td>✓</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Packs de plugins (todos los tipos, todas las comprobaciones)</td>
+		<td>3 activos a la vez</td><td>Ilimitados</td><td>Ilimitados</td></tr>
 	<tr><td>Listener MLLP</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>HTTP POST/PUT/DELETE/PATCH, y autenticación en cualquier método</td>
@@ -400,8 +416,8 @@ integración y los hospitales.</p>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Evaluador FHIRPath + Visualizador de Bundle</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
-	<tr><td>Plugins y casos de prueba ilimitados</td>
-		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Casos de prueba guardados</td>
+		<td>10</td><td>Ilimitados</td><td>Ilimitados</td></tr>
 	<tr><td>SOAP + soporte prioritario</td>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>

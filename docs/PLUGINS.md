@@ -41,6 +41,19 @@ A reload is also triggered at every app startup.
 - Files that fail to parse are surfaced with a red error block &ndash; the
   rest of the registry stays loaded.
 
+## Tiers
+
+Plugin packs are not a paid feature: every pack kind and every check type
+runs in every tier, and so do reload and the per-pack toggles. The one
+difference is the number of packs that can be **active at the same time**
+&ndash; up to **3** in Community, unlimited in Pro and Enterprise. Enabling
+a fourth pack in Community is refused with an upgrade prompt; packs that
+were enabled beyond the cap (during a trial, say) are neither locked nor
+deleted &ndash; they show an "inactive" badge and contribute rules again the
+moment another pack is disabled or the license is upgraded. The in-app
+editor for FHIR packs (below) is the only plugin-related feature that is
+Pro by itself.
+
 ## Validation pack schema
 
 ```json

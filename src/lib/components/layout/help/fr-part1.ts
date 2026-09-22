@@ -162,15 +162,32 @@ gauche/droite dans les listes déroulantes, utilisez le bouton ⇆ pour
 inverser les côtés, appuyez sur <kbd>Esc</kbd> pour fermer. Au moins deux
 onglets doivent être ouverts.</p>
 
-<h3>Valeurs autorisées pour les champs codés</h3>
-<p>Lorsque le champ sélectionné est adossé à une table de valeurs HL7
-(PID-8 Administrative Sex, PV1-2 Patient Class, MSA-1 Acknowledgment
-Code, ORC-1 Order Control, OBX-11 Result Status, …), l'inspecteur liste
-les <strong>valeurs autorisées</strong> avec leur signification et met en
-évidence celle présente dans le message. Si la valeur actuelle ne figure
-pas dans la table, un avertissement s'affiche — un moyen rapide de
-repérer les codes non standard avant que le système récepteur ne les
-rejette.</p>
+<h3>Champs codés : ce que signifie un code</h3>
+<p>BridgeLab embarque les tables de valeurs HL7 — 394 tables, environ
+5 000 codes — et sait de quelle table chaque champ et composant codé
+tire ses valeurs, par version. Une valeur codée est expliquée partout où
+vous la rencontrez : l'arbre affiche la signification à côté de la
+valeur (<code>M — Male</code>, <code>ADT — ADT message</code>,
+<code>F — Final results</code>), le survol du champ dans l'éditeur la
+rappelle, et l'auto-complétion dans un champ codé propose toutes les
+valeurs de sa table. Les composants sont couverts aussi : MSH-9.2 est
+expliqué par la table des événements, PID-3.5 par celle des types
+d'identifiant.</p>
+<p>L'Inspecteur de champ liste la table entière du champ ou du composant
+sélectionné et met en évidence la valeur actuelle. Qu'une valeur hors
+table soit un problème dépend du type de donnée, et l'inspecteur indique
+dans quel cas vous êtes : un champ <code>ID</code> tire ses valeurs
+d'une table définie par HL7 (<em>Valeurs autorisées</em>) et une valeur
+absente est non standard — un avertissement s'affiche ; un champ
+<code>IS</code> tire les siennes d'une table définie par l'utilisateur
+(<em>Valeurs suggérées</em>), où chaque site ajoute ses propres codes et
+où l'absence ne signifie rien. Certaines tables utilisateur n'ont aucune
+valeur standard (IN1-2 Insurance Plan ID) : ces champs n'affichent pas
+de liste.</p>
+<p class="note">La table utilisée par un champ suit la version HL7
+déclarée ; le contenu des tables est un jeu unique pour toutes les
+versions, tel que la source amont le fournit. Un code ajouté dans une
+version ultérieure est donc accepté pour une version antérieure.</p>
 
 <h3>Arbre guidé par le schéma</h3>
 <p><strong>Affichage → Afficher les champs du standard</strong> insère

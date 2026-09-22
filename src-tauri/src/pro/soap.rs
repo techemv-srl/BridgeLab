@@ -178,6 +178,7 @@ pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
     let mut fault_code = String::new();
     let mut fault_reason = String::new();
     let mut capture: Option<&'static str> = None;
+    let mut captured = String::new();
     let mut in_code = false;
     let mut in_reason = false;
 
@@ -222,13 +223,31 @@ pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
                     body_inner = Some(String::new());
                 }
             }
+            // quick-xml splits text at entity references: "Bad &amp; wrong"
+            // arrives as Text("Bad "), GeneralRef("amp"), Text(" wrong").
+            // Everything inside a captured element is accumulated and
+            // assigned when the element closes.
             Ok((_, Event::Text(t))) => {
-                if let Some(which) = capture {
-                    let txt = t.unescape().unwrap_or_default().to_string();
-                    if which == "code" && fault_code.is_empty() {
-                        fault_code = txt.trim().to_string();
-                    } else if which == "reason" && fault_reason.is_empty() {
-                        fault_reason = txt.trim().to_string();
+                if capture.is_some() {
+                    if let Ok(txt) = t.xml10_content() {
+                        captured.push_str(&txt);
+                    }
+                }
+            }
+            Ok((_, Event::GeneralRef(r))) => {
+                if capture.is_some() {
+                    if let Ok(Some(ch)) = r.resolve_char_ref() {
+                        captured.push(ch);
+                    } else if let Ok(name) = r.decode() {
+                        match quick_xml::escape::resolve_predefined_entity(&name) {
+                            Some(s) => captured.push_str(s),
+                            // An entity this parser cannot expand is kept as written.
+                            None => {
+                                captured.push('&');
+                                captured.push_str(&name);
+                                captured.push(';');
+                            }
+                        }
                     }
                 }
             }
@@ -244,7 +263,15 @@ pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
                     b"Fault" if depth == body_depth + 1 => in_fault = false,
                     b"Code" => in_code = false,
                     b"Reason" => in_reason = false,
-                    b"faultcode" | b"faultstring" | b"Value" | b"Text" => capture = None,
+                    b"faultcode" | b"faultstring" | b"Value" | b"Text" => {
+                        match capture {
+                            Some("code") if fault_code.is_empty() => fault_code = captured.trim().to_string(),
+                            Some("reason") if fault_reason.is_empty() => fault_reason = captured.trim().to_string(),
+                            _ => {}
+                        }
+                        captured.clear();
+                        capture = None;
+                    }
                     _ => {}
                 }
                 depth -= 1;
@@ -409,6 +436,17 @@ mod tests {
         let f = fault.expect("fault detected");
         assert_eq!(f.code, "soap:Client");
         assert_eq!(f.reason, "Bad payload");
+    }
+
+    /// Entity references in the fault text are resolved (quick-xml 0.41
+    /// hands text over as written; the parser decodes it).
+    #[test]
+    fn fault_text_entities_are_resolved() {
+        let xml = r#"<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+            <soap:Body><soap:Fault><faultcode>soap:Server</faultcode>
+            <faultstring>Bad &amp; wrong &lt;here&gt;</faultstring></soap:Fault></soap:Body></soap:Envelope>"#;
+        let (fault, _) = parse_response(xml);
+        assert_eq!(fault.expect("fault detected").reason, "Bad & wrong <here>");
     }
 
     #[test]

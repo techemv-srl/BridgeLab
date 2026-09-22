@@ -1,151 +1,93 @@
 //! HL7 value tables ("HL7 tables") for coded fields.
 //!
-//! A pragmatic subset of the official tables covering the coded fields an
-//! integration engineer hits daily (PID-8 sex, PV1-2 patient class, MSA-1
-//! ack code, ORC-1 order control, ...). The mapping from (segment,
-//! position) to table id lives here too, so `tables::get_field_info` can
-//! attach a `table_id` without touching every hardcoded FieldDef.
+//! The tables ship in `resources/hl7/tables.json`, produced by
+//! `tools/hl7-schema-importer` from hl7-dictionary (MIT) — 394 tables,
+//! about 5,000 codes. Which table a field or component draws from is part
+//! of the per-version schema catalogue (`FieldSpec::table`,
+//! `ComponentSpec::table`); the table *contents* are one set for every
+//! version, because that is how the upstream source ships them. A code
+//! added to a table in a later release is therefore accepted for an
+//! earlier one — a tolerance, not a false positive.
 //!
-//! Values are stable across v2.3–v2.8 for this subset; version-specific
-//! tables can be layered in later via the hl7-schema-importer.
+//! Whether a table is closed or open follows the HL7 data type of the
+//! element using it: `ID` fields draw from HL7-defined tables (the standard
+//! lists every legal value), `IS` fields from user-defined tables (the
+//! standard suggests values, sites add their own). Only the former justify
+//! flagging a value that is not listed.
 
-use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
-#[derive(Debug, Clone, Serialize)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableValue {
-    pub code: &'static str,
-    pub description: &'static str,
+    pub code: String,
+    pub description: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValueTable {
     pub id: String,
-    pub name: &'static str,
-    /// False for deliberately partial tables (e.g. 0076 Message Type):
-    /// the UI must not flag absent values as non-standard.
+    pub name: String,
+    /// True when the standard defines the complete set of legal values
+    /// (the element is an `ID`): a value not listed is non-standard. False
+    /// for user-defined tables (`IS` and the like), whose listed values are
+    /// suggestions — absence is not evidence of anything.
+    #[serde(default)]
     pub exhaustive: bool,
     pub values: Vec<TableValue>,
 }
 
-/// Map a (segment, field position) to the HL7 table id its values come from.
-pub fn table_for_field(segment: &str, position: usize) -> Option<&'static str> {
-    Some(match (segment, position) {
-        ("PID", 8) => "0001",
-        ("PID", 16) => "0002",
-        ("PID", 24) | ("PID", 30) => "0136",
-        ("PV1", 2) => "0004",
-        ("PV1", 4) => "0007",
-        ("MSH", 9) => "0076",
-        ("MSH", 11) => "0103",
-        ("MSA", 1) => "0008",
-        ("ORC", 1) => "0119",
-        ("ORC", 5) => "0038",
-        ("OBX", 11) => "0085",
-        ("OBR", 25) => "0123",
-        ("AL1", 2) => "0127",
-        ("DG1", 6) => "0052",
-        _ => return None,
+#[derive(Deserialize)]
+struct TablesFile {
+    tables: Vec<ValueTable>,
+}
+
+const TABLES_JSON: &str = include_str!("../../../resources/hl7/tables.json");
+
+fn tables() -> &'static HashMap<String, ValueTable> {
+    static TABLES: OnceLock<HashMap<String, ValueTable>> = OnceLock::new();
+    TABLES.get_or_init(|| {
+        let file: TablesFile = serde_json::from_str(TABLES_JSON)
+            .expect("shipped HL7 tables JSON is malformed — this is a build bug");
+        file.tables.into_iter().map(|t| (t.id.clone(), t)).collect()
     })
 }
 
-fn v(code: &'static str, description: &'static str) -> TableValue {
-    TableValue { code, description }
+/// HL7 data types whose value tables are closed (HL7-defined).
+pub fn is_closed_table_type(data_type: &str) -> bool {
+    data_type == "ID"
 }
 
-/// Return the named value table, or None for unknown ids.
-pub fn get_table(id: &str) -> Option<ValueTable> {
-    let (name, values): (&'static str, Vec<TableValue>) = match id {
-        "0001" => ("Administrative Sex", vec![
-            v("F", "Female"), v("M", "Male"), v("O", "Other"),
-            v("U", "Unknown"), v("A", "Ambiguous"), v("N", "Not applicable"),
-        ]),
-        "0002" => ("Marital Status", vec![
-            v("S", "Single"), v("M", "Married"), v("D", "Divorced"),
-            v("W", "Widowed"), v("A", "Separated"), v("C", "Common law"),
-            v("G", "Living together"), v("P", "Domestic partner"),
-            v("E", "Legally separated"), v("U", "Unknown"), v("O", "Other"),
-        ]),
-        "0004" => ("Patient Class", vec![
-            v("I", "Inpatient"), v("O", "Outpatient"), v("E", "Emergency"),
-            v("P", "Preadmit"), v("R", "Recurring patient"), v("B", "Obstetrics"),
-            v("C", "Commercial account"), v("N", "Not applicable"), v("U", "Unknown"),
-        ]),
-        "0007" => ("Admission Type", vec![
-            v("A", "Accident"), v("C", "Elective"), v("E", "Emergency"),
-            v("L", "Labor and delivery"), v("N", "Newborn"), v("R", "Routine"),
-            v("U", "Urgent"),
-        ]),
-        "0008" => ("Acknowledgment Code", vec![
-            v("AA", "Application Accept"), v("AE", "Application Error"),
-            v("AR", "Application Reject"), v("CA", "Commit Accept"),
-            v("CE", "Commit Error"), v("CR", "Commit Reject"),
-        ]),
-        "0038" => ("Order Status", vec![
-            v("A", "Some, but not all, results available"), v("CA", "Order was canceled"),
-            v("CM", "Order is completed"), v("DC", "Order was discontinued"),
-            v("ER", "Error, order not found"), v("HD", "Order is on hold"),
-            v("IP", "In process, unspecified"), v("RP", "Order has been replaced"),
-            v("SC", "In process, scheduled"),
-        ]),
-        "0052" => ("Diagnosis Type", vec![
-            v("A", "Admitting"), v("W", "Working"), v("F", "Final"),
-        ]),
-        "0076" => ("Message Type", vec![
-            v("ACK", "General acknowledgment"), v("ADT", "Admit/discharge/transfer"),
-            v("BAR", "Billing account record"), v("DFT", "Detailed financial transaction"),
-            v("MDM", "Medical document management"), v("OML", "Laboratory order"),
-            v("ORM", "Order message"), v("ORU", "Observation result / unsolicited"),
-            v("OUL", "Unsolicited laboratory observation"), v("QRY", "Query"),
-            v("RAS", "Pharmacy/treatment administration"), v("RDE", "Pharmacy/treatment encoded order"),
-            v("RSP", "Segment pattern response"), v("SIU", "Scheduling information unsolicited"),
-            v("VXU", "Unsolicited vaccination record update"),
-        ]),
-        "0085" => ("Observation Result Status", vec![
-            v("C", "Correction to results"), v("D", "Deleted"),
-            v("F", "Final results"), v("I", "Specimen in lab, pending"),
-            v("P", "Preliminary results"), v("R", "Results entered, not verified"),
-            v("S", "Partial results"), v("U", "Change to final without retransmit"),
-            v("W", "Post original as wrong"), v("X", "Results cannot be obtained"),
-        ]),
-        "0103" => ("Processing ID", vec![
-            v("D", "Debugging"), v("P", "Production"), v("T", "Training"),
-        ]),
-        "0119" => ("Order Control Codes", vec![
-            v("NW", "New order/service"), v("OK", "Order accepted"),
-            v("CA", "Cancel order request"), v("CR", "Canceled as requested"),
-            v("DC", "Discontinue order request"), v("HD", "Hold order request"),
-            v("RL", "Release previous hold"), v("RE", "Observations to follow"),
-            v("SC", "Status changed"), v("XO", "Change order request"),
-            v("XX", "Order changed, unsolicited"),
-        ]),
-        "0123" => ("Result Status", vec![
-            v("O", "Order received, specimen not yet received"),
-            v("I", "No results, specimen in lab"),
-            v("S", "Procedure scheduled, not done"),
-            v("A", "Some results available"),
-            v("P", "Preliminary results"),
-            v("C", "Correction of previously transmitted results"),
-            v("R", "Results stored, not yet verified"),
-            v("F", "Final results, verified"),
-            v("X", "Results cannot be obtained"),
-            v("Y", "No order on record"),
-            v("Z", "No record of the patient"),
-        ]),
-        "0127" => ("Allergen Type", vec![
-            v("DA", "Drug allergy"), v("FA", "Food allergy"),
-            v("MA", "Miscellaneous allergy"), v("MC", "Miscellaneous contraindication"),
-            v("EA", "Environmental allergy"), v("AA", "Animal allergy"),
-            v("PA", "Plant allergy"), v("LA", "Pollen allergy"),
-        ]),
-        "0136" => ("Yes/No Indicator", vec![
-            v("Y", "Yes"), v("N", "No"),
-        ]),
-        _ => return None,
-    };
-    // 0076 lists only the common message types, not the full standard —
-    // absence there is not evidence of a non-standard value.
-    let exhaustive = id != "0076";
-    Some(ValueTable { id: id.to_string(), name, exhaustive, values })
+/// The named table with the standard's own values, or None for an unknown
+/// or user-defined-only id. `exhaustive` is decided by the data type of the
+/// element the table is being shown for; pass None when it is not known,
+/// which never produces a warning.
+pub fn get_table(id: &str, data_type: Option<&str>) -> Option<ValueTable> {
+    let mut table = tables().get(id)?.clone();
+    table.exhaustive = data_type.is_some_and(is_closed_table_type);
+    Some(table)
+}
+
+/// The description of `code` in table `id`, for showing "M — Male" next to
+/// a value. Codes are matched exactly: HL7 codes are case-sensitive.
+pub fn describe_code(id: &str, code: &str) -> Option<&'static str> {
+    let code = code.trim();
+    if code.is_empty() {
+        return None;
+    }
+    tables()
+        .get(id)?
+        .values
+        .iter()
+        .find(|v| v.code == code)
+        .map(|v| v.description.as_str())
+}
+
+/// Number of shipped tables — for the About/diagnostics counters.
+pub fn table_count() -> usize {
+    tables().len()
 }
 
 #[cfg(test)]
@@ -153,37 +95,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_field_mapping_hits() {
-        assert_eq!(table_for_field("PID", 8), Some("0001"));
-        assert_eq!(table_for_field("PV1", 2), Some("0004"));
-        assert_eq!(table_for_field("MSA", 1), Some("0008"));
-        assert_eq!(table_for_field("PID", 5), None);
-    }
-
-    #[test]
-    fn test_every_mapped_table_exists() {
-        // Every table id reachable from the field mapping must resolve.
-        let mapped = [
-            "0001", "0002", "0004", "0007", "0008", "0038", "0052",
-            "0076", "0085", "0103", "0119", "0123", "0127", "0136",
-        ];
-        for id in mapped {
-            let t = get_table(id).unwrap_or_else(|| panic!("table {} missing", id));
-            assert!(!t.values.is_empty(), "table {} empty", id);
-            assert_eq!(t.id, id);
+    fn the_full_dictionary_set_ships() {
+        assert!(table_count() >= 390, "only {} tables", table_count());
+        let values: usize = tables().values().map(|t| t.values.len()).sum();
+        assert!(values >= 5000, "only {} values", values);
+        // Every table has an id of four digits and at least one value.
+        for t in tables().values() {
+            assert_eq!(t.id.len(), 4, "table id {:?}", t.id);
+            assert!(t.id.bytes().all(|b| b.is_ascii_digit()), "table id {:?}", t.id);
+            assert!(!t.values.is_empty(), "table {} is empty", t.id);
         }
     }
 
     #[test]
-    fn test_sex_table_contents() {
-        let t = get_table("0001").unwrap();
-        assert_eq!(t.name, "Administrative Sex");
-        assert!(t.values.iter().any(|tv| tv.code == "F" && tv.description == "Female"));
-        assert!(t.values.iter().any(|tv| tv.code == "M"));
+    fn the_everyday_tables_are_there() {
+        for id in [
+            "0001", "0002", "0003", "0004", "0007", "0008", "0038", "0052", "0076", "0085",
+            "0103", "0119", "0123", "0127", "0136", "0200", "0203", "0301", "0354", "0396",
+        ] {
+            let t = get_table(id, None).unwrap_or_else(|| panic!("table {} missing", id));
+            assert_eq!(t.id, id);
+        }
+        let sex = get_table("0001", Some("IS")).unwrap();
+        assert_eq!(sex.name, "Administrative Sex");
+        assert!(sex.values.iter().any(|v| v.code == "F" && v.description == "Female"));
+        // 0076 used to be a hand-picked subset; it is now the standard's list.
+        assert!(get_table("0076", None).unwrap().values.len() > 100);
     }
 
     #[test]
-    fn test_unknown_table() {
-        assert!(get_table("9999").is_none());
+    fn exhaustiveness_follows_the_data_type() {
+        assert!(get_table("0008", Some("ID")).unwrap().exhaustive, "MSA-1 is an ID");
+        assert!(!get_table("0001", Some("IS")).unwrap().exhaustive, "PID-8 is an IS");
+        assert!(!get_table("0001", None).unwrap().exhaustive);
+        assert!(!get_table("0001", Some("CWE")).unwrap().exhaustive);
+    }
+
+    #[test]
+    fn codes_describe_exactly() {
+        assert_eq!(describe_code("0001", "M"), Some("Male"));
+        assert_eq!(describe_code("0001", " M "), Some("Male"));
+        assert_eq!(describe_code("0001", "m"), None, "HL7 codes are case-sensitive");
+        assert_eq!(describe_code("0001", ""), None);
+        assert_eq!(describe_code("0103", "P"), Some("Production"));
+        assert_eq!(describe_code("9999", "P"), None);
+    }
+
+    #[test]
+    fn user_defined_tables_without_standard_values_are_absent() {
+        // IN1-2 Insurance Plan ID draws from 0072, a user-defined table the
+        // standard gives no values for: the field keeps its table id in the
+        // catalogue, but there is nothing to list.
+        assert!(get_table("0072", Some("IS")).is_none());
+        assert_eq!(describe_code("0072", "X"), None);
     }
 }

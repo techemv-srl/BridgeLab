@@ -1,5 +1,32 @@
 use chrono::Utc;
 
+/// MSA-1 of an acknowledgment message: the code that says whether the
+/// message was accepted ("AA"), rejected for an application error ("AE") or
+/// refused outright ("AR"), or the commit-mode equivalents ("CA", "CE",
+/// "CR"). None when `response` carries no MSA segment — an empty reply, a
+/// non-HL7 payload, or a message that is not an acknowledgment at all.
+///
+/// The segment separator is the HL7 `\r`, but responses copied through
+/// tools that normalise line endings arrive with `\n` too, so both are
+/// accepted. The field separator is whatever the ACK's own MSH-1 declares
+/// (the character right after `MSH`), `|` when there is no MSH to read it
+/// from. The code is returned as sent: the standard's codes are upper
+/// case, and a lower-case one is a sender's deviation worth seeing.
+pub fn ack_code_of(response: &str) -> Option<String> {
+    let segments: Vec<&str> = response.split(['\r', '\n']).collect();
+    let sep = segments
+        .iter()
+        .find_map(|seg| seg.strip_prefix("MSH").and_then(|rest| rest.chars().next()))
+        .unwrap_or('|');
+    segments
+        .iter()
+        .find(|seg| seg.starts_with("MSA") && seg[3..].starts_with(sep))
+        .and_then(|msa| msa.split(sep).nth(1))
+        .map(str::trim)
+        .filter(|code| !code.is_empty())
+        .map(str::to_string)
+}
+
 /// Generate an HL7 ACK message for a given incoming message.
 ///
 /// `ack_code`: "AA" (accept), "AE" (error), "AR" (reject)
@@ -62,6 +89,31 @@ pub fn extract_sending_app(message: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ack_code_is_read_from_msa_1() {
+        let ack = generate_ack("AE", "MSG002", "BL", "RA", Some("Error in PID"));
+        assert_eq!(ack_code_of(&ack).as_deref(), Some("AE"));
+        assert_eq!(
+            ack_code_of("MSH|^~\\&|R||S||20260101||ACK^A01^ACK|1|P|2.5\nMSA|CA|1\n").as_deref(),
+            Some("CA"),
+            "LF-separated responses are read too"
+        );
+        assert_eq!(ack_code_of("MSA|AR|1"), Some("AR".to_string()), "a bare MSA still counts");
+        assert_eq!(ack_code_of(""), None);
+        assert_eq!(ack_code_of("HTTP/1.1 200 OK"), None);
+        assert_eq!(ack_code_of("MSH|^~\\&|R||S||20260101||ADT^A01|1|P|2.5\rPID|1"), None, "not an ACK");
+        assert_eq!(ack_code_of("MSH|^~\\&|R||S\rMSA||1"), None, "empty MSA-1");
+        assert_eq!(ack_code_of("MSH|^~\\&|R||S\rMSA|aa|1").as_deref(), Some("aa"), "returned as sent");
+        // Codex review: the field separator is the ACK's own MSH-1, not
+        // always "|".
+        assert_eq!(
+            ack_code_of("MSH*^~\\&*R**S**20260101**ACK*1*P*2.5\rMSA*AA*123").as_deref(),
+            Some("AA")
+        );
+        assert_eq!(ack_code_of("MSH*^~\\&*R\rMSA|AE|1"), None, "MSA must use the declared separator");
+        assert_eq!(ack_code_of("MSAX|AA|1"), None, "MSAX is not MSA");
+    }
 
     #[test]
     fn test_generate_ack() {

@@ -120,6 +120,11 @@ payload, il codice ACK effettivamente inviato (<code>AA</code> verde,
 codifica caratteri usata e la prima riga del messaggio. <strong>Clicca
 una riga per riaprire quel messaggio in un tab.</strong> Gli errori del
 listener compaiono come righe rosse.</p>
+<p>I chip nell'intestazione della console filtrano le righe per esito —
+<em>AA</em>, <em>AE</em>, <em>AR</em>, <em>Senza ACK</em> (ricevuti con
+auto-ACK spento), <em>Errori</em> — e ognuno porta un contatore
+aggiornato, così "AE&nbsp;12" su 300 salta all'occhio prima di
+scorrere. Gli stessi chip sono nella scheda Cronologia.</p>
 <p>Il toggle <em>"Apri i messaggi ricevuti in un nuovo tab"</em> (attivo
 di default) può essere spento nei test ad alto volume: i messaggi
 finiscono solo nella console e scegli tu quali aprire.</p>
@@ -172,7 +177,14 @@ L'import WSDL è previsto come passo successivo.</p>
 <p>Ogni invio e ricezione viene loggata (host, porta, dimensione, codice
 di risposta, tempo di andata/ritorno). Le ultime 100 voci persistono
 tra un riavvio e l'altro; clicca una riga per vedere la richiesta e
-risposta complete.</p>
+risposta complete. Un invio MLLP registra anche il <strong>codice
+ACK</strong> con cui il ricevente ha risposto (MSA-1), mostrato come
+badge verde o rosso sulla riga: un invio arrivato al peer che riceve un
+<code>AE</code> è "OK" a livello di trasporto e un rifiuto a livello
+applicativo, e il badge distingue i due casi. I chip di filtro sopra
+l'elenco — <em>AA</em>, <em>AE</em>, <em>AR</em>, <em>Senza ACK</em>,
+<em>Falliti</em> — hanno i contatori e restringono l'elenco a un solo
+esito.</p>
 
 <h3>Profili di connessione</h3>
 <p>Salva gli endpoint usati di frequente come profili nominati dalla

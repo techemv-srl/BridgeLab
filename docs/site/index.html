@@ -176,7 +176,10 @@
 				<p>
 					Right-click any field in the editor or the tree to see
 					the HL7 schema-derived name, type, cardinality, length
-					limits and current value. Schema-aware tree optionally
+					limits and current value. Coded values are explained
+					inline from the 394 HL7 value tables that ship with
+					the app (<code>M — Male</code>), in the tree, on hover
+					and in auto-completion. Schema-aware tree optionally
 					shows every possible field, not just the populated ones.
 				</p>
 			</article>
@@ -295,10 +298,17 @@
 			<ul class="check">
 				<li>Six check types: <code>not_empty</code>, <code>regex</code>, <code>one_of</code>, <code>max_length</code>, <code>min_length</code>, <code>contains</code></li>
 				<li>Component-level narrowing via the <code>component</code> field</li>
+				<li>FHIR rule packs too: a FHIRPath invariant, or a selector plus a check</li>
 				<li>Extra PHI fields with sensitivity-aware masking</li>
 				<li>Live reload without restarting the app</li>
 				<li>Per-pack enable/disable, persisted across sessions</li>
 			</ul>
+			<p class="sub">
+				The whole mechanism is in every tier. Community keeps up to
+				<strong>3 packs active at once</strong>; Pro and Enterprise
+				have no cap. Packs beyond the cap are never deleted &mdash;
+				they wait for a free slot.
+			</p>
 			<a class="btn" href="https://github.com/techemv-srl/BridgeLab/blob/main/docs/PLUGINS.md">Read the plugin docs &rarr;</a>
 		</div>
 		<div class="plugin-sample">
@@ -374,7 +384,7 @@
 					<li>HL7 v2 + FHIR editing &amp; validation</li>
 					<li>MLLP send, unauthenticated HTTP GET</li>
 					<li>PHI detection, community XSD set</li>
-					<li>Plugins &amp; test cases (limited)</li>
+					<li>All plugin pack types, 3 active at once; 10 saved test cases</li>
 				</ul>
 				<a class="btn" href="#download">Download</a>
 			</div>
@@ -533,12 +543,14 @@
 				<summary>How do plugins work?</summary>
 				<p>
 					Drop a JSON file in
-					<code>&lt;config&gt;/BridgeLab/plugins/validation/</code>
-					or
+					<code>&lt;config&gt;/BridgeLab/plugins/validation/</code>,
+					<code>/fhir/</code> or
 					<code>/anonymization/</code>.
 					The app loads it at startup or on demand via
 					Settings &rarr; Plugins. No code runs &mdash; plugins
-					are declarative rules. See
+					are declarative rules. Every tier runs every kind of
+					pack; Community keeps up to 3 active at once, Pro has
+					no cap. See
 					<a href="https://github.com/techemv-srl/BridgeLab/blob/main/docs/PLUGINS.md">PLUGINS.md</a>.
 				</p>
 			</details>
@@ -546,7 +558,8 @@
 				<summary>Which HL7 versions are supported?</summary>
 				<p>
 					v2.1 through v2.7.1 for segment / field schemas
-					(ten versions, 2,320 selectable message structures).
+					(ten versions, 2,320 selectable message structures)
+					plus the 394 HL7 value tables behind the coded fields.
 					Custom (Z-) segments parse and edit cleanly, they
 					just fall back to raw values in the Field Inspector
 					unless you ship a plugin pack for them.

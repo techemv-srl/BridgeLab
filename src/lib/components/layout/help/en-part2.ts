@@ -109,6 +109,11 @@ was actually written back (green <code>AA</code>, red
 encoding used, and the first line of the message. <strong>Click a row to
 re-open that message in a tab.</strong> Listener errors appear inline as
 red rows.</p>
+<p>The chips in the console header filter the rows by outcome —
+<em>AA</em>, <em>AE</em>, <em>AR</em>, <em>No ACK</em> (received with
+auto-ACK off), <em>Errors</em> — and each carries a live count, so
+"AE&nbsp;12" out of 300 stands out before you scroll. The same chips
+sit on the History tab.</p>
 <p>The <em>"Open received messages in a new tab"</em> toggle (on by
 default) can be disabled during high-volume tests: messages then land
 only in the console and you cherry-pick the ones you need.</p>
@@ -158,7 +163,14 @@ planned as a follow-up.</p>
 <h3>History</h3>
 <p>Every send and receive is logged (host, port, size, response code,
 round-trip time). The last 100 entries are persisted between restarts;
-click any row to see the full request and response.</p>
+click any row to see the full request and response. An MLLP send also
+records the <strong>ACK code</strong> the receiver answered with
+(MSA-1), shown as a green or red badge on the row: a send that reached
+the peer and got an <code>AE</code> back is "OK" at the transport level
+and a rejection at the application level, and the badge tells the two
+apart. Filter chips over the list — <em>AA</em>, <em>AE</em>,
+<em>AR</em>, <em>No ACK</em>, <em>Failed</em> — carry counts and narrow
+the list to one outcome.</p>
 
 <h3>Connection profiles</h3>
 <p>Save frequently-used endpoints as named profiles from the

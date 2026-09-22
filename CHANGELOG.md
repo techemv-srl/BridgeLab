@@ -2,9 +2,60 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
-## [Unreleased]
+## [1.7.0] — 2026-09-22
+
+### Security
+- `quick-xml` 0.36 → 0.41 (RUSTSEC-2026-0194/0195: quadratic attribute
+  checking and unbounded namespace allocation on crafted XML — the FHIR
+  XML parser and the SOAP client read untrusted documents), `rustls`
+  0.23.38 → 0.23.45 (RUSTSEC-2026-0285), and `plist` 1.8 → 1.10 so the
+  copy Tauri pulls in moves off the vulnerable `quick-xml` too. The
+  `bridgelab-cli` lockfile follows. `cargo audit` reports no advisories
+  on either.
+
+### Added
+- **Every coded value now says what it means.** The 394 HL7 value
+  tables (about 5,000 codes) ship with the app, imported from the same
+  MIT-licensed source as the message catalogue, and each version's
+  catalogue records which table every coded field and component draws
+  from — 16 hand-written tables before, mapped to 14 fields. The tree
+  shows the meaning next to the value (`M — Male`, `ADT — ADT message`,
+  `F — Final results`), including components (MSH-9.2 from the
+  event-type table, PID-3.5 from the identifier-type table); hovering a
+  field in the editor explains its code, and auto-completion in any
+  coded field offers the whole table instead of the three fields it used
+  to know. The Field Inspector lists the table for the selected field
+  *or component* and now distinguishes an HL7-defined table (`ID`
+  fields: a value outside it is non-standard, warned) from a
+  user-defined one (`IS` fields: suggestions, never warned) — the old
+  "value not in table" warning fired on user-defined tables too.
+- **Field metadata for every standard segment, per version.** The
+  hover, auto-completion, Field Inspector and validation used to read a
+  hand-written list of 15 segments that was the same for every HL7
+  version; they now read the full catalogue of the version the message
+  declares, so RXA-5 has a name, PID-8 in a v2.1 message has a v2.1
+  definition, and the built-in validation checks required fields and
+  lengths for every segment the standard defines, not just those 15.
+  Expect a few more findings on messages that were "clean" before: an
+  ORU without OBX-11, a PV1-16 holding free text.
+- **ACK filters with counts** on the listener console and the send
+  history: AA / AE / AR / no ACK / errors (failed), each chip showing
+  how many rows match, so "AE 12" out of 300 stands out before anyone
+  scrolls. An MLLP send now records the ACK code the receiver answered
+  with (MSA-1) and shows it as a badge on its history row — a send that
+  reached the peer and got an `AE` back is "OK" at the transport level
+  and a rejection at the application level, and the row now tells the
+  two apart.
 
 ### Changed
+- **What Community gets of plugins is now stated everywhere the same
+  way.** The README, the landing page, `docs/PLUGINS.md` and the manual
+  (five languages) all say it: every pack kind — HL7 v2 rules, FHIR
+  rules, PHI fields — and every check type runs in every tier; the only
+  cap is 3 packs active at once in Community (10 saved test cases),
+  unlimited in Pro. "Plugins (limited)" and "Plugin packs (basic)" read as
+  if the rules themselves were cut down. The manual's plugin chapter also
+  gained the `fhir/` folder it had been missing.
 - **A release now ships 12 assets instead of 19, about 450 MB instead of
   1.4 GB.** The five per-language MSIs are one `en-US` MSI — the
   installer language only affects the installer's own dialogs, the app

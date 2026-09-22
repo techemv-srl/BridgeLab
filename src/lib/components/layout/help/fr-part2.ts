@@ -125,6 +125,12 @@ désactivé), l'encodage de caractères utilisé et la première ligne du
 message. <strong>Cliquez sur une ligne pour rouvrir ce message dans un
 onglet.</strong> Les erreurs du listener s'affichent au fil de l'eau
 sous forme de lignes rouges.</p>
+<p>Les puces de l'en-tête de la console filtrent les lignes par
+résultat — <em>AA</em>, <em>AE</em>, <em>AR</em>, <em>Sans ACK</em>
+(reçus avec l'ACK automatique désactivé), <em>Erreurs</em> — et chacune
+porte un compteur à jour : « AE&nbsp;12 » sur 300 saute aux yeux avant
+même de faire défiler. Les mêmes puces figurent dans l'onglet
+Historique.</p>
 <p>L'option <em>« Ouvrir les messages reçus dans un nouvel onglet »</em>
 (activée par défaut) peut être désactivée pendant les tests à fort
 volume : les messages n'arrivent alors que dans la console et vous
@@ -179,7 +185,14 @@ prévu comme étape suivante.</p>
 <p>Chaque envoi et chaque réception sont journalisés (hôte, port, taille,
 code de réponse, temps aller-retour). Les 100 dernières entrées sont
 conservées entre les redémarrages ; cliquez sur une ligne pour voir la
-requête et la réponse complètes.</p>
+requête et la réponse complètes. Un envoi MLLP enregistre aussi le
+<strong>code ACK</strong> renvoyé par le récepteur (MSA-1), affiché
+comme badge vert ou rouge sur la ligne : un envoi parvenu au pair qui
+reçoit un <code>AE</code> est « OK » au niveau transport et un rejet au
+niveau applicatif, et le badge distingue les deux. Les puces de filtre
+au-dessus de la liste — <em>AA</em>, <em>AE</em>, <em>AR</em>,
+<em>Sans ACK</em>, <em>Échoués</em> — portent des compteurs et
+restreignent la liste à un seul résultat.</p>
 
 <h3>Profils de connexion</h3>
 <p>Enregistrez les endpoints fréquemment utilisés comme profils nommés

@@ -99,6 +99,18 @@ pub struct TreeNode {
     pub has_children: bool,
     pub is_truncated: bool,
     pub child_count: usize,
+    /// The code a coded element is looked up by — the first component of
+    /// its first repetition, split on the message's own delimiters ("ADT"
+    /// for an MSH-9 of "ADT^A01") — present whenever the element draws
+    /// from a value table, found in it or not. The Field Inspector matches
+    /// it against the table; splitting the preview itself would have to
+    /// guess the delimiters. HL7 v2 only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// What that code means, from its HL7 value table ("Male" for an "M"
+    /// in PID-8), for the tree to show next to the value. HL7 v2 only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_desc: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

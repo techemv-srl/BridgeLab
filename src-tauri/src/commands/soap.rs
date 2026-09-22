@@ -48,6 +48,7 @@ pub async fn soap_send(
         status,
         response_time_ms: result.response_time_ms,
         timestamp: chrono::Utc::now().to_rfc3339(),
+        ack_code: None,
     };
     let _ = db.add_history_entry(&entry);
 

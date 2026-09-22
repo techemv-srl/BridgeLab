@@ -168,15 +168,33 @@ HL7-Syntaxhervorhebung. Wählen Sie links/rechts über die Dropdowns,
 tauschen Sie die Seiten mit der ⇆-Schaltfläche und schließen Sie mit
 <kbd>Esc</kbd>. Es müssen mindestens zwei Tabs geöffnet sein.</p>
 
-<h3>Zulässige Werte für codierte Felder</h3>
-<p>Ist das ausgewählte Feld mit einer HL7-Wertetabelle hinterlegt
-(PID-8 Administrative Sex, PV1-2 Patient Class, MSA-1 Acknowledgment
-Code, ORC-1 Order Control, OBX-11 Result Status, …), listet der
-Inspektor die <strong>zulässigen Werte</strong> mit ihrer Bedeutung auf
-und hebt den aktuell in der Nachricht stehenden hervor. Steht der
-aktuelle Wert nicht in der Tabelle, erscheint eine Warnung — ein
-schneller Weg, nicht standardkonforme Codes zu entdecken, bevor das
-empfangende System sie ablehnt.</p>
+<h3>Codierte Felder: was ein Code bedeutet</h3>
+<p>BridgeLab bringt die HL7-Wertetabellen mit — 394 Tabellen, rund
+5.000 Codes — und weiß je Version, aus welcher Tabelle jedes codierte
+Feld und jede codierte Komponente ihre Werte bezieht. Ein codierter
+Wert wird überall erklärt, wo Sie ihm begegnen: der Baum zeigt die
+Bedeutung neben dem Wert (<code>M — Male</code>,
+<code>ADT — ADT message</code>, <code>F — Final results</code>), der
+Hover über dem Feld im Editor nennt sie ebenfalls, und die
+Autovervollständigung in einem codierten Feld bietet alle Werte seiner
+Tabelle an. Komponenten sind eingeschlossen: MSH-9.2 wird aus der
+Ereignistabelle erklärt, PID-3.5 aus der Tabelle der
+Identifikatortypen.</p>
+<p>Der Feld-Inspektor listet die ganze Tabelle des ausgewählten Feldes
+oder der Komponente auf und hebt den aktuellen Wert hervor. Ob ein Wert
+außerhalb der Tabelle ein Problem ist, hängt vom Datentyp ab, und der
+Inspektor sagt, welcher Fall vorliegt: ein <code>ID</code>-Feld bezieht
+seine Werte aus einer von HL7 definierten Tabelle (<em>Zulässige
+Werte</em>), ein nicht gelisteter Wert ist nicht standardkonform — eine
+Warnung erscheint; ein <code>IS</code>-Feld aus einer benutzerdefinierten
+Tabelle (<em>Vorgeschlagene Werte</em>), in der jede Einrichtung eigene
+Codes ergänzt und das Fehlen nichts bedeutet. Manche benutzerdefinierten
+Tabellen haben gar keine Standardwerte (IN1-2 Insurance Plan ID); diese
+Felder zeigen keine Liste.</p>
+<p class="note">Welche Tabelle ein Feld verwendet, folgt der deklarierten
+HL7-Version; der Tabelleninhalt ist ein einziger Satz für alle
+Versionen, so wie die Quelle ihn liefert. Ein in einer späteren Version
+ergänzter Code wird daher auch für eine frühere akzeptiert.</p>
 
 <h3>Schemabewusster Baum</h3>
 <p><strong>Ansicht → Standardfelder anzeigen</strong> fügt

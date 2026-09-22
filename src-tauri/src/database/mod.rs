@@ -54,6 +54,23 @@ pub struct Preference {
     pub value: String,
 }
 
+/// `ALTER TABLE … ADD COLUMN` only when the column is not there yet.
+fn add_column_if_missing(conn: &Connection, table: &str, column: &str, decl: &str) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({})", table))
+        .map_err(|e| format!("Migration failed: {}", e))?;
+    let present = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| format!("Migration failed: {}", e))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == column);
+    if !present {
+        conn.execute(&format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, decl), [])
+            .map_err(|e| format!("Migration failed: {}", e))?;
+    }
+    Ok(())
+}
+
 impl Database {
     /// Create a new database, initializing tables if needed.
     pub fn new() -> Result<Self, String> {
@@ -163,6 +180,12 @@ impl Database {
             );
             "
         ).map_err(|e| format!("Migration failed: {}", e))?;
+
+        // Columns added after a table first shipped. SQLite has no
+        // ADD COLUMN IF NOT EXISTS, so each is guarded by the table's own
+        // column list; an existing database gets the column once, a new
+        // one gets it on top of the CREATE above.
+        add_column_if_missing(&conn, "request_history", "ack_code", "TEXT")?;
 
         Ok(())
     }
@@ -342,11 +365,12 @@ impl Database {
     pub fn add_history_entry(&self, entry: &HistoryEntry) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
-            "INSERT INTO request_history (id, profile_name, profile_type, direction, content_preview, status, response_time_ms, timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO request_history (id, profile_name, profile_type, direction, content_preview, status, response_time_ms, timestamp, ack_code)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 entry.id, entry.profile_name, entry.profile_type, entry.direction,
-                entry.content_preview, entry.status, entry.response_time_ms as i64, entry.timestamp
+                entry.content_preview, entry.status, entry.response_time_ms as i64, entry.timestamp,
+                entry.ack_code
             ],
         ).map_err(|e| format!("Failed to add history: {}", e))?;
         Ok(())
@@ -355,7 +379,7 @@ impl Database {
     pub fn get_request_history(&self, limit: usize) -> Result<Vec<HistoryEntry>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare(
-            "SELECT id, profile_name, profile_type, direction, content_preview, status, response_time_ms, timestamp
+            "SELECT id, profile_name, profile_type, direction, content_preview, status, response_time_ms, timestamp, ack_code
              FROM request_history ORDER BY timestamp DESC LIMIT ?1"
         ).map_err(|e| format!("Query failed: {}", e))?;
 
@@ -369,6 +393,7 @@ impl Database {
                 status: row.get(5)?,
                 response_time_ms: row.get::<_, i64>(6)? as u64,
                 timestamp: row.get(7)?,
+                ack_code: row.get(8)?,
             })
         }).map_err(|e| format!("Query failed: {}", e))?
         .filter_map(|r| r.ok())
@@ -509,5 +534,50 @@ impl Database {
         conn.execute("DELETE FROM session_tabs", [])
             .map_err(|e| format!("Clear session failed: {}", e))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A history table created before `ack_code` existed gains the column
+    /// on migration, and nothing happens when it is already there.
+    #[test]
+    fn ack_code_column_is_added_once_to_an_older_history_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE request_history (id TEXT PRIMARY KEY, profile_name TEXT NOT NULL, \
+             profile_type TEXT NOT NULL, direction TEXT NOT NULL DEFAULT 'send', \
+             content_preview TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '', \
+             response_time_ms INTEGER NOT NULL DEFAULT 0, timestamp TEXT NOT NULL DEFAULT '');
+             INSERT INTO request_history (id, profile_name, profile_type) VALUES ('old', 'x', 'mllp');",
+        )
+        .unwrap();
+        let columns = |conn: &Connection| -> Vec<String> {
+            let mut s = conn.prepare("PRAGMA table_info(request_history)").unwrap();
+            s.query_map([], |r| r.get::<_, String>(1)).unwrap().map(|r| r.unwrap()).collect()
+        };
+        assert!(!columns(&conn).contains(&"ack_code".to_string()));
+
+        add_column_if_missing(&conn, "request_history", "ack_code", "TEXT").unwrap();
+        add_column_if_missing(&conn, "request_history", "ack_code", "TEXT").unwrap();
+        let cols = columns(&conn);
+        assert_eq!(cols.iter().filter(|c| *c == "ack_code").count(), 1);
+
+        // The pre-existing row reads back with no ACK, a new one with its code.
+        conn.execute(
+            "INSERT INTO request_history (id, profile_name, profile_type, ack_code) VALUES ('new', 'x', 'mllp', 'AE')",
+            [],
+        )
+        .unwrap();
+        let old: Option<String> = conn
+            .query_row("SELECT ack_code FROM request_history WHERE id = 'old'", [], |r| r.get(0))
+            .unwrap();
+        let new: Option<String> = conn
+            .query_row("SELECT ack_code FROM request_history WHERE id = 'new'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(old, None);
+        assert_eq!(new.as_deref(), Some("AE"));
     }
 }

@@ -122,6 +122,10 @@
 			{:else}
 				<span class="value-text">{node.value_preview}</span>
 			{/if}
+			{#if node.code_desc}
+				<!-- What the code means, from its HL7 value table -->
+				<span class="code-desc" title={node.code_desc}>— {node.code_desc}</span>
+			{/if}
 		</span>
 	{/if}
 
@@ -233,6 +237,12 @@
 
 	.value-text {
 		opacity: 0.8;
+	}
+
+	.code-desc {
+		margin-left: 6px;
+		font-style: italic;
+		opacity: 0.6;
 	}
 
 	.truncated-btn {

@@ -15,9 +15,15 @@ pub fn get_field_info(
 }
 
 /// Return the values of an HL7 value table (e.g. "0001" Administrative Sex).
+/// `data_type` is that of the element the table is shown for: an `ID`
+/// makes the table exhaustive (a value outside it is non-standard), any
+/// other type — or none — makes it a list of suggestions.
 #[tauri::command]
-pub fn get_hl7_table(table_id: String) -> Option<crate::parser::hl7::value_tables::ValueTable> {
-    crate::parser::hl7::value_tables::get_table(&table_id)
+pub fn get_hl7_table(
+    table_id: String,
+    data_type: Option<String>,
+) -> Option<crate::parser::hl7::value_tables::ValueTable> {
+    crate::parser::hl7::value_tables::get_table(&table_id, data_type.as_deref())
 }
 
 // --- Schema-catalogue-backed structure info (all shipped HL7 versions) ------

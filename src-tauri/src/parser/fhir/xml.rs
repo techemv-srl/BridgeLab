@@ -65,8 +65,10 @@ fn frame_from_start(
         if key.starts_with("xmlns") {
             continue;
         }
+        // Entity references resolved and whitespace normalised as the XML
+        // specification requires of attribute values.
         let val = attr
-            .unescape_value()
+            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
             .map_err(|err| format!("Malformed XML attribute value: {}", err))?
             .into_owned();
         if key == "value" {
@@ -293,6 +295,15 @@ mod tests {
     fn test_invalid_xml() {
         assert!(fhir_xml_to_json("<Patient><id value=\"x\"/>").is_err());
         assert!(fhir_xml_to_json("").is_err());
+    }
+
+    /// Entity references in attribute values are resolved (quick-xml 0.41
+    /// moved this from `unescape_value` to `normalized_value`).
+    #[test]
+    fn attribute_entities_are_resolved() {
+        let xml = r#"<Organization xmlns="http://hl7.org/fhir"><name value="Smith &amp; Sons &lt;Ltd&gt;"/></Organization>"#;
+        let (_, json) = fhir_xml_to_json(xml).unwrap();
+        assert_eq!(json["name"][0], "Smith & Sons <Ltd>");
     }
 
     #[test]

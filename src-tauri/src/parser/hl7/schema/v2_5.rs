@@ -28,11 +28,13 @@ fn f(position: usize, name: &str, dt: &str, required: bool, repeats: bool) -> Fi
         data_type: dt.into(),
         required,
         repeats,
+        max_length: None,
+        table: None,
     }
 }
 
 fn c(position: usize, name: &str, dt: &str, required: bool) -> ComponentSpec {
-    ComponentSpec { position, name: name.into(), data_type: dt.into(), required }
+    ComponentSpec { position, name: name.into(), data_type: dt.into(), required, max_length: None, table: None }
 }
 
 fn seg(code: &str, name: &str, fields: Vec<FieldSpec>) -> SegmentSpec {

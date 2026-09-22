@@ -63,6 +63,33 @@ struct Cli {
     /// Pretty-print output JSON (default: on).
     #[arg(long, default_value_t = true)]
     pretty: bool,
+
+    /// Value tables file (`tables.json`). When given, every table id the
+    /// catalogue references is checked against it; ids with no entry are
+    /// reported (user-defined tables legitimately have no standard values).
+    #[arg(long)]
+    tables: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ValueTablesFile {
+    tables: Vec<ValueTable>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ValueTable {
+    id: String,
+    #[allow(dead_code)]
+    name: String,
+    values: Vec<TableValue>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TableValue {
+    #[allow(dead_code)]
+    code: String,
+    #[allow(dead_code)]
+    description: String,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -97,6 +124,11 @@ pub struct FieldSpec {
     pub data_type: String,
     pub required: bool,
     pub repeats: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+    /// HL7 value table id ("0001") for coded fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +144,10 @@ pub struct ComponentSpec {
     pub name: String,
     pub data_type: String,
     pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +181,9 @@ fn main() -> Result<()> {
 
     // Integrity checks — we want to fail loudly before writing a broken file.
     validate(&schema).context("imported schema failed validation")?;
+    if let Some(path) = &cli.tables {
+        report_table_coverage(&schema, path)?;
+    }
 
     let mut json = if cli.pretty {
         serde_json::to_string_pretty(&schema)?
@@ -243,6 +282,42 @@ fn validate(s: &HydratedSchema) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+/// Every table a field or component points at should exist in
+/// `tables.json`; the ones that do not are user-defined tables the standard
+/// gives no values for. Listed, not fatal — but a table id that is not four
+/// digits is a converter bug and fails.
+fn report_table_coverage(s: &HydratedSchema, path: &std::path::Path) -> Result<()> {
+    let raw = fs::read_to_string(path).with_context(|| format!("reading {:?}", path))?;
+    let file: ValueTablesFile = serde_json::from_str(&raw).context("tables.json is malformed")?;
+    let mut referenced: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for seg in &s.segments {
+        referenced.extend(seg.fields.iter().filter_map(|f| f.table.as_deref()));
+    }
+    for c in &s.composites {
+        referenced.extend(c.components.iter().filter_map(|comp| comp.table.as_deref()));
+    }
+    for id in &referenced {
+        if id.len() != 4 || !id.bytes().all(|b| b.is_ascii_digit()) {
+            bail!("table id {:?} is not a four-digit HL7 table number", id);
+        }
+    }
+    for t in &file.tables {
+        if t.values.is_empty() {
+            bail!("table {} has no values", t.id);
+        }
+    }
+    let defined: std::collections::BTreeSet<&str> = file.tables.iter().map(|t| t.id.as_str()).collect();
+    let missing: Vec<&str> = referenced.iter().copied().filter(|id| !defined.contains(id)).collect();
+    eprintln!(
+        "tables: {} referenced, {} with standard values, {} without ({})",
+        referenced.len(),
+        referenced.len() - missing.len(),
+        missing.len(),
+        missing.join(" ")
+    );
     Ok(())
 }
 

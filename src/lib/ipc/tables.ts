@@ -8,6 +8,11 @@ export interface FieldDef {
 	required: boolean;
 	repeating: boolean;
 	description: string;
+	/** HL7 value table behind the field's value (first component for composites). */
+	table_id: string | null;
+	/** Data type of the element that table belongs to (MSG.1 is an `ID` even
+	 *  though MSH-9 is `MSG`): decides whether the table is closed. */
+	table_data_type: string | null;
 }
 
 export interface SegmentInfo {
@@ -26,7 +31,18 @@ export interface FieldInfo {
 	required: boolean;
 	repeating: boolean;
 	description: string;
-	/** HL7 value table backing this coded field (e.g. "0001" for PID-8). */
+	/** HL7 value table backing this coded field (e.g. "0001" for PID-8);
+	 *  for a composite field, its first component's table (MSH-9 → 0076). */
+	table_id: string | null;
+	/** Components of a composite field, each with its own table where coded. */
+	components: ComponentInfo[];
+}
+
+export interface ComponentInfo {
+	position: number;
+	name: string;
+	data_type: string;
+	max_length: number | null;
 	table_id: string | null;
 }
 
@@ -38,14 +54,18 @@ export interface TableValue {
 export interface ValueTable {
 	id: string;
 	name: string;
-	/** False for deliberately partial tables (e.g. 0076): absence of a value is not evidence it is non-standard. */
+	/** True when the standard lists every legal value (the element is an `ID`):
+	 *  a value outside the table is non-standard. False for user-defined tables
+	 *  (`IS`…), whose values are suggestions. */
 	exhaustive: boolean;
 	values: TableValue[];
 }
 
-/** Fetch the values of an HL7 value table (e.g. "0001" Administrative Sex). */
-export async function getHl7Table(tableId: string): Promise<ValueTable | null> {
-	return invoke('get_hl7_table', { tableId });
+/** Fetch the values of an HL7 value table (e.g. "0001" Administrative Sex).
+ *  `dataType` is that of the element the table is shown for; it decides
+ *  whether the table is exhaustive. */
+export async function getHl7Table(tableId: string, dataType?: string): Promise<ValueTable | null> {
+	return invoke('get_hl7_table', { tableId, dataType: dataType ?? null });
 }
 
 export async function getSegmentInfo(
