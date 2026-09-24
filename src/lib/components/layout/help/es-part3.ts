@@ -452,6 +452,16 @@ tus archivos, y sin acceso a internet se omite en silencio. Se desactiva
 en <strong>Configuración → Privacidad → Buscar nuevas versiones al
 iniciar</strong>; <strong>Ayuda → Buscar actualizaciones</strong> funciona
 siempre bajo demanda.</p>
+<p>El instalador de Windows hace la misma pregunta en la primera
+instalación (<em>Sí</em> por defecto; una instalación silenciosa no
+pregunta). En equipos gestionados el administrador puede desactivar la
+comprobación para todos los usuarios, y la casilla de Configuración
+aparece bloqueada: variable de entorno
+<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>, o un archivo
+<code>policy.json</code> con <code>{"disable_update_check": true}</code> en
+<code>%ProgramData%\\BridgeLab\\</code> (Windows),
+<code>/Library/Application Support/BridgeLab/</code> (macOS) o
+<code>/etc/bridgelab/</code> (Linux).</p>
 
 <h3>Comprar una licencia</h3>
 <p><strong>Ayuda → Comprar una licencia…</strong> abre en el navegador

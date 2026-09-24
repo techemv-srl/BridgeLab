@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t, subscribeLocale, setLocale, getLocale, type Locale } from '$lib/i18n';
 	import { getPreference, setPreference } from '$lib/ipc/database';
-	import { PREF_STARTUP_CHECK } from '$lib/updates';
+	import { PREF_STARTUP_CHECK, getUpdatePolicy, effectivePreference } from '$lib/updates';
 	import {
 		listPlugins, reloadPlugins, setPluginEnabled,
 		openPluginsFolder, getPluginsDir, type PluginInfo,
@@ -236,13 +236,22 @@
 
 	async function loadTelemetry() {
 		try { telemetry = await getTelemetrySettings(); } catch { /* web mode */ }
-		try { updateCheck = (await getPreference(PREF_STARTUP_CHECK)) !== 'false'; } catch { /* web mode */ }
+		try {
+			const [pref, policy] = await Promise.all([
+				getPreference(PREF_STARTUP_CHECK).catch(() => null),
+				getUpdatePolicy().catch(() => null),
+			]);
+			updateCheck = effectivePreference(policy, pref).value !== 'false';
+			updatePolicySource = policy?.disabled_by_policy ? (policy.policy_source ?? '') : null;
+		} catch { /* web mode */ }
 		telemetryLoaded = true;
 	}
 
 	// Update check at startup: on unless explicitly turned off. Persists
 	// immediately, like the telemetry toggle.
 	let updateCheck = $state(true);
+	/** Set when a machine policy turns the check off; the checkbox is then locked. */
+	let updatePolicySource = $state<string | null>(null);
 	async function handleUpdateCheckToggle(e: Event) {
 		updateCheck = (e.currentTarget as HTMLInputElement).checked;
 		try { await setPreference(PREF_STARTUP_CHECK, String(updateCheck)); } catch { /* web mode */ }
@@ -557,10 +566,13 @@
 
 				<div class="setting-check">
 					<label>
-						<input type="checkbox" checked={updateCheck} onchange={handleUpdateCheckToggle} />
+						<input type="checkbox" checked={updateCheck} onchange={handleUpdateCheckToggle} disabled={updatePolicySource !== null} />
 						{tr('settings.updateCheck')}
 					</label>
 					<div class="hint">{tr('settings.updateCheckHint')}</div>
+					{#if updatePolicySource !== null}
+						<div class="hint">{tr('settings.updateCheckPolicy', { source: updatePolicySource })}</div>
+					{/if}
 				</div>
 
 				<div class="setting-check">

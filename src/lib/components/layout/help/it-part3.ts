@@ -442,6 +442,16 @@ di te, sul computer o sui tuoi file, e senza accesso a internet viene
 saltata in silenzio. Si disattiva da <strong>Impostazioni → Privacy →
 Controlla nuove versioni all'avvio</strong>; <strong>Aiuto → Controlla
 Aggiornamenti</strong> funziona sempre su richiesta.</p>
+<p>L'installer Windows pone la stessa domanda alla prima installazione
+(<em>Sì</em> è la risposta predefinita; un'installazione silenziosa non
+chiede nulla). Sulle macchine gestite l'amministratore può disattivare il
+controllo per tutti gli utenti, e la casella nelle Impostazioni appare
+bloccata: basta la variabile d'ambiente
+<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>, oppure un file
+<code>policy.json</code> con <code>{"disable_update_check": true}</code> in
+<code>%ProgramData%\\BridgeLab\\</code> (Windows),
+<code>/Library/Application Support/BridgeLab/</code> (macOS) o
+<code>/etc/bridgelab/</code> (Linux).</p>
 
 <h3>Acquistare una licenza</h3>
 <p><strong>Aiuto → Acquista una licenza…</strong> apre nel browser la

@@ -26,6 +26,22 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   skipped silently. On by default, off under *Settings → Privacy → Check
   for new versions at startup*; the privacy policy and the manual
   describe it. *Help → Check for Updates* shares the same code.
+- **Choosing about the update check before it ever runs, and turning it
+  off for a whole site.** The Windows installer asks, the first time,
+  whether BridgeLab may check for new versions (*Yes* is the default;
+  silent installs are not interrupted); the answer becomes the Settings
+  preference. Administrators turn the check off for every user of a
+  machine with `BRIDGELAB_DISABLE_UPDATE_CHECK=1` or a `policy.json`
+  (`{"disable_update_check": true}`) in `%ProgramData%\BridgeLab\`,
+  `/Library/Application Support/BridgeLab/` or `/etc/bridgelab/`; the
+  Settings checkbox then shows as locked, naming where the policy came
+  from.
+
+### Changed
+- The privacy policy now states that a license activated online repeats
+  its activation request in the background, at most once a day, from 14
+  days before expiry, to pick up a renewal — it said only that the
+  software never needs to contact the server again.
 
 ### Fixed
 - **The macOS `.app.tar.gz` updater bundles were still uploaded with

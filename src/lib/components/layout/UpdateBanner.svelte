@@ -2,7 +2,7 @@
 	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { t, subscribeLocale } from '$lib/i18n';
 	import {
-		fetchLatestRelease, startupCheckDue, shouldNotify,
+		fetchLatestRelease, startupCheckDue, shouldNotify, getUpdatePolicy, effectivePreference,
 		PREF_STARTUP_CHECK, PREF_LAST_CHECK, PREF_SKIPPED, type LatestRelease,
 	} from '$lib/updates';
 
@@ -20,10 +20,15 @@
 
 	async function check() {
 		try {
-			const [enabled, last] = await Promise.all([
+			const [userPref, last, policy] = await Promise.all([
 				getPreference(PREF_STARTUP_CHECK).catch(() => null),
 				getPreference(PREF_LAST_CHECK).catch(() => null),
+				getUpdatePolicy().catch(() => null),
 			]);
+			const { value: enabled, seedFromInstaller } = effectivePreference(policy, userPref);
+			// The Windows setup asked; its answer becomes the user's preference
+			// once, and Settings shows it from then on.
+			if (seedFromInstaller && enabled) await setPreference(PREF_STARTUP_CHECK, enabled).catch(() => {});
 			if (!startupCheckDue(enabled, last, Date.now())) return;
 			const { getVersion } = await import('@tauri-apps/api/app');
 			current = await getVersion();

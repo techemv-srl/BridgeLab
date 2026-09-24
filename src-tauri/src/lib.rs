@@ -136,6 +136,7 @@ pub fn run() {
             commands::tables::get_segment_info,
             commands::tables::get_field_info,
             commands::tables::get_hl7_table,
+            commands::update_policy::get_update_policy,
             commands::tables::get_expected_segments,
             commands::tables::get_segment_schema,
             commands::tables::get_composite_components,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isNewerVersion, startupCheckDue, shouldNotify, CHECK_INTERVAL_MS } from './updates';
+import { isNewerVersion, startupCheckDue, shouldNotify, effectivePreference, CHECK_INTERVAL_MS } from './updates';
 
 describe('isNewerVersion', () => {
 	it('compares numerically per part', () => {
@@ -39,5 +39,23 @@ describe('shouldNotify', () => {
 		expect(shouldNotify('1.9.0', '1.7.0', '1.8.0')).toBe(true);
 		expect(shouldNotify('1.7.0', '1.7.0', null)).toBe(false);
 		expect(shouldNotify('1.8.0', '', null)).toBe(false);
+	});
+});
+
+describe('effectivePreference', () => {
+	const none = { disabled_by_policy: false, policy_source: null, installer_choice: null };
+	it('lets a machine policy win over everything', () => {
+		const policy = { ...none, disabled_by_policy: true, policy_source: '/etc/bridgelab/policy.json' };
+		expect(effectivePreference(policy, 'true').value).toBe('false');
+	});
+	it('keeps the user choice over the installer choice', () => {
+		expect(effectivePreference({ ...none, installer_choice: false }, 'true')).toEqual({ value: 'true', seedFromInstaller: false });
+	});
+	it('seeds from the installer the first time', () => {
+		expect(effectivePreference({ ...none, installer_choice: false }, null)).toEqual({ value: 'false', seedFromInstaller: true });
+	});
+	it('falls back to the default (on) when nobody chose', () => {
+		expect(effectivePreference(none, null)).toEqual({ value: null, seedFromInstaller: false });
+		expect(effectivePreference(null, null).value).toBeNull();
 	});
 });

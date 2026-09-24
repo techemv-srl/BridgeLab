@@ -75,7 +75,8 @@
 					"Spanish",
 					"German"
 				],
-				"compression": "lzma"
+				"compression": "lzma",
+				"installerHooks": "windows/hooks.nsh"
 			},
 			"wix": {
 				"language": [
