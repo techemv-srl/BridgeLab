@@ -29,8 +29,18 @@
 ;;   trial.json and %LOCALAPPDATA%\BridgeLab\.bl-state.json, so
 ;;                  uninstalling is not a way to restart the trial.
 ;;
+;; Language: the setup remembers the chosen language in
+;; HKCU\Software\TECHEMV SRL\BridgeLab "Installer Language" and, by default,
+;; reuses it without asking. The first setups were English-only and still
+;; stored English there, so upgraders never saw the selector again.
+;; MUI_LANGDLL_ALWAYSSHOW shows it on every interactive run, preselected on
+;; the remembered language (silent installs still skip it). This file is
+;; included before the template's MUI_LANGDLL_DISPLAY, so the define takes.
+;;
 ;; This file is UTF-8 with a BOM so makensis reads the accented strings
 ;; correctly whatever the build machine's code page.
+
+!define MUI_LANGDLL_ALWAYSSHOW
 
 !macro BL_WRITE_UPDATE_CHOICE DIR VALUE
   CreateDirectory "${DIR}\BridgeLab"
