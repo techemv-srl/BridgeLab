@@ -23,9 +23,11 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   version* and a close button — no dialog, nothing installed
   automatically. The request is an anonymous GET to `api.github.com`
   with nothing about the user, the machine or the files; offline it is
-  skipped silently. On by default, off under *Settings → Privacy → Check
-  for new versions at startup*; the privacy policy and the manual
-  describe it. *Help → Check for Updates* shares the same code.
+  skipped silently. Nothing is requested before the user decides: the
+  Windows installer asks during setup, and every other install asks once
+  in a banner at first start (*Yes, check* / *No*; closing it asks again
+  next time). The answer lives in *Settings → Privacy → Check for new
+  versions at startup*; the privacy policy and the manual describe it. *Help → Check for Updates* shares the same code.
 - **Choosing about the update check before it ever runs, and turning it
   off for a whole site.** The Windows installer asks, the first time,
   whether BridgeLab may check for new versions (*Yes* is the default;

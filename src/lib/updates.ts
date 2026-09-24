@@ -43,6 +43,16 @@ export function effectivePreference(
 	return { value: userPref, seedFromInstaller: false };
 }
 
+/**
+ * True when nobody has decided yet — no machine policy, no user choice, no
+ * installer answer — so the app asks at first start instead of checking.
+ * This covers every package without an interactive installer (MSI, dmg,
+ * deb, rpm, AppImage) and Windows installs done before the setup asked.
+ */
+export function needsFirstRunQuestion(policy: UpdatePolicy | null, userPref: string | null): boolean {
+	return effectivePreference(policy, userPref).value === null;
+}
+
 /** At most one automatic check per day. */
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 

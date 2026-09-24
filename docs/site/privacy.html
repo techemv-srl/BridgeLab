@@ -102,11 +102,12 @@
 			out. The request carries no identifier, no license data and
 			nothing about your files; like any web request it reaches
 			GitHub from your IP address, and GitHub&rsquo;s own privacy
-			statement applies to it. TECHEMV receives nothing. It is on
-			by default and turned off in Settings&nbsp;&rarr;&nbsp;Privacy
+			statement applies to it. TECHEMV receives nothing. Nothing
+			is requested until you decide: the Windows installer asks during
+			setup, and otherwise BridgeLab asks the first time it starts.
+			You can change your answer in Settings&nbsp;&rarr;&nbsp;Privacy
 			(&ldquo;Check for new versions at startup&rdquo;); without
-			internet access it is skipped silently. The Windows installer
-			asks the same question when BridgeLab is first installed.
+			internet access the check is skipped silently.
 			Administrators can turn it off for every user of a machine with
 			the <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code> environment
 			variable or a <code>policy.json</code> file (see the user
