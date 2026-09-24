@@ -164,15 +164,14 @@ jobs:
             echo "macOS signing: disabled (no Apple secrets configured) - building unsigned"
           fi
 
-      # No updater artifacts: tauri.conf.json says so, and the 1.7.0 run
-      # still uploaded the macOS .app.tar.gz pair, so the setting is
+      # No updater artifacts: tauri.conf.json says so, the setting is
       # repeated on the command line (a --config overlay wins over the
       # file), the action is told not to build a latest.json, and the
-      # updater signing key is kept out of the build — without a key the
-      # bundler cannot produce a signed updater bundle at all, so a
-      # regression fails the job instead of quietly re-adding the assets.
-      # The in-app "Check for updates" compares against the latest GitHub
-      # release and needs none of this.
+      # updater signing key is kept out of the build. The in-app "Check for
+      # updates" compares against the latest GitHub release and needs none
+      # of this. The macOS .app.tar.gz assets are NOT updater bundles: the
+      # action tars the .app directory itself and uploads it, with no input
+      # to turn that off, so publish-release deletes them.
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -212,11 +211,30 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # tauri-action uploads every macOS .app as <name>_<arch>.app.tar.gz;
+      # the .dmg is the macOS download, so drop them before publishing.
+      - name: Remove macOS .app.tar.gz assets
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.create-release.outputs.release_id }},
+              per_page: 100,
+            });
+            for (const a of assets.filter((a) => /\.app\.tar\.gz(\.sig)?$/.test(a.name))) {
+              core.info(`Deleting ${a.name}`);
+              await github.rest.repos.deleteReleaseAsset({
+                owner: context.repo.owner, repo: context.repo.repo, asset_id: a.id,
+              });
+            }
+
       - name: Publish release
         uses: actions/github-script@v8
         with:
           script: |
-            github.rest.repos.updateRelease({
+            await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: ${{ needs.create-release.outputs.release_id }},
