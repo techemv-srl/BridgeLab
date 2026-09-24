@@ -446,6 +446,7 @@ Before running tests:
 | BL-LIC-12 | P1 | Deactivate works | Click Deactivate | Returns to trial | |
 | BL-LIC-13 | P0 | License persists | Activate, close, reopen | Still active | |
 | BL-LIC-14 | P1 | Signed Ed25519 key | Use bridgelab-keygen | Key activates, signature verified | |
+| BL-LIC-15 | P1 | Buy links open the pricing page | Help → Buy a License…; activation dialog → *See prices & buy* on Pro and on Enterprise; trial banner → *Compare plans*; trigger a Pro-only feature on Community → *See prices* | Each opens the browser at `…/BridgeLab/?utm_source=app&utm_medium=…#pricing` (medium: `menu`, `activation`, `trial_banner` or `upgrade_prompt`), scrolled to the pricing cards; *Close* on the prompt opens nothing | |
 
 ## 25. bridgelab-cli
 

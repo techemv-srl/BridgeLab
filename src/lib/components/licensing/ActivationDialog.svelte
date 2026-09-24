@@ -4,6 +4,7 @@
 		isActivationCode, looksLikeActivationCode, type LicenseStatus,
 	} from '$lib/ipc/licensing';
 	import { t, subscribeLocale, getLocale } from '$lib/i18n';
+	import { openPricing } from '$lib/licensing/pricing';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -323,16 +324,18 @@
 					<div class="type-card highlight">
 						<div class="type-name">Professional</div>
 						<div class="type-desc">{tr('act.proDesc')}</div>
-						<div class="type-price">{tr('act.contactUs')}</div>
+						<button class="type-buy" onclick={() => openPricing('activation')}>{tr('act.seePrices')}</button>
 					</div>
 					<div class="type-card">
 						<div class="type-name">Enterprise</div>
 						<div class="type-desc">{tr('act.entDesc')}</div>
-						<div class="type-price">{tr('act.contactUs')}</div>
+						<button class="type-buy" onclick={() => openPricing('activation')}>{tr('act.seePrices')}</button>
 					</div>
 				</div>
 				<div class="contact-info">
-					info@techemv.it &middot; www.techemv.it
+					{tr('act.buyHint')}
+					<button class="link-btn" onclick={() => openPricing('activation')}>{tr('act.buyOnline')}</button>
+					&middot; info@techemv.it
 				</div>
 			</div>
 		{/if}
@@ -407,6 +410,9 @@
 	}
 	.contact-prompt a { color: var(--color-accent); font-weight: 600; }
 	.contact-info { text-align: center; font-size: 11px; color: var(--color-text-secondary); margin-top: 12px; }
+	.type-buy { margin-top: 6px; padding: 3px 10px; font-size: 11px; font-weight: 700; font-family: inherit; color: var(--color-bg-primary); background: var(--color-accent); border: none; border-radius: 4px; cursor: pointer; }
+	.type-buy:hover { filter: brightness(1.1); }
+	.link-btn { background: none; border: none; padding: 0; font: inherit; color: var(--color-accent); cursor: pointer; text-decoration: underline; }
 
 	.online-hint { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 6px; }
 	.code-hint { color: var(--color-success); font-style: normal; margin-bottom: 8px; }

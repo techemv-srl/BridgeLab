@@ -3,6 +3,7 @@
 	import { getHardwareId } from '$lib/ipc/licensing';
 	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { t, subscribeLocale } from '$lib/i18n';
+	import { openPricing } from '$lib/licensing/pricing';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -15,7 +16,6 @@
 
 	let { status, onActivate }: Props = $props();
 
-	const PLANS_URL = 'https://techemv-srl.github.io/BridgeLab/';
 	const CONTACT_EMAIL = 'info@techemv.it';
 	const DISMISS_KEY = 'trial_banner_dismissed_for';
 
@@ -82,11 +82,8 @@
 	}
 
 	function openPlans() {
-		// window.open is a no-op inside the Tauri webview — use the opener
-		// plugin, with the browser fallback for web mode.
-		import('@tauri-apps/plugin-opener')
-			.then(({ openUrl }) => openUrl(PLANS_URL))
-			.catch(() => { window.open(PLANS_URL, '_blank'); });
+		// The pricing section of the landing, where the checkout runs.
+		void openPricing('trial_banner');
 	}
 
 	function requestQuote() {

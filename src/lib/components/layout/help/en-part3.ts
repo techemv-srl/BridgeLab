@@ -64,7 +64,8 @@ typical MLLP-debugging workflow is fully covered:</p>
 <strong>(PRO)</strong> in the dropdown and requires a Professional
 license (or an active trial). If you try to export a gated entry
 BridgeLab shows an upgrade prompt pointing to
-<strong>Help → Activation</strong>.</p>
+<strong>Help → Buy a License</strong> (the pricing page) or
+<strong>Help → Activate License</strong>.</p>
 
 <h3>Licensing note</h3>
 <p>BridgeLab does not redistribute any HL7-copyrighted XSD file.
@@ -417,6 +418,17 @@ remain it turns red and stays visible as a reminder.</p>
 <p>When the trial expires BridgeLab <strong>does not stop working</strong>
 - it falls back to the Community tier and the banner prompts you to
 upgrade. Your messages, settings, plugins and test cases remain intact.</p>
+
+<h3>Buying a license</h3>
+<p><strong>Help → Buy a License…</strong> opens the pricing section of
+the BridgeLab website in your browser, where Professional and
+Enterprise are bought online by card; the activation code arrives by
+e-mail. The same page is one click away from the <em>See prices &amp;
+buy</em> buttons in the activation dialog, the <em>Compare plans</em>
+button on the trial banner, and the <em>See prices</em> button of every
+"requires a Professional license" prompt. Need an invoice, a purchase
+order or a quote instead? Write to
+<a href="mailto:info@techemv.it">info@techemv.it</a>.</p>
 
 <h3>Activation</h3>
 <p>Open the activation dialog from:</p>

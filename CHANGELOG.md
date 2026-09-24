@@ -4,6 +4,20 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **Buying a license from inside the app.** Until now the app only said
+  "contact info@techemv.it" — the Pro and Enterprise cards in the
+  activation dialog read *Contact us*, and the "requires a Professional
+  license" prompts pointed at the activation dialog. The online store
+  was reachable only from the trial banner's *Compare plans*, and that
+  landed on the top of the page. Now *Help → Buy a License…*, a *See
+  prices & buy* button on the Pro and Enterprise cards, a *See prices*
+  button on every upgrade prompt, and *Compare plans* all open the
+  pricing section of the website, where the checkout runs. Each link
+  carries `utm_source=app` and the entry point as `utm_medium`, which the
+  landing passes on to the order, so sales can see where a purchase
+  started. E-mail stays for invoices, purchase orders and quotes.
+
 ### Fixed
 - **The macOS `.app.tar.gz` updater bundles were still uploaded with
   1.7.0**, although `createUpdaterArtifacts` is off in `tauri.conf.json`.

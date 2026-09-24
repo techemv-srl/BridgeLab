@@ -69,7 +69,8 @@ HL7 v2.5, couvrant entièrement le workflow typique de débogage MLLP :</p>
 <strong>(PRO)</strong> dans la liste déroulante et nécessite une licence
 Professional (ou un essai actif). Si vous tentez d'exporter une entrée
 réservée, BridgeLab affiche une invite de mise à niveau pointant vers
-<strong>Aide → Activation</strong>.</p>
+<strong>Aide → Acheter une licence</strong> (la page des tarifs) ou
+<strong>Aide → Activer la licence</strong>.</p>
 
 <h3>Note sur les licences</h3>
 <p>BridgeLab ne redistribue aucun fichier XSD couvert par le copyright
@@ -440,6 +441,17 @@ reste affiché en guise de rappel.</p>
 fonctionner</strong> - il revient à l'édition Community et le bandeau
 vous invite à passer à l'édition supérieure. Vos messages, paramètres,
 plugins et cas de test restent intacts.</p>
+
+<h3>Acheter une licence</h3>
+<p><strong>Aide → Acheter une licence…</strong> ouvre dans votre
+navigateur la section tarifs du site BridgeLab, où Professional et
+Enterprise s'achètent en ligne par carte ; le code d'activation arrive
+par e-mail. La même page est à un clic des boutons <em>Tarifs et
+achat</em> de la boîte d'activation, du bouton <em>Comparer les
+offres</em> du bandeau d'essai et du bouton <em>Voir les tarifs</em> de
+chaque message « nécessite une licence Professional ». Besoin d'une
+facture, d'un bon de commande ou d'un devis ? Écrivez à
+<a href="mailto:info@techemv.it">info@techemv.it</a>.</p>
 
 <h3>Activation</h3>
 <p>Ouvrez la boîte de dialogue d'activation depuis :</p>
