@@ -420,6 +420,12 @@ remain it turns red and stays visible as a reminder.</p>
 upgrade. Your messages, settings, plugins and test cases remain intact.</p>
 
 <h3>Updates</h3>
+<p>Nothing is requested until you decide. The first time BridgeLab
+starts it asks, in a banner at the top of the window, whether it may
+look for new versions (the Windows installer asks during setup instead,
+and then the app does not ask again). <em>Yes, check</em> and
+<em>No</em> are remembered in Settings → Privacy; closing the banner
+without answering asks again at the next start.</p>
 <p>Once a day, a few seconds after start-up, BridgeLab asks GitHub
 (<code>api.github.com</code>) for the latest release. When a newer one
 exists a banner says so, with <em>Download</em> (opens the release page),

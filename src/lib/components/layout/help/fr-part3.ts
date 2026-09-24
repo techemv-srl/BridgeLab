@@ -443,6 +443,13 @@ vous invite à passer à l'édition supérieure. Vos messages, paramètres,
 plugins et cas de test restent intacts.</p>
 
 <h3>Mises à jour</h3>
+<p>Rien n'est demandé tant que vous n'avez pas choisi. Au premier
+démarrage, BridgeLab demande, dans un bandeau en haut de la fenêtre, s'il
+peut rechercher les nouvelles versions (l'installateur Windows pose la
+question pendant l'installation, et l'application ne la repose pas).
+<em>Oui, vérifier</em> et <em>Non</em> sont enregistrés dans Paramètres →
+Confidentialité ; fermer le bandeau sans répondre repose la question au
+démarrage suivant.</p>
 <p>Une fois par jour, quelques secondes après le démarrage, BridgeLab
 demande à GitHub (<code>api.github.com</code>) la dernière version. Si une
 version plus récente existe, un bandeau l'indique avec

@@ -433,6 +433,12 @@ all'upgrade. Messaggi, impostazioni, plugin e test case restano
 intatti.</p>
 
 <h3>Aggiornamenti</h3>
+<p>Non viene richiesto nulla finché non decidi. Al primo avvio BridgeLab
+chiede, con un banner in cima alla finestra, se può cercare nuove
+versioni (l'installer Windows lo chiede già durante l'installazione, e in
+quel caso l'app non lo richiede). <em>Sì, controlla</em> e <em>No</em>
+vengono salvati in Impostazioni → Privacy; chiudendo il banner senza
+rispondere la domanda torna al prossimo avvio.</p>
 <p>Una volta al giorno, qualche secondo dopo l'avvio, BridgeLab chiede a
 GitHub (<code>api.github.com</code>) l'ultima release. Se ce n'è una più
 recente compare un banner con <em>Scarica</em> (apre la pagina della

@@ -2,7 +2,7 @@
 	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { t, subscribeLocale } from '$lib/i18n';
 	import {
-		fetchLatestRelease, startupCheckDue, shouldNotify, getUpdatePolicy, effectivePreference,
+		fetchLatestRelease, startupCheckDue, shouldNotify, getUpdatePolicy, effectivePreference, needsFirstRunQuestion,
 		PREF_STARTUP_CHECK, PREF_LAST_CHECK, PREF_SKIPPED, type LatestRelease,
 	} from '$lib/updates';
 
@@ -17,6 +17,8 @@
 
 	let release = $state<LatestRelease | null>(null);
 	let current = $state('');
+	/** First start with no decision anywhere: ask before any request. */
+	let asking = $state(false);
 
 	async function check() {
 		try {
@@ -25,6 +27,13 @@
 				getPreference(PREF_LAST_CHECK).catch(() => null),
 				getUpdatePolicy().catch(() => null),
 			]);
+			if (needsFirstRunQuestion(policy, userPref)) {
+				// Nobody has decided yet: ask instead of checking. Closing the
+				// question without answering asks again at the next start, and
+				// nothing is sent in between.
+				asking = true;
+				return;
+			}
 			const { value: enabled, seedFromInstaller } = effectivePreference(policy, userPref);
 			// The Windows setup asked; its answer becomes the user's preference
 			// once, and Settings shows it from then on.
@@ -58,13 +67,26 @@
 		}
 	}
 
+	async function answer(yes: boolean) {
+		asking = false;
+		await setPreference(PREF_STARTUP_CHECK, String(yes)).catch(() => {});
+		if (yes) await check();
+	}
+
 	function skip() {
 		if (release) setPreference(PREF_SKIPPED, release.version).catch(() => {});
 		release = null;
 	}
 </script>
 
-{#if release}
+{#if asking}
+	<div class="update-banner" role="dialog" aria-live="polite">
+		<span>{tr('update.askFirstRun')}</span>
+		<button class="update-btn" onclick={() => answer(true)}>{tr('update.askYes')}</button>
+		<button class="update-btn update-btn-ghost" onclick={() => answer(false)}>{tr('update.askNo')}</button>
+		<button class="update-dismiss" onclick={() => { asking = false; }} aria-label={tr('modal.close')}>&times;</button>
+	</div>
+{:else if release}
 	<div class="update-banner" role="status">
 		<span>{tr('update.bannerAvailable', { version: release.version, current })}</span>
 		<button class="update-btn" onclick={download}>{tr('update.download')}</button>

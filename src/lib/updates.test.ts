@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isNewerVersion, startupCheckDue, shouldNotify, effectivePreference, CHECK_INTERVAL_MS } from './updates';
+import { isNewerVersion, startupCheckDue, shouldNotify, effectivePreference, needsFirstRunQuestion, CHECK_INTERVAL_MS } from './updates';
 
 describe('isNewerVersion', () => {
 	it('compares numerically per part', () => {
@@ -57,5 +57,19 @@ describe('effectivePreference', () => {
 	it('falls back to the default (on) when nobody chose', () => {
 		expect(effectivePreference(none, null)).toEqual({ value: null, seedFromInstaller: false });
 		expect(effectivePreference(null, null).value).toBeNull();
+	});
+});
+
+describe('needsFirstRunQuestion', () => {
+	const none = { disabled_by_policy: false, policy_source: null, installer_choice: null };
+	it('asks only when nobody has decided', () => {
+		expect(needsFirstRunQuestion(none, null)).toBe(true);
+		expect(needsFirstRunQuestion(null, null)).toBe(true);
+	});
+	it('does not ask after the user, the installer or a policy decided', () => {
+		expect(needsFirstRunQuestion(none, 'true')).toBe(false);
+		expect(needsFirstRunQuestion(none, 'false')).toBe(false);
+		expect(needsFirstRunQuestion({ ...none, installer_choice: true }, null)).toBe(false);
+		expect(needsFirstRunQuestion({ ...none, disabled_by_policy: true, policy_source: 'env' }, null)).toBe(false);
 	});
 });

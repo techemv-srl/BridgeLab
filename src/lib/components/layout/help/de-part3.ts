@@ -448,6 +448,13 @@ fordert Sie zum Upgrade auf. Ihre Nachrichten, Einstellungen, Plugins
 und Testfälle bleiben unangetastet.</p>
 
 <h3>Updates</h3>
+<p>Es wird nichts abgefragt, bevor Sie entschieden haben. Beim ersten
+Start fragt BridgeLab in einem Banner oben im Fenster, ob nach neuen
+Versionen gesucht werden darf (der Windows-Installer fragt bereits bei der
+Installation, dann fragt die App nicht erneut). <em>Ja, prüfen</em> und
+<em>Nein</em> werden unter Einstellungen → Datenschutz gespeichert; wird
+das Banner ohne Antwort geschlossen, kommt die Frage beim nächsten Start
+wieder.</p>
 <p>Einmal täglich, einige Sekunden nach dem Start, fragt BridgeLab GitHub
 (<code>api.github.com</code>) nach der neuesten Version. Gibt es eine
 neuere, erscheint ein Banner mit <em>Herunterladen</em> (öffnet die

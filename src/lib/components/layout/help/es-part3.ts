@@ -443,6 +443,13 @@ actualizar. Tus mensajes, tu configuración, tus plugins y tus casos de
 prueba permanecen intactos.</p>
 
 <h3>Actualizaciones</h3>
+<p>No se consulta nada hasta que decidas. La primera vez que se inicia,
+BridgeLab pregunta, con un banner en la parte superior de la ventana, si
+puede buscar nuevas versiones (el instalador de Windows lo pregunta
+durante la instalación, y entonces la aplicación no vuelve a hacerlo).
+<em>Sí, comprobar</em> y <em>No</em> se guardan en Configuración →
+Privacidad; cerrar el banner sin responder vuelve a preguntar en el
+siguiente inicio.</p>
 <p>Una vez al día, unos segundos después de iniciar, BridgeLab consulta a
 GitHub (<code>api.github.com</code>) la última versión. Si hay una más
 reciente aparece un banner con <em>Descargar</em> (abre la página de la
