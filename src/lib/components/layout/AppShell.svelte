@@ -27,6 +27,8 @@
 	import CommunicationPanel from '$lib/components/communication/CommunicationPanel.svelte';
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
 	import LicenseNoticeBanner from '$lib/components/licensing/LicenseNoticeBanner.svelte';
+	import UpdateBanner from '$lib/components/layout/UpdateBanner.svelte';
+	import { isNewerVersion, fetchLatestRelease } from '$lib/updates';
 	import FhirPathPanel from '$lib/components/fhirpath/FhirPathPanel.svelte';
 	import type { TestCase } from '$lib/ipc/testcases';
 	import { checkLicense, type LicenseStatus } from '$lib/ipc/licensing';
@@ -283,17 +285,6 @@
 		}
 	}
 
-	/** True when semver `a` is newer than `b` (numeric per-part compare). */
-	function isNewerVersion(a: string, b: string): boolean {
-		const pa = a.split('.').map((n) => parseInt(n) || 0);
-		const pb = b.split('.').map((n) => parseInt(n) || 0);
-		for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-			const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-			if (d !== 0) return d > 0;
-		}
-		return false;
-	}
-
 	/**
 	 * Help → Check for updates. Preferred path: the Tauri updater (signed
 	 * artifacts + latest.json) with in-app download and relaunch. Until
@@ -339,17 +330,13 @@
 		}
 
 		try {
-			const res = await fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest');
-			if (!res.ok) throw new Error(`GitHub API: HTTP ${res.status}`);
-			const rel = await res.json();
-			const latest = String(rel.tag_name ?? '').replace(/^v/, '');
-			if (!latest) throw new Error('No release tag found');
+			const { version: latest, url } = await fetchLatestRelease();
 			if (current && isNewerVersion(latest, current)) {
 				const go = await dialogStore.confirm(
 					t('update.available', { version: latest, current }),
 					t('update.title'),
 				);
-				if (go) await openExternal(rel.html_url ?? 'https://github.com/techemv-srl/BridgeLab/releases');
+				if (go) await openExternal(url);
 			} else {
 				await dialogStore.info(t('update.upToDate', { current: current || latest }), t('update.title'));
 			}
@@ -1120,6 +1107,7 @@
 	{/if}
 	<!-- Non-blocking notice pushed by the license server (dismiss clears it) -->
 	<LicenseNoticeBanner />
+	<UpdateBanner />
 
 	<!-- Menu Bar -->
 	<MenuBar

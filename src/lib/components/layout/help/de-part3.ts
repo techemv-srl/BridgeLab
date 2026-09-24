@@ -447,6 +447,18 @@ ein</strong> - es fällt auf die Community-Stufe zurück, und das Banner
 fordert Sie zum Upgrade auf. Ihre Nachrichten, Einstellungen, Plugins
 und Testfälle bleiben unangetastet.</p>
 
+<h3>Updates</h3>
+<p>Einmal täglich, einige Sekunden nach dem Start, fragt BridgeLab GitHub
+(<code>api.github.com</code>) nach der neuesten Version. Gibt es eine
+neuere, erscheint ein Banner mit <em>Herunterladen</em> (öffnet die
+Release-Seite), <em>Diese Version überspringen</em> und einer
+Schließen-Schaltfläche; installiert wird nichts automatisch. Die Anfrage
+enthält nichts über Sie, den Computer oder Ihre Dateien und wird ohne
+Internetzugang stillschweigend übersprungen. Abschalten unter
+<strong>Einstellungen → Datenschutz → Beim Start nach neuen Versionen
+suchen</strong>; <strong>Hilfe → Nach Updates suchen</strong> funktioniert
+jederzeit auf Anfrage.</p>
+
 <h3>Eine Lizenz kaufen</h3>
 <p><strong>Hilfe → Lizenz kaufen…</strong> öffnet im Browser den
 Preisbereich der BridgeLab-Website, wo Professional und Enterprise

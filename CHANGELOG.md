@@ -17,6 +17,15 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   carries `utm_source=app` and the entry point as `utm_medium`, which the
   landing passes on to the order, so sales can see where a purchase
   started. E-mail stays for invoices, purchase orders and quotes.
+- **New versions are announced at startup.** Once a day, a few seconds
+  after launch, BridgeLab asks GitHub for the latest release and, when it
+  is newer, shows a banner with *Download* (the release page), *Skip this
+  version* and a close button — no dialog, nothing installed
+  automatically. The request is an anonymous GET to `api.github.com`
+  with nothing about the user, the machine or the files; offline it is
+  skipped silently. On by default, off under *Settings → Privacy → Check
+  for new versions at startup*; the privacy policy and the manual
+  describe it. *Help → Check for Updates* shares the same code.
 
 ### Fixed
 - **The macOS `.app.tar.gz` updater bundles were still uploaded with

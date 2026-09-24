@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t, subscribeLocale, setLocale, getLocale, type Locale } from '$lib/i18n';
 	import { getPreference, setPreference } from '$lib/ipc/database';
+	import { PREF_STARTUP_CHECK } from '$lib/updates';
 	import {
 		listPlugins, reloadPlugins, setPluginEnabled,
 		openPluginsFolder, getPluginsDir, type PluginInfo,
@@ -235,7 +236,16 @@
 
 	async function loadTelemetry() {
 		try { telemetry = await getTelemetrySettings(); } catch { /* web mode */ }
+		try { updateCheck = (await getPreference(PREF_STARTUP_CHECK)) !== 'false'; } catch { /* web mode */ }
 		telemetryLoaded = true;
+	}
+
+	// Update check at startup: on unless explicitly turned off. Persists
+	// immediately, like the telemetry toggle.
+	let updateCheck = $state(true);
+	async function handleUpdateCheckToggle(e: Event) {
+		updateCheck = (e.currentTarget as HTMLInputElement).checked;
+		try { await setPreference(PREF_STARTUP_CHECK, String(updateCheck)); } catch { /* web mode */ }
 	}
 
 	// The toggle persists immediately — it must not depend on Save & Close.
@@ -544,6 +554,14 @@
 
 			{:else if activeSection === 'privacy'}
 				<h3>{tr('settings.privacy')}</h3>
+
+				<div class="setting-check">
+					<label>
+						<input type="checkbox" checked={updateCheck} onchange={handleUpdateCheckToggle} />
+						{tr('settings.updateCheck')}
+					</label>
+					<div class="hint">{tr('settings.updateCheckHint')}</div>
+				</div>
 
 				<div class="setting-check">
 					<label>

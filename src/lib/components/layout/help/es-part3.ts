@@ -442,6 +442,17 @@ funcionar</strong> - vuelve al nivel Community y el banner te invita a
 actualizar. Tus mensajes, tu configuración, tus plugins y tus casos de
 prueba permanecen intactos.</p>
 
+<h3>Actualizaciones</h3>
+<p>Una vez al día, unos segundos después de iniciar, BridgeLab consulta a
+GitHub (<code>api.github.com</code>) la última versión. Si hay una más
+reciente aparece un banner con <em>Descargar</em> (abre la página de la
+versión), <em>Omitir esta versión</em> y un botón de cierre; no se instala
+nada automáticamente. La consulta no contiene nada sobre ti, el equipo o
+tus archivos, y sin acceso a internet se omite en silencio. Se desactiva
+en <strong>Configuración → Privacidad → Buscar nuevas versiones al
+iniciar</strong>; <strong>Ayuda → Buscar actualizaciones</strong> funciona
+siempre bajo demanda.</p>
+
 <h3>Comprar una licencia</h3>
 <p><strong>Ayuda → Comprar una licencia…</strong> abre en el navegador
 la sección de precios del sitio de BridgeLab, donde Professional y
