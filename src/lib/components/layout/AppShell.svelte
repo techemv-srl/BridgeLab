@@ -13,6 +13,7 @@
 	import { shortcutStore, shortcutCapture, matchesKeys } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
+	import { openPricing } from '$lib/licensing/pricing';
 	import AppDialog from '$lib/components/shared/AppDialog.svelte';
 	import MonacoEditor from '$lib/components/editor/MonacoEditor.svelte';
 	import MessageTree from '$lib/components/tree/MessageTree.svelte';
@@ -803,7 +804,15 @@
 	async function handleUpgradeError(err: unknown): Promise<boolean> {
 		const upgrade = parseUpgradeError(err);
 		if (upgrade) {
-			await dialogStore.info(t('upgrade.required', { tier: upgrade.tier }));
+			// Offer the way to buy right where the need shows up.
+			const buy = await dialogStore.show({
+				kind: 'info',
+				message: t('upgrade.required', { tier: upgrade.tier }),
+				okLabel: t('upgrade.seePrices'),
+				cancelLabel: t('modal.close'),
+				showCancel: true,
+			});
+			if (buy) await openPricing('upgrade_prompt');
 			return true;
 		}
 		return false;

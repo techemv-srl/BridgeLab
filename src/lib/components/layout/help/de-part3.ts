@@ -74,7 +74,8 @@ Dropdown mit <strong>(PRO)</strong> markiert und erfordert eine
 Professional-Lizenz (oder eine aktive Testversion). Beim Versuch,
 einen gesperrten Eintrag zu exportieren, zeigt BridgeLab eine
 Upgrade-Aufforderung mit Verweis auf
-<strong>Hilfe → Aktivierung</strong>.</p>
+<strong>Hilfe → Lizenz kaufen</strong> (die Preisseite) oder
+<strong>Hilfe → Lizenz aktivieren</strong>.</p>
 
 <h3>Lizenzhinweis</h3>
 <p>BridgeLab verteilt keine urheberrechtlich geschützten XSD-Dateien
@@ -445,6 +446,17 @@ Tagen wird es rot und bleibt als Erinnerung sichtbar.</p>
 ein</strong> - es fällt auf die Community-Stufe zurück, und das Banner
 fordert Sie zum Upgrade auf. Ihre Nachrichten, Einstellungen, Plugins
 und Testfälle bleiben unangetastet.</p>
+
+<h3>Eine Lizenz kaufen</h3>
+<p><strong>Hilfe → Lizenz kaufen…</strong> öffnet im Browser den
+Preisbereich der BridgeLab-Website, wo Professional und Enterprise
+online per Karte gekauft werden; der Aktivierungscode kommt per E-Mail.
+Dieselbe Seite ist einen Klick entfernt über die Schaltflächen
+<em>Preise &amp; Kauf</em> im Aktivierungsdialog, <em>Tarife
+vergleichen</em> im Testversions-Banner und <em>Preise ansehen</em> in
+jedem Hinweis „erfordert eine Professional-Lizenz“. Rechnung,
+Bestellung oder Angebot nötig? Schreiben Sie an
+<a href="mailto:info@techemv.it">info@techemv.it</a>.</p>
 
 <h3>Aktivierung</h3>
 <p>Öffnen Sie den Aktivierungsdialog über:</p>

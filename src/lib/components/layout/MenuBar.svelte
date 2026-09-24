@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t, subscribeLocale } from '$lib/i18n';
+	import { openPricing } from '$lib/licensing/pricing';
 	import type { RecentFile } from '$lib/ipc/database';
 	import { shortcutStore } from '$lib/stores/shortcuts.svelte';
 
@@ -378,6 +379,9 @@
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onShowShortcuts)}>
 					<span>{tr('menu.help.shortcuts')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(() => { void openPricing('menu'); })}>
+					<span>{tr('menu.help.buy')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onShowActivation)}>
 					<span>{tr('act.activate')}</span>

@@ -72,7 +72,8 @@ cubierto:</p>
 aparece marcado como <strong>(PRO)</strong> en el desplegable y requiere
 una licencia Professional (o una prueba activa). Si intentas exportar
 una entrada restringida, BridgeLab muestra un aviso de actualización que
-apunta a <strong>Ayuda → Activación</strong>.</p>
+apunta a <strong>Ayuda → Comprar una licencia</strong> (la página de precios) o
+<strong>Ayuda → Activar Licencia</strong>.</p>
 
 <h3>Nota sobre licencias</h3>
 <p>BridgeLab no redistribuye ningún archivo XSD con copyright de HL7.
@@ -440,6 +441,17 @@ visible como recordatorio.</p>
 funcionar</strong> - vuelve al nivel Community y el banner te invita a
 actualizar. Tus mensajes, tu configuración, tus plugins y tus casos de
 prueba permanecen intactos.</p>
+
+<h3>Comprar una licencia</h3>
+<p><strong>Ayuda → Comprar una licencia…</strong> abre en el navegador
+la sección de precios del sitio de BridgeLab, donde Professional y
+Enterprise se compran en línea con tarjeta; el código de activación
+llega por correo. La misma página está a un clic de los botones
+<em>Precios y compra</em> del diálogo de activación, del botón
+<em>Comparar planes</em> del banner de prueba y del botón <em>Ver
+precios</em> de cada aviso «requiere una licencia Professional».
+¿Necesitas factura, orden de compra o presupuesto? Escribe a
+<a href="mailto:info@techemv.it">info@techemv.it</a>.</p>
 
 <h3>Activación</h3>
 <p>Abre el diálogo de activación desde:</p>

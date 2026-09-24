@@ -66,7 +66,8 @@ così il workflow tipico di debug MLLP è coperto:</p>
 <strong>(PRO)</strong> nel dropdown e richiede una licenza Professional
 (o un trial attivo). Se provi a esportare una voce gated, BridgeLab
 mostra un prompt di upgrade con link a
-<strong>Aiuto → Attivazione</strong>.</p>
+<strong>Aiuto → Acquista una licenza</strong> (la pagina prezzi) o
+<strong>Aiuto → Attiva Licenza</strong>.</p>
 
 <h3>Nota sul licensing</h3>
 <p>BridgeLab non ridistribuisce alcun file XSD coperto da copyright
@@ -430,6 +431,17 @@ chiudere come promemoria.</p>
 funzionare</strong> - torna al livello Community e il banner ti invita
 all'upgrade. Messaggi, impostazioni, plugin e test case restano
 intatti.</p>
+
+<h3>Acquistare una licenza</h3>
+<p><strong>Aiuto → Acquista una licenza…</strong> apre nel browser la
+sezione prezzi del sito di BridgeLab, dove Professional ed Enterprise si
+acquistano online con carta; il codice di attivazione arriva via
+e-mail. La stessa pagina è a un clic dai pulsanti <em>Prezzi e
+acquisto</em> del dialog di attivazione, dal pulsante <em>Confronta i
+piani</em> del banner trial e dal pulsante <em>Vedi i prezzi</em> di
+ogni avviso "richiede una licenza Professional". Serve fattura, ordine
+d'acquisto o preventivo? Scrivi a
+<a href="mailto:info@techemv.it">info@techemv.it</a>.</p>
 
 <h3>Attivazione</h3>
 <p>Apri il dialog di attivazione da:</p>
