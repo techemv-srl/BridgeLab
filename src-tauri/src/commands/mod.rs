@@ -14,4 +14,5 @@ pub mod plugins;
 pub mod schema_export;
 pub mod soap;
 pub mod tables;
+pub mod update_policy;
 pub mod validation;

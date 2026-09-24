@@ -324,6 +324,7 @@
 	"settings.telemetryEnabled": "Invia statistiche d'uso",
 	"settings.updateCheck": "Controlla nuove versioni all'avvio",
 	"settings.updateCheckHint": "Una volta al giorno BridgeLab chiede ad api.github.com l'ultima release. Non viene inviato nulla su di te, sul computer o sui tuoi file. Senza accesso a internet il controllo viene saltato in silenzio.",
+	"settings.updateCheckPolicy": "Disattivato per questo computer dall'amministratore ({source}).",
 	"settings.telemetryHelp": "Una volta al giorno (o con 'Invia ora') BridgeLab invia a TECHEMV contatori d'uso più versione dell'app, sistema operativo, tipo di licenza, un ID di installazione casuale e — per le licenze attivate online — il codice di attivazione (usato per segnalare licenze revocate). I dati sono pseudonimi: non vengono mai inviati contenuti dei messaggi, nomi di file, nomi host o dati personali.",
 	"settings.telemetryPreview": "Mostra cosa viene inviato",
 	"settings.telemetrySendNow": "Invia ora",

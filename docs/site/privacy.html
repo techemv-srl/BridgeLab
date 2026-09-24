@@ -72,6 +72,14 @@
 		contract). After activation the license is verified locally: the
 		Software does not need to contact our servers again to keep
 		working.</p>
+		<p>One exception, to pick up a renewal without asking you to do
+		anything: from 14 days before a license activated online expires
+		(and after it has expired), the Software repeats the activation
+		request above in the background at start-up, at most once a day,
+		with the stored code. If our server cannot be reached nothing
+		changes and no error is shown; the license already on the machine
+		keeps working until its own expiry date. Licenses without an expiry
+		date, and offline license keys, never trigger it.</p>
 
 		<h2>Usage statistics (opt-in, default OFF)</h2>
 		<p>If &mdash; and only if &mdash; you enable &ldquo;Send usage
@@ -97,8 +105,13 @@
 			statement applies to it. TECHEMV receives nothing. It is on
 			by default and turned off in Settings&nbsp;&rarr;&nbsp;Privacy
 			(&ldquo;Check for new versions at startup&rdquo;); without
-			internet access it is skipped silently. Help&nbsp;&rarr;&nbsp;Check
-			for Updates makes the same request on demand.
+			internet access it is skipped silently. The Windows installer
+			asks the same question when BridgeLab is first installed.
+			Administrators can turn it off for every user of a machine with
+			the <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code> environment
+			variable or a <code>policy.json</code> file (see the user
+			manual). Help&nbsp;&rarr;&nbsp;Check for Updates makes the same
+			request on demand.
 		</p>
 
 		<h2>Support</h2>

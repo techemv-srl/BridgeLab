@@ -453,6 +453,16 @@ fichiers, et sans accès à Internet elle est ignorée silencieusement.
 Désactivez-la dans <strong>Paramètres → Confidentialité → Rechercher les
 nouvelles versions au démarrage</strong> ; <strong>Aide → Vérifier les
 mises à jour</strong> fonctionne toujours à la demande.</p>
+<p>L'installateur Windows pose la même question à la première
+installation (<em>Oui</em> par défaut ; une installation silencieuse ne
+demande rien). Sur les postes gérés, l'administrateur peut désactiver la
+vérification pour tous les utilisateurs, et la case des Paramètres apparaît
+verrouillée : variable d'environnement
+<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>, ou fichier
+<code>policy.json</code> contenant <code>{"disable_update_check": true}</code>
+dans <code>%ProgramData%\\BridgeLab\\</code> (Windows),
+<code>/Library/Application Support/BridgeLab/</code> (macOS) ou
+<code>/etc/bridgelab/</code> (Linux).</p>
 
 <h3>Acheter une licence</h3>
 <p><strong>Aide → Acheter une licence…</strong> ouvre dans votre

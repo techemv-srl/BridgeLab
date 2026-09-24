@@ -16,6 +16,33 @@ export const PREF_STARTUP_CHECK = 'update_check_on_startup';
 export const PREF_LAST_CHECK = 'update_last_check';
 export const PREF_SKIPPED = 'update_skipped_version';
 
+/** Machine policy and installer choice, as the backend reads them. */
+export interface UpdatePolicy {
+	disabled_by_policy: boolean;
+	policy_source: string | null;
+	installer_choice: boolean | null;
+}
+
+export async function getUpdatePolicy(): Promise<UpdatePolicy> {
+	const { invoke } = await import('@tauri-apps/api/core');
+	return invoke('get_update_policy');
+}
+
+/**
+ * The preference the startup check should use: a machine policy wins
+ * ("false"); otherwise the user's own choice; otherwise, the first time,
+ * the Windows installer's choice (returned so the caller can store it).
+ */
+export function effectivePreference(
+	policy: UpdatePolicy | null,
+	userPref: string | null,
+): { value: string | null; seedFromInstaller: boolean } {
+	if (policy?.disabled_by_policy) return { value: 'false', seedFromInstaller: false };
+	if (userPref === 'true' || userPref === 'false') return { value: userPref, seedFromInstaller: false };
+	if (policy?.installer_choice != null) return { value: String(policy.installer_choice), seedFromInstaller: true };
+	return { value: userPref, seedFromInstaller: false };
+}
+
 /** At most one automatic check per day. */
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 

@@ -458,6 +458,16 @@ Internetzugang stillschweigend übersprungen. Abschalten unter
 <strong>Einstellungen → Datenschutz → Beim Start nach neuen Versionen
 suchen</strong>; <strong>Hilfe → Nach Updates suchen</strong> funktioniert
 jederzeit auf Anfrage.</p>
+<p>Der Windows-Installer stellt dieselbe Frage bei der ersten Installation
+(<em>Ja</em> ist voreingestellt; eine stille Installation fragt nicht).
+Auf verwalteten Rechnern kann der Administrator die Prüfung für alle
+Benutzer abschalten, das Kontrollkästchen in den Einstellungen erscheint
+dann gesperrt: Umgebungsvariable
+<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code> oder eine Datei
+<code>policy.json</code> mit <code>{"disable_update_check": true}</code> in
+<code>%ProgramData%\\BridgeLab\\</code> (Windows),
+<code>/Library/Application Support/BridgeLab/</code> (macOS) bzw.
+<code>/etc/bridgelab/</code> (Linux).</p>
 
 <h3>Eine Lizenz kaufen</h3>
 <p><strong>Hilfe → Lizenz kaufen…</strong> öffnet im Browser den

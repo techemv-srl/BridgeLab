@@ -429,6 +429,16 @@ your files, and without internet access it is skipped silently. Turn it
 off under <strong>Settings → Privacy → Check for new versions at
 startup</strong>; <strong>Help → Check for Updates</strong> always works
 on demand.</p>
+<p>The Windows installer asks the same question the first time
+(<em>Yes</em> is the default; a silent install does not ask). For
+managed machines an administrator can turn the check off for every user,
+and the Settings checkbox then shows as locked: set the environment
+variable <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>, or create
+<code>policy.json</code> containing
+<code>{"disable_update_check": true}</code> in
+<code>%ProgramData%\\BridgeLab\\</code> (Windows),
+<code>/Library/Application Support/BridgeLab/</code> (macOS) or
+<code>/etc/bridgelab/</code> (Linux).</p>
 
 <h3>Buying a license</h3>
 <p><strong>Help → Buy a License…</strong> opens the pricing section of

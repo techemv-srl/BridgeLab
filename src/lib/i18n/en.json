@@ -324,6 +324,7 @@
 	"settings.telemetryEnabled": "Send usage statistics",
 	"settings.updateCheck": "Check for new versions at startup",
 	"settings.updateCheckHint": "Once a day BridgeLab asks api.github.com for the latest release. Nothing about you, this computer or your files is sent. Without internet access the check is skipped silently.",
+	"settings.updateCheckPolicy": "Turned off for this computer by your administrator ({source}).",
 	"settings.telemetryHelp": "Once a day (or via 'Send now') BridgeLab sends usage counters plus app version, OS, license tier, a random installation ID and — for online-activated licenses — the activation code (used to flag revoked licenses) to TECHEMV. The data is pseudonymous: no message content, file names, host names or personal data are ever sent.",
 	"settings.telemetryPreview": "Show what is sent",
 	"settings.telemetrySendNow": "Send now",

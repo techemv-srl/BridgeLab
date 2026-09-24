@@ -7,10 +7,17 @@ on:
     branches: [release/public]
   workflow_dispatch:
 
+# Runner: GitHub-hosted by default. A repository that sets the Actions
+# variable CI_RUNNER (Settings → Secrets and variables → Actions →
+# Variables) runs these jobs there instead — the private repo points it at
+# its self-hosted runner, e.g. ["self-hosted","linux","x64"], so CI does not
+# consume hosted minutes. The public mirror leaves it unset: self-hosted
+# runners must never execute jobs a public repository's pull requests can
+# trigger.
 jobs:
   no-dev-only-files:
     name: Ensure dev-only files never reach release/public
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v5
 

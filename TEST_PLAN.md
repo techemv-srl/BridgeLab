@@ -481,6 +481,8 @@ Before running tests:
 | BL-UPD-04 | P1 | Startup check announces a newer release | Run a build older than the latest GitHub release with a fresh profile; wait ~10 s | Accent-coloured banner "BridgeLab X is available (you have Y)" with Download / Skip this version / ×; no dialog. Download opens the release page | |
 | BL-UPD-05 | P1 | Once a day, skip, and off switch | Restart within 24 h; then press Skip and advance the clock a day; then untick Settings → Privacy → Check for new versions at startup | No second request within 24 h; a skipped version is not announced again (a later one is); with the box unticked no request is made at all (check with a proxy log) | |
 | BL-UPD-06 | P1 | Silent offline | Start with the network down, or behind a proxy that blocks api.github.com | No banner, no error, no delay in startup | |
+| BL-UPD-07 | P1 | Windows installer asks once | Fresh Windows machine: run the NSIS setup in each installer language; answer No; start the app. Re-run the setup over it | The setup asks (Yes preselected) in its own language; with No, Settings → Privacy shows the box unticked and no request goes out; re-running the setup does not ask again; `setup.exe /S` never asks | |
+| BL-UPD-08 | P1 | Machine policy locks it off | Set `BRIDGELAB_DISABLE_UPDATE_CHECK=1`, start; unset it, create `policy.json` with `{"disable_update_check": true}` in the platform folder, start | No request in either case; the Settings box is unticked, disabled, and the hint names the environment variable or the file path; a malformed policy file changes nothing | |
 
 ## 27. Tree ↔ Editor Navigation
 
