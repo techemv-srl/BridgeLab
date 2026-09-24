@@ -478,6 +478,9 @@ Before running tests:
 | BL-UPD-01 | P2 | Check for updates | Help > Check for Updates | Shows "latest version" or update available | |
 | BL-UPD-02 | P2 | No update dialog | If no update | Alert "You are running the latest version" | |
 | BL-UPD-03 | P2 | Update available | Run an older build; Help > Check for Updates | Dialog names the newer version and opens the GitHub release page on confirm. (In-app download and restart need signed artifacts and a `latest.json`, which the release pipeline does not produce.) | |
+| BL-UPD-04 | P1 | Startup check announces a newer release | Run a build older than the latest GitHub release with a fresh profile; wait ~10 s | Accent-coloured banner "BridgeLab X is available (you have Y)" with Download / Skip this version / ×; no dialog. Download opens the release page | |
+| BL-UPD-05 | P1 | Once a day, skip, and off switch | Restart within 24 h; then press Skip and advance the clock a day; then untick Settings → Privacy → Check for new versions at startup | No second request within 24 h; a skipped version is not announced again (a later one is); with the box unticked no request is made at all (check with a proxy log) | |
+| BL-UPD-06 | P1 | Silent offline | Start with the network down, or behind a proxy that blocks api.github.com | No banner, no error, no delay in startup | |
 
 ## 27. Tree ↔ Editor Navigation
 

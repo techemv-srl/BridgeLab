@@ -419,6 +419,17 @@ remain it turns red and stays visible as a reminder.</p>
 - it falls back to the Community tier and the banner prompts you to
 upgrade. Your messages, settings, plugins and test cases remain intact.</p>
 
+<h3>Updates</h3>
+<p>Once a day, a few seconds after start-up, BridgeLab asks GitHub
+(<code>api.github.com</code>) for the latest release. When a newer one
+exists a banner says so, with <em>Download</em> (opens the release page),
+<em>Skip this version</em> and a close button; nothing is installed
+automatically. The request carries nothing about you, the computer or
+your files, and without internet access it is skipped silently. Turn it
+off under <strong>Settings → Privacy → Check for new versions at
+startup</strong>; <strong>Help → Check for Updates</strong> always works
+on demand.</p>
+
 <h3>Buying a license</h3>
 <p><strong>Help → Buy a License…</strong> opens the pricing section of
 the BridgeLab website in your browser, where Professional and

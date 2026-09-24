@@ -442,6 +442,18 @@ fonctionner</strong> - il revient à l'édition Community et le bandeau
 vous invite à passer à l'édition supérieure. Vos messages, paramètres,
 plugins et cas de test restent intacts.</p>
 
+<h3>Mises à jour</h3>
+<p>Une fois par jour, quelques secondes après le démarrage, BridgeLab
+demande à GitHub (<code>api.github.com</code>) la dernière version. Si une
+version plus récente existe, un bandeau l'indique avec
+<em>Télécharger</em> (ouvre la page de la version), <em>Ignorer cette
+version</em> et un bouton de fermeture ; rien n'est installé
+automatiquement. La requête ne contient rien sur vous, l'ordinateur ou vos
+fichiers, et sans accès à Internet elle est ignorée silencieusement.
+Désactivez-la dans <strong>Paramètres → Confidentialité → Rechercher les
+nouvelles versions au démarrage</strong> ; <strong>Aide → Vérifier les
+mises à jour</strong> fonctionne toujours à la demande.</p>
+
 <h3>Acheter une licence</h3>
 <p><strong>Aide → Acheter une licence…</strong> ouvre dans votre
 navigateur la section tarifs du site BridgeLab, où Professional et
