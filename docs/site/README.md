@@ -10,7 +10,8 @@ anyone can edit copy without a toolchain.
   download, FAQ, footer)
 - `style.css` - Catppuccin-inspired dark theme matching the app
 - `favicon.svg` - 32x32 brand mark (bridge + stripe)
-- `og-image.svg` - 1200x630 OG/Twitter preview card
+- `og-image.svg` - 1200x627 (1.91:1) OG/Twitter preview card, the source
+- `og-image.png` - the same card rendered to PNG; this is what the meta tags point at
 
 ## Local preview
 
@@ -44,7 +45,12 @@ Download links point at `https://github.com/1warpengine/HL7_editor/releases/late
 
 ## OG image
 
-The current OG image is an inline SVG. Social networks render SVG
-inconsistently; when you have a real screenshot, export a `1200x630 PNG` at
-`og-image.png` and update the `<meta property="og:image">` line in
-`index.html`.
+Social networks do not render SVG previews reliably, so the meta tags in
+`index.html` point at `og-image.png` (1200x627, 1.91:1) by **absolute URL**
+— crawlers do not resolve relative paths. `og-image.svg` is the source:
+keep everything that matters inside the central 80% (x 120-1080,
+y 63-564), because preview cards crop the edges. After editing it,
+re-render the PNG with the text in Inter (a headless Chromium screenshot
+at 1200x627 with the Inter woff2 files embedded via `@font-face` works;
+system fallbacks change the letter widths). The tags must stay in the
+static HTML: crawlers do not run JavaScript.
