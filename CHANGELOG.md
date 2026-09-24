@@ -2,7 +2,7 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
-## [Unreleased]
+## [1.8.0] — 2026-09-24
 
 ### Added
 - **Buying a license from inside the app.** Until now the app only said
@@ -46,6 +46,16 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   software never needs to contact the server again.
 
 ### Fixed
+- **"Delete the application data" on Windows uninstall left BridgeLab's
+  data behind.** The option removed only the WebView2 profile
+  (`%APPDATA%\com.bridgelab.app`); the database — preferences,
+  communication history with message previews, test cases, open tabs —
+  plugins, FHIR packages and the installer's answer stayed in
+  `%APPDATA%\BridgeLab`. The uninstaller now removes that folder too when
+  the box is ticked (never during an update), keeping only
+  `license.json`, so a reinstall stays licensed (free the seat of an
+  online activation with *Deactivate* first if the machine is leaving),
+  and the trial files, so uninstalling does not restart the trial.
 - **The macOS `.app.tar.gz` updater bundles were still uploaded with
   1.7.0**, although `createUpdaterArtifacts` is off in `tauri.conf.json`.
   The release workflow now repeats the setting on the `tauri build`
