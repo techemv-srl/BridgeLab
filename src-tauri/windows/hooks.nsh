@@ -16,6 +16,19 @@
 ;;   install (shell context "all") still writes into the installing
 ;;   user's own folder, where the app looks.
 ;;
+;; Uninstall: Tauri's "Delete the application data" option removes only
+;; %APPDATA%\com.bridgelab.app and %LOCALAPPDATA%\com.bridgelab.app (the
+;; WebView2 profile). BridgeLab keeps its own data in %APPDATA%\BridgeLab —
+;; database (preferences, communication history with message previews,
+;; test cases, session tabs), plugins, FHIR packages, installer.json — so
+;; NSIS_HOOK_POSTUNINSTALL removes that too when the box is ticked, on a
+;; real uninstall only (never while updating). Kept on purpose:
+;;   license.json   so a reinstall stays licensed; the seat of an online
+;;                  activation is freed with Deactivate in the app, which
+;;                  the uninstaller cannot do;
+;;   trial.json and %LOCALAPPDATA%\BridgeLab\.bl-state.json, so
+;;                  uninstalling is not a way to restart the trial.
+;;
 ;; This file is UTF-8 with a BOM so makensis reads the accented strings
 ;; correctly whatever the build machine's code page.
 
@@ -57,4 +70,37 @@
   Pop $R9
   Pop $R1
   Pop $R0
+!macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  ${If} $DeleteAppDataCheckboxState = 1
+  ${AndIf} $UpdateMode <> 1
+    Push $R0
+    Push $R1
+    Push $R2
+    ReadEnvStr $R0 APPDATA
+    StrCmp $R0 "" bl_purge_done
+    IfFileExists "$R0\BridgeLab\*.*" 0 bl_purge_done
+    FindFirst $R1 $R2 "$R0\BridgeLab\*"
+    bl_purge_loop:
+      StrCmp $R2 "" bl_purge_close
+      StrCmp $R2 "." bl_purge_next
+      StrCmp $R2 ".." bl_purge_next
+      StrCmp $R2 "license.json" bl_purge_next
+      StrCmp $R2 "trial.json" bl_purge_next
+      IfFileExists "$R0\BridgeLab\$R2\*.*" 0 bl_purge_file
+        RMDir /r "$R0\BridgeLab\$R2"
+        Goto bl_purge_next
+      bl_purge_file:
+        Delete "$R0\BridgeLab\$R2"
+    bl_purge_next:
+      FindNext $R1 $R2
+      Goto bl_purge_loop
+    bl_purge_close:
+    FindClose $R1
+    bl_purge_done:
+    Pop $R2
+    Pop $R1
+    Pop $R0
+  ${EndIf}
 !macroend

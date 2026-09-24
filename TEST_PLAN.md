@@ -595,6 +595,7 @@ Before running tests:
 | BL-PKG-08 | P1 | AppImage runs without GStreamer bundled | Run the AppImage on a distro without GStreamer, offline | App starts, parses and validates; about 20 MB | |
 | BL-PKG-09 | P2 | File association `.hl7` | Install, double-click .hl7 | Opens in BridgeLab | |
 | BL-PKG-10 | P2 | About dialog version matches installer | Launch installed build | About shows 0.1.0 (or current) | |
+| BL-PKG-11 | P1 | Windows uninstall with "Delete the application data" | Install, activate a license, use the app (history, test case, a plugin), then uninstall ticking *Delete the application data*; then uninstall once more without the box on a second install; then run the setup over an existing install (update) | Ticked: `%APPDATA%\BridgeLab` keeps only `license.json` and `trial.json`, everything else gone; `%LOCALAPPDATA%\BridgeLab\.bl-state.json` still there; reinstall is licensed and the setup asks the update question again. Unticked or updating: nothing under `%APPDATA%\BridgeLab` is touched | |
 
 ## 34. Regression / Bug Verification
 
