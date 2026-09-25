@@ -20,6 +20,9 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to GitHub Pages
+    # The site is served from the public mirror; the private repo has no
+    # Pages site, so there the job would only fail at "Setup Pages".
+    if: github.repository == 'techemv-srl/BridgeLab'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
