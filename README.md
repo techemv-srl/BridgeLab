@@ -145,7 +145,7 @@ organized by feature area). CI automates the automatable slice:
   tests, HL7 fixtures (parser/info/validate/anonymize/batch/JUnit), FHIR
   fixture integrity, schema-lookup Rust tests, license keygen roundtrip
 
-Two more checks belong to every release, neither automatable:
+More checks belong to every release, none of them automatable:
 
 - **The comparison table on the landing page** (`docs/site/index.html`,
   section *Why a new HL7 editor*) is comparative advertising under
@@ -161,6 +161,15 @@ Two more checks belong to every release, neither automatable:
   `tools/bridgelab-cli/` and `tools/hl7-schema-importer/`, `pnpm audit`
   at the root. Fix what has a fix; note in the CHANGELOG what does not
   (today `glib` 0.18 and `rand` 0.7, transitive through Tauri).
+- **The release note ends with the company footer**, after a horizontal
+  rule, exactly as below. The release workflow's placeholder body already
+  carries it; keep it when you paste the real note over the draft.
+
+  ```markdown
+  ---
+
+  *BridgeLab is built by TECHEMV SRL — [www.techemv.it](https://www.techemv.it) · info@techemv.it*
+  ```
 
 ## Plugin packs (declarative rules)
 

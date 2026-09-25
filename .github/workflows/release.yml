@@ -57,6 +57,10 @@ jobs:
             ### Downloads
             See the assets below for installers for Windows, macOS, and Linux.
 
+            ---
+
+            *BridgeLab is built by TECHEMV SRL — [www.techemv.it](https://www.techemv.it) · info@techemv.it*
+
   build-app:
     name: Build ${{ matrix.platform.name }}
     needs: create-release

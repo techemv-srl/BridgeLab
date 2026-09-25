@@ -728,6 +728,7 @@ Run before every tag; none of these is a feature test, all three have bitten a r
 | BL-REL-02 | P0 | Comparison table verified | Open every vendor site linked in the footnote of the landing's *Why a new HL7 editor* table; re-check FHIR, platforms, XSD export, list price, latest release per row | Every cell matches the vendor's site today; "Not advertised" / "Quote on request" where the site is silent; footnote date updated; no judgement words ("slow", "struggles", "minimal") anywhere in the table — Directive 2006/114/EC | |
 | BL-REL-03 | P1 | Dependency advisories | `cargo audit` in `src-tauri/`, `tools/bridgelab-cli/`, `tools/hl7-schema-importer/`; `pnpm audit` at the root | No fixable advisory left; unfixable ones (transitive through Tauri) named in the CHANGELOG | |
 | BL-REL-04 | P1 | Release assets | After the release workflow on the mirror: count the assets | 12 assets, no `.app.tar.gz`, one `en-US` MSI, CLI binary per platform | |
+| BL-REL-05 | P2 | Release note footer | Open the published release on the mirror | The note ends with a horizontal rule and *BridgeLab is built by TECHEMV SRL — www.techemv.it · info@techemv.it*, the website linked | |
 
 ## Test Execution Log
 
