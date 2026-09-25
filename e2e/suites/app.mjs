@@ -38,6 +38,35 @@ export async function appSuite() {
 			if (state.tabs === 0 && !state.welcome) throw new Error('no tabs and no welcome screen');
 			return state.tabs === 0 ? 'welcome screen' : `session restored (${state.tabs} tabs)`;
 		});
+		await r.check('F1 opens the manual in its own window, with content', async () => {
+			// The window used to load a blob: URL made by the main webview,
+			// which WebKitGTK cannot load from a second webview: it opened
+			// blank. It now loads the app's /manual page.
+			const main = await d.getWindowHandle();
+			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true }))`);
+			const end = Date.now() + 15000;
+			let found = null;
+			while (!found && Date.now() < end) {
+				await sleep(500);
+				for (const h of await d.getAllWindowHandles()) {
+					if (h === main) continue;
+					await d.switchTo().window(h);
+					const info = await js(d, `return {
+						sections: document.querySelectorAll('main.content section').length,
+						toc: document.querySelectorAll('aside.toc a[href^="#"]').length,
+						title: document.title,
+					}`);
+					if (info.sections > 5) {
+						found = info;
+						await d.close(); // the manual window; its destroy event resets the shell
+						break;
+					}
+				}
+				await d.switchTo().window(main);
+			}
+			if (!found) throw new Error('no window with manual content within 15 s');
+			return `${found.title}: ${found.sections} sections, ${found.toc} contents links`;
+		});
 
 		// ---- HL7 v2 ------------------------------------------------------
 		console.log('\n=== HL7 v2 ===');

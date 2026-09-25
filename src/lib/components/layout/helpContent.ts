@@ -1,7 +1,9 @@
 /**
- * Generates a standalone HTML document for the BridgeLab user manual.
- * Opened in a separate OS window via window.open() so the user can move,
- * resize, minimize it independently from the main application.
+ * The BridgeLab user manual, rendered from the per-locale sections.
+ *
+ * `generateManualParts` feeds the `/manual` route that the manual window
+ * loads (see HelpWindow.svelte); `generateManualHtml` wraps the same parts
+ * in a standalone document for the in-app fallback.
  */
 
 import { enSections } from './help/en';
@@ -69,13 +71,22 @@ function injectLiveShortcuts(
 	);
 }
 
-export function generateManualHtml(
+export interface ManualParts {
+	lang: string;
+	title: string;
+	css: string;
+	/** Everything inside <body>. */
+	body: string;
+}
+
+export function generateManualParts(
 	locale: string,
 	liveShortcuts?: { label: string; keys: string }[],
-): string {
-	const title = TITLES[locale] ?? TITLES.en;
-	const contents = CONTENTS_LABEL[locale] ?? CONTENTS_LABEL.en;
-	let sections = getSections(locale);
+): ManualParts {
+	const lang = TITLES[locale] ? locale : 'en';
+	const title = TITLES[lang];
+	const contents = CONTENTS_LABEL[lang];
+	let sections = getSections(lang);
 	if (liveShortcuts?.length) {
 		sections = injectLiveShortcuts(sections, liveShortcuts);
 	}
@@ -88,24 +99,70 @@ export function generateManualHtml(
 		`<section id="${s.id}"><h2>${s.heading}</h2>${s.body}</section>`
 	).join('');
 
-	return `<!doctype html>
-<html lang="${locale}">
-<head>
-<meta charset="utf-8" />
-<title>${title}</title>
-<style>${STYLES}</style>
-</head>
-<body>
-<div class="wrap">
+	return {
+		lang,
+		title,
+		css: STYLES,
+		body: `<div class="wrap">
 	<aside class="toc">
 		<h1>${title}</h1>
 		<h3>${contents}</h3>
 		<ul>${toc}</ul>
 	</aside>
 	<main class="content">${body}</main>
-</div>
+</div>`,
+	};
+}
+
+export function generateManualHtml(
+	locale: string,
+	liveShortcuts?: { label: string; keys: string }[],
+): string {
+	const p = generateManualParts(locale, liveShortcuts);
+	return `<!doctype html>
+<html lang="${p.lang}">
+<head>
+<meta charset="utf-8" />
+<title>${p.title}</title>
+<style>${p.css}</style>
+</head>
+<body>
+${p.body}
 </body>
 </html>`;
+}
+
+/**
+ * Path of the manual page for the given locale and live shortcut bindings,
+ * relative to the app root. The manual window loads it like any other app
+ * page, so it needs no IPC and works the same on every webview.
+ */
+export function manualRoute(locale: string, liveShortcuts?: { label: string; keys: string }[]): string {
+	const q = new URLSearchParams({ lang: locale });
+	if (liveShortcuts?.length) q.set('keys', JSON.stringify(liveShortcuts));
+	return `manual?${q.toString()}`;
+}
+
+/** Inverse of `manualRoute`: read locale and bindings from a query string. */
+export function parseManualQuery(search: string): {
+	locale: string;
+	liveShortcuts?: { label: string; keys: string }[];
+} {
+	const q = new URLSearchParams(search);
+	let liveShortcuts: { label: string; keys: string }[] | undefined;
+	try {
+		const raw = JSON.parse(q.get('keys') ?? 'null');
+		if (Array.isArray(raw)) {
+			liveShortcuts = raw
+				.filter((b) => b && typeof b.label === 'string' && typeof b.keys === 'string')
+				.map((b) => ({ label: escapeHtml(b.label), keys: escapeHtml(b.keys) }));
+		}
+	} catch { /* malformed: fall back to the hand-written table */ }
+	return { locale: q.get('lang') ?? 'en', liveShortcuts };
+}
+
+function escapeHtml(s: string): string {
+	return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
 const STYLES = `

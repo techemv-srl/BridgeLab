@@ -1,6 +1,6 @@
 {
   "name": "bridgelab",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "BridgeLab - HL7 made simple. A modern HL7/FHIR message editor.",
   "private": true,
   "type": "module",

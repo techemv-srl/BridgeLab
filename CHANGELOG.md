@@ -2,7 +2,7 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
-## [Unreleased]
+## [1.8.1] — 2026-09-25
 
 ### Added
 - **IT can force the usage statistics off for a whole machine**, like
@@ -19,6 +19,14 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
   choose *Accept connections from other machines* (or type `0.0.0.0` or
   an interface address) under *Bind*. A hint under the field says which
   of the two is in effect.
+
+### Fixed
+- **The manual opens with its content on every platform.** *Help →
+  Manual* (F1) loaded the manual in its own window from a temporary
+  in-memory address created by the main window; on Linux that window
+  opened empty. The manual is now a page of the app itself, loaded the
+  same way on Windows, macOS and Linux, with the same contents,
+  shortcuts table and language.
 
 ### Security
 - **A content security policy for the app window.** Until now nothing but
