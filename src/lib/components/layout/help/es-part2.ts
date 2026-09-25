@@ -116,6 +116,11 @@ servidor en el puerto seleccionado. Los mensajes entrantes se abren en
 una pestaña nueva (desactivable, ver más abajo) y se devuelve un ACK
 automático con el código configurado (AA/AE/AR). Úsalo para validar
 rápidamente lo que está emitiendo tu sistema origen.</p>
+<p>Por defecto el listener escucha en <code>127.0.0.1</code>, así que
+solo lo alcanzan los programas de este equipo. Para recibir un flujo de
+otra máquina, pon <strong>Bind</strong> en <code>0.0.0.0</code> (todas
+las interfaces) o en la dirección de una tarjeta de red, y abre el puerto
+en el firewall solo para los sistemas previstos.</p>
 
 <h3>Consola del listener</h3>
 <p>Mientras el listener está en marcha, cada mensaje recibido aparece

@@ -116,6 +116,12 @@ auf dem gewählten Port zu betreiben. Eingehende Nachrichten öffnen sich
 in einem neuen Tab (abschaltbar, siehe unten), und ein Auto-ACK mit dem
 konfigurierten Code (AA/AE/AR) wird zurückgesendet. So prüfen Sie
 schnell, was Ihr vorgelagertes System tatsächlich sendet.</p>
+<p>Standardmäßig lauscht der Listener auf <code>127.0.0.1</code>, nur
+Programme auf diesem Computer erreichen ihn. Um einen Datenstrom von
+einem anderen Rechner zu empfangen, setzen Sie <strong>Bind</strong> auf
+<code>0.0.0.0</code> (alle Schnittstellen) oder auf die Adresse einer
+Netzwerkkarte und geben den Port in der Firewall nur für die erwarteten
+Systeme frei.</p>
 
 <h3>Listener-Konsole</h3>
 <p>Solange der Listener läuft, erscheint jede empfangene Nachricht als

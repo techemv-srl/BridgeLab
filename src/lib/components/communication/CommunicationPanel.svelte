@@ -62,7 +62,13 @@
 	let mllpShowAdvanced = $state(false);
 
 	// Persistent listener state — driven by the backend via mllp:received events
-	let listenBindAddress = $state('0.0.0.0');
+	// Loopback by default: other machines can connect only after the user
+	// picks 0.0.0.0 (or a specific interface) on purpose.
+	let listenBindAddress = $state('127.0.0.1');
+	const listenBindIsLocal = $derived.by(() => {
+		const a = listenBindAddress.trim().toLowerCase();
+		return a === '' || a === 'localhost' || a === '::1' || a.startsWith('127.');
+	});
 	let listenAckCode = $state('AA');
 	let listenReadTimeout = $state(30);
 	let listenEncoding = $state('UTF-8');
@@ -659,7 +665,7 @@
 						<label for="mllp-listen-port">{tr('comm.port')}</label>
 						<input id="mllp-listen-port" type="number" bind:value={mllpListenPort} class="input-sm" />
 						<label for="mllp-listen-bind">{tr('comm.bind')}</label>
-						<input id="mllp-listen-bind" type="text" bind:value={listenBindAddress} class="input-sm" placeholder="0.0.0.0" />
+						<input id="mllp-listen-bind" type="text" bind:value={listenBindAddress} class="input-sm" placeholder="127.0.0.1" />
 						<button class="btn-link" onclick={() => listenShowSettings = !listenShowSettings}>
 							{listenShowSettings ? tr('comm.listenHideSettings') + ' ▲' : tr('comm.listenSettings') + ' ▼'}
 						</button>
@@ -676,6 +682,19 @@
 						</span>
 					{/if}
 				</div>
+
+				{#if !listenStatus.running}
+					<div class="form-row listen-bind-hint">
+						{#if listenBindIsLocal}
+							<span class="hint">{tr('comm.bindLocalHint')}</span>
+							<button class="btn-link" onclick={() => (listenBindAddress = '0.0.0.0')}>
+								{tr('comm.bindAllInterfaces')}
+							</button>
+						{:else}
+							<span class="hint">{tr('comm.bindNetworkHint')}</span>
+						{/if}
+					</div>
+				{/if}
 
 				{#if listenShowSettings && !listenStatus.running}
 					<div class="advanced-options">

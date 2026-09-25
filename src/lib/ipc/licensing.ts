@@ -16,6 +16,9 @@ export interface LicenseStatus {
 
 export interface TelemetrySettings {
 	enabled: boolean;
+	/** A machine policy forces telemetry off; the checkbox is locked. */
+	disabled_by_policy: boolean;
+	policy_source: string | null;
 	installation_id: string;
 	last_sent: string | null;
 	counters: Record<string, number>;

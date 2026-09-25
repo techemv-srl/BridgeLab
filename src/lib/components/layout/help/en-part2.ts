@@ -100,6 +100,11 @@ the generator refuses instead of producing an uncorrelatable ACK.</p>
 port. Incoming messages open in a new tab (toggleable, see below) and an
 auto-ACK is sent back with the configured code (AA/AE/AR). Use this to
 quickly validate what your upstream system is emitting.</p>
+<p>The listener binds to <code>127.0.0.1</code> by default, so only
+programs on this computer can reach it. To receive a feed from another
+machine, set <strong>Bind</strong> to <code>0.0.0.0</code> (all
+interfaces) or to the address of one network card, and allow the port
+in the firewall only for the systems you expect.</p>
 
 <h3>Listener console</h3>
 <p>While the listener runs, every received message appears as a row in

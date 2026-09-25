@@ -2,6 +2,32 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [Unreleased]
+
+### Added
+- **IT can force the usage statistics off for a whole machine**, like
+  the update check: `BRIDGELAB_DISABLE_TELEMETRY=1`, or
+  `"disable_telemetry": true` in the machine `policy.json`
+  (`%ProgramData%\BridgeLab\`, `/Library/Application Support/BridgeLab/`,
+  `/etc/bridgelab/`). Nothing is sent then, whatever the user ticked, and
+  Settings → Privacy shows the box locked with the reason.
+
+### Changed
+- **The MLLP listener listens on this computer only by default**
+  (`127.0.0.1` instead of `0.0.0.0`). Starting a listener no longer opens
+  a port to the whole network; to receive a feed from another machine,
+  choose *Accept connections from other machines* (or type `0.0.0.0` or
+  an interface address) under *Bind*. A hint under the field says which
+  of the two is in effect.
+
+### Security
+- **A content security policy for the app window.** Until now nothing but
+  the code itself kept the webview from contacting any host. The policy
+  allows only the app's own scripts, styles, fonts and workers, and
+  network requests only to the app's backend and `api.github.com` (the
+  update check); anything else is refused by the webview. Licensing and
+  the opt-in statistics run in the native backend and are unaffected.
+
 ## [1.8.0] — 2026-09-24
 
 ### Added

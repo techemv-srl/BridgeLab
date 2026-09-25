@@ -547,6 +547,13 @@ Patientendaten werden niemals gesendet, und das exakte JSON lässt sich
 Schalter (Standard) wird nichts übertragen, und Netzwerkprobleme
 erzeugen niemals Fehlermeldungen: Eine vollständig offline betriebene
 Installation ist ein normales, unterstütztes Szenario.</p>
+<p>Auf verwalteten Rechnern kann der Administrator die
+Nutzungsstatistik für alle Benutzer abschalten: Setzen Sie
+<code>BRIDGELAB_DISABLE_TELEMETRY=1</code> oder ergänzen Sie
+<code>"disable_telemetry": true</code> in derselben
+<code>policy.json</code> wie für die Versionsprüfung. Dann wird nichts
+gesendet, unabhängig von der Wahl des Benutzers, und das Kontrollkästchen
+in den Einstellungen ist gesperrt.</p>
 `,
 };
 

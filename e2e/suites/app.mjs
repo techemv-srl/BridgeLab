@@ -284,6 +284,54 @@ export async function appSuite() {
 				});
 			}
 		}
+
+		// ---- content security policy ------------------------------------
+		// The CSP in tauri.conf.json is what makes "the app only talks to
+		// api.github.com on its own" true of the webview, not just of the
+		// code. Monaco, the tree and the dialogs above already ran under it.
+		console.log('\n=== content security policy ===');
+		// Resolves with the violated directive, or 'none' once the request
+		// settled without one (a network failure or the 3 s abort offline is
+		// not a violation).
+		const probe = (url) => d.executeAsyncScript(`
+			const done = arguments[arguments.length - 1];
+			let seen = null;
+			const on = (e) => { seen = e.violatedDirective; };
+			document.addEventListener('securitypolicyviolation', on);
+			const end = () => setTimeout(() => {
+				document.removeEventListener('securitypolicyviolation', on);
+				done(seen || 'none');
+			}, 300);
+			// A CSP refusal is immediate; cap the network attempt so an
+			// air-gapped or black-holed network cannot stall the probe.
+			const ctl = new AbortController();
+			setTimeout(() => ctl.abort(), 3000);
+			fetch(${JSON.stringify(url)}, { method: 'HEAD', signal: ctl.signal }).then(end, end);
+		`);
+		await r.check('a connection to any other host is blocked', async () => {
+			const v = await probe('https://example.com/');
+			if (!String(v).startsWith('connect-src')) throw new Error(`violation: ${v}`);
+			return v;
+		});
+		await r.check('the update-check host is allowed', async () => {
+			const v = await probe('https://api.github.com/');
+			if (v !== 'none') throw new Error(`violation: ${v}`);
+			return 'no violation';
+		});
+		await r.check('inline styles still apply', async () => {
+			const color = await js(d, `
+				const s = document.createElement('style');
+				s.textContent = '#bl-csp-probe { color: rgb(1, 2, 3); }';
+				document.head.appendChild(s);
+				const el = document.createElement('div');
+				el.id = 'bl-csp-probe';
+				document.body.appendChild(el);
+				const c = getComputedStyle(el).color;
+				el.remove(); s.remove();
+				return c;`);
+			if (color !== 'rgb(1, 2, 3)') throw new Error(`computed ${color}`);
+			return color;
+		});
 	} finally {
 		await d.quit().catch(() => {});
 	}

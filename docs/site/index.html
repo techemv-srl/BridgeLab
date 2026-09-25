@@ -523,7 +523,9 @@
 				<summary>Can I point BridgeLab at a real live feed?</summary>
 				<p>
 					That is the primary use case. Start a listener on
-					port 2575, send HL7 via MLLP from your feed, see
+					port 2575 &mdash; set to accept other machines, since
+					it listens on this computer only until you say
+					otherwise &mdash; send HL7 via MLLP from your feed, see
 					received messages in the inbox and open any of them
 					in a new editor tab. Auto-ACK is configurable per
 					listener.
@@ -575,7 +577,9 @@
 						licenses activated online &mdash; the activation code
 						(used to flag revoked licenses) go to
 						<code>license-api.techemv.it</code>; the app shows the
-						exact JSON before you opt in.
+						exact JSON before you opt in. IT can force it off for
+						every user with <code>BRIDGELAB_DISABLE_TELEMETRY=1</code>
+						or the same <code>policy.json</code>.
 					</li>
 					<li>
 						<strong>New-version check.</strong> Once a day at

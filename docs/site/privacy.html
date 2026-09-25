@@ -43,7 +43,7 @@
 <section class="section">
 	<div class="wrap legal">
 		<h1>Privacy policy</h1>
-		<p class="sub">Last updated: September 24, 2026</p>
+		<p class="sub">Last updated: September 25, 2026</p>
 
 		<p>Data controller: TECHEMV SRL, Pordenone, Italy
 		&mdash; VAT IT01960380937 &mdash;
@@ -92,7 +92,11 @@
 		names, host names, user names. The exact payload can be previewed
 		in the app before enabling. Telemetry records are deleted
 		automatically after 90 days. Legal basis: consent, withdrawable at
-		any time with the same toggle.</p>
+		any time with the same toggle. On managed machines an administrator
+		can force it off for every user (environment variable
+		<code>BRIDGELAB_DISABLE_TELEMETRY=1</code>, or
+		<code>"disable_telemetry": true</code> in the machine
+		<code>policy.json</code>); nothing is sent then.</p>
 
 		<h2>Update check</h2>
 		<p>
