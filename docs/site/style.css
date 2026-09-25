@@ -419,6 +419,7 @@ p  { color: var(--text-dim); margin: 0 0 12px; }
 }
 .faq details[open] summary::after { transform: rotate(45deg); }
 .faq p { margin-top: 10px; font-size: 14px; max-width: 680px; }
+.faq ul { margin: 8px 0 0; padding-left: 20px; font-size: 14px; max-width: 680px; display: grid; gap: 6px; }
 
 /* FOOTER */
 footer {

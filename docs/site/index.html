@@ -144,9 +144,12 @@
 				<h3>Client &amp; listener, bidirectional</h3>
 				<p>
 					Send via MLLP / HTTP / HTTPS, listen on any port with
-					auto-ACK and a live inbox. Connection profiles are
-					saved per-protocol. Everything works offline against
-					your own test servers.
+					auto-ACK and a live inbox. Filter the inbox and the
+					send history by ACK outcome &mdash; AA, AE, AR, no ACK,
+					failed &mdash; with a live count on each, so twelve
+					rejections out of 300 stand out at a glance.
+					Connection profiles are saved per-protocol. Everything
+					works offline against your own test servers.
 				</p>
 			</article>
 			<article class="feat">
@@ -549,14 +552,65 @@
 				</p>
 			</details>
 			<details>
+				<summary>Does BridgeLab connect to the internet?</summary>
+				<p>
+					On its own, in three cases only &mdash; and never with
+					message content, file names or host names:
+				</p>
+				<ul>
+					<li>
+						<strong>License activation.</strong> One HTTPS call
+						to <code>license-api.techemv.it</code> when you paste
+						an activation code (and when you deactivate). A
+						license activated online repeats that call in the
+						background at most once a day, from 14 days before
+						it expires, to pick up a renewal. Community, trial
+						and offline keys never make it.
+					</li>
+					<li>
+						<strong>Telemetry &mdash; off unless you turn it
+						on</strong> in Settings &rarr; Privacy. Then, once a
+						day, usage counters with app version, OS, language,
+						license tier, a random installation ID and &mdash; for
+						licenses activated online &mdash; the activation code
+						(used to flag revoked licenses) go to
+						<code>license-api.techemv.it</code>; the app shows the
+						exact JSON before you opt in.
+					</li>
+					<li>
+						<strong>New-version check.</strong> Once a day at
+						start-up, an anonymous request to
+						<code>api.github.com</code> for the latest release
+						number &mdash; nothing is downloaded or installed.
+						The installer (or the app, at first start) asks
+						before it ever runs; switch it off in Settings
+						&rarr; Privacy, or for every user of a machine with
+						<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code> or a
+						<code>policy.json</code>.
+					</li>
+				</ul>
+				<p>
+					Everything else goes only where you point it: MLLP,
+					HTTP/FHIR and SOAP to the endpoints you type, and
+					<em>Help &rarr; Check for updates</em> when you click
+					it. No crash reporting, no analytics, no fonts or
+					scripts from a CDN. On an air-gapped machine an offline
+					key needs no connection at all.
+				</p>
+			</details>
+			<details>
 				<summary>What about PHI and data residency?</summary>
 				<p>
 					BridgeLab processes every message locally. Nothing
 					leaves your machine unless you explicitly send it via
 					the Communication panel. Telemetry is off by default
 					and, when enabled in Settings &rarr; Privacy, carries
-					only anonymous usage counters &mdash; the exact JSON
-					payload can be previewed in the app before opting in.
+					usage counters, app version, OS, language, license tier,
+					a random installation ID and, for licenses activated
+					online, the activation code &mdash; never message
+					content or patient data. The exact JSON payload can be
+					previewed in the app before opting in; see the
+					<a href="privacy.html">privacy policy</a>.
 				</p>
 			</details>
 			<details>
@@ -691,12 +745,17 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 	});
 	// --------------------------------------------------------------------
 	// ---- Channel attribution ------------------------------------------
-	// utm_source on the landing URL is kept for the tab's lifetime so the
+	// utm_source (plus utm_medium when present, as "source/medium", e.g.
+	// app/menu) on the landing URL is kept for the tab's lifetime so the
 	// order tag (and the quote e-mail) carry the acquisition channel even
 	// after navigating around the site. Captured in quote-only mode too.
 	var params = new URLSearchParams(location.search);
 	var src = params.get('utm_source');
-	if (src) { try { sessionStorage.setItem('bl_src', src.slice(0, 40)); } catch (e) {} }
+	var medium = params.get('utm_medium');
+	if (src) {
+		var channel = medium ? src + '/' + medium : src;
+		try { sessionStorage.setItem('bl_src', channel.slice(0, 40)); } catch (e) {}
+	}
 
 	function storedSource() {
 		try { return sessionStorage.getItem('bl_src') || ''; } catch (e) { return ''; }
