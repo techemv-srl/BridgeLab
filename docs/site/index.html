@@ -408,10 +408,10 @@
 				<a class="btn" href="#download">Download</a>
 			</div>
 			<div class="price-card featured">
-				<div class="price-badge">Launch offer &mdash; first 20 licenses</div>
+				<div class="price-badge" data-launch>Launch offer &mdash; until 31 December 2026</div>
 				<div class="price-tier">Pro</div>
-				<div class="price-amount">&euro;199<span class="price-strike">&euro;249</span></div>
-				<div class="price-per">first year / seat &middot; then &euro;249/year</div>
+				<div class="price-amount"><span data-launch>&euro;199<span class="price-strike">&euro;249</span></span><span data-after-launch hidden>&euro;249</span></div>
+				<div class="price-per"><span data-launch>first year / seat &middot; then &euro;249/year</span><span data-after-launch hidden>per year / seat</span></div>
 				<ul class="price-features">
 					<li>Everything in Community</li>
 					<li>MLLP listener &amp; batch validation</li>
@@ -442,7 +442,7 @@
 		</div>
 		<p class="sub tiny" id="launch-hint" hidden>
 			Launch offer applied automatically at checkout &mdash; &euro;50 off the
-			first year of Pro, limited to the first 20 licenses. Business
+			first year of Pro, on licenses bought by 31 December 2026. Business
 			customers can enter their VAT ID at checkout (reverse charge).
 		</p>
 		<p class="sub tiny" id="checkout-done" hidden>
@@ -480,8 +480,9 @@
 			<details>
 				<summary>How much does Pro cost?</summary>
 				<p>
-					Pro is &euro;249 per seat per year (launch offer:
-					&euro;199 for the first year, first 20 licenses).
+					Pro is &euro;249 per seat per year<span data-launch> (launch offer:
+					&euro;199 for the first year on licenses bought by
+					31 December 2026)</span>.
 					Enterprise is &euro;499/year and adds priority support
 					plus the SOAP 1.1/1.2 client with WS-Security (WSDL
 					import coming soon). One seat covers two
@@ -668,7 +669,26 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 		},
 		products: { PRO: 'bridgelab-pro', ENT: 'bridgelab-ent' }   // FastSpring product paths
 	};
-	var LAUNCH_CODE = 'LAUNCH199';   // set to '' when the 20 launch licenses are gone
+	// Launch offer: valid for orders placed by 31 December 2026, Italian
+	// time. After that the page shows the full price by itself and the
+	// code is no longer applied; the FastSpring coupon must carry the same
+	// end date, since it is what actually grants the discount.
+	var LAUNCH_CODE = 'LAUNCH199';
+	var LAUNCH_ENDS = Date.parse('2027-01-01T00:00:00+01:00');
+	// Re-read the clock at checkout and whenever the tab comes back, so a
+	// page left open across the deadline stops advertising the offer.
+	function launchActive() {
+		var on = Date.now() < LAUNCH_ENDS;
+		if (!on) {
+			document.querySelectorAll('[data-launch], #launch-hint').forEach(function (el) { el.hidden = true; });
+			document.querySelectorAll('[data-after-launch]').forEach(function (el) { el.hidden = false; });
+		}
+		return on;
+	}
+	launchActive();
+	document.addEventListener('visibilitychange', function () {
+		if (!document.hidden) launchActive();
+	});
 	// --------------------------------------------------------------------
 	// ---- Channel attribution ------------------------------------------
 	// utm_source on the landing URL is kept for the tab's lifetime so the
@@ -727,7 +747,7 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 			try { source = 'ref:' + new URL(document.referrer).hostname.slice(0, 32); } catch (e) {}
 		}
 		fastspring.builder.tag({ source: source || 'direct', page: location.pathname });
-		if (LAUNCH_CODE && tier === 'PRO') fastspring.builder.promo(LAUNCH_CODE);
+		if (LAUNCH_CODE && tier === 'PRO' && launchActive()) fastspring.builder.promo(LAUNCH_CODE);
 		fastspring.builder.add(FS_CFG.products[tier], 1);           // quantity editable in the popup = seats
 		fastspring.builder.checkout();
 	}
@@ -743,7 +763,7 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 			if (q) q.hidden = false;
 		});
 		var hint = document.getElementById('launch-hint');
-		if (hint) hint.hidden = false;
+		if (hint) hint.hidden = !launchActive();
 		// "Coming soon" no longer applies once self-serve checkout is live
 		var soon = document.getElementById('checkout-soon');
 		if (soon) soon.hidden = true;

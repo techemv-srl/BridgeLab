@@ -8,7 +8,7 @@
 
 Free and open-source core (MIT), free for commercial use. **Pro** adds the MLLP
 listener, batch validation, PHI masking and the full XSD catalogue - EUR 249 per
-seat per year, EUR 199 for the first year (first 20 licenses).
+seat per year, EUR 199 for the first year on licenses bought by 31 December 2026.
 [Download or buy](https://techemv-srl.github.io/BridgeLab/)
 
 ## Links
