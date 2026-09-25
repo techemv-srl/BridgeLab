@@ -111,6 +111,11 @@ porta selezionata. I messaggi in arrivo si aprono in un nuovo tab
 (disattivabile, vedi sotto) e viene inviato un auto-ACK con il codice
 configurato (AA/AE/AR). Utile per validare rapidamente cosa emette il
 sistema a monte.</p>
+<p>Il listener si mette in ascolto su <code>127.0.0.1</code> per
+default, quindi lo raggiungono solo i programmi di questo computer. Per
+ricevere un flusso da un'altra macchina imposta <strong>Bind</strong> a
+<code>0.0.0.0</code> (tutte le interfacce) o all'indirizzo di una scheda
+di rete, e apri la porta nel firewall solo per i sistemi previsti.</p>
 
 <h3>Console del listener</h3>
 <p>Mentre il listener è attivo, ogni messaggio ricevuto compare come

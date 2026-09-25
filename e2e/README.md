@@ -84,6 +84,9 @@ double-clicking a message never reaches the app.
   a missing required element and an uninstalled declared profile are each
   caught. A resource type no package defines is reported as **not** checked
   rather than implied clean.
+- **Content security policy** — a request to an arbitrary host is blocked by
+  `connect-src`, one to `api.github.com` (the update check) is not, and
+  inline styles still apply. Everything above already ran under the policy.
 
 Installing an implementation guide on top goes through a native file dialog
 WebDriver cannot drive; for an automated run install it headlessly — same

@@ -523,6 +523,13 @@ esatto è ispezionabile con <em>Mostra cosa viene inviato</em>. Con
 l'interruttore spento (il default) non viene trasmesso nulla, e i
 problemi di rete non producono mai errori: un'installazione
 completamente offline è uno scenario normale e supportato.</p>
+<p>Sui computer gestiti l'amministratore può forzare le statistiche
+d'uso spente per tutti gli utenti: imposta
+<code>BRIDGELAB_DISABLE_TELEMETRY=1</code>, oppure aggiungi
+<code>"disable_telemetry": true</code> allo stesso <code>policy.json</code>
+usato per il controllo versioni. In quel caso non viene inviato nulla,
+qualunque sia la scelta dell'utente, e la casella in Impostazioni appare
+bloccata.</p>
 `,
 },
 {

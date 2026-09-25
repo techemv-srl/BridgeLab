@@ -115,6 +115,12 @@ sur le port choisi. Les messages entrants s'ouvrent dans un nouvel
 onglet (désactivable, voir plus bas) et un ACK automatique est renvoyé
 avec le code configuré (AA/AE/AR). Utilisez-le pour valider rapidement
 ce que votre système amont émet.</p>
+<p>Par défaut, le listener écoute sur <code>127.0.0.1</code> : seuls les
+programmes de cet ordinateur peuvent le joindre. Pour recevoir un flux
+d'une autre machine, réglez <strong>Bind</strong> sur
+<code>0.0.0.0</code> (toutes les interfaces) ou sur l'adresse d'une carte
+réseau, et n'ouvrez le port dans le pare-feu que pour les systèmes
+attendus.</p>
 
 <h3>Console du listener</h3>
 <p>Pendant que le listener tourne, chaque message reçu apparaît comme une

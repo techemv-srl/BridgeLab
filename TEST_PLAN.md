@@ -308,6 +308,7 @@ Before running tests:
 | BL-MLLP-07 | P0 | NACK AR detection | Server sends MSA\|AR | Result labeled "NACK (Application Reject)" | |
 | BL-MLLP-08 | P1 | Connection timeout | Non-existent host | Error "Connection timed out" after timeout | |
 | BL-MLLP-09 | P1 | Listen for incoming | Click Listen on port 2576 | Waits for connection | |
+| BL-MLLP-15 | P0 | Listener is local by default | Fresh start, Listen with the defaults; from another machine `nc <host> 2576`; then click *Accept connections from other machines*, restart the listener, repeat | Default bind `127.0.0.1` with the "only this computer" hint; the remote connection is refused. After the switch the field reads `0.0.0.0`, the network warning shows, and the remote connection is accepted | |
 | BL-MLLP-10 | P1 | Auto-ACK on receive | Send message to listener with auto-ack | Sender receives ACK | |
 | BL-MLLP-11 | P1 | Received message opens in new tab | Listener receives | New tab with received content | |
 | BL-MLLP-12 | P1 | Advanced settings toggle | Click "Advanced MLLP Settings" | Panel expands with extra fields | |
@@ -640,6 +641,7 @@ requests server-side or with a packet capture.
 | BL-TEL-04 | P0 | Preview matches payload | Open "Show what is sent", compare with captured POST body | Identical JSON (timestamps aside) | |
 | BL-TEL-05 | P0 | No PII in payload | Inspect captured payload | No hostname, username, file names, message content; installation_id is a random UUID | |
 | BL-TEL-06 | P1 | Revoked notice | Mock telemetry response with `revoked: true` | Dismissible banner appears; local license NOT deleted; dismiss clears it | |
+| BL-TEL-07 | P0 | Machine policy forces telemetry off | Enable telemetry. Set `BRIDGELAB_DISABLE_TELEMETRY=1`, start and wait past the 10-min loop; unset it, put `{"disable_telemetry": true}` in the platform `policy.json`, start | No telemetry request in either case, also with *Send now* unavailable; the Settings box is unticked, disabled and the hint names the variable or the file; `disable_update_check` alone leaves telemetry untouched, and vice versa | |
 
 ## Test Matrix by Platform
 

@@ -4,6 +4,15 @@
 		"sessionUrl": false
 	},
 	"permissions": {
-		"allow": ["mcp__github__*"]
+		"allow": [
+			"mcp__github__*",
+			"mcp__Claude_Code_Remote__subscribe_pr_activity",
+			"mcp__Claude_Code_Remote__unsubscribe_pr_activity",
+			"mcp__Claude_Code_Remote__send_later",
+			"mcp__Claude_Code_Remote__list_triggers",
+			"mcp__Claude_Code_Remote__get_trigger",
+			"mcp__Claude_Code_Remote__update_trigger",
+			"mcp__Claude_Code_Remote__delete_trigger"
+		]
 	}
 }

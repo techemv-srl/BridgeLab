@@ -31,8 +31,10 @@ const MAX_MSG_BYTES: usize = 10 * 1024 * 1024;
 pub struct ListenerConfig {
     /// TCP port to bind. Default 2575 in the UI.
     pub port: u16,
-    /// Bind address. `"0.0.0.0"` to accept connections from any interface,
-    /// `"127.0.0.1"` to restrict to localhost (safer on dev machines).
+    /// Bind address. `"127.0.0.1"` (the default) accepts connections from
+    /// this computer only; `"0.0.0.0"` from any interface, which the user
+    /// has to choose explicitly — a listener must not be reachable from
+    /// the hospital network just because someone clicked Start.
     pub bind_address: String,
     /// Whether to send back an HL7 ACK for every received message.
     pub auto_ack: bool,
@@ -53,7 +55,7 @@ impl Default for ListenerConfig {
     fn default() -> Self {
         Self {
             port: 2575,
-            bind_address: "0.0.0.0".into(),
+            bind_address: "127.0.0.1".into(),
             auto_ack: true,
             ack_code: "AA".into(),
             read_timeout_secs: 30,
@@ -252,4 +254,16 @@ async fn handle_connection(
         encoding: if cfg.encoding.is_empty() { "UTF-8".into() } else { cfg.encoding.clone() },
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A listener started with the defaults must not be reachable from
+    /// other machines; the UI and the manual promise loopback.
+    #[test]
+    fn default_bind_is_loopback() {
+        assert_eq!(ListenerConfig::default().bind_address, "127.0.0.1");
+    }
 }

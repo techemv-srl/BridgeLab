@@ -537,6 +537,13 @@ exacto puede inspeccionarse con <em>Mostrar lo que se envía</em>. Con
 el interruptor apagado (el valor por defecto) no se transmite nada, y
 los problemas de red nunca producen errores: una instalación
 totalmente sin conexión es un escenario normal y soportado.</p>
+<p>En equipos gestionados, el administrador puede forzar la
+desactivación de las estadísticas de uso para todos los usuarios: define
+<code>BRIDGELAB_DISABLE_TELEMETRY=1</code>, o añade
+<code>"disable_telemetry": true</code> al mismo <code>policy.json</code>
+que se usa para la comprobación de versiones. Entonces no se envía nada,
+elija lo que elija el usuario, y la casilla de Ajustes aparece
+bloqueada.</p>
 `,
 };
 

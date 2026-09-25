@@ -143,8 +143,16 @@ pub fn ensure_first_run(db: &Database) {
     }
 }
 
-pub fn is_enabled(db: &Database) -> bool {
+/// The user's own choice in Settings → Privacy.
+fn user_enabled(db: &Database) -> bool {
     matches!(db.get_preference(PREF_ENABLED), Ok(Some(v)) if v == "true")
+}
+
+/// Whether anything may be sent: the user opted in AND no machine policy
+/// (`BRIDGELAB_DISABLE_TELEMETRY`, `policy.json`) forces it off. Every send
+/// path goes through here.
+pub fn is_enabled(db: &Database) -> bool {
+    user_enabled(db) && !crate::commands::update_policy::telemetry_policy().disabled_by_policy
 }
 
 pub fn set_enabled(db: &Database, enabled: bool) -> Result<(), String> {
@@ -154,14 +162,20 @@ pub fn set_enabled(db: &Database, enabled: bool) -> Result<(), String> {
 #[derive(Serialize)]
 pub struct TelemetrySettings {
     pub enabled: bool,
+    /// Set when a machine policy forces telemetry off; the UI locks the box.
+    pub disabled_by_policy: bool,
+    pub policy_source: Option<String>,
     pub installation_id: String,
     pub last_sent: Option<String>,
     pub counters: HashMap<String, u64>,
 }
 
 pub fn settings(db: &Database, counters: &UsageCounters) -> TelemetrySettings {
+    let policy = crate::commands::update_policy::telemetry_policy();
     TelemetrySettings {
-        enabled: is_enabled(db),
+        enabled: user_enabled(db) && !policy.disabled_by_policy,
+        disabled_by_policy: policy.disabled_by_policy,
+        policy_source: policy.policy_source,
         installation_id: installation_id(db),
         last_sent: db.get_preference(PREF_LAST_SENT).ok().flatten(),
         counters: cumulative_counters(db, counters),

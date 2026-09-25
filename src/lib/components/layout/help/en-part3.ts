@@ -508,6 +508,11 @@ inspected with <em>Show what is sent</em>. With the toggle off (the
 default) nothing is transmitted at all, and network problems never
 produce errors — a fully offline installation is a normal, supported
 setup.</p>
+<p>On managed machines an administrator can force the usage statistics
+off for every user: set <code>BRIDGELAB_DISABLE_TELEMETRY=1</code>, or add
+<code>"disable_telemetry": true</code> to the same <code>policy.json</code>
+used for the update check. Nothing is sent then, whatever the user
+ticked, and the Settings checkbox shows as locked.</p>
 `,
 };
 

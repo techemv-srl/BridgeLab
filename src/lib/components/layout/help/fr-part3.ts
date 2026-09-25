@@ -541,6 +541,13 @@ inspecté via <em>Voir ce qui est envoyé</em>. Interrupteur désactivé
 (le défaut), rien n'est transmis, et les problèmes réseau ne
 produisent jamais d'erreurs : une installation totalement hors ligne
 est un scénario normal et pris en charge.</p>
+<p>Sur les postes gérés, l'administrateur peut forcer la désactivation
+des statistiques d'utilisation pour tous les utilisateurs : définissez
+<code>BRIDGELAB_DISABLE_TELEMETRY=1</code>, ou ajoutez
+<code>"disable_telemetry": true</code> au même <code>policy.json</code>
+que pour la vérification des versions. Rien n'est alors envoyé, quel que
+soit le choix de l'utilisateur, et la case des Paramètres apparaît
+verrouillée.</p>
 `,
 };
 

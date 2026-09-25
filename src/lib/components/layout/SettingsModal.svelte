@@ -581,9 +581,13 @@
 							type="checkbox"
 							checked={telemetry?.enabled ?? false}
 							onchange={handleTelemetryToggle}
+							disabled={telemetry?.disabled_by_policy ?? false}
 						/>
 						{tr('settings.telemetryEnabled')}
 					</label>
+					{#if telemetry?.disabled_by_policy}
+						<div class="hint">{tr('settings.telemetryPolicy', { source: telemetry.policy_source ?? '' })}</div>
+					{/if}
 					<div class="hint">{tr('settings.telemetryHelp')}</div>
 				</div>
 
