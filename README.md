@@ -216,7 +216,7 @@ unusually large files, adjust **Settings → Parser → Truncation threshold**.
 
 Per-platform installer configuration lives in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json).
 
-- **Windows NSIS**: shows the MIT license page, a language selector (EN/IT/FR/ES/DE),
+- **Windows NSIS**: shows the license page (the root `LICENSE`: MIT, plus BUSL-1.1 for the `pro/` directories), a language selector (EN/IT/FR/ES/DE),
   installs to `%LOCALAPPDATA%\Programs\BridgeLab` by default (current user), LZMA compression
 - **Windows MSI (WiX)**: one `en-US` package for managed deployment (GPO, Intune, silent
   install). The installer language only affects the installer's own dialogs — the app is
@@ -232,8 +232,15 @@ Per-platform installer configuration lives in [`src-tauri/tauri.conf.json`](src-
   `application/hl7-v2` with a `*.hl7` glob and an `MSH|` magic rule — without it the
   desktop entry's `MimeType=` claim has no type to match and the association never fires
 
-The MIT `LICENSE` file at the repo root is referenced from the bundle
-`licenseFile` field and included in the installer payload.
+The root `LICENSE` file is referenced from the bundle `licenseFile` field
+and included in the installer payload. It states the split: MIT for the
+repository, Business Source License 1.1 for `src-tauri/src/pro/` and
+`src/lib/pro/` (official builds may be run in every edition, with the
+features unlocked only where the edition includes them; any other
+production use needs an active Enterprise subscription; each version
+turns MIT four years after publication). The bundle's
+`license` field, which ends up in the Linux package metadata, says
+`MIT AND BUSL-1.1` accordingly.
 
 ## Building a Release
 
