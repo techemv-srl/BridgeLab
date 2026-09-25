@@ -10,12 +10,16 @@ Licensed Work:        All source code contained in this directory
                       (src-tauri/src/pro/) and its subdirectories.
                       The Licensed Work is (c) 2026 TECHEMV SRL.
 
-Additional Use Grant: You may use the Licensed Work in production only
-                      as part of an official TECHEMV build of BridgeLab
-                      and with an active BridgeLab Pro or Enterprise
-                      subscription. Compiling, reading and modifying the
-                      Licensed Work for evaluation, review and
-                      non-production development is permitted.
+Additional Use Grant: You may use the Licensed Work in production
+                      (a) as part of an official TECHEMV build of
+                      BridgeLab, under the BridgeLab Terms of Service,
+                      whatever the edition — the features it implements
+                      are unlocked only for the editions that include
+                      them; and (b) in any other form, such as a build
+                      compiled from source, only with an active BridgeLab
+                      Enterprise subscription. Compiling, reading and
+                      modifying the Licensed Work for evaluation, review
+                      and non-production development is permitted.
 
 Change Date:          Four years after the date each version of the
                       Licensed Work is first published.

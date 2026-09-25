@@ -52,7 +52,7 @@
 		"copyright": "Copyright (c) 2026 TECHEMV SRL — info@techemv.it",
 		"publisher": "TECHEMV SRL",
 		"homepage": "https://www.techemv.it",
-		"license": "MIT",
+		"license": "MIT AND BUSL-1.1",
 		"licenseFile": "../LICENSE",
 		"fileAssociations": [
 			{
