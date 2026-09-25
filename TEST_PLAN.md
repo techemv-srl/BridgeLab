@@ -73,6 +73,7 @@ Before running tests:
 | BL-APP-04 | P1 | Window is resizable | Drag window corners | Window resizes, panels reflow correctly | |
 | BL-APP-05 | P1 | Minimum window size respected | Try to resize below 900x600 | Window stops at 900x600 | |
 | BL-APP-06 | P1 | App icon is the new bridge design | Check taskbar/dock | Bridge icon with HL7 badge, not placeholder | |
+| BL-APP-07 | P0 | Manual opens with content on every OS | On Windows, macOS and Linux: press F1 (and Help → Manual) in English and in Italian; click a Contents entry; rebind a shortcut and reopen | A separate window shows the manual in the UI language, with the contents list and all sections; the entry scrolls to its section; the shortcuts table shows the new binding. Never a blank window | |
 
 ## 2. Menu Bar & Keyboard Shortcuts
 

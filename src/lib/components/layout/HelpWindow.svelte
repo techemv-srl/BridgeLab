@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getLocale, subscribeLocale, t } from '$lib/i18n';
-	import { generateManualHtml, TITLES } from './helpContent';
+	import { generateManualHtml, manualRoute, TITLES } from './helpContent';
 	import { shortcutStore, SHORTCUTS } from '$lib/stores/shortcuts.svelte';
 
 	interface Props {
@@ -19,16 +19,19 @@
 	// - If both fail, render an in-app draggable modal so the user always gets
 	//   something.
 	let mode = $state<'tauri' | 'popup' | 'modal' | 'pending'>('pending');
-	let helpHtml = $derived.by(() => {
+	// Feed the LIVE bindings so the manual's shortcut table reflects
+	// user customization instead of a drifting hand-written copy.
+	let liveShortcuts = $derived.by(() => {
 		void localeVersion;
-		// Feed the LIVE bindings so the manual's shortcut table reflects
-		// user customization instead of a drifting hand-written copy.
-		const live = SHORTCUTS.map((s) => ({
+		return SHORTCUTS.map((s) => ({
 			label: t('shortcut.' + s.id),
 			keys: shortcutStore.get(s.id),
 		}));
-		return generateManualHtml(getLocale(), live);
 	});
+	// The window and the popup load the /manual page; only the in-app modal
+	// fallback renders the document inline.
+	let helpRoute = $derived.by(() => { void localeVersion; return manualRoute(getLocale(), liveShortcuts); });
+	let helpHtml = $derived.by(() => { void localeVersion; return generateManualHtml(getLocale(), liveShortcuts); });
 
 	// Modal fallback state
 	let x = $state(80);
@@ -66,10 +69,8 @@
 				if (existing) {
 					try { await existing.close(); } catch { /* ignore */ }
 				}
-				const blob = new Blob([helpHtml], { type: 'text/html;charset=utf-8' });
-				const url = URL.createObjectURL(blob);
 				const win = new mod.WebviewWindow(label, {
-					url,
+					url: helpRoute,
 					title: TITLES[getLocale()] ?? TITLES.en,
 					width: 860,
 					height: 680,
@@ -82,17 +83,14 @@
 					if (tauriAbandoned) {
 						// Fallback already shown — discard the late window.
 						void win.close().catch(() => { /* ignore */ });
-						URL.revokeObjectURL(url);
 						return;
 					}
 					mode = 'tauri';
 				});
 				win.once('tauri://destroyed', () => {
-					URL.revokeObjectURL(url);
 					if (!tauriAbandoned) onClose();
 				});
 				win.once('tauri://error', () => {
-					URL.revokeObjectURL(url);
 					if (!tauriAbandoned) tryPopup();
 				});
 				return;
@@ -111,21 +109,17 @@
 	function tryPopup() {
 		if (mode === 'popup' || mode === 'modal') return; // already resolved
 		try {
-			const blob = new Blob([helpHtml], { type: 'text/html;charset=utf-8' });
-			const url = URL.createObjectURL(blob);
-			const w2 = window.open(url, 'bridgelab-help', 'width=860,height=680,menubar=no,toolbar=no');
+			const w2 = window.open(helpRoute, 'bridgelab-help', 'width=860,height=680,menubar=no,toolbar=no');
 			if (w2) {
 				mode = 'popup';
 				popupPollTimer = setInterval(() => {
 					if (w2.closed) {
 						if (popupPollTimer) clearInterval(popupPollTimer);
-						URL.revokeObjectURL(url);
 						onClose();
 					}
 				}, 500);
 				return;
 			}
-			URL.revokeObjectURL(url);
 		} catch { /* ignore */ }
 		mode = 'modal';
 	}
