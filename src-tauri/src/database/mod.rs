@@ -428,6 +428,29 @@ impl Database {
         Ok(())
     }
 
+    /// Save several test cases in one transaction: an import either lands
+    /// completely or not at all.
+    pub fn save_test_cases(&self, cases: &[TestCase]) -> Result<(), String> {
+        let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for tc in cases {
+            tx.execute(
+                "INSERT INTO test_cases (id, name, description, category, tags, content,
+                    expected_message_type, expected_validation_result, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))
+                 ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name, description=excluded.description,
+                    category=excluded.category, tags=excluded.tags, content=excluded.content,
+                    expected_message_type=excluded.expected_message_type,
+                    expected_validation_result=excluded.expected_validation_result,
+                    updated_at=datetime('now')",
+                params![tc.id, tc.name, tc.description, tc.category, tc.tags, tc.content,
+                        tc.expected_message_type, tc.expected_validation_result, tc.created_at],
+            ).map_err(|e| format!("Save failed: {}", e))?;
+        }
+        tx.commit().map_err(|e| format!("Save failed: {}", e))
+    }
+
     pub fn get_test_cases(&self, category_filter: Option<&str>) -> Result<Vec<TestCase>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let query = match category_filter {

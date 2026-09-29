@@ -2,6 +2,23 @@
 
 All notable user-facing changes to BridgeLab. Dates are UTC.
 
+## [Unreleased]
+
+### Added
+- **Share test cases as a pack.** The Test Case Library has *Export…*
+  and *Import…*: the cases in view (all, or those matching the search)
+  go into one `.bltests.json` file to send to a colleague or keep in
+  Git, and come back with a preview that says, before anything is
+  written, which cases are new, already there (skipped) or different
+  from yours (keep yours, replace, or keep both). Cases keep their id,
+  so re-importing a pack only brings in what changed. Before an export
+  BridgeLab lists the HL7 v2 cases whose PHI fields hold data and the
+  FHIR cases it cannot check field by field; with Pro the HL7 v2
+  messages can be masked in the exported file only. Every edition; an
+  import respects the Community limit of 10 test cases, all or
+  nothing. The format is documented in
+  [`docs/TEST_CASE_PACKS.md`](docs/TEST_CASE_PACKS.md).
+
 ## [1.8.1] — 2026-09-25
 
 ### Added

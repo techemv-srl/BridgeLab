@@ -132,7 +132,11 @@ Shipped and available:
 - [x] ACK filters with counts on the listener console and the send
       history (AA / AE / AR / no ACK / failed); MLLP sends record the
       ACK code they got back
-- [ ] Test case pack export/import (share scenarios via a folder or Git)
+- [x] Test case pack export/import — a `.bltests.json` file to share
+      scenarios by e-mail, a shared folder or Git; an import preview with
+      new / unchanged / conflicting cases, a PHI check before export and,
+      with Pro, masking in the exported file
+- [ ] Run test case packs from the CLI (JUnit output for CI)
 - [ ] Git integration (save messages to a repo, diff across commits)
 
 ### Collaboration

@@ -22,6 +22,7 @@ pub mod plugins;
 #[cfg(feature = "pro")]
 pub mod pro;
 pub mod templates;
+pub mod test_packs;
 pub mod utils;
 pub mod validation;
 
@@ -192,6 +193,10 @@ pub fn run() {
             commands::test_cases::save_test_case,
             commands::test_cases::get_test_cases,
             commands::test_cases::delete_test_case,
+            commands::test_cases::scan_test_cases_phi,
+            commands::test_cases::export_test_cases,
+            commands::test_cases::preview_test_case_import,
+            commands::test_cases::import_test_cases,
             commands::plugins::list_plugins,
             commands::plugins::reload_plugins,
             commands::plugins::set_plugin_enabled,

@@ -1,9 +1,13 @@
 <script lang="ts">
-	import { getTestCases, saveTestCase, deleteTestCase, type TestCase } from '$lib/ipc/testcases';
+	import {
+		getTestCases, saveTestCase, deleteTestCase, scanTestCasesPhi, exportTestCases,
+		previewTestCaseImport, importTestCases, importCounts,
+		type TestCase, type PhiScan, type ImportPreview, type ConflictChoice,
+	} from '$lib/ipc/testcases';
 	import { parseMessage } from '$lib/ipc/parser';
 	import { validateMessage, validateFhir, parseFhirMessage } from '$lib/ipc/validation';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
-	import { parseUpgradeError } from '$lib/ipc/licensing';
+	import { parseUpgradeError, getAvailableFeatures } from '$lib/ipc/licensing';
 	import { t, subscribeLocale } from '$lib/i18n';
 
 	let localeVersion = $state(0);
@@ -22,7 +26,7 @@
 	let cases = $state<TestCase[]>([]);
 	let selectedId = $state<string | null>(null);
 	let search = $state('');
-	let mode = $state<'list' | 'edit' | 'new'>('list');
+	let mode = $state<'list' | 'edit' | 'new' | 'export' | 'import'>('list');
 	let loading = $state(true);
 	let loadError = $state('');
 	let searchInputEl: HTMLInputElement | undefined = $state();
@@ -53,7 +57,7 @@
 	// Autofocus: search box in list mode, name field in the form
 	$effect(() => {
 		if (mode === 'list') searchInputEl?.focus();
-		else nameInputEl?.focus();
+		else if (mode === 'edit' || mode === 'new') nameInputEl?.focus();
 	});
 
 	async function load() {
@@ -130,6 +134,7 @@
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			if (mode === 'list') onClose();
+			else if (mode === 'export' || mode === 'import') mode = 'list';
 			else void cancelForm();
 		}
 	}
@@ -250,6 +255,106 @@
 		return { passed, total: ids.length };
 	});
 
+	// --- Packs: share test cases as a .bltests.json file ---
+
+	const PACK_FILTERS = () => [{ name: tr('tc.packFilter'), extensions: ['json'] }];
+
+	// Export: the test cases in view (all, or the ones matching the search).
+	let exportIds = $state<string[]>([]);
+	let exportCount = $state(0);
+	let exportPhi = $state<PhiScan[]>([]);
+	let exportAnonymize = $state(false);
+	let canMask = $state(false);
+	let busy = $state(false);
+
+	async function startExport() {
+		exportIds = search.trim() ? filtered.map((c) => c.id) : [];
+		exportCount = search.trim() ? filtered.length : cases.length;
+		exportAnonymize = false;
+		busy = true;
+		try {
+			const [phi, features] = await Promise.all([
+				scanTestCasesPhi(exportIds),
+				getAvailableFeatures().catch(() => [] as string[]),
+			]);
+			exportPhi = phi;
+			canMask = features.includes('anonymize_mask');
+			mode = 'export';
+		} catch (e) {
+			await dialogStore.error(tr('tc.packError'), undefined, String(e));
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function doExport() {
+		const { save } = await import('@tauri-apps/plugin-dialog');
+		const path = await save({ title: tr('tc.export'), defaultPath: 'bridgelab-test-cases.bltests.json', filters: PACK_FILTERS() });
+		if (!path) return;
+		busy = true;
+		try {
+			const r = await exportTestCases(exportIds, path, exportAnonymize);
+			const file = fileName(path);
+			mode = 'list';
+			await dialogStore.info(r.anonymized
+				? tr('tc.exportDoneMasked', { count: r.exported, file, masked: r.anonymized })
+				: tr('tc.exportDone', { count: r.exported, file }), tr('tc.export'));
+		} catch (e) {
+			const up = parseUpgradeError(e);
+			if (up) await dialogStore.error(tr('tc.export'), tr('upgrade.required', { tier: up.tier }));
+			else await dialogStore.error(tr('tc.packError'), undefined, String(e));
+		} finally {
+			busy = false;
+		}
+	}
+
+	// Import: preview first, conflicts resolved by the user.
+	let importPath = $state('');
+	let importPreview = $state<ImportPreview | null>(null);
+	let importChoices = $state<Record<number, ConflictChoice>>({});
+	let importTotals = $derived(importPreview ? importCounts(importPreview.items, importChoices) : { add: 0, update: 0, skip: 0 });
+	let importOverLimit = $derived(importPreview?.room != null && importTotals.add > importPreview.room);
+
+	async function startImport() {
+		const { open } = await import('@tauri-apps/plugin-dialog');
+		const picked = await open({ title: tr('tc.import'), multiple: false, filters: PACK_FILTERS() });
+		if (typeof picked !== 'string') return;
+		busy = true;
+		try {
+			importPreview = await previewTestCaseImport(picked);
+			importPath = picked;
+			importChoices = {};
+			mode = 'import';
+		} catch (e) {
+			await dialogStore.error(tr('tc.packError'), undefined, String(e));
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function doImport() {
+		busy = true;
+		try {
+			if (!importPreview) return;
+			const r = await importTestCases(importPath, importPreview.fingerprint, importChoices);
+			// Replaced test cases have new content: their check badges are stale.
+			checkResults = {};
+			await load();
+			mode = 'list';
+			await dialogStore.info(tr('tc.importDone', { add: r.added, update: r.updated, skip: r.skipped }), tr('tc.import'));
+		} catch (e) {
+			const up = parseUpgradeError(e);
+			if (up) await dialogStore.error(tr('tc.limitTitle'), tr('upgrade.required', { tier: up.tier }));
+			else await dialogStore.error(tr('tc.packError'), undefined, String(e));
+		} finally {
+			busy = false;
+		}
+	}
+
+	function fileName(path: string): string {
+		return path.split(/[\\/]/).pop() ?? path;
+	}
+
 	async function handleDelete(tc: TestCase) {
 		if (!(await dialogStore.confirm(tr('dialog.deleteConfirm', { name: tc.name })))) return;
 		try {
@@ -269,6 +374,11 @@
 		<span>{tr('tc.title')}</span>
 		<div class="header-actions">
 			{#if mode === 'list'}
+				<button class="btn" onclick={startImport} disabled={busy}>{tr('tc.import')}</button>
+				<button class="btn" onclick={startExport} disabled={busy || filtered.length === 0}
+					title={search.trim() ? tr('tc.exportFilteredHint', { count: filtered.length }) : tr('tc.exportAllHint')}>
+					{tr('tc.export')}
+				</button>
 				<button class="btn btn-primary" onclick={startNew}>
 					{currentContent ? tr('tc.saveCurrent') : tr('tc.newCase')}
 				</button>
@@ -375,6 +485,84 @@
 				{/if}
 			</div>
 		</div>
+	{:else if mode === 'export'}
+		<div class="tc-form">
+			<h3 class="pack-title">{tr('tc.exportTitle', { count: exportCount })}</h3>
+			<p class="pack-sub">{exportIds.length ? tr('tc.exportFilteredHint', { count: exportCount }) : tr('tc.exportAllHint')}</p>
+			{#if exportPhi.length === 0}
+				<div class="pack-note ok">{tr('tc.phiNone')}</div>
+			{:else}
+				<div class="pack-note warn">
+					<strong>{tr('tc.phiFound')}</strong>
+					<ul class="pack-list">
+						{#each exportPhi as p (p.id)}
+							<li>
+								<span class="pack-name">{p.name}</span> —
+								{#if p.kind === 'hl7'}{p.fields.join(', ')}
+								{:else if p.kind === 'fhir'}{tr('tc.phiFhir')}
+								{:else}{tr('tc.phiUnparsed')}{/if}
+							</li>
+						{/each}
+					</ul>
+				</div>
+				<label class="pack-check" class:disabled={!canMask}>
+					<input type="checkbox" bind:checked={exportAnonymize} disabled={!canMask} />
+					{tr('tc.exportAnonymize')}
+					{#if !canMask}<span class="pro-badge">PRO</span>{/if}
+				</label>
+			{/if}
+			<div class="form-actions">
+				<button class="btn" onclick={() => (mode = 'list')}>{tr('dialog.cancel')}</button>
+				<button class="btn btn-primary" onclick={doExport} disabled={busy}>{tr('tc.exportDo')}</button>
+			</div>
+		</div>
+	{:else if mode === 'import' && importPreview}
+		<div class="tc-form">
+			<h3 class="pack-title">{tr('tc.importTitle')}</h3>
+			<p class="pack-sub">
+				{tr('tc.importFrom', {
+					file: fileName(importPath),
+					date: importPreview.exported_at ? new Date(importPreview.exported_at).toLocaleString() : '—',
+					version: importPreview.app_version || '—',
+				})}
+			</p>
+			{#if importPreview.items.length === 0}
+				<div class="pack-note">{tr('tc.importEmpty')}</div>
+			{:else}
+				<div class="pack-items">
+					{#each importPreview.items as it (it.index)}
+						<div class="pack-item">
+							<span class="pack-name">{it.name}</span>
+							<span class="pack-cat">{it.category}</span>
+							{#if it.status === 'new'}
+								<span class="status new">{tr('tc.statusNew')}</span>
+							{:else if it.status === 'identical'}
+								<span class="status same">{tr('tc.statusIdentical')}</span>
+							{:else}
+								<span class="status conflict">{tr('tc.statusConflict', { name: it.existing_name ?? '' })}</span>
+								<select class="form-input pack-choice" value={importChoices[it.index] ?? 'skip'}
+									onchange={(e) => (importChoices = { ...importChoices, [it.index]: (e.currentTarget as HTMLSelectElement).value as ConflictChoice })}>
+									<option value="skip">{tr('tc.choiceSkip')}</option>
+									<option value="overwrite">{tr('tc.choiceOverwrite')}</option>
+									<option value="copy">{tr('tc.choiceCopy')}</option>
+								</select>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
+			<div class="pack-sub">{tr('tc.importSummary', { add: importTotals.add, update: importTotals.update, skip: importTotals.skip })}</div>
+			{#if importOverLimit}
+				<div class="pack-note warn">{tr('tc.importOverLimit', { room: importPreview.room ?? 0, add: importTotals.add })}</div>
+			{/if}
+			<div class="form-actions">
+				<button class="btn" onclick={() => (mode = 'list')}>{tr('dialog.cancel')}</button>
+				<button class="btn btn-primary" onclick={doImport}
+					disabled={busy || importOverLimit || importTotals.add + importTotals.update === 0}>
+					{tr('tc.importDo')}
+				</button>
+			</div>
+		</div>
 	{:else}
 		<!-- Edit / New form -->
 		<div class="tc-form">
@@ -470,6 +658,25 @@
 	.form-input.mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
 	.form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 
+	.pack-title { margin: 0; font-size: 14px; }
+	.pack-sub { margin: 0; font-size: 12px; color: var(--color-text-secondary); }
+	.pack-note { padding: 8px 10px; border-radius: 4px; font-size: 12px; border: 1px solid var(--color-border); }
+	.pack-note.ok { border-color: var(--color-success); color: var(--color-success); }
+	.pack-note.warn { border-color: var(--color-warning, #f9e2af); }
+	.pack-list { margin: 6px 0 0; padding-left: 18px; max-height: 180px; overflow-y: auto; }
+	.pack-name { font-weight: 600; }
+	.pack-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+	.pack-check.disabled { color: var(--color-text-secondary); }
+	.pro-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; background: var(--color-accent); color: var(--color-bg-primary); }
+	.pack-items { display: flex; flex-direction: column; gap: 2px; max-height: 45vh; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 4px; }
+	.pack-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; font-size: 12px; border-bottom: 1px solid var(--color-border); }
+	.pack-item:last-child { border-bottom: none; }
+	.pack-cat { color: var(--color-text-secondary); font-size: 11px; }
+	.status { margin-left: auto; font-size: 11px; font-weight: 600; }
+	.status.new { color: var(--color-success); }
+	.status.same { color: var(--color-text-secondary); }
+	.status.conflict { color: var(--color-warning, #f9e2af); }
+	.pack-choice { width: auto; padding: 3px 6px; }
 	.load-error { color: var(--color-error); font-style: normal; display: flex; flex-direction: column; gap: 8px; align-items: center; }
 	.empty { padding: 24px; text-align: center; color: var(--color-text-secondary); font-style: italic; font-size: 12px; }
 

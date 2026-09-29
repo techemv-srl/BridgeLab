@@ -300,6 +300,24 @@ all'interfaccia, un click ti dice quali dei tuoi messaggi di
 riferimento si sono rotti. Modificare un caso azzera il suo esito fino
 alla verifica successiva.</p>
 
+<h3>Condividere i test case</h3>
+<p><strong>Esporta…</strong> scrive i test case visibili — tutti,
+oppure solo quelli che corrispondono alla ricerca — in un pacchetto
+<code>.bltests.json</code> da mandare a un collega o da salvare in un
+repository Git. Prima di salvare, BridgeLab controlla i messaggi HL7 v2
+alla ricerca di dati personali ed elenca i test case e i campi trovati;
+le risorse FHIR sono indicate come non controllate campo per campo. Con
+Pro puoi spuntare <em>Maschera i dati personali</em> per anonimizzare i
+messaggi HL7 v2 solo nel file esportato: la libreria non cambia.</p>
+<p><strong>Importa…</strong> apre un pacchetto e mostra, prima di
+scrivere qualsiasi cosa, cos'è ogni test case: <em>Nuovo</em>, <em>Già
+nella libreria</em> (saltato) o <em>Diverso</em> da uno che hai già,
+dove scegli se tenere il tuo, sostituirlo o tenerli entrambi. I test
+case importati mantengono il loro identificativo, quindi importare di
+nuovo lo stesso pacchetto porta solo ciò che è cambiato. In Community
+un import non può portare la libreria oltre 10 test case: in quel caso
+non viene scritto nulla.</p>
+
 <h3>Ripristino sessione</h3>
 <p>BridgeLab salva i tab aperti (incluse le modifiche non salvate) e li
 riapre al prossimo avvio, in stile Notepad++. Controlli tutto da

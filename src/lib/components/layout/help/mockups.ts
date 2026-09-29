@@ -123,7 +123,8 @@ function makeCommunication(l: MockupLabels): string {
 	<rect x="0" y="0" width="80" height="30" fill="#313244"/>
 	<text x="22" y="20" fill="#89b4fa" font-family="sans-serif" font-size="12" font-weight="600">MLLP</text>
 	<text x="100" y="20" fill="#a6adc8" font-family="sans-serif" font-size="12">HTTP</text>
-	<text x="160" y="20" fill="#a6adc8" font-family="sans-serif" font-size="12">${l.history}</text>
+	<text x="160" y="20" fill="#a6adc8" font-family="sans-serif" font-size="12">SOAP</text>
+	<text x="224" y="20" fill="#a6adc8" font-family="sans-serif" font-size="12">${l.history}</text>
 	<!-- Form -->
 	<text x="16" y="54" fill="#a6adc8" font-family="sans-serif" font-size="11">${l.host}</text>
 	<rect x="16" y="60" width="220" height="26" fill="#1e1e2e" stroke="#45475a" rx="3"/>

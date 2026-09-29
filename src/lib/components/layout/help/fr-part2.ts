@@ -313,6 +313,25 @@ une évolution d'interface, un seul clic vous dit lesquels de vos
 messages de référence ont cassé. Modifier un cas efface son résultat
 mémorisé jusqu'à la prochaine exécution.</p>
 
+<h3>Partager des cas de test</h3>
+<p><strong>Exporter…</strong> écrit les cas de test affichés — tous, ou
+seulement ceux qui correspondent à la recherche — dans un paquet
+<code>.bltests.json</code> à envoyer à un collègue ou à versionner dans
+un dépôt Git. Avant l'enregistrement, BridgeLab recherche des données
+personnelles dans les messages HL7 v2 et liste les cas et les champs
+trouvés ; les ressources FHIR sont signalées comme non vérifiées champ
+par champ. Avec Pro, cochez <em>Masquer les données personnelles</em>
+pour anonymiser les messages HL7 v2 dans le fichier exporté uniquement :
+la bibliothèque n'est pas modifiée.</p>
+<p><strong>Importer…</strong> ouvre un paquet et montre, avant toute
+écriture, ce qu'est chaque cas : <em>Nouveau</em>, <em>Déjà dans la
+bibliothèque</em> (ignoré) ou <em>Différent</em> d'un cas existant,
+auquel cas vous choisissez de garder le vôtre, de le remplacer ou de
+garder les deux. Les cas importés gardent leur identifiant : réimporter
+le même paquet n'apporte que ce qui a changé. En Community, un import
+ne peut pas faire dépasser 10 cas de test à la bibliothèque ; rien
+n'est écrit dans ce cas.</p>
+
 <h3>Restauration de session</h3>
 <p>BridgeLab sauvegarde vos onglets ouverts (y compris les modifications
 non enregistrées) et les rouvre au lancement suivant, à la manière de

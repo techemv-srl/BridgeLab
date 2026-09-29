@@ -279,6 +279,23 @@ badge per row and a passed/total summary in the toolbar. After an
 interface change, one click tells you which of your reference messages
 broke. Editing a case clears its stored result until the next run.</p>
 
+<h3>Sharing test cases</h3>
+<p><strong>Export…</strong> writes the test cases in view — all of
+them, or only those matching the search — to a
+<code>.bltests.json</code> pack you can send to a colleague or commit to
+a Git repository. Before saving, BridgeLab checks the HL7 v2 messages
+for personal data and lists the cases and fields it found; FHIR
+resources are listed as not checked field by field. With Pro you can
+tick <em>Mask personal data</em> to anonymize the HL7 v2 messages in
+the exported file only — your library is not changed.</p>
+<p><strong>Import…</strong> opens a pack and shows, before anything is
+written, what each case is: <em>New</em>, <em>Already in the
+library</em> (skipped) or <em>Differs</em> from one you have, where you
+choose to keep yours, replace it or keep both. Imported cases keep
+their id, so importing the same pack again only brings in what changed.
+In Community an import may not take the library past 10 test cases;
+nothing is written if it would.</p>
+
 <h3>Session restore</h3>
 <p>BridgeLab saves your open tabs (including unsaved edits) and reopens
 them on the next launch, Notepad++-style. Control this under

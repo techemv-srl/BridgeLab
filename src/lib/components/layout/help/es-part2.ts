@@ -315,6 +315,25 @@ barra de herramientas. Tras un cambio en una interfaz, un solo clic te
 dice cuál de tus mensajes de referencia se rompió. Editar un caso borra
 su resultado almacenado hasta la siguiente ejecución.</p>
 
+<h3>Compartir casos de prueba</h3>
+<p><strong>Exportar…</strong> escribe los casos de prueba visibles
+—todos, o solo los que coinciden con la búsqueda— en un paquete
+<code>.bltests.json</code> para enviarlo a un compañero o guardarlo en
+un repositorio Git. Antes de guardar, BridgeLab busca datos personales
+en los mensajes HL7 v2 y lista los casos y campos encontrados; los
+recursos FHIR se indican como no revisados campo por campo. Con Pro
+puedes marcar <em>Enmascarar los datos personales</em> para anonimizar
+los mensajes HL7 v2 solo en el archivo exportado: la biblioteca no
+cambia.</p>
+<p><strong>Importar…</strong> abre un paquete y muestra, antes de
+escribir nada, qué es cada caso: <em>Nuevo</em>, <em>Ya en la
+biblioteca</em> (se omite) o <em>Distinto</em> de uno que ya tienes, y
+entonces eliges conservar el tuyo, sustituirlo o conservar ambos. Los
+casos importados mantienen su identificador, así que importar de nuevo
+el mismo paquete solo trae lo que ha cambiado. En Community una
+importación no puede llevar la biblioteca por encima de 10 casos de
+prueba; si fuera así, no se escribe nada.</p>
+
 <h3>Restauración de sesión</h3>
 <p>BridgeLab guarda tus pestañas abiertas (incluidas las ediciones sin
 guardar) y las reabre en el siguiente arranque, al estilo Notepad++.

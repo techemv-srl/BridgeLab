@@ -384,6 +384,11 @@ Before running tests:
 | BL-TCLIB-08 | P1 | Category grouping | Save cases with different categories | Grouped in list | |
 | BL-TCLIB-09 | P1 | Tags shown as chips | Save case with tags | Chips visible | |
 | BL-TCLIB-10 | P2 | Persist across restart | Save, close, reopen | Cases still present | |
+| BL-TCLIB-11 | P0 | Export a pack | Library with an HL7 v2 case holding a patient name and a FHIR case; *Export…* with no search, save | The export panel lists the HL7 v2 case with PID-5 among its fields and the FHIR case as "not checked"; the file is `format: bridgelab-test-cases`, `format_version: 1`, with both cases and their ids; with a search active only the matching cases are exported | |
+| BL-TCLIB-12 | P1 | Export with PHI masked (Pro) | Same library under Pro (or trial): tick *Mask personal data*, export; then under Community | Pro: the file's HL7 v2 content has the PHI masked, the library still shows the original; the result names how many cases were masked. Community: the box is disabled with a PRO badge | |
+| BL-TCLIB-13 | P0 | Import preview and conflicts | Export a pack, edit one case, delete another, import the pack | Preview lists: the deleted one as *New*, the untouched ones as *Already in the library*, the edited one as *Differs* with a choice; *Keep mine* leaves it, *Replace* restores the exported version (creation date kept), *Keep both* adds "… (imported)"; the summary counts match what is written | |
+| BL-TCLIB-14 | P1 | Import respects the Community cap | Community with 9 cases; import a pack with 3 new cases | The preview warns that there is room for 1; *Import* is disabled; nothing is written. Under Pro the same import adds all 3 | |
+| BL-TCLIB-15 | P2 | Foreign or future files | Import a plugin pack JSON, a non-JSON file, and a pack with `format_version: 2` | Clear error each time ("Not a BridgeLab test case pack", "Not a JSON file", "made by a newer BridgeLab"); the library is unchanged | |
 
 ## 20. Export
 

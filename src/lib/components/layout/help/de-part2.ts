@@ -317,6 +317,26 @@ Schnittstellenänderung sagt Ihnen ein Klick, welche Ihrer
 Referenznachrichten nicht mehr bestehen. Das Bearbeiten eines Falls
 setzt sein gespeichertes Ergebnis bis zum nächsten Lauf zurück.</p>
 
+<h3>Testfälle teilen</h3>
+<p><strong>Exportieren…</strong> schreibt die angezeigten Testfälle —
+alle oder nur die zur Suche passenden — in ein Paket
+<code>.bltests.json</code>, das Sie an Kollegen senden oder in einem
+Git-Repository ablegen können. Vor dem Speichern prüft BridgeLab die
+HL7-v2-Nachrichten auf personenbezogene Daten und listet die
+betroffenen Testfälle und Felder auf; FHIR-Ressourcen werden als nicht
+Feld für Feld geprüft angezeigt. Mit Pro können Sie <em>Personenbezogene
+Daten maskieren</em> wählen, um die HL7-v2-Nachrichten nur in der
+exportierten Datei zu anonymisieren – die Bibliothek bleibt
+unverändert.</p>
+<p><strong>Importieren…</strong> öffnet ein Paket und zeigt, bevor
+etwas geschrieben wird, was jeder Testfall ist: <em>Neu</em>,
+<em>Schon in der Bibliothek</em> (übersprungen) oder <em>Abweichend</em>
+von einem vorhandenen – dann wählen Sie, ob Sie Ihren behalten, ihn
+ersetzen oder beide behalten. Importierte Testfälle behalten ihre
+Kennung; ein erneuter Import desselben Pakets bringt nur Geändertes. In
+Community darf ein Import die Bibliothek nicht über 10 Testfälle
+bringen; dann wird nichts geschrieben.</p>
+
 <h3>Sitzungswiederherstellung</h3>
 <p>BridgeLab speichert Ihre offenen Tabs (einschließlich
 ungespeicherter Änderungen) und öffnet sie beim nächsten Start erneut
