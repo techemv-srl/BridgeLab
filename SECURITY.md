@@ -6,10 +6,10 @@ Only the latest released version of BridgeLab receives security fixes.
 Older releases are not patched — please update to the current release
 before reporting an issue you can no longer reproduce there.
 
-| Version        | Supported          |
-| -------------- | ------------------ |
-| 1.3.x (latest) | :white_check_mark: |
-| < 1.3          | :x:                |
+| Version                 | Supported          |
+| ----------------------- | ------------------ |
+| Latest release          | :white_check_mark: |
+| Any earlier release     | :x:                |
 
 ## Reporting a Vulnerability
 

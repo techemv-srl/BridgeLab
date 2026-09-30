@@ -1,3 +1,4 @@
+use super::hl7::delimiters::is_header_type;
 use super::hl7::message::Hl7Message;
 
 /// Default number of characters to show before truncation marker.
@@ -15,15 +16,17 @@ pub fn build_truncated_text(msg: &Hl7Message, preview_len: usize) -> String {
         }
         // Write segment type
         result.push_str(&segment.segment_type);
+        // FHS/BHS lay out their first fields like MSH (see the lexer).
+        let header = segment.segment_type.len() == 3 && is_header_type(segment.segment_type.as_bytes());
 
         for field in &segment.fields {
             // MSH-1 is the field separator itself, don't add another one
-            if segment.segment_type == "MSH" && field.position == 1 {
+            if header && field.position == 1 {
                 result.push_str(field.span.as_str(&msg.raw));
                 continue;
             }
             // MSH-2 is encoding chars, preceded by field separator already included in MSH-1
-            if segment.segment_type == "MSH" && field.position == 2 {
+            if header && field.position == 2 {
                 result.push_str(field.span.as_str(&msg.raw));
                 // Add field separator after encoding chars
                 result.push(msg.delimiters.field as char);
@@ -31,7 +34,7 @@ pub fn build_truncated_text(msg: &Hl7Message, preview_len: usize) -> String {
             }
 
             // For non-MSH segments and MSH fields >= 3
-            if !(segment.segment_type == "MSH" && field.position == 3) {
+            if !(header && field.position == 3) {
                 result.push(msg.delimiters.field as char);
             }
 

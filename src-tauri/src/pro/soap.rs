@@ -75,30 +75,20 @@ pub fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+        // XML parsers turn a literal CR into LF (XML 1.0, 2.11), and CR is
+        // the HL7 v2 segment terminator: it travels as a character reference.
+        .replace('\r', "&#13;")
 }
 
-/// Build the full envelope. A user template wins (only `{payload}` is
-/// substituted — the user owns the rest); otherwise a standard envelope
-/// with the requested optional headers is produced.
-pub fn build_envelope(req: &SoapRequest) -> String {
-    let payload_xml = if req.payload.trim_start().starts_with('<') {
-        req.payload.clone()
-    } else {
-        format!("<payload>{}</payload>", xml_escape(&req.payload))
-    };
-
-    if let Some(tpl) = &req.envelope_template {
-        if !tpl.trim().is_empty() {
-            return tpl.replace("{payload}", &payload_xml);
-        }
-    }
-
-    let ns = if req.soap_version == "1.2" { NS_12 } else { NS_11 };
+/// The WS-Security and WS-Addressing header blocks the request asks for,
+/// empty when it asks for none. `must_understand` is the attribute that
+/// marks the Security header, qualified with the envelope's own prefix.
+fn header_blocks(req: &SoapRequest, must_understand: &str) -> String {
     let mut headers = String::new();
     if let Some(ws) = &req.ws_security {
         headers.push_str(&format!(
             concat!(
-                "<wsse:Security xmlns:wsse=\"{ns}\" soap:mustUnderstand=\"1\">",
+                "<wsse:Security xmlns:wsse=\"{ns}\" {mu}>",
                 "<wsse:UsernameToken>",
                 "<wsse:Username>{u}</wsse:Username>",
                 "<wsse:Password Type=\"http://docs.oasis-open.org/wss/2004/01/",
@@ -106,6 +96,7 @@ pub fn build_envelope(req: &SoapRequest) -> String {
                 "</wsse:UsernameToken></wsse:Security>"
             ),
             ns = NS_WSSE,
+            mu = must_understand,
             u = xml_escape(&ws.username),
             p = xml_escape(&ws.password),
         ));
@@ -123,14 +114,150 @@ pub fn build_envelope(req: &SoapRequest) -> String {
             id = uuid::Uuid::new_v4(),
         ));
     }
+    headers
+}
 
+/// One start tag found in a template: where it begins and ends, and its
+/// qualified name.
+struct Tag<'a> {
+    start: usize,
+    /// Index just past the closing `>`.
+    end: usize,
+    name: &'a str,
+    self_closing: bool,
+}
+
+/// Where the markup construct starting at `start` (a `<`) ends, just past
+/// its closing `>`: comments, CDATA and processing instructions end at
+/// their own terminator, and a `>` inside a quoted attribute value does
+/// not end a tag.
+fn markup_end(xml: &str, start: usize) -> Option<usize> {
+    let rest = &xml[start..];
+    for (open, close) in [("<!--", "-->"), ("<![CDATA[", "]]>"), ("<?", "?>")] {
+        if rest.starts_with(open) {
+            return rest[open.len()..].find(close).map(|i| start + open.len() + i + close.len());
+        }
+    }
+    let mut quote: Option<char> = None;
+    for (i, c) in rest.char_indices().skip(1) {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(c),
+            (None, '>') => return Some(start + i + 1),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The start tags of `xml`, in order (end tags, comments, CDATA,
+/// processing instructions and declarations skipped).
+fn start_tags(xml: &str) -> impl Iterator<Item = Tag<'_>> {
+    let mut pos = 0;
+    std::iter::from_fn(move || loop {
+        let start = pos + xml[pos..].find('<')?;
+        let end = markup_end(xml, start)?;
+        pos = end;
+        let rest = &xml[start + 1..end];
+        if rest.starts_with(['/', '?', '!']) {
+            continue;
+        }
+        let name_len = rest.find(|c: char| c.is_whitespace() || c == '/' || c == '>').unwrap_or(rest.len());
+        return Some(Tag {
+            start,
+            end,
+            name: &rest[..name_len],
+            self_closing: xml[..end].ends_with("/>"),
+        });
+    })
+}
+
+/// Put `headers` into the template's SOAP Header, creating the Header
+/// before the Body when the template has none. The template is the
+/// user's; when its root is not a SOAP Envelope with a Body, there is no
+/// place the receiver would look for the headers, and it is refused.
+fn inject_headers(tpl: &str, headers: &str, payload_xml: &str) -> Result<String, String> {
+    let refuse = || {
+        "The custom envelope template has no SOAP Envelope with a Body, so the WS-Security / \
+         WS-Addressing headers cannot be added to it. Add a <soap:Header/> (or at least the \
+         Envelope and Body) to the template, or turn those options off."
+            .to_string()
+    };
+    let root = start_tags(tpl).next().ok_or_else(refuse)?;
+    let (prefix, local) = match root.name.split_once(':') {
+        Some((p, l)) => (Some(p), l),
+        None => (None, root.name),
+    };
+    if local != "Envelope" {
+        return Err(refuse());
+    }
+    let qualified = |l: &str| match prefix {
+        Some(p) => format!("{}:{}", p, l),
+        None => l.to_string(),
+    };
+    let (header_name, body_name) = (qualified("Header"), qualified("Body"));
+    let (at, insert) = if let Some(h) = start_tags(tpl).find(|t| t.name == header_name) {
+        if h.self_closing {
+            // <soap:Header/> becomes <soap:Header>…</soap:Header>.
+            let open = format!("{}>", tpl[h.start..h.end - 2].trim_end());
+            (h.start..h.end, format!("{}{}</{}>", open, headers, header_name))
+        } else {
+            (h.end..h.end, headers.to_string())
+        }
+    } else {
+        let b = start_tags(tpl).find(|t| t.name == body_name).ok_or_else(refuse)?;
+        (b.start..b.start, format!("<{h}>{}</{h}>", headers, h = header_name))
+    };
+    // {payload} is replaced in the template's own text only: never inside
+    // the credentials just added.
+    Ok(format!(
+        "{}{}{}",
+        tpl[..at.start].replace("{payload}", payload_xml),
+        insert,
+        tpl[at.end..].replace("{payload}", payload_xml)
+    ))
+}
+
+/// Build the full envelope. With a user template only `{payload}` is
+/// substituted (the user owns the rest) and the WS-Security and
+/// WS-Addressing headers, when asked for, are added to its SOAP Header;
+/// otherwise a standard envelope with those headers is produced.
+pub fn build_envelope(req: &SoapRequest) -> Result<String, String> {
+    let payload_xml = if req.payload.trim_start().starts_with('<') {
+        req.payload.clone()
+    } else {
+        // HL7 v2 segments end with CR (LF from the editor is converted);
+        // xml_escape keeps the CR as &#13;.
+        format!("<payload>{}</payload>", xml_escape(&crate::parser::hl7::to_wire_segments(&req.payload)))
+    };
+    let ns = if req.soap_version == "1.2" { NS_12 } else { NS_11 };
+
+    if let Some(tpl) = &req.envelope_template {
+        if !tpl.trim().is_empty() {
+            let root_prefix = start_tags(tpl).next().and_then(|t| t.name.split_once(':').map(|(p, _)| p.to_string()));
+            let must_understand = match &root_prefix {
+                Some(p) => format!("{}:mustUnderstand=\"1\"", p),
+                // A default-namespace envelope has no prefix to qualify
+                // the attribute with: declare one on the header itself.
+                None => format!("xmlns:soapenv=\"{}\" soapenv:mustUnderstand=\"1\"", ns),
+            };
+            let headers = header_blocks(req, &must_understand);
+            if headers.is_empty() {
+                return Ok(tpl.replace("{payload}", &payload_xml));
+            }
+            return inject_headers(tpl, &headers, &payload_xml);
+        }
+    }
+
+    let headers = header_blocks(req, "soap:mustUnderstand=\"1\"");
     let header_block = if headers.is_empty() {
         String::new()
     } else {
         format!("<soap:Header>{}</soap:Header>", headers)
     };
 
-    format!(
+    Ok(format!(
         concat!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
             "<soap:Envelope xmlns:soap=\"{ns}\">",
@@ -141,7 +268,7 @@ pub fn build_envelope(req: &SoapRequest) -> String {
         ns = ns,
         header = header_block,
         body = payload_xml,
-    )
+    ))
 }
 
 /// Extract the Fault (if any) and the inner Body XML from a response.
@@ -290,14 +417,46 @@ pub fn parse_response(xml: &str) -> (Option<SoapFault>, Option<String>) {
     (fault, body_inner.map(|s| s.trim().to_string()))
 }
 
+/// Largest SOAP reply read: a bigger one is an error, not a 1 GB string.
+const MAX_REPLY_BYTES: usize = 50 * 1024 * 1024;
+
+async fn read_capped(mut resp: reqwest::Response) -> Result<String, String> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len() + chunk.len() > MAX_REPLY_BYTES {
+            return Err(format!("the reply is larger than {} MB", MAX_REPLY_BYTES >> 20));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 /// Send the request and parse the reply. Transport errors come back inside
 /// the result (success:false + error) so the UI shows them inline like the
 /// HTTP client does.
 pub async fn send(req: SoapRequest) -> SoapResult {
-    let envelope = build_envelope(&req);
     let started = std::time::Instant::now();
+    let envelope = match build_envelope(&req) {
+        Ok(e) => e,
+        Err(e) => {
+            return SoapResult {
+                success: false,
+                status_code: 0,
+                fault: None,
+                body: None,
+                response_time_ms: 0,
+                error: Some(e),
+            }
+        }
+    };
 
-    let client = reqwest::Client::new();
+    // No redirects: a 307/308 would re-post the envelope, WS-Security
+    // password included, to whatever host the Location names. A redirect
+    // is shown as the non-SOAP reply it is.
+    let client = match reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build() {
+        Ok(c) => c,
+        Err(_) => reqwest::Client::new(),
+    };
     let mut builder = client
         .post(&req.endpoint)
         .timeout(Duration::from_secs(req.timeout_secs.clamp(1, 300)))
@@ -319,7 +478,7 @@ pub async fn send(req: SoapRequest) -> SoapResult {
     match builder.send().await {
         Ok(resp) => {
             let status = resp.status().as_u16();
-            match resp.text().await {
+            match read_capped(resp).await {
                 Ok(text) => {
                     // Measured after the body is fully consumed: send()
                     // resolves on headers, and time-to-first-byte alone
@@ -385,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_envelope_escapes_pipe_message() {
-        let env = build_envelope(&base_req());
+        let env = build_envelope(&base_req()).unwrap();
         assert!(env.contains(NS_11));
         assert!(env.contains("<payload>MSH|^~\\&amp;|A|B</payload>"));
         assert!(!env.contains("<soap:Header>"));
@@ -395,7 +554,7 @@ mod tests {
     fn test_envelope_xml_payload_passthrough() {
         let mut r = base_req();
         r.payload = "<msg><x>1</x></msg>".into();
-        let env = build_envelope(&r);
+        let env = build_envelope(&r).unwrap();
         assert!(env.contains("<soap:Body><msg><x>1</x></msg></soap:Body>"));
     }
 
@@ -403,7 +562,7 @@ mod tests {
     fn test_envelope_soap12_namespace() {
         let mut r = base_req();
         r.soap_version = "1.2".into();
-        assert!(build_envelope(&r).contains(NS_12));
+        assert!(build_envelope(&r).unwrap().contains(NS_12));
     }
 
     #[test]
@@ -411,7 +570,7 @@ mod tests {
         let mut r = base_req();
         r.ws_security = Some(WsSecurity { username: "u<a>".into(), password: "p&w".into() });
         r.ws_addressing = true;
-        let env = build_envelope(&r);
+        let env = build_envelope(&r).unwrap();
         assert!(env.contains("<wsse:Username>u&lt;a&gt;</wsse:Username>"));
         assert!(env.contains("p&amp;w"));
         assert!(env.contains("<wsa:Action"));
@@ -423,8 +582,64 @@ mod tests {
     fn test_envelope_template_substitution() {
         let mut r = base_req();
         r.envelope_template = Some("<e><b>{payload}</b></e>".into());
-        let env = build_envelope(&r);
+        let env = build_envelope(&r).unwrap();
         assert_eq!(env, "<e><b><payload>MSH|^~\\&amp;|A|B</payload></b></e>");
+    }
+
+    /// A raw HL7 message keeps its CR segment terminators through XML
+    /// parsing, and LF from the editor becomes CR first.
+    #[test]
+    fn hl7_segment_terminators_survive_the_xml() {
+        let mut r = base_req();
+        r.payload = "MSH|^~\\&|A|B\nPID|1\n".into();
+        let env = build_envelope(&r).unwrap();
+        assert!(env.contains("<payload>MSH|^~\\&amp;|A|B&#13;PID|1&#13;</payload>"), "{env}");
+        assert!(!env.contains('\r') && !env.contains('\n'));
+    }
+
+    /// WS-Security and WS-Addressing reach a custom template: into its
+    /// Header, or a new Header before its Body, with its own prefix.
+    #[test]
+    fn a_template_still_gets_the_ws_headers() {
+        let mut r = base_req();
+        r.ws_security = Some(WsSecurity { username: "{payload}".into(), password: "pw".into() });
+        r.ws_addressing = true;
+
+        r.envelope_template = Some(
+            "<se:Envelope xmlns:se=\"http://schemas.xmlsoap.org/soap/envelope/\"><se:Header><x:h xmlns:x=\"urn:x\"/></se:Header><se:Body><m>{payload}</m></se:Body></se:Envelope>".into(),
+        );
+        let env = build_envelope(&r).unwrap();
+        assert!(env.contains("<se:Header><wsse:Security"), "{env}");
+        assert!(env.contains("se:mustUnderstand=\"1\""));
+        assert!(env.contains("<x:h xmlns:x=\"urn:x\"/></se:Header>"));
+        assert!(env.contains("<wsa:Action"));
+        assert!(env.contains("<wsse:Username>{payload}</wsse:Username>"), "credentials are not substituted");
+        assert!(env.contains("<m><payload>MSH|"));
+
+        r.envelope_template = Some("<s:Envelope xmlns:s=\"x\"><s:Header /><s:Body>{payload}</s:Body></s:Envelope>".into());
+        let env = build_envelope(&r).unwrap();
+        assert!(env.starts_with("<s:Envelope xmlns:s=\"x\"><s:Header><wsse:Security"), "{env}");
+        assert!(env.contains("</wsa:MessageID></s:Header><s:Body>"));
+
+        r.envelope_template = Some("<?xml version=\"1.0\"?><!-- c --><Envelope xmlns=\"http://schemas.xmlsoap.org/soap/envelope/\"><Body>{payload}</Body></Envelope>".into());
+        let env = build_envelope(&r).unwrap();
+        assert!(env.contains("<Header><wsse:Security"), "{env}");
+        assert!(env.contains("xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" soapenv:mustUnderstand=\"1\""));
+        assert!(env.contains("</Header><Body>"));
+
+        // A '>' inside an attribute value, a comment or CDATA does not end
+        // a tag or hide one.
+        r.envelope_template = Some(
+            "<s:Envelope xmlns:s=\"x\" a='1>2'><!-- <s:Header> --><s:Header data=\"a>b\" c='d>'><h/></s:Header><s:Body><![CDATA[<s:Header>]]>{payload}</s:Body></s:Envelope>".into(),
+        );
+        let env = build_envelope(&r).unwrap();
+        assert!(env.contains("<s:Header data=\"a>b\" c='d>'><wsse:Security"), "{env}");
+        assert!(env.contains("<!-- <s:Header> -->") && env.contains("<![CDATA[<s:Header>]]>"));
+        assert_eq!(env.matches("<wsse:Security").count(), 1);
+
+        // No Envelope to put them in: refused, never sent without them.
+        r.envelope_template = Some("<e><b>{payload}</b></e>".into());
+        assert!(build_envelope(&r).unwrap_err().contains("WS-Security"));
     }
 
     #[test]

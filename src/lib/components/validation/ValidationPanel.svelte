@@ -10,10 +10,12 @@
 		errorCount: number;
 		warningCount: number;
 		infoCount: number;
+		/** The message changed since this report was made. */
+		stale?: boolean;
 		onIssueClick?: (issue: ValidationIssue) => void;
 	}
 
-	let { issues, errorCount, warningCount, infoCount, onIssueClick }: Props = $props();
+	let { issues, errorCount, warningCount, infoCount, stale = false, onIssueClick }: Props = $props();
 
 	let filterSeverity = $state<string>('all');
 	let sortField = $state<string>('severity');
@@ -100,6 +102,10 @@
 		</div>
 	</div>
 
+	{#if stale}
+		<div class="stale-note" role="status">{tr('validation.stale')}</div>
+	{/if}
+
 	<div class="validation-list">
 		{#if filteredIssues.length === 0}
 			<div class="validation-empty">
@@ -122,6 +128,11 @@
 					>
 						{#if issue.segment_type}
 							{issue.segment_type}{issue.field_position ? `-${issue.field_position}` : ''}
+							<!-- Which occurrence: numbered like the tree's rows, so two
+							     identical issues on two OBX can be told apart. -->
+							{#if issue.segment_idx !== null && issue.segment_idx !== undefined}
+								<span class="issue-seg">({issue.segment_idx})</span>
+							{/if}
 						{:else}
 							—
 						{/if}
@@ -141,6 +152,19 @@
 		height: 100%;
 		background-color: var(--color-bg-secondary);
 		font-size: 12px;
+	}
+
+	.stale-note {
+		padding: 3px 8px;
+		font-size: 11px;
+		color: var(--color-warning, #d7ba7d);
+		border-bottom: 1px solid var(--color-border);
+		background-color: var(--color-bg-tertiary);
+	}
+
+	.issue-seg {
+		opacity: 0.6;
+		font-weight: normal;
 	}
 
 	.validation-header {

@@ -36,6 +36,13 @@ export interface FhirRule {
 export interface FhirRuleSet {
 	rules: FhirRule[];
 	path: string;
+	/** The file as read; Save sends it back and is refused if the file
+	 *  changed on disk in the meantime. Empty when there is no file yet. */
+	stamp: string;
+	/** Why the rules do not run on validation now: switched off, beyond
+	 *  the Community limit on active packs, or a pack that does not load.
+	 *  Null when they run. */
+	status: 'off' | 'gated' | 'error' | null;
 }
 
 export interface FhirRuleTest {
@@ -50,8 +57,8 @@ export async function listFhirRules(): Promise<FhirRuleSet> {
 	return invoke('fhir_rules_list');
 }
 
-export async function saveFhirRules(rules: FhirRule[]): Promise<FhirRuleSet> {
-	return invoke('fhir_rules_save', { rules });
+export async function saveFhirRules(rules: FhirRule[], stamp: string | null): Promise<FhirRuleSet> {
+	return invoke('fhir_rules_save', { rules, stamp });
 }
 
 /** Validate one rule without saving it. Resolves when the rule is usable. */

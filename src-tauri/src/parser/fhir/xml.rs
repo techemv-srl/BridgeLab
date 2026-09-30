@@ -3,7 +3,8 @@
 //!
 //! The FHIR XML encoding maps 1:1 onto the JSON model:
 //! * element name → object key
-//! * `value="..."` attribute → JSON primitive (kept as string)
+//! * `value="..."` attribute → JSON primitive (a string here; typed by
+//!   [`super::xml_types`] from the core definitions)
 //! * repeated sibling elements → JSON array
 //! * nested elements → JSON object
 //! * the root element name → `resourceType`
@@ -137,6 +138,12 @@ fn emit(frame: Frame, stack: &mut Vec<Frame>, root: &mut Option<(String, Value)>
     }
 }
 
+/// Deepest element nesting accepted: the recursion limit serde_json applies
+/// to FHIR JSON. Real resources stay far below it; a hostile document
+/// nested thousands deep used to overflow the stack of the code that walks
+/// the result and take the whole app down.
+const MAX_XML_DEPTH: usize = 128;
+
 /// Convert a FHIR XML document into (resource_type, JSON value).
 pub fn fhir_xml_to_json(xml: &str) -> Result<(String, Value), String> {
     let mut reader = Reader::from_str(xml);
@@ -162,6 +169,12 @@ pub fn fhir_xml_to_json(xml: &str) -> Result<(String, Value), String> {
                         );
                     }
                     continue;
+                }
+                if stack.len() >= MAX_XML_DEPTH {
+                    return Err(format!(
+                        "Invalid FHIR XML: elements are nested more than {} deep",
+                        MAX_XML_DEPTH
+                    ));
                 }
                 stack.push(frame);
             }
@@ -318,5 +331,23 @@ mod tests {
         let paths: Vec<_> = issues.iter().map(|i| i.path.as_str()).collect();
         assert!(paths.contains(&"name"), "expected missing-name issue, got: {:?}", paths);
         assert!(paths.contains(&"gender"), "expected invalid-gender issue, got: {:?}", paths);
+    }
+
+    #[test]
+    fn absurdly_deep_documents_are_refused_not_crashed_on() {
+        let n = 20_000;
+        let xml = format!(
+            "<Patient xmlns=\"http://hl7.org/fhir\"><id value=\"1\"/>{}{}</Patient>",
+            "<extension url=\"x\">".repeat(n),
+            "</extension>".repeat(n)
+        );
+        let err = fhir_xml_to_json(&xml).unwrap_err();
+        assert!(err.contains("nested"), "{err}");
+        let ok = format!(
+            "<Patient xmlns=\"http://hl7.org/fhir\">{}{}</Patient>",
+            "<extension url=\"x\">".repeat(40),
+            "</extension>".repeat(40)
+        );
+        assert!(fhir_xml_to_json(&ok).is_ok());
     }
 }

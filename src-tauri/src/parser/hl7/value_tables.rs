@@ -90,6 +90,32 @@ pub fn table_count() -> usize {
     tables().len()
 }
 
+/// The code a coded value is looked up by: the first component of the
+/// first repetition. MSH-9 carries "ADT^A01" and table 0076 knows "ADT";
+/// a repeating coded field ("H~A" in OBX-8) is described by its first
+/// value, the same one the tree shows first.
+pub fn leading_code<'a>(value: &'a str, d: &crate::parser::hl7::delimiters::Delimiters) -> &'a str {
+    value
+        .split(|c: char| c == d.component as char || c == d.repetition as char || c == d.subcomponent as char)
+        .next()
+        .unwrap_or("")
+        .trim()
+}
+
+/// `(code, meaning)` for an element drawing from value table `table`: the
+/// code whenever the element is coded and non-empty, the meaning only when
+/// the table lists it. `(None, None)` for an element with no table.
+pub fn coded(table: Option<&str>, value: &str, d: &crate::parser::hl7::delimiters::Delimiters) -> (Option<String>, Option<String>) {
+    let Some(table) = table else {
+        return (None, None);
+    };
+    let code = leading_code(value, d);
+    if code.is_empty() {
+        return (None, None);
+    }
+    (Some(code.to_string()), describe_code(table, code).map(str::to_string))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

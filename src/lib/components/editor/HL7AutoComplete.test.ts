@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type * as MonacoTypes from 'monaco-editor';
-import { versionFromModel } from './HL7AutoComplete';
+import { catalogueVersion, versionFromModel } from './HL7AutoComplete';
 
 /**
  * Minimal stand-in for a Monaco text model: `versionFromModel` only reads
@@ -48,5 +48,15 @@ describe('versionFromModel', () => {
 
 	it('uses the first message of a multi-message file', () => {
 		expect(versionFromModel(model(`${msh('2.3')}\nPID|1\n${msh('2.7')}`))).toBe('2.3');
+	});
+});
+
+describe('catalogueVersion', () => {
+	it('falls back to major.minor before the default, like the validator', () => {
+		expect(catalogueVersion('2.7.2')).toBe('2.7');
+		expect(catalogueVersion('2.5.9')).toBe('2.5');
+		expect(catalogueVersion('2.8')).toBe('2.5');
+		expect(catalogueVersion('2.3.1')).toBe('2.3.1');
+		expect(catalogueVersion(undefined)).toBe('2.5');
 	});
 });

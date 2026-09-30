@@ -5,10 +5,13 @@ const savedFileResult = { path: '', bytes_written: 0 };
 vi.mock('$lib/ipc/parser', () => ({
 	openFile: vi.fn(),
 	saveFile: vi.fn(async () => savedFileResult),
+	fileStat: vi.fn(async () => null),
+	canonicalPath: vi.fn(async () => null),
 }));
 vi.mock('$lib/ipc/database', () => ({
 	getRecentFiles: vi.fn(async () => []),
 	addRecentFile: vi.fn(async () => undefined),
+	removeRecentFile: vi.fn(async () => undefined),
 	clearRecentFiles: vi.fn(async () => undefined),
 }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -16,10 +19,10 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 	save: vi.fn(async () => null),
 }));
 
-import { openFile, saveFile } from '$lib/ipc/parser';
-import { getRecentFiles, addRecentFile, clearRecentFiles } from '$lib/ipc/database';
+import { openFile, saveFile, fileStat, canonicalPath } from '$lib/ipc/parser';
+import { getRecentFiles, addRecentFile, removeRecentFile, clearRecentFiles } from '$lib/ipc/database';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { fileOpsStore } from './file-ops.svelte';
+import { fileOpsStore, sameStamp } from './file-ops.svelte';
 import { messageStore } from './messages.svelte';
 import { dialogStore } from './dialog.svelte';
 
@@ -35,12 +38,18 @@ const parseResult = (over: Record<string, unknown> = {}) => ({
 	...over,
 }) as any;
 
+const v1 = { modified_ms: 1000, size: 10 };
+const v2 = { modified_ms: 2000, size: 12 };
+
 beforeEach(() => {
 	messageStore.closeAllTabs();
 	dialogStore.close(false);
 	fileOpsStore.recentFiles = [];
 	vi.mocked(openFile).mockReset().mockResolvedValue(parseResult());
 	vi.mocked(saveFile).mockReset().mockResolvedValue(savedFileResult);
+	vi.mocked(fileStat).mockReset().mockResolvedValue(v1);
+	vi.mocked(canonicalPath).mockReset().mockResolvedValue(null);
+	vi.mocked(removeRecentFile).mockReset().mockResolvedValue(undefined);
 	vi.mocked(getRecentFiles).mockReset().mockResolvedValue([]);
 	vi.mocked(addRecentFile).mockReset().mockResolvedValue(undefined);
 	vi.mocked(clearRecentFiles).mockReset().mockResolvedValue(undefined);
@@ -67,6 +76,39 @@ describe('openPath', () => {
 		dialogStore.close(true);
 		await p;
 		expect(messageStore.tabs).toHaveLength(0);
+	});
+});
+
+describe('openPath: one file, one tab', () => {
+	it('recognises the same file reached through a symlinked folder', async () => {
+		vi.mocked(canonicalPath).mockResolvedValue('/real/b/m.hl7');
+		await fileOpsStore.openPath('/real/b/m.hl7', () => {});
+		await fileOpsStore.openPath('/link/m.hl7', () => {});
+		expect(messageStore.tabs).toHaveLength(1);
+		expect(openFile).toHaveBeenCalledTimes(1);
+	});
+
+	it('opens a file that does not parse as text, and says why', async () => {
+		vi.mocked(openFile).mockResolvedValue(parseResult({
+			message_id: '', full_text: 'XYZ|garbage', parse_error: 'Message does not start with MSH', source_charset: 'UTF-16LE',
+		}));
+		const p = fileOpsStore.openPath('/data/odd.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		expect(dialogStore.active?.kind).toBe('warning');
+		expect(dialogStore.active?.message).toContain('does not start with MSH');
+		dialogStore.close(true);
+		await p;
+		expect(messageStore.activeTab?.content).toBe('XYZ|garbage');
+		expect(messageStore.activeTab?.parseResult).toBeNull();
+		expect(messageStore.activeTab?.charset).toBe('UTF-16LE');
+	});
+
+	it('keeps no second copy of the text in the parse result', async () => {
+		vi.mocked(openFile).mockResolvedValue(parseResult({ full_text: 'MSH|full' }));
+		await fileOpsStore.openPath('/data/full.hl7', () => {});
+		expect(messageStore.activeTab?.content).toBe('MSH|full');
+		expect(messageStore.activeTab?.parseResult?.full_text).toBeUndefined();
+		expect(messageStore.activeTab?.parseResult?.truncated_text).toBe('');
 	});
 });
 
@@ -146,6 +188,17 @@ describe('saveActiveAs', () => {
 		expect(messageStore.activeTab?.filePath).toBe('/exports/final.hl7');
 		expect(messageStore.activeTab?.label).toBe('final.hl7');
 	});
+
+	it('keeps the charset a legacy file was opened in', async () => {
+		messageStore.openMessage(
+			parseResult({ source_charset: 'windows-1252' }) as never,
+			'/data/latin1.hl7',
+			'MSH|x',
+		);
+		vi.mocked(save).mockResolvedValue('/exports/copy.hl7');
+		await fileOpsStore.saveActiveAs();
+		expect(saveFile).toHaveBeenCalledWith({ path: '/exports/copy.hl7', content: 'MSH|x', charset: 'windows-1252' });
+	});
 });
 
 describe('recent files', () => {
@@ -160,5 +213,103 @@ describe('recent files', () => {
 		await fileOpsStore.clearRecent();
 		expect(clearRecentFiles).toHaveBeenCalled();
 		expect(fileOpsStore.recentFiles).toEqual([]);
+	});
+});
+
+describe('files changed by another program', () => {
+	it('compares stamps by time and size', () => {
+		expect(sameStamp(v1, { ...v1 })).toBe(true);
+		expect(sameStamp(v1, v2)).toBe(false);
+		expect(sameStamp(null, null)).toBe(true);
+		expect(sameStamp(v1, null)).toBe(false);
+	});
+
+	it('asks before Save overwrites a file changed since it was opened', async () => {
+		await fileOpsStore.openPath('/data/adt.hl7', () => {});
+		messageStore.updateContent(messageStore.activeTabId!, 'MSH|mine');
+		vi.mocked(fileStat).mockResolvedValue(v2);
+		const p = fileOpsStore.saveActive();
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('confirm'));
+		dialogStore.close(false);
+		await p;
+		expect(saveFile).not.toHaveBeenCalled();
+		expect(messageStore.activeTab?.isModified).toBe(true);
+	});
+
+	it('saves without asking when the file is as it was', async () => {
+		await fileOpsStore.openPath('/data/adt.hl7', () => {});
+		messageStore.updateContent(messageStore.activeTabId!, 'MSH|mine');
+		await fileOpsStore.saveActive();
+		expect(dialogStore.active).toBeNull();
+		expect(saveFile).toHaveBeenCalledOnce();
+	});
+
+	it('reopening a changed file offers the new version, once', async () => {
+		await fileOpsStore.openPath('/data/adt.hl7', () => {});
+		vi.mocked(fileStat).mockResolvedValue(v2);
+		vi.mocked(openFile).mockResolvedValue(parseResult({ full_text: 'MSH|new' }));
+		const p = fileOpsStore.openPath('/data/../data/adt.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('confirm'));
+		dialogStore.close(true);
+		await p;
+		expect(messageStore.tabs).toHaveLength(1);
+		expect(messageStore.activeTab?.content).toBe('MSH|new');
+		expect(messageStore.activeTab?.isModified).toBe(false);
+		// The same version again is not reported a second time.
+		await fileOpsStore.checkAllTabs();
+		expect(dialogStore.active).toBeNull();
+	});
+
+	it('a missing Recent Files entry can be removed', async () => {
+		fileOpsStore.recentFiles = [{ path: '/gone/m.hl7', filename: 'm.hl7' } as any];
+		vi.mocked(openFile).mockRejectedValue(new Error('No such file or directory (os error 2)'));
+		vi.mocked(fileStat).mockResolvedValue(null);
+		const p = fileOpsStore.openPath('/gone/m.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('confirm'));
+		expect(dialogStore.active?.message).toContain('/gone/m.hl7');
+		dialogStore.close(true);
+		await p;
+		expect(removeRecentFile).toHaveBeenCalledWith('/gone/m.hl7');
+	});
+
+	it('a restored, unedited file tab shows the file as it is now', async () => {
+		messageStore.restoreSession([{
+			tab_order: 0, label: 'a.hl7', file_path: '/data/a.hl7', content: 'MSH|old',
+			is_modified: false, is_active: true, cursor_line: 1, cursor_column: 1,
+		}]);
+		vi.mocked(openFile).mockResolvedValue(parseResult({ full_text: 'MSH|disk' }));
+		const missing: string[] = [];
+		expect(await fileOpsStore.adoptRestoredTab(messageStore.activeTabId!, missing)).toBe(true);
+		expect(messageStore.activeTab?.content).toBe('MSH|disk');
+
+		vi.mocked(fileStat).mockResolvedValue(null);
+		messageStore.restoreSession([{
+			tab_order: 0, label: 'b.hl7', file_path: '/data/b.hl7', content: 'MSH|kept',
+			is_modified: false, is_active: true, cursor_line: 1, cursor_column: 1,
+		}]);
+		expect(await fileOpsStore.adoptRestoredTab(messageStore.activeTabId!, missing)).toBe(false);
+		expect(missing).toEqual(['/data/b.hl7']);
+		expect(messageStore.activeTab?.content).toBe('MSH|kept');
+	});
+
+	it('the first save of a tab restored with edits asks, since the file may have changed meanwhile', async () => {
+		messageStore.restoreSession([{
+			tab_order: 0, label: 'c.hl7', file_path: '/data/c.hl7', content: 'MSH|edited',
+			is_modified: true, is_active: true, cursor_line: 1, cursor_column: 1,
+		}]);
+		expect(await fileOpsStore.adoptRestoredTab(messageStore.activeTabId!, [])).toBe(false);
+		const p = fileOpsStore.saveActive();
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		dialogStore.close(false);
+		await p;
+		expect(saveFile).not.toHaveBeenCalled();
+		const again = fileOpsStore.saveActive();
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		dialogStore.close(true);
+		await again;
+		expect(saveFile).toHaveBeenCalledTimes(1);
+		// Saved: the tab now knows the file, and the next save does not ask.
+		await fileOpsStore.saveActive();
+		expect(saveFile).toHaveBeenCalledTimes(2);
 	});
 });

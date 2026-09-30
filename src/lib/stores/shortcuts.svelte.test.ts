@@ -7,11 +7,14 @@ vi.mock('$lib/ipc/database', () => ({
 
 import { getPreference, setPreference } from '$lib/ipc/database';
 import {
+	displayKeys,
+	monacoKeys,
 	SHORTCUTS,
 	shortcutStore,
 	shortcutCapture,
 	eventToKeys,
 	matchesKeys,
+	bindingProblem,
 } from './shortcuts.svelte';
 
 /** Minimal stand-in — node has no KeyboardEvent constructor. */
@@ -145,5 +148,56 @@ describe('matchesKeys', () => {
 describe('capture flag', () => {
 	it('starts inactive', () => {
 		expect(shortcutCapture.active).toBe(false);
+	});
+});
+
+describe('bindingProblem', () => {
+	it('refuses keys that type text and the reserved F1', () => {
+		expect(bindingProblem('Q')).toBe('needsModifier');
+		expect(bindingProblem('Shift+Q')).toBe('needsModifier');
+		expect(bindingProblem('Space')).toBe('needsModifier');
+		expect(bindingProblem('F1')).toBe('reserved');
+	});
+
+	it('accepts modified keys and F2-F12', () => {
+		expect(bindingProblem('Ctrl+Q')).toBeNull();
+		expect(bindingProblem('Alt+Q')).toBeNull();
+		expect(bindingProblem('F6')).toBeNull();
+		expect(bindingProblem('Shift+F12')).toBeNull();
+	});
+
+	it('drops saved bindings that are not allowed, and editor keys', async () => {
+		vi.mocked(getPreference).mockResolvedValue(JSON.stringify({
+			'tools.validate': 'Q',
+			'file.save': 'F1',
+			'file.open': 'Ctrl+Shift+O',
+			'editor.find': 'Ctrl+E',
+		}));
+		await shortcutStore.loadFromPrefs();
+		expect(shortcutStore.get('tools.validate')).toBe('F6');
+		expect(shortcutStore.get('file.save')).toBe('Ctrl+S');
+		expect(shortcutStore.get('file.open')).toBe('Ctrl+Shift+O');
+		expect(shortcutStore.get('editor.find')).toBe('Ctrl+F');
+	});
+});
+
+describe('displayKeys', () => {
+	it('shows Command-key symbols on macOS only', () => {
+		expect(displayKeys('Ctrl+Shift+K', true)).toBe('⌘⇧K');
+		expect(displayKeys('Ctrl+Alt+T', true)).toBe('⌘⌥T');
+		expect(displayKeys('F6', true)).toBe('F6');
+		expect(displayKeys('Ctrl+O', false)).toBe('Ctrl+O');
+		expect(displayKeys('', true)).toBe('');
+		expect(displayKeys('Control+G', true)).toBe('⌃G');
+	});
+
+	it('lists the editor keys macOS really uses', () => {
+		const key = (id: string, mac: boolean) => monacoKeys(SHORTCUTS.find((s) => s.id === id)!, mac);
+		expect(displayKeys(key('editor.replace', true), true)).toBe('⌘⌥F');
+		expect(displayKeys(key('editor.redo', true), true)).toBe('⌘⇧Z');
+		expect(displayKeys(key('editor.goToLine', true), true)).toBe('⌃G');
+		expect(displayKeys(key('editor.find', true), true)).toBe('⌘F');
+		expect(key('editor.replace', false)).toBe('Ctrl+H');
+		expect(key('editor.goToLine', false)).toBe('Ctrl+G');
 	});
 });

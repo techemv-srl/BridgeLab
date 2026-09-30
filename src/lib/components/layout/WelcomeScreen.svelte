@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t, subscribeLocale } from '$lib/i18n';
-	import { shortcutStore } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, displayKeys } from '$lib/stores/shortcuts.svelte';
 	import { fileOpsStore } from '$lib/stores/file-ops.svelte';
 
 	let localeVersion = $state(0);
@@ -10,6 +10,7 @@
 	interface Props {
 		onOpenFile: () => void;
 		onNewFromTemplate: () => void;
+		onShowSamples: () => void;
 		onShowTestCases: () => void;
 		onShowHelp: () => void;
 		onNewTab: () => void;
@@ -22,7 +23,7 @@
 	}
 
 	let {
-		onOpenFile, onNewFromTemplate, onShowTestCases, onShowHelp, onNewTab, onOpenRecentFile,
+		onOpenFile, onNewFromTemplate, onShowSamples, onShowTestCases, onShowHelp, onNewTab, onOpenRecentFile,
 		onShowGenerate, onShowBatchAnonymize, onShowCommunication, onShowSchemaExport,
 	}: Props = $props();
 
@@ -46,15 +47,18 @@
 		<div class="welcome-actions">
 			<button class="welcome-action" onclick={onOpenFile}>
 				<span class="wa-label">{tr('welcome.open')}</span>
-				<kbd>{shortcutStore.get('file.open') || 'Ctrl+O'}</kbd>
+				<kbd>{displayKeys(shortcutStore.get('file.open') || 'Ctrl+O')}</kbd>
 			</button>
 			<button class="welcome-action" onclick={onNewFromTemplate}>
 				<span class="wa-label">{tr('welcome.template')}</span>
-				<kbd>{shortcutStore.get('file.newFromTemplate') || 'Ctrl+N'}</kbd>
+				<kbd>{displayKeys(shortcutStore.get('file.newFromTemplate') || 'Ctrl+N')}</kbd>
+			</button>
+			<button class="welcome-action" onclick={onShowSamples}>
+				<span class="wa-label">{tr('welcome.samples')}</span>
 			</button>
 			<button class="welcome-action" onclick={onShowTestCases}>
 				<span class="wa-label">{tr('welcome.testCases')}</span>
-				<kbd>{shortcutStore.get('file.testCases') || 'Ctrl+L'}</kbd>
+				<kbd>{displayKeys(shortcutStore.get('file.testCases') || 'Ctrl+L')}</kbd>
 			</button>
 			<button class="welcome-action" onclick={onShowHelp}>
 				<span class="wa-label">{tr('welcome.manual')}</span>

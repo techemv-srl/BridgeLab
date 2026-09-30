@@ -1,0 +1,37 @@
+{
+  "format": "bridgelab-test-cases",
+  "format_version": 1,
+  "app_version": "fixture",
+  "exported_at": "2026-09-29T00:00:00Z",
+  "test_cases": [
+    {
+      "id": "fx-adt",
+      "name": "ADT^A01 admission validates",
+      "category": "adt",
+      "content": "MSH|^~\\&|SENDING|FAC|RECEIVING|FAC|20260414120000||ADT^A01|MSG20260414001|P|2.5\nEVN|A01|20260414120000\nPID|1||MRN12345^^^HOSPITAL^MR||DOE^JOHN^A||19800101|M|||123 MAIN ST^^SPRINGFIELD^IL^62701||555-0100|||M||ACCT001|123-45-6789\nNK1|1|DOE^JANE|SPO|123 MAIN ST^^SPRINGFIELD^IL^62701|555-0101|\nPV1|1|I|WARD01^101^A||||ATTENDING^SMITH^JOHN|||MED|||||||INS001||||||||||||||||||||||||||20260414120000\n",
+      "expected_message_type": "ADT^A01",
+      "expected_validation_result": "valid"
+    },
+    {
+      "id": "fx-any-adt",
+      "name": "any ADT event matches ADT",
+      "category": "adt",
+      "content": "MSH|^~\\&|SENDING|FAC|RECEIVING|FAC|20260414120000||ADT^A01|MSG20260414001|P|2.5\nEVN|A01|20260414120000\nPID|1||MRN12345^^^HOSPITAL^MR||DOE^JOHN^A||19800101|M|||123 MAIN ST^^SPRINGFIELD^IL^62701||555-0100|||M||ACCT001|123-45-6789\nNK1|1|DOE^JANE|SPO|123 MAIN ST^^SPRINGFIELD^IL^62701|555-0101|\nPV1|1|I|WARD01^101^A||||ATTENDING^SMITH^JOHN|||MED|||||||INS001||||||||||||||||||||||||||20260414120000\n",
+      "expected_message_type": "ADT"
+    },
+    {
+      "id": "fx-garbage",
+      "name": "text that is not HL7 is invalid",
+      "category": "negative",
+      "content": "hello, not a message",
+      "expected_validation_result": "invalid"
+    },
+    {
+      "id": "fx-bundle",
+      "name": "FHIR bundle",
+      "category": "fhir",
+      "content": "{\n\t\"resourceType\": \"Bundle\",\n\t\"id\": \"simple-bundle\",\n\t\"type\": \"collection\",\n\t\"entry\": [\n\t\t{\n\t\t\t\"fullUrl\": \"urn:uuid:patient-1\",\n\t\t\t\"resource\": {\n\t\t\t\t\"resourceType\": \"Patient\",\n\t\t\t\t\"id\": \"p1\",\n\t\t\t\t\"name\": [{\"family\": \"Smith\", \"given\": [\"Jane\"]}],\n\t\t\t\t\"gender\": \"female\",\n\t\t\t\t\"birthDate\": \"1990-05-15\"\n\t\t\t}\n\t\t},\n\t\t{\n\t\t\t\"fullUrl\": \"urn:uuid:obs-1\",\n\t\t\t\"resource\": {\n\t\t\t\t\"resourceType\": \"Observation\",\n\t\t\t\t\"id\": \"o1\",\n\t\t\t\t\"status\": \"final\",\n\t\t\t\t\"code\": {\"text\": \"Heart Rate\"},\n\t\t\t\t\"subject\": {\"reference\": \"urn:uuid:patient-1\"},\n\t\t\t\t\"valueQuantity\": {\"value\": 72, \"unit\": \"bpm\"}\n\t\t\t}\n\t\t}\n\t]\n}\n",
+      "expected_message_type": "Bundle"
+    }
+  ]
+}

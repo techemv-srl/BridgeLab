@@ -1,0 +1,12 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "help",
+	"description": "The manual window: it shows static pages and opens links in the browser or mail client. It gets no file, dialog, updater or process permissions.",
+	"windows": [
+		"bridgelab-help"
+	],
+	"permissions": [
+		"core:default",
+		"opener:default"
+	]
+}

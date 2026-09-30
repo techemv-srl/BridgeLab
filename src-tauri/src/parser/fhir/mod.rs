@@ -1,5 +1,6 @@
 pub mod bundle;
 pub mod xml;
+pub mod xml_types;
 pub mod fhirpath;
 pub mod profile;
 
@@ -27,7 +28,8 @@ pub struct FhirResource {
     pub format: FhirFormat,
     /// Resource type (e.g., "Patient", "Observation", "Bundle")
     pub resource_type: String,
-    /// FHIR version if detected (from meta.profile or fhirVersion)
+    /// The FHIR release the resource declares (`fhirVersion` of a
+    /// conformance resource); empty for ordinary resources, which carry none.
     pub fhir_version: String,
     /// Parsed JSON value (for JSON resources)
     pub json_value: Option<Value>,
@@ -39,6 +41,10 @@ pub struct FhirValidationIssue {
     pub severity: String,
     pub message: String,
     pub path: String,
+    /// The `rule_id` of the custom rule that raised it; `None` for the
+    /// built-in checks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule_id: Option<String>,
 }
 
 /// Detect if content is a FHIR resource. Returns the format if detected.
@@ -51,13 +57,13 @@ pub fn strip_bom(content: &str) -> &str {
 pub fn detect_fhir(content: &str) -> Option<FhirFormat> {
     let trimmed = strip_bom(content).trim();
 
-    // JSON detection
-    if trimmed.starts_with('{') {
-        if let Ok(val) = serde_json::from_str::<Value>(trimmed) {
-            if val.get("resourceType").is_some() {
-                return Some(FhirFormat::Json);
-            }
-        }
+    // JSON detection. An HL7 v2 message never starts with a brace, so
+    // anything that does is JSON: routed to the JSON parser even when it is
+    // malformed or has no resourceType, whose error ("Invalid JSON … at
+    // line 3", "not a FHIR resource") says what is wrong instead of the
+    // HL7 lexer's "does not start with MSH".
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return Some(FhirFormat::Json);
     }
 
     // XML detection
@@ -78,13 +84,30 @@ pub fn detect_fhir(content: &str) -> Option<FhirFormat> {
                 return Some(FhirFormat::Xml);
             }
         }
-        // Also check xmlns
-        if trimmed.contains("xmlns=\"http://hl7.org/fhir\"") {
+        // Any root element in the FHIR namespace, however the attribute is
+        // quoted or spaced (`xmlns='…'` and `xmlns = "…"` are both XML).
+        static FHIR_XMLNS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = FHIR_XMLNS.get_or_init(|| {
+            regex::Regex::new(r#"\bxmlns\s*=\s*(?:"http://hl7\.org/fhir"|'http://hl7\.org/fhir')"#).unwrap()
+        });
+        if re.is_match(trimmed) {
             return Some(FhirFormat::Xml);
         }
     }
 
     None
+}
+
+/// The FHIR release a resource declares, which only conformance resources
+/// do (`fhirVersion` of a CapabilityStatement, StructureDefinition or
+/// ImplementationGuide); empty otherwise. `meta.versionId` is the
+/// resource's own revision, not a FHIR version, and is not reported here.
+fn declared_fhir_version(value: &Value) -> String {
+    match value.get("fhirVersion") {
+        Some(Value::String(v)) => v.clone(),
+        Some(Value::Array(a)) => a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "),
+        _ => String::new(),
+    }
 }
 
 /// Parse a FHIR JSON resource.
@@ -95,15 +118,10 @@ pub fn parse_fhir_json(content: &str) -> Result<FhirResource, String> {
     let resource_type = value
         .get("resourceType")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing resourceType field".to_string())?
+        .ok_or_else(|| "Not a FHIR resource: the JSON document has no \"resourceType\"".to_string())?
         .to_string();
 
-    let fhir_version = value
-        .get("meta")
-        .and_then(|m| m.get("versionId"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let fhir_version = declared_fhir_version(&value);
 
     Ok(FhirResource {
         raw: content.to_string(),
@@ -120,14 +138,12 @@ pub fn parse_fhir_xml(content: &str) -> Result<FhirResource, String> {
 
     // Full XML -> JSON conversion so validation and tree building work on
     // XML resources exactly like on JSON ones.
-    let (resource_type, json) = xml::fhir_xml_to_json(trimmed)?;
+    let (resource_type, mut json) = xml::fhir_xml_to_json(trimmed)?;
+    // Booleans, numbers and repeating elements as the JSON encoding has
+    // them, so XML validates and evaluates like the same resource in JSON.
+    xml_types::apply(&mut json);
 
-    let fhir_version = json
-        .get("meta")
-        .and_then(|m| m.get("versionId"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let fhir_version = declared_fhir_version(&json);
 
     Ok(FhirResource {
         raw: content.to_string(),
@@ -315,6 +331,7 @@ pub fn validate_fhir_json(resource: &FhirResource) -> Vec<FhirValidationIssue> {
                 severity: "error".into(),
                 message: "No JSON content available for validation".into(),
                 path: "".into(),
+                rule_id: None,
             });
             return issues;
         }
@@ -340,6 +357,7 @@ fn push(issues: &mut Vec<FhirValidationIssue>, severity: &str, message: String, 
         severity: severity.into(),
         message,
         path,
+        rule_id: None,
     });
 }
 
@@ -685,6 +703,38 @@ mod tests {
     }
 
     #[test]
+    fn fhir_xml_is_detected_whatever_the_xmlns_quoting() {
+        for xml in [
+            "<ServiceRequest xmlns='http://hl7.org/fhir'><status value='active'/></ServiceRequest>",
+            "<Specimen xmlns = \"http://hl7.org/fhir\"><id value=\"s\"/></Specimen>",
+            "<?xml version='1.0'?>\n<Specimen\n  xmlns=\"http://hl7.org/fhir\"/>",
+        ] {
+            assert_eq!(detect_fhir(xml), Some(FhirFormat::Xml), "{xml}");
+        }
+        assert_eq!(detect_fhir("<Specimen xmlns='http://example.org'/>"), None);
+        let (rt, json) = xml::fhir_xml_to_json(
+            "<ServiceRequest xmlns='http://hl7.org/fhir'><status value='active'/></ServiceRequest>",
+        )
+        .unwrap();
+        assert_eq!(rt, "ServiceRequest");
+        assert_eq!(json["status"], "active");
+    }
+
+    #[test]
+    fn a_utf16_fhir_file_decodes_to_fhir() {
+        let text = r#"{"resourceType":"Patient","id":"x"}"#;
+        for (bom, le) in [(&b"\xFF\xFE"[..], true), (&b"\xFE\xFF"[..], false)] {
+            let mut bytes = bom.to_vec();
+            for u in text.encode_utf16() {
+                bytes.extend(if le { u.to_le_bytes() } else { u.to_be_bytes() });
+            }
+            let decoded = crate::parser::hl7::charset::decode_input(&bytes);
+            assert_eq!(decoded.text, text);
+            assert_eq!(detect_fhir(&decoded.text), Some(FhirFormat::Json));
+        }
+    }
+
+    #[test]
     fn test_detect_fhir_xml() {
         let xml = r#"<Patient xmlns="http://hl7.org/fhir"><id value="123"/></Patient>"#;
         assert_eq!(detect_fhir(xml), Some(FhirFormat::Xml));
@@ -694,6 +744,24 @@ mod tests {
     fn test_detect_not_fhir() {
         assert_eq!(detect_fhir("MSH|^~\\&|"), None);
         assert_eq!(detect_fhir("Hello world"), None);
+    }
+
+    #[test]
+    fn json_that_is_not_fhir_says_so() {
+        // Routed to the JSON parser, whose error names the real problem.
+        assert_eq!(detect_fhir(r#"{"name": "package"}"#), Some(FhirFormat::Json));
+        let err = parse_fhir_json(r#"{"name": "package"}"#).unwrap_err();
+        assert!(err.contains("Not a FHIR resource"), "{err}");
+        assert_eq!(detect_fhir(r#"{"resourceType":"Patient","id":"p1",}"#), Some(FhirFormat::Json));
+        assert!(parse_fhir_json(r#"{"resourceType":"Patient","id":"p1",}"#).unwrap_err().starts_with("Invalid JSON"));
+    }
+
+    #[test]
+    fn fhir_version_is_not_the_resource_version() {
+        let r = parse_fhir_json(r#"{"resourceType":"Patient","meta":{"versionId":"1"}}"#).unwrap();
+        assert_eq!(r.fhir_version, "");
+        let r = parse_fhir_json(r#"{"resourceType":"CapabilityStatement","fhirVersion":"4.0.1"}"#).unwrap();
+        assert_eq!(r.fhir_version, "4.0.1");
     }
 
     #[test]

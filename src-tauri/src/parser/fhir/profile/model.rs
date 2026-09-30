@@ -31,6 +31,10 @@ pub struct Profile {
     /// "specialization" for a base definition, "constraint" for a profile.
     #[serde(default)]
     pub derivation: String,
+    /// The FHIR release the definition targets: its own `fhirVersion`, or
+    /// its package's. Not its business `version`, which an IG sets freely.
+    #[serde(default)]
+    pub fhir_version: String,
     pub elements: Vec<ProfileElement>,
 }
 
@@ -183,7 +187,10 @@ impl ProfileIndex {
         } = package;
         let profile_count = profiles.len();
 
-        for profile in profiles {
+        for mut profile in profiles {
+            if profile.fhir_version.is_empty() {
+                profile.fhir_version = fhir_version.clone();
+            }
             // The base definition of a type is the one that specialises it;
             // constraints on top are found through meta.profile instead.
             if !profile.is_constraint() && !profile.type_name.is_empty() {
@@ -224,7 +231,7 @@ impl ProfileIndex {
             return Lookup::Missing;
         };
         match pinned {
-            None => versions.first().map(Lookup::Found).unwrap_or(Lookup::Missing),
+            None => self.preferred(versions).map(Lookup::Found).unwrap_or(Lookup::Missing),
             Some(wanted) => versions
                 .iter()
                 .find(|p| p.version == wanted)
@@ -250,7 +257,20 @@ impl ProfileIndex {
         self.base_by_type
             .get(type_name)
             .and_then(|url| self.by_url.get(url))
-            .and_then(|versions| versions.first())
+            .and_then(|versions| self.preferred(versions))
+    }
+
+    /// The version an unpinned reference gets: the newest one targeting the
+    /// FHIR release the built-in core belongs to (R4 and R4B are both 4.x), so
+    /// installing an R5 package does not swap the definitions R4 resources
+    /// are checked against; the newest of all when none is of that release.
+    fn preferred<'a>(&self, versions: &'a [Profile]) -> Option<&'a Profile> {
+        let major = |v: &str| v.split('.').next().and_then(|m| m.parse::<u32>().ok());
+        let release = self.packages.iter().find(|p| p.builtin).and_then(|p| major(&p.fhir_version));
+        // A definition whose release is unknown is not ruled out.
+        release
+            .and_then(|r| versions.iter().find(|p| matches!(major(&p.fhir_version), Some(m) if m == r) || p.fhir_version.is_empty()))
+            .or_else(|| versions.first())
     }
 
     pub fn packages(&self) -> &[PackageSummary] {
@@ -334,6 +354,7 @@ pub fn from_structure_definition(sd: &Value) -> Option<Profile> {
             .and_then(|v| v.as_str())
             .map(str::to_string),
         derivation: string_at(sd, "derivation"),
+        fhir_version: string_at(sd, "fhirVersion"),
         elements,
     })
 }
@@ -579,6 +600,40 @@ mod tests {
         index.add_package(package("b", "1.0", vec![patient_sd()]));
         assert_eq!(index.profile_count(), 1);
         assert_eq!(index.packages().len(), 2);
+    }
+
+    #[test]
+    fn an_installed_r5_definition_does_not_replace_the_r4_base() {
+        let mut index = ProfileIndex::default();
+        let mut r4 = patient_sd();
+        r4["version"] = json!("4.0.1");
+        index.add_builtin(package("hl7.fhir.r4.core", "4.0.1", vec![r4]));
+        let mut r5 = patient_sd();
+        r5["version"] = json!("5.0.0");
+        let mut r5pkg = package("hl7.fhir.r5.core", "5.0.0", vec![r5]);
+        r5pkg.fhir_version = "5.0.0".into();
+        index.add_package(r5pkg);
+        let url = "http://hl7.org/fhir/StructureDefinition/Patient";
+        assert_eq!(index.base_for_type("Patient").unwrap().version, "4.0.1");
+        assert_eq!(index.get(url).unwrap().version, "4.0.1");
+        // Still reachable when asked for by version.
+        assert_eq!(index.get(&format!("{url}|5.0.0")).unwrap().version, "5.0.0");
+    }
+
+    #[test]
+    fn an_ig_business_version_is_not_taken_for_a_fhir_release() {
+        // Two releases of an R4 IG, the newer numbered 5.0.0: it is still R4.
+        let mut index = ProfileIndex::default();
+        index.add_builtin(package("hl7.fhir.r4.core", "4.0.1", vec![]));
+        let mut old = patient_sd();
+        old["version"] = json!("4.0.0");
+        index.add_package(package("example.ig", "4.0.0", vec![old]));
+        let mut new = patient_sd();
+        new["version"] = json!("5.0.0");
+        new["fhirVersion"] = json!("4.0.1");
+        index.add_package(package("example.ig", "5.0.0", vec![new]));
+        let url = "http://hl7.org/fhir/StructureDefinition/Patient";
+        assert_eq!(index.get(url).unwrap().version, "5.0.0");
     }
 
     #[test]

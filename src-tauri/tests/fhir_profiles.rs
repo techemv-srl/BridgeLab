@@ -127,12 +127,17 @@ fn specification_examples_validate_clean() {
     // finding here is almost always a bug in this validator — that is the
     // point of running against the whole package.
     //
-    // "Almost": on hl7.fhir.r4.core 4.0.1 a residue of 14 out of 4578 is
-    // genuine, and was checked by hand. Thirteen
+    // "Almost": on hl7.fhir.r4.core 4.0.1 a residue of 16 files out of
+    // 4578 is genuine, and was checked by hand. Ten
     // SearchParameter-*-extensions-*.json files really do omit the required
-    // `base` element, and ValueSet-endpoint-payload-type declares a profile
-    // that the core package does not contain — which the validator reports
-    // rather than quietly skipping. A threshold rather than zero keeps the
+    // `base` element; four ValueSets (endpoint-connection-type,
+    // endpoint-payload-type, provenance-history-agent-type and
+    // provenance-history-record-activity) declare a profile the core
+    // package does not contain, which the validator reports rather than
+    // quietly skipping; CodeSystem-v2-0550 has codes with a non-breaking
+    // space; and one SearchParameter has an id longer than 64 characters.
+    // The package holds conformance resources only (no Patient, Observation
+    // or Bundle), so this covers the definitions, not clinical data. A threshold rather than zero keeps the
     // test meaningful across package versions without allow-listing files
     // by name.
     assert!(

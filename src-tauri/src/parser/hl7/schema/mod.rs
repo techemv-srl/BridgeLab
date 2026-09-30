@@ -369,6 +369,15 @@ fn payload(version: Hl7Version) -> &'static str {
     }
 }
 
+/// The XSD exports every edition gets: four common messages in v2.5.
+/// Everything else in the catalogue is the Pro "full XSD catalogue" — in
+/// the app and, deliberately, in the CLI too.
+pub const COMMUNITY_XSD_MESSAGES_V2_5: &[&str] = &["ADT_A01", "ADT_A40", "ORM_O01", "ORU_R01"];
+
+pub fn xsd_in_community(version: Hl7Version, message_code: &str) -> bool {
+    version == Hl7Version::V2_5 && COMMUNITY_XSD_MESSAGES_V2_5.contains(&message_code)
+}
+
 pub fn load(version: Hl7Version) -> Hl7Schema {
     // The payload may come from an aliased release, but the schema keeps the
     // requested version so callers still see what the message declared.
@@ -396,10 +405,17 @@ pub fn cached(version: Hl7Version) -> &'static Hl7Schema {
     CACHE[slot].get_or_init(|| load(source))
 }
 
-/// The catalogue a message's MSH-12 selects, falling back to v2.5 (the most
-/// widely deployed release) for a missing or unknown version.
+/// The catalogue a message's MSH-12 selects: the exact version, then its
+/// major.minor (2.7.2 → 2.7), then v2.5 (the most widely deployed release)
+/// for a missing or unknown one. The same order as the validator's tables,
+/// so the tree and the grid describe a message with the rules it is
+/// validated against.
 pub fn for_declared(declared: &str) -> &'static Hl7Schema {
-    cached(Hl7Version::parse(declared).unwrap_or(Hl7Version::V2_5))
+    let major_minor = || {
+        let number = version_number(declared);
+        Hl7Version::parse(&number.split('.').take(2).collect::<Vec<_>>().join("."))
+    };
+    cached(Hl7Version::parse(declared).or_else(major_minor).unwrap_or(Hl7Version::V2_5))
 }
 
 #[cfg(test)]
@@ -477,6 +493,9 @@ mod tests {
         assert_eq!(Hl7Version::parse("2.9"), None);
         assert_eq!(Hl7Version::parse(""), None);
         assert_eq!(for_declared("nonsense").version, Hl7Version::V2_5);
+        assert_eq!(for_declared("2.7.2").version, Hl7Version::V2_7, "major.minor before the default");
+        assert_eq!(for_declared("2.3.9^ISO").version, Hl7Version::V2_3);
+        assert_eq!(for_declared("2.8").version, Hl7Version::V2_5);
         assert_eq!(for_declared("2.7.1").version, Hl7Version::V2_7, "alias resolves to its source");
     }
 

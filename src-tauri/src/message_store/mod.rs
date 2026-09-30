@@ -5,9 +5,14 @@ use crate::parser::fhir::FhirResource;
 use crate::parser::hl7::message::Hl7Message;
 
 /// Thread-safe in-memory store for open messages.
+///
+/// Messages are shared (`Arc`), not copied: every tree expansion, grid,
+/// validation or inspector lookup used to clone a whole message, megabytes
+/// for a large one. A message stays until the frontend releases it (a
+/// re-parse replaces it, closing the tab drops it).
 pub struct MessageStore {
-    messages: Arc<RwLock<HashMap<String, Hl7Message>>>,
-    fhir_resources: Arc<RwLock<HashMap<String, FhirResource>>>,
+    messages: Arc<RwLock<HashMap<String, Arc<Hl7Message>>>>,
+    fhir_resources: Arc<RwLock<HashMap<String, Arc<FhirResource>>>>,
 }
 
 impl MessageStore {
@@ -21,17 +26,17 @@ impl MessageStore {
     /// Store a parsed HL7 message.
     pub fn insert(&self, id: String, message: Hl7Message) {
         let mut store = self.messages.write().unwrap();
-        store.insert(id, message);
+        store.insert(id, Arc::new(message));
     }
 
-    /// Get a clone of an HL7 message by ID.
-    pub fn get(&self, id: &str) -> Option<Hl7Message> {
+    /// A shared handle to an HL7 message by ID.
+    pub fn get(&self, id: &str) -> Option<Arc<Hl7Message>> {
         let store = self.messages.read().unwrap();
         store.get(id).cloned()
     }
 
     /// Remove an HL7 message by ID.
-    pub fn remove(&self, id: &str) -> Option<Hl7Message> {
+    pub fn remove(&self, id: &str) -> Option<Arc<Hl7Message>> {
         let mut store = self.messages.write().unwrap();
         store.remove(id)
     }
@@ -67,13 +72,36 @@ impl MessageStore {
     /// Store a parsed FHIR resource.
     pub fn insert_fhir(&self, id: String, resource: FhirResource) {
         let mut store = self.fhir_resources.write().unwrap();
-        store.insert(id, resource);
+        store.insert(id, Arc::new(resource));
     }
 
-    /// Get a clone of a FHIR resource by ID.
-    pub fn get_fhir(&self, id: &str) -> Option<FhirResource> {
+    /// A shared handle to a FHIR resource by ID.
+    pub fn get_fhir(&self, id: &str) -> Option<Arc<FhirResource>> {
         let store = self.fhir_resources.read().unwrap();
         store.get(id).cloned()
+    }
+
+    /// Drop messages the frontend no longer shows (HL7 or FHIR).
+    pub fn release(&self, ids: &[String]) {
+        let mut hl7 = self.messages.write().unwrap();
+        let mut fhir = self.fhir_resources.write().unwrap();
+        let mut freed = false;
+        for id in ids {
+            freed |= hl7.remove(id).is_some();
+            freed |= fhir.remove(id).is_some();
+        }
+        drop(hl7);
+        drop(fhir);
+        // glibc keeps freed memory for reuse; a large message just dropped
+        // would otherwise stay in the process size for good.
+        #[cfg(all(target_os = "linux", target_env = "gnu"))]
+        if freed {
+            unsafe {
+                libc::malloc_trim(0);
+            }
+        }
+        #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+        let _ = freed;
     }
 }
 

@@ -30,9 +30,9 @@
 	if (typeof window !== 'undefined') {
 		subscribeLocale(() => { localeVersion++; });
 	}
-	function tr(key: string): string {
+	function tr(key: string, params?: Record<string, string | number>): string {
 		void localeVersion;
-		return t(key);
+		return t(key, params);
 	}
 
 	let segmentInfo = $state<SegmentInfo | null>(null);
@@ -90,10 +90,22 @@
 		})();
 	});
 
+	/** A component node: its own definition, not its field's (MSH-9.2 used
+	 *  to show MSH-9's name, type and length). */
+	let componentInfo = $derived.by(() => {
+		if (!selectedNode || !fieldInfo) return null;
+		const c = parseNodeId(selectedNode.id).componentIdx;
+		return c !== null ? fieldInfo.components[c - 1] ?? null : null;
+	});
+
+	/** The backend previews a segment's first 80 characters only. */
+	const SEGMENT_PREVIEW = 80;
+	let segmentCut = $derived(selectedNode?.node_type === 'segment' && (selectedNode.value_preview?.length ?? 0) >= SEGMENT_PREVIEW);
+
 	// Current raw value length (from node preview if not truncated, else ask backend)
 	let currentLength = $derived.by(() => {
 		if (!selectedNode) return null;
-		if (selectedNode.is_truncated) return null; // unknown without full fetch
+		if (selectedNode.is_truncated || segmentCut) return null; // unknown without full fetch
 		return selectedNode.value_preview?.length ?? 0;
 	});
 
@@ -159,7 +171,9 @@
 		<div class="inspector-body">
 			<!-- Position / label header -->
 			<div class="item-header">
-				{#if fieldInfo}
+				{#if componentInfo && fieldInfo}
+					{fieldInfo.segment_code}-{fieldInfo.position}.{componentInfo.position}
+				{:else if fieldInfo}
 					{fieldInfo.segment_code}-{fieldInfo.position}
 				{:else if segmentInfo}
 					{segmentInfo.code}
@@ -175,6 +189,25 @@
 					<dd><code>{fhirPath}</code></dd>
 				</dl>
 				<div class="schema-unknown">{tr('inspector.fhirElement')}</div>
+			{:else if componentInfo && fieldInfo}
+				<dl class="kv">
+					<dt>{tr('inspector.position')}</dt>
+					<dd>{fieldInfo.segment_code}-{fieldInfo.position}.{componentInfo.position}</dd>
+
+					<dt>{tr('inspector.name')}</dt>
+					<dd>{componentInfo.name}</dd>
+
+					<dt>{tr('inspector.dataType')}</dt>
+					<dd><code>{componentInfo.data_type}</code></dd>
+
+					<dt>{tr('inspector.componentOf')}</dt>
+					<dd>{fieldInfo.segment_code}-{fieldInfo.position} {fieldInfo.name}</dd>
+
+					{#if componentInfo.max_length !== null}
+						<dt>{tr('inspector.maxLength')}</dt>
+						<dd>{componentInfo.max_length}</dd>
+					{/if}
+				</dl>
 			{:else if fieldInfo}
 				<dl class="kv">
 					<dt>{tr('inspector.position')}</dt>
@@ -210,8 +243,8 @@
 					<dt>{tr('inspector.description')}</dt>
 					<dd>{segmentInfo.description}</dd>
 
-					<dt>{tr('inspector.dataType')}</dt>
-					<dd>{segmentInfo.fields.length} fields</dd>
+					<dt>{tr('inspector.fieldCount')}</dt>
+					<dd>{segmentInfo.fields.length}</dd>
 				</dl>
 			{:else if schemaLookupDone}
 				<div class="schema-unknown">{tr('inspector.schemaUnknown')}</div>
@@ -240,14 +273,20 @@
 				</div>
 			{/if}
 
-			{#if selectedNode.value_preview || selectedNode.is_truncated}
+			{#if selectedNode.placeholder}
+				<!-- A row of the standard structure the message lacks: its
+				     "value" in the tree is the data type, not a value. -->
+				<div class="value-section">
+					<div class="value-meta">{tr('inspector.absent')}</div>
+				</div>
+			{:else if selectedNode.value_preview || selectedNode.is_truncated}
 				<div class="value-section">
 					<div class="value-label">
 						{tr('inspector.currentValue')}
-						{#if selectedNode.is_truncated}
+						{#if selectedNode.is_truncated || segmentCut}
 							<span class="badge-warn">{tr('inspector.truncated')}</span>
 						{/if}
-						{#if selectedNode.value_preview && !selectedNode.is_truncated}
+						{#if selectedNode.value_preview && !selectedNode.is_truncated && !segmentCut}
 							<button class="copy-btn" onclick={copyValue} title={tr('modal.copy')}>⧉</button>
 						{/if}
 					</div>

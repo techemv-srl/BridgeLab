@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getLocale, subscribeLocale, t } from '$lib/i18n';
 	import { generateManualHtml, manualRoute, TITLES } from './helpContent';
-	import { shortcutStore, SHORTCUTS } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, SHORTCUTS, displayKeys, monacoKeys } from '$lib/stores/shortcuts.svelte';
 
 	interface Props {
 		onClose: () => void;
@@ -23,10 +23,17 @@
 	// user customization instead of a drifting hand-written copy.
 	let liveShortcuts = $derived.by(() => {
 		void localeVersion;
-		return SHORTCUTS.map((s) => ({
-			label: t('shortcut.' + s.id),
-			keys: shortcutStore.get(s.id),
-		}));
+		return [
+			...SHORTCUTS.map((s) => ({
+				label: t('shortcut.' + s.id),
+				keys: s.isMonaco ? monacoKeys(s) : shortcutStore.get(s.id),
+			})),
+			// Fixed keys, not in the rebindable list; the hand-written table
+			// has them and the live one replaces it.
+			{ label: t('menu.help.manual'), keys: 'F1' },
+			{ label: t('ctx.showInTree'), keys: 'Alt+T' },
+			{ label: t('ctx.copySegment'), keys: 'Alt+C' },
+		].map((b) => ({ ...b, keys: displayKeys(b.keys) })); // ⌘ and ⌥ on macOS
 	});
 	// The window and the popup load the /manual page; only the in-app modal
 	// fallback renders the document inline.

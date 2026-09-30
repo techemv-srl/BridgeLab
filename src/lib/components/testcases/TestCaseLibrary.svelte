@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { saveTarget } from '$lib/save-target';
+	import { parseDbTime } from '$lib/db-time';
 	import {
 		getTestCases, saveTestCase, deleteTestCase, scanTestCasesPhi, exportTestCases,
 		previewTestCaseImport, importTestCases, importCounts,
 		type TestCase, type PhiScan, type ImportPreview, type ConflictChoice,
 	} from '$lib/ipc/testcases';
 	import { parseMessage } from '$lib/ipc/parser';
+	import { typeMatches, expectsInvalid } from './expectations';
 	import { validateMessage, validateFhir, parseFhirMessage } from '$lib/ipc/validation';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError, getAvailableFeatures } from '$lib/ipc/licensing';
@@ -77,11 +80,16 @@
 	let filtered = $derived.by(() => {
 		if (!search.trim()) return cases;
 		const q = search.toLowerCase();
+		// Every field of a case, as the manual says: its message text and
+		// expectations too.
 		return cases.filter(c =>
 			c.name.toLowerCase().includes(q) ||
 			c.description.toLowerCase().includes(q) ||
 			c.tags.toLowerCase().includes(q) ||
-			c.category.toLowerCase().includes(q)
+			c.category.toLowerCase().includes(q) ||
+			c.expected_message_type.toLowerCase().includes(q) ||
+			c.expected_validation_result.toLowerCase().includes(q) ||
+			c.content.toLowerCase().includes(q)
 		);
 	});
 
@@ -212,22 +220,15 @@
 		}
 
 		const problems: string[] = [];
-		const expType = tc.expected_message_type.trim().toUpperCase();
-		if (expType) {
-			const actual = messageType.toUpperCase();
-			// "ADT" matches "ADT^A01"; "ADT^A01" requires the full type.
-			const ok = expType.includes('^')
-				? actual === expType
-				: actual === expType || actual.startsWith(expType + '^');
-			if (!ok) problems.push(tr('tc.checkTypeMismatch', { expected: tc.expected_message_type, actual: messageType || '—' }));
+		if (!typeMatches(tc.expected_message_type, messageType)) {
+			problems.push(tr('tc.checkTypeMismatch', { expected: tc.expected_message_type, actual: messageType || '—' }));
 		}
-		const expResult = tc.expected_validation_result || 'valid';
 		const isValid = parseError === '' && errorCount === 0;
-		if (expResult === 'valid' && !isValid) {
+		if (!expectsInvalid(tc.expected_validation_result) && !isValid) {
 			problems.push(parseError
 				? tr('tc.checkParseFailed', { error: parseError })
 				: tr('tc.checkUnexpectedErrors', { count: errorCount ?? 0 }));
-		} else if (expResult === 'invalid' && isValid) {
+		} else if (expectsInvalid(tc.expected_validation_result) && isValid) {
 			problems.push(tr('tc.checkUnexpectedlyValid'));
 		}
 
@@ -289,7 +290,8 @@
 
 	async function doExport() {
 		const { save } = await import('@tauri-apps/plugin-dialog');
-		const path = await save({ title: tr('tc.export'), defaultPath: 'bridgelab-test-cases.bltests.json', filters: PACK_FILTERS() });
+		const picked = await save({ title: tr('tc.export'), defaultPath: 'bridgelab-test-cases.bltests.json', filters: PACK_FILTERS() });
+		const path = picked ? await saveTarget(picked, 'bltests.json', ['json']) : null;
 		if (!path) return;
 		busy = true;
 		try {
@@ -468,11 +470,11 @@
 					{/if}
 					<div class="detail-meta">
 						<span class="meta-item">{tr('tc.category')}: <strong>{selected.category}</strong></span>
-						<span class="meta-item">{tr('tc.updated')}: {new Date(selected.updated_at).toLocaleString()}</span>
+						<span class="meta-item">{tr('tc.updated')}: {parseDbTime(selected.updated_at).toLocaleString()}</span>
 						{#if selected.expected_message_type}
 							<span class="meta-item">{tr('tc.expectedType')}: <strong>{selected.expected_message_type}</strong></span>
 						{/if}
-						<span class="meta-item">{tr('tc.expectedResult')}: <strong>{selected.expected_validation_result === 'invalid' ? tr('tc.resultInvalid') : tr('tc.resultValid')}</strong></span>
+						<span class="meta-item">{tr('tc.expectedResult')}: <strong>{expectsInvalid(selected.expected_validation_result) ? tr('tc.resultInvalid') : tr('tc.resultValid')}</strong></span>
 					</div>
 					{#if checkResults[selected.id]}
 						<div class="check-detail" class:pass={checkResults[selected.id].pass} class:fail={!checkResults[selected.id].pass}>
@@ -490,7 +492,7 @@
 			<h3 class="pack-title">{tr('tc.exportTitle', { count: exportCount })}</h3>
 			<p class="pack-sub">{exportIds.length ? tr('tc.exportFilteredHint', { count: exportCount }) : tr('tc.exportAllHint')}</p>
 			{#if exportPhi.length === 0}
-				<div class="pack-note ok">{tr('tc.phiNone')}</div>
+				<div class="pack-note">{tr('tc.phiNone')}</div>
 			{:else}
 				<div class="pack-note warn">
 					<strong>{tr('tc.phiFound')}</strong>
@@ -568,16 +570,16 @@
 		<div class="tc-form">
 			<div class="form-row">
 				<label for="tc-name">{tr('tc.nameRequired')}</label>
-				<input id="tc-name" bind:this={nameInputEl} bind:value={formName} placeholder="e.g. ADT^A01 admission test" class="form-input" />
+				<input id="tc-name" bind:this={nameInputEl} bind:value={formName} placeholder={tr('tc.namePlaceholder')} class="form-input" />
 			</div>
 			<div class="form-row">
 				<label for="tc-desc">{tr('tc.description')}</label>
-				<textarea id="tc-desc" bind:value={formDescription} rows={2} placeholder="When to use this test case..." class="form-input"></textarea>
+				<textarea id="tc-desc" bind:value={formDescription} rows={2} placeholder={tr('tc.descPlaceholder')} class="form-input"></textarea>
 			</div>
 			<div class="form-grid">
 				<div class="form-row">
 					<label for="tc-cat">{tr('tc.category')}</label>
-					<input id="tc-cat" bind:value={formCategory} list="tc-cats" placeholder="admission, orders, ..." class="form-input" />
+					<input id="tc-cat" bind:value={formCategory} list="tc-cats" placeholder={tr('tc.categoryPlaceholder')} class="form-input" />
 					<datalist id="tc-cats">
 						{#each existingCategories as cat}<option value={cat}></option>{/each}
 					</datalist>
@@ -661,7 +663,6 @@
 	.pack-title { margin: 0; font-size: 14px; }
 	.pack-sub { margin: 0; font-size: 12px; color: var(--color-text-secondary); }
 	.pack-note { padding: 8px 10px; border-radius: 4px; font-size: 12px; border: 1px solid var(--color-border); }
-	.pack-note.ok { border-color: var(--color-success); color: var(--color-success); }
 	.pack-note.warn { border-color: var(--color-warning, #f9e2af); }
 	.pack-list { margin: 6px 0 0; padding-left: 18px; max-height: 180px; overflow-y: auto; }
 	.pack-name { font-weight: 600; }

@@ -3,9 +3,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 vi.mock('$lib/ipc/database', () => ({
 	loadSession: vi.fn(async () => []),
 	saveSession: vi.fn(async () => undefined),
+	clearSession: vi.fn(async () => undefined),
 }));
 
-import { loadSession, saveSession } from '$lib/ipc/database';
+import { loadSession, saveSession, clearSession } from '$lib/ipc/database';
 import { sessionStore } from './session.svelte';
 import { messageStore } from './messages.svelte';
 
@@ -29,11 +30,13 @@ afterEach(() => {
 describe('restoreFromDisk', () => {
 	it('restores tabs and re-parses each one', async () => {
 		vi.mocked(loadSession).mockResolvedValue([savedTab('a', true), { ...savedTab('b'), tab_order: 1 }]);
-		const parsed: string[] = [];
-		const restored = await sessionStore.restoreFromDisk((c) => parsed.push(c));
+		const parsed: Array<[string, string]> = [];
+		const restored = await sessionStore.restoreFromDisk((id, c) => parsed.push([id, c]));
 		expect(restored).toBe(true);
 		expect(messageStore.tabs).toHaveLength(2);
-		expect(parsed).toEqual(['MSH|a', 'MSH|b']);
+		// Each parse is bound to its own tab, not to the active one.
+		expect(parsed).toEqual(messageStore.tabs.map((t) => [t.id, t.content]));
+		expect(parsed.map(([, c]) => c)).toEqual(['MSH|a', 'MSH|b']);
 	});
 
 	it('skips when restore is disabled', async () => {
@@ -58,6 +61,38 @@ describe('restoreFromDisk', () => {
 });
 
 describe('scheduleAutosave', () => {
+	beforeEach(() => {
+		sessionStore.startupComplete = true;
+	});
+
+	it('does not save before startup has finished (it would wipe the saved session)', async () => {
+		vi.useFakeTimers();
+		sessionStore.startupComplete = false;
+		sessionStore.scheduleAutosave(100);
+		await vi.advanceTimersByTimeAsync(200);
+		expect(saveSession).not.toHaveBeenCalled();
+	});
+
+	it('flush writes at once and cancels the pending debounce', async () => {
+		vi.useFakeTimers();
+		const id = messageStore.newTab();
+		messageStore.updateContent(id, 'MSH|last-keystrokes');
+		sessionStore.scheduleAutosave(800);
+		expect(await sessionStore.flush()).toBe(true);
+		expect(saveSession).toHaveBeenCalledTimes(1);
+		expect(saveSession).toHaveBeenCalledWith(
+			expect.arrayContaining([expect.objectContaining({ content: 'MSH|last-keystrokes' })]),
+		);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(saveSession).toHaveBeenCalledTimes(1);
+	});
+
+	it('flush reports a failed write', async () => {
+		vi.mocked(saveSession).mockRejectedValue(new Error('disk full'));
+		messageStore.newTab();
+		expect(await sessionStore.flush()).toBe(false);
+	});
+
 	it('debounces: only the last schedule within the window fires', async () => {
 		vi.useFakeTimers();
 		messageStore.newTab();
@@ -95,5 +130,27 @@ describe('scheduleAutosave', () => {
 		messageStore.newTab();
 		sessionStore.scheduleAutosave(100);
 		await expect(vi.advanceTimersByTimeAsync(150)).resolves.not.toThrow();
+	});
+});
+
+describe('setRestoreEnabled', () => {
+	it('deletes the saved tabs when restore is turned off', async () => {
+		vi.mocked(clearSession).mockClear();
+		sessionStore.startupComplete = true;
+		vi.useFakeTimers();
+		sessionStore.scheduleAutosave(10);
+		await sessionStore.setRestoreEnabled(false);
+		expect(clearSession).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(50);
+		expect(saveSession).not.toHaveBeenCalled();
+		expect(await sessionStore.flush()).toBe(true);
+		expect(saveSession).not.toHaveBeenCalled();
+	});
+
+	it('keeps them when restore is turned on', async () => {
+		vi.mocked(clearSession).mockClear();
+		await sessionStore.setRestoreEnabled(true);
+		expect(clearSession).not.toHaveBeenCalled();
+		expect(sessionStore.restoreEnabled).toBe(true);
 	});
 });

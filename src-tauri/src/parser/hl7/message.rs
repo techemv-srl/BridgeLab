@@ -119,6 +119,8 @@ pub enum TreeNodeType {
     Message,
     Segment,
     Field,
+    /// One occurrence of a repeating field ("PID-3(2)").
+    Repetition,
     Component,
     Subcomponent,
 }

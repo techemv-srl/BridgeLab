@@ -31,10 +31,17 @@ pub struct MllpSendResult {
     pub response: String,
     pub response_time_ms: u64,
     pub error: Option<String>,
+    /// The character set the message was encoded in on the wire.
+    #[serde(default)]
+    pub encoding: String,
+    /// MSA-1 of the reply ("AA", "AE", "AR", "CA", "CE", "CR"), when the
+    /// send got one.
+    #[serde(default)]
+    pub ack_code: Option<String>,
 }
 
 /// Options for an MLLP send. `Default` gives standard MLLP framing
-/// (VT / FS CR), 30s timeouts and the UTF-8-with-Latin-1-failover charset.
+/// (VT / FS CR), 30s timeouts and UTF-8.
 /// Non-standard framing bytes exist in the wild on legacy interfaces —
 /// that's why they're tunable at all.
 #[derive(Debug, Clone)]
@@ -43,8 +50,12 @@ pub struct SendOptions {
     pub connect_timeout_secs: u64,
     /// Timeout for reading the ACK after the message has been written.
     pub response_timeout_secs: u64,
-    /// encoding_rs label ("UTF-8", "ISO-8859-1", ...); empty = failover default.
+    /// encoding_rs label ("UTF-8", "ISO-8859-1", ...); empty = UTF-8;
+    /// [`AUTO`] = the charset the message's MSH-18 declares, else UTF-8.
     pub encoding: String,
+    /// With [`AUTO`]: the charset the message's file was read in, used when
+    /// MSH-18 names none (see [`resolve_send_encoding`]).
+    pub source_charset: Option<String>,
     /// Start-of-block byte (standard: 0x0B VT).
     pub start_byte: u8,
     /// First end-of-block byte (standard: 0x1C FS).
@@ -59,6 +70,7 @@ impl Default for SendOptions {
             connect_timeout_secs: 30,
             response_timeout_secs: 30,
             encoding: String::new(),
+            source_charset: None,
             start_byte: MLLP_START,
             end_byte_1: MLLP_END_1,
             end_byte_2: MLLP_END_2,
@@ -126,39 +138,95 @@ fn decode_payload(bytes: &[u8]) -> String {
     }
 }
 
-/// Decode a byte slice using a named encoding (encoding_rs label, e.g.
-/// "UTF-8", "ISO-8859-1", "windows-1252", "windows-1250", "windows-1251",
-/// "ASCII"). Falls back to the UTF-8-or-Latin-1 strategy if the label is
-/// unknown — defensive default for older clients sending an empty/garbled
-/// MSH-18.
-pub fn decode_with_label(bytes: &[u8], label: &str) -> String {
-    if label.is_empty() {
-        return decode_payload(bytes);
+/// The encoding label that picks the charset from the message: on
+/// receive, MSH-18 when it names a charset, else UTF-8, else Latin-1 (see
+/// [`decode_auto`]); on send, MSH-18, else UTF-8 (see
+/// [`resolve_send_encoding`]). The default of the listener and the sender.
+pub const AUTO: &str = "auto";
+
+fn is_auto(label: &str) -> bool {
+    label.trim().eq_ignore_ascii_case(AUTO)
+}
+
+/// The label BridgeLab encodes an HL7 character-set name (MSH-18) with:
+/// `ASCII` stays 7-bit, the others as [`charset::label_for_hl7`].
+fn label_for_msh18(name: &str) -> Option<String> {
+    if name.trim().eq_ignore_ascii_case("ASCII") {
+        return Some("ASCII".into());
     }
-    match encoding_rs::Encoding::for_label(label.as_bytes()) {
-        Some(enc) => {
-            let (cow, _, _) = enc.decode(bytes);
-            cow.into_owned()
+    crate::parser::hl7::charset::label_for_hl7(name)
+}
+
+/// Decode received bytes choosing the charset from them: the one MSH-18
+/// declares, when BridgeLab knows it; otherwise UTF-8 when the bytes are
+/// valid UTF-8; otherwise Latin-1, which maps every byte to a character.
+/// A UTF-8 byte-order mark is dropped. Returns the text and the label of
+/// the charset used.
+pub fn decode_auto(bytes: &[u8]) -> (String, String) {
+    use crate::parser::hl7::charset;
+    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    if let Some(label) = charset::declared_charset(bytes).and_then(|c| label_for_msh18(&c)) {
+        if label != "UTF-8" {
+            return (charset::decode_with(bytes, &label), label);
         }
-        None => decode_payload(bytes),
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(s) => (s.to_string(), "UTF-8".into()),
+        Err(_) => (decode_payload(bytes), "ISO-8859-1".into()),
     }
 }
 
-/// Encode a UTF-8 String into the bytes for the named encoding, replacing
-/// unmappable codepoints with `?`. Used by the MLLP client when a non-UTF-8
-/// charset is selected (the in-memory message is always UTF-8 inside
-/// BridgeLab).
+/// Decode a byte slice using a named encoding (encoding_rs label, e.g.
+/// "UTF-8", "ISO-8859-1", "windows-1252", "windows-1250", "windows-1251",
+/// "ASCII"). An empty, [`AUTO`] or unknown label decodes with
+/// [`decode_auto`].
+pub fn decode_with_label(bytes: &[u8], label: &str) -> String {
+    if label.trim().is_empty() || is_auto(label) || !crate::parser::hl7::charset::is_known_label(label) {
+        return decode_auto(bytes).0;
+    }
+    crate::parser::hl7::charset::decode_with(bytes, label)
+}
+
+/// Encode a UTF-8 String into the bytes for the named encoding. Characters
+/// the encoding cannot represent become `?` (never `&#NNN;` references), and
+/// "ASCII" means 7-bit. Empty, UTF-8 or unknown labels give UTF-8. The
+/// in-memory message is always UTF-8 inside BridgeLab.
 pub fn encode_with_label(text: &str, label: &str) -> Vec<u8> {
-    if label.is_empty() || label.eq_ignore_ascii_case("UTF-8") {
-        return text.as_bytes().to_vec();
+    crate::parser::hl7::charset::encode_output(text, label)
+}
+
+/// The charset a message is sent in. An explicit label is kept. [`AUTO`]
+/// takes the charset the message's MSH-18 declares, else the one the
+/// message's file was read in (`source_charset`), else UTF-8: a message
+/// that says 8859/1 must not go out as UTF-8 bytes under that label.
+pub fn resolve_send_encoding(message: &str, requested: &str, source_charset: Option<&str>) -> String {
+    if !is_auto(requested) {
+        return if requested.trim().is_empty() { "UTF-8".into() } else { requested.trim().to_string() };
     }
-    match encoding_rs::Encoding::for_label(label.as_bytes()) {
-        Some(enc) => {
-            let (cow, _, _had_errors) = enc.encode(text);
-            cow.into_owned()
+    // A UTF-16 file (Notepad's "Unicode") is not sent as UTF-16: few
+    // receivers read UTF-16 frames, and HL7 declares no UTF-16 without a
+    // byte-order mark. It goes out as UTF-8 unless MSH-18 says otherwise.
+    crate::parser::hl7::charset::declared_charset(message.as_bytes())
+        .and_then(|c| label_for_msh18(&c))
+        .or_else(|| {
+            source_charset
+                .map(str::trim)
+                .filter(|c| !c.is_empty() && !crate::parser::hl7::charset::is_utf16(c))
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "UTF-8".into())
+}
+
+/// The characters of `text` that `label` cannot represent (each once, in
+/// order of appearance): they would go out as `?`.
+pub fn unencodable_chars(text: &str, label: &str) -> Vec<char> {
+    let mut out: Vec<char> = Vec::new();
+    for c in text.chars().filter(|c| !c.is_ascii() || label.trim().eq_ignore_ascii_case("ASCII")) {
+        if c != '?' && !out.contains(&c) && encode_with_label(c.encode_utf8(&mut [0u8; 4]), label).ends_with(b"?") {
+            out.push(c);
         }
-        None => text.as_bytes().to_vec(),
     }
+    out
 }
 
 /// Send an HL7 message via MLLP to a remote host with default options
@@ -191,7 +259,8 @@ pub async fn send_with_options(
 ) -> MllpSendResult {
     let start = Instant::now();
     let addr = format!("{}:{}", host, port);
-    let encoding = opts.encoding.as_str();
+    let wire = resolve_send_encoding(message, &opts.encoding, opts.source_charset.as_deref());
+    let encoding = wire.as_str();
 
     let connect_result = tokio::time::timeout(
         Duration::from_secs(opts.connect_timeout_secs),
@@ -206,7 +275,9 @@ pub async fn send_with_options(
                 success: false,
                 response: String::new(),
                 response_time_ms: start.elapsed().as_millis() as u64,
-                error: Some(format!("Connection failed: {}", e)),
+                encoding: wire.clone(),
+            ack_code: None,
+            error: Some(format!("Connection failed: {}", e)),
             };
         }
         Err(_) => {
@@ -214,7 +285,9 @@ pub async fn send_with_options(
                 success: false,
                 response: String::new(),
                 response_time_ms: start.elapsed().as_millis() as u64,
-                error: Some("Connection timed out".into()),
+                encoding: wire.clone(),
+            ack_code: None,
+            error: Some("Connection timed out".into()),
             };
         }
     };
@@ -227,12 +300,33 @@ pub async fn send_with_options(
     framed.extend_from_slice(&payload);
     framed.push(opts.end_byte_1);
     framed.push(opts.end_byte_2);
-    if let Err(e) = stream.write_all(&framed).await {
+    // The response timeout also bounds the write: a peer that accepts the
+    // connection but never reads fills the socket buffers, and an unbounded
+    // write_all would then wait forever. It is an inactivity timeout: it
+    // restarts after every write the socket accepts, so a large message on
+    // a slow link is never cut off while it is still moving.
+    let write_timeout = Duration::from_secs(opts.response_timeout_secs);
+    let mut written = 0usize;
+    while written < framed.len() {
+        let error = match tokio::time::timeout(write_timeout, stream.write(&framed[written..])).await {
+            Ok(Ok(0)) => "Send failed: the peer closed the connection".to_string(),
+            Ok(Ok(n)) => {
+                written += n;
+                continue;
+            }
+            Ok(Err(e)) => format!("Send failed: {}", e),
+            Err(_) => format!(
+                "Send timed out: the peer accepted no data for {} s",
+                opts.response_timeout_secs
+            ),
+        };
         return MllpSendResult {
             success: false,
             response: String::new(),
             response_time_ms: start.elapsed().as_millis() as u64,
-            error: Some(format!("Send failed: {}", e)),
+            encoding: wire.clone(),
+            ack_code: None,
+            error: Some(error),
         };
     }
 
@@ -273,8 +367,9 @@ pub async fn send_with_options(
     // ACK" symptom reported by receivers like HAPI / Mirth.
     let _ = stream.shutdown().await;
 
-    // Decode ACK bytes using the same encoding the user selected for send;
-    // the peer typically echoes back the same charset it received.
+    // Decode ACK bytes using the same encoding the user selected for send
+    // (the peer typically echoes back the same charset it received); in
+    // automatic mode the ACK's own MSH-18 and bytes decide.
     let response = if response_bytes.is_empty() {
         String::new()
     } else {
@@ -283,33 +378,46 @@ pub async fn send_with_options(
         if response_bytes[0] == opts.start_byte { start_idx = 1; }
         if end_idx > start_idx && response_bytes[end_idx - 1] == opts.end_byte_2 { end_idx -= 1; }
         if end_idx > start_idx && response_bytes[end_idx - 1] == opts.end_byte_1 { end_idx -= 1; }
-        decode_with_label(&response_bytes[start_idx..end_idx], encoding)
+        let body = &response_bytes[start_idx..end_idx];
+        // Sent as UTF-16 on request, answered in an 8-bit charset (no NUL
+        // byte, which UTF-16 text in the ASCII range always has): read the
+        // ACK by its own bytes, or no MSA is found in it.
+        let ascii_reply_to_utf16 = crate::parser::hl7::charset::is_utf16(encoding) && !body.contains(&0);
+        decode_with_label(body, if is_auto(&opts.encoding) || ascii_reply_to_utf16 { AUTO } else { encoding })
     };
     let response_time_ms = start.elapsed().as_millis() as u64;
 
     match read_status {
         Ok(Ok(ReadOutcome::Terminator)) => MllpSendResult {
             success: true,
+            ack_code: crate::parser::hl7::ack::ack_code_of(&response),
             response,
             response_time_ms,
             error: None,
+            encoding: wire,
         },
         Ok(Ok(ReadOutcome::Eof)) if !response_bytes.is_empty() => MllpSendResult {
             success: true,
+            ack_code: crate::parser::hl7::ack::ack_code_of(&response),
             response,
             response_time_ms,
             error: None,
+            encoding: wire,
         },
         Ok(Ok(ReadOutcome::Eof)) => MllpSendResult {
             success: false,
             response: String::new(),
             response_time_ms,
+            encoding: wire.clone(),
+            ack_code: None,
             error: Some("Empty response (connection closed by peer)".into()),
         },
         Ok(Ok(ReadOutcome::CapExceeded)) => MllpSendResult {
             success: false,
             response: String::new(),
             response_time_ms,
+            encoding: wire.clone(),
+            ack_code: None,
             error: Some(format!(
                 "Response exceeded {} bytes without MLLP terminator; aborted",
                 MAX_ACK_BYTES
@@ -319,12 +427,16 @@ pub async fn send_with_options(
             success: false,
             response,
             response_time_ms,
+            encoding: wire.clone(),
+            ack_code: None,
             error: Some(format!("Read failed: {}", e)),
         },
         Err(_) => MllpSendResult {
             success: false,
             response,
             response_time_ms,
+            encoding: wire.clone(),
+            ack_code: None,
             error: Some("Response timed out".into()),
         },
     }
@@ -384,10 +496,7 @@ pub async fn receive_one(
 
     // Send ACK if auto_ack is enabled
     if auto_ack {
-        use crate::parser::hl7::ack;
-        let control_id = ack::extract_message_control_id(&content).unwrap_or_default();
-        let sending_app = ack::extract_sending_app(&content).unwrap_or_default();
-        let ack_msg = ack::generate_ack("AA", &control_id, "BridgeLab", &sending_app, None);
+        let ack_msg = crate::parser::hl7::ack::ack_for(&content, "AA", None);
         let ack_framed = mllp_frame(&ack_msg);
         let _ = stream.write_all(&ack_framed).await;
     }
@@ -449,6 +558,120 @@ mod tests {
         ];
         let unframed = mllp_unframe(&bytes).expect("must not return None");
         assert_eq!(unframed, "PID|||Forlì");
+    }
+
+    #[test]
+    fn automatic_send_encoding_follows_msh18_then_the_file() {
+        let declared = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5|||||ITA|8859/1\rPID|1||1||Müller\r";
+        let plain = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1||1||Müller\r";
+        assert_eq!(resolve_send_encoding(declared, AUTO, None), "ISO-8859-1");
+        assert_eq!(resolve_send_encoding(declared, "AUTO", Some("windows-1252")), "ISO-8859-1", "MSH-18 wins");
+        assert_eq!(resolve_send_encoding(plain, AUTO, Some("windows-1252")), "windows-1252");
+        assert_eq!(resolve_send_encoding(plain, AUTO, None), "UTF-8");
+        assert_eq!(resolve_send_encoding(declared, "UTF-8", None), "UTF-8", "an explicit choice is kept");
+        assert_eq!(resolve_send_encoding(declared, "", None), "UTF-8", "empty stays UTF-8 (CLI)");
+        assert_eq!(resolve_send_encoding("MSH|^~\\&|A|B|C|D|E||F|1|P|2.5|||||X|ASCII\r", AUTO, None), "ASCII");
+    }
+
+    #[test]
+    fn characters_a_charset_cannot_hold_are_named() {
+        assert!(unencodable_chars("Müller Zoë", "ISO-8859-1").is_empty());
+        assert_eq!(unencodable_chars("Łódź Łukasz", "ISO-8859-1"), vec!['Ł', 'ź']);
+        assert_eq!(unencodable_chars("Müller?", "ASCII"), vec!['ü']);
+        assert!(unencodable_chars("日本", "UTF-8").is_empty());
+    }
+
+    #[test]
+    fn automatic_decoding_prefers_msh18_then_utf8_then_latin1() {
+        assert_eq!(decode_auto("MSH|^~\\&|Müller".as_bytes()), ("MSH|^~\\&|Müller".into(), "UTF-8".into()));
+        assert_eq!(decode_auto(b"MSH|^~\\&|M\xfcller"), ("MSH|^~\\&|Müller".into(), "ISO-8859-1".into()));
+        assert_eq!(decode_with_label(b"MSH|^~\\&|M\xfcller", ""), "MSH|^~\\&|Müller");
+        assert_eq!(decode_with_label(b"MSH|^~\\&|M\xfcller", "auto"), "MSH|^~\\&|Müller");
+    }
+
+    /// A message declaring 8859/1 goes out in Latin-1 in automatic mode,
+    /// not as UTF-8 bytes under that label.
+    #[tokio::test]
+    async fn automatic_send_writes_the_declared_charset() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let peer = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).await.unwrap();
+            stream.write_all(&mllp_frame("MSH|^~\\&|R||S||20260101||ACK|A1|P|2.5\rMSA|AA|L1")).await.unwrap();
+            buf.truncate(n);
+            buf
+        });
+        let msg = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|L1|P|2.5|||||ITA|8859/1\rPID|1||1||Müller\r";
+        let opts = SendOptions { encoding: AUTO.into(), connect_timeout_secs: 5, response_timeout_secs: 5, ..SendOptions::default() };
+        let result = send_with_options("127.0.0.1", port, msg, &opts).await;
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(result.encoding, "ISO-8859-1");
+        assert_eq!(result.ack_code.as_deref(), Some("AA"));
+        let wire = peer.await.unwrap();
+        assert!(wire.windows(6).any(|w| w == b"M\xfcller"), "{:?}", String::from_utf8_lossy(&wire));
+    }
+
+    /// A message read from a UTF-16 file goes out as UTF-8 (or MSH-18's
+    /// charset), never as a UTF-16 frame with a byte-order mark.
+    #[test]
+    fn a_utf16_source_is_sent_in_the_message_charset() {
+        let plain = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|L1|P|2.5\rPID|1||1||Müller\r";
+        assert_eq!(resolve_send_encoding(plain, AUTO, Some("UTF-16LE")), "UTF-8");
+        assert_eq!(resolve_send_encoding(plain, AUTO, Some("UTF-16BE")), "UTF-8");
+        let latin = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|L1|P|2.5|||||ITA|8859/1\rPID|1||1||Müller\r";
+        assert_eq!(resolve_send_encoding(latin, AUTO, Some("UTF-16LE")), "ISO-8859-1");
+        assert_eq!(resolve_send_encoding(plain, "UTF-16LE", None), "UTF-16LE", "asked for explicitly");
+    }
+
+    /// Sent as UTF-16 on request, answered in ASCII: the ACK is read by its
+    /// own bytes, and its AA is found.
+    #[tokio::test]
+    async fn an_ascii_ack_to_a_utf16_frame_is_read() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let peer = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).await.unwrap();
+            stream.write_all(&mllp_frame("MSH|^~\\&|R||S||20260101||ACK|A1|P|2.5\rMSA|AA|L1")).await.unwrap();
+            buf.truncate(n);
+            buf
+        });
+        let msg = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|L1|P|2.5\rPID|1||1||Müller\r";
+        let opts = SendOptions { encoding: "UTF-16LE".into(), connect_timeout_secs: 5, response_timeout_secs: 5, ..SendOptions::default() };
+        let result = send_with_options("127.0.0.1", port, msg, &opts).await;
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(result.ack_code.as_deref(), Some("AA"), "{}", result.response);
+        assert!(peer.await.unwrap().starts_with(b"\x0b\xff\xfeM\0"));
+    }
+
+    /// In automatic mode the ACK is decoded by its own charset: a request
+    /// sent in Latin-1 can get a UTF-8 ACK back, and that ACK must not be
+    /// read as Latin-1.
+    #[tokio::test]
+    async fn automatic_mode_decodes_the_ack_by_its_own_charset() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await.unwrap();
+            stream.write_all(&mllp_frame("MSH|^~\\&|R||S||20260101||ACK|A1|P|2.5\rMSA|AE|L1|Nome già presente\r")).await.unwrap();
+        });
+        let msg = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|L1|P|2.5\rPID|1||1||Müller\r";
+        let opts = SendOptions {
+            encoding: AUTO.into(),
+            source_charset: Some("ISO-8859-1".into()),
+            connect_timeout_secs: 5,
+            response_timeout_secs: 5,
+            ..SendOptions::default()
+        };
+        let result = send_with_options("127.0.0.1", port, msg, &opts).await;
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(result.encoding, "ISO-8859-1", "the file's charset, MSH-18 being empty");
+        assert!(result.response.contains("Nome già presente"), "{}", result.response);
     }
 
     #[tokio::test]
@@ -680,5 +903,30 @@ mod tests {
         let result = send("127.0.0.1", port, "MSH|^~\\&|x", 2, "").await;
         assert!(!result.success);
         assert!(result.error.is_some());
+    }
+
+    /// A peer that accepts the connection and never reads must not hang
+    /// the send: the write is bounded by the response timeout too.
+    #[tokio::test]
+    async fn test_mllp_send_times_out_when_peer_never_reads() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (_sock, _) = listener.accept().await.unwrap();
+            tokio::time::sleep(Duration::from_secs(20)).await;
+        });
+
+        // Far larger than the loopback socket buffers.
+        let message = format!("MSH|^~\\&|x\rOBX|1|ED|X||{}", "A".repeat(32 * 1024 * 1024));
+        let opts = SendOptions {
+            connect_timeout_secs: 5,
+            response_timeout_secs: 1,
+            ..SendOptions::default()
+        };
+        let started = Instant::now();
+        let result = send_with_options("127.0.0.1", port, &message, &opts).await;
+        assert!(!result.success);
+        assert!(result.error.as_deref().unwrap_or("").starts_with("Send timed out"), "{:?}", result.error);
+        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
     }
 }

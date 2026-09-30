@@ -7,8 +7,8 @@ export const getStarted: ManualSection = {
 	body: `
 <p>BridgeLab est un éditeur de messages moderne pour HL7 v2.x et FHIR,
 conçu pour les ingénieurs d'intégration en santé. Il repose sur un
-backend Rust pour une analyse rapide (des messages de 10 Mo traités en
-moins de 2 secondes) et un frontend Svelte 5 avec l'éditeur Monaco.</p>
+backend Rust pour une analyse rapide (un message de 10 Mo avec une pièce
+jointe base64 s'ouvre en 2 secondes environ) et un frontend Svelte 5 avec l'éditeur Monaco.</p>
 
 <p>La fenêtre principale est divisée en quatre zones :</p>
 ${mockupAppShell}
@@ -37,15 +37,30 @@ ${mockupAppShell}
 		de l'éditeur.</li>
 	<li><strong>Coller</strong> - cliquez dans l'éditeur et collez
 		(<kbd>Ctrl</kbd>+<kbd>V</kbd>). L'analyse automatique se déclenche
-		500 ms après la dernière frappe.</li>
-	<li><strong>Fichier → Nouveau depuis un modèle</strong> (<kbd>Ctrl</kbd>+<kbd>N</kbd>) -
+		500 ms après la dernière frappe (délai, ou désactivation, dans
+		<strong>Paramètres → Analyseur</strong>).</li>
+	<li><strong>Ce qui s'ouvre :</strong> lignes vides, espaces, BOM ou
+		encadrement MLLP avant <code>MSH</code>, fichiers UTF-16 (le
+		« Unicode » du Bloc-notes) et fichiers de lot FHS/BHS sont lus tels
+		quels. Un fichier que BridgeLab ne sait pas analyser s'ouvre quand
+		même, en texte à corriger, avec une note qui explique pourquoi.</li>
+	<li><strong>Fichier → Nouveau Message à partir d'un Modèle...</strong> (<kbd>Ctrl</kbd>+<kbd>N</kbd>) -
 		modèles préremplis ADT, ORM, ORU, SIU et plus encore. Les champs
 		comme MSH-7 et MSH-10 sont renseignés avec l'horodatage courant et
-		un GUID neuf.</li>
+		un identifiant de message unique.</li>
+	<li><strong>Fichier → Messages d'exemple</strong> (aussi depuis l'écran
+		d'accueil) - des messages complets et réalistes plutôt que des
+		squelettes : ADT d'admission, d'enregistrement, de mise à jour, de
+		sortie et de fusion, ORU avec résultats (une numération de douze
+		valeurs, un bilan métabolique), ORM, SIU, MDM, DFT, VXU et un ACK, en
+		versions 2.3, 2.5 et 2.5.1. Filtrez par version, prévisualisez et
+		ouvrez-en un dans un nouvel onglet. Chaque exemple passe la
+		validation ; patients et données sont fictifs.</li>
 </ul>
 
 <div class="note">Au premier lancement vous bénéficiez d'un <strong>essai
-Pro de 14 jours</strong> avec toutes les fonctionnalités activées. À
+Pro de 14 jours</strong> avec toutes les fonctionnalités Pro activées (SOAP
+et le support prioritaire relèvent d'Enterprise). À
 l'expiration, BridgeLab continue de fonctionner avec les fonctionnalités
 Community - vous ne perdez jamais vos messages.</div>
 
@@ -62,8 +77,9 @@ export const editorSection: ManualSection = {
 	body: `
 <p>La zone d'édition est une instance <strong>Monaco</strong> dotée d'une
 grammaire spécifique à HL7. Les codes de segment sont colorés en violet,
-les séparateurs de champ en gris, et les payloads ED/base64 sont tronqués
-automatiquement pour garder l'éditeur réactif sur les gros messages.</p>
+les séparateurs de champ en gris, et les payloads ED/base64 et les autres valeurs
+longues sont affichés repliés, pour garder l'éditeur réactif sur les gros
+messages (voir plus bas).</p>
 
 <h3>Auto-complétion et survol</h3>
 <p>Commencez à taper <code>P</code> sur une nouvelle ligne - Monaco
@@ -73,12 +89,46 @@ champ (codes de sexe, codes ACK, classe patient...). Survoler un champ
 affiche son nom, son type de données et son caractère obligatoire, tirés
 du standard HL7.</p>
 
-<h3>Troncature des champs volumineux</h3>
-<p>Les champs qui dépassent le seuil de troncature (100 octets par
-défaut, réglable dans <strong>Paramètres → Analyseur</strong>)
-apparaissent sous la forme <code>{...N bytes}</code>. Le contenu complet
-n'est jamais perdu - développez-le à la demande via le menu contextuel
-(clic droit) ou l'<em>Inspecteur de champ</em>.</p>
+<h3>Champs longs repliés</h3>
+<p>Les champs plus longs que le seuil de repli (100 caractères par défaut,
+dans <strong>Paramètres → Analyseur</strong>) sont affichés
+<em>repliés</em> : une pièce jointe base64 en OBX-5, une longue note ou une
+chaîne JSON <code>data</code> apparaît comme une puce compacte, par
+exemple <code>⟨Base64 · 5.1 KB⟩</code>, tandis que les séparateurs et les
+autres composants restent visibles. Le repli n'est qu'un affichage : le
+message reste toujours complet, et l'enregistrement, la session, la
+validation, l'arbre et la copie utilisent le texte entier.</p>
+<ul>
+	<li><strong>Développer :</strong> cliquer sur la puce, ou placer le
+		curseur à côté et appuyer sur <kbd>Alt</kbd>+<kbd>Entrée</kbd>. Le
+		survol montre les premiers caractères.</li>
+	<li><strong>Replier à nouveau :</strong> clic droit → <em>Replier ce
+		champ</em> sur une valeur longue, ou <em>Replier tous les champs
+		longs</em>.</li>
+	<li><strong>Tout à la fois :</strong> le badge <em>N repliés</em> de
+		la barre d'état développe tout ; le menu contextuel propose les
+		deux commandes.</li>
+	<li>Une puce se déplace d'un bloc : les flèches la sautent et
+		Retour arrière/Suppr la sélectionnent d'abord, elle n'est donc
+		jamais supprimée à moitié. Copier une sélection copie le contenu
+		complet.</li>
+	<li><strong>Rechercher et Remplacer</strong> (<kbd>Ctrl</kbd>+<kbd>F</kbd>,
+		<kbd>Ctrl</kbd>+<kbd>H</kbd>) portent sur le texte complet : un champ
+		replié qui contient une occurrence se déplie, et l'occurrence est
+		comptée, affichée et remplacée comme les autres.</li>
+</ul>
+
+<h3>Paramètres de l'éditeur</h3>
+<p><strong>Édition → Paramètres → Éditeur</strong> (Ctrl+,) change l'apparence
+et le comportement de l'éditeur : police et taille, largeur de tabulation,
+retour à la ligne, espaces visibles, minimap, numéros de ligne, défilement
+fluide, couleurs des crochets, surlignage des autres occurrences du mot sous
+le curseur, liens cliquables, en-tête fixe au défilement (sticky scroll) et
+source des suggestions de mots (ce message, tous les messages ouverts ou
+aucune ; les suggestions de champs et de valeurs HL7 fonctionnent dans tous
+les modes). Les changements s'appliquent immédiatement. Chaque onglet garde
+son propre historique d'annulation et de rétablissement (Ctrl+Z, Ctrl+Y)
+quand vous passez d'un onglet à l'autre.</p>
 
 <h3>Menu contextuel (clic droit)</h3>
 ${mockupContextMenu}
@@ -86,12 +136,13 @@ ${mockupContextMenu}
 <ul>
 	<li><strong>Navigation :</strong> Afficher le segment dans l'arbre
 		(<kbd>Alt</kbd>+<kbd>T</kbd>) - ouvre l'arbre et met en évidence
-		le champ exact sous le curseur ; Développer / Réduire pour les
-		valeurs tronquées.</li>
+		le champ exact sous le curseur ; Développer / Replier pour les
+		valeurs longues.</li>
 	<li><strong>Presse-papiers :</strong> Copier le segment
 		(<kbd>Alt</kbd>+<kbd>C</kbd>), Copier le message complet (avec les
-		champs développés), Copier le message tronqué (sans risque pour
-		l'email).</li>
+		champs développés), Copier le message tronqué (champs longs
+		raccourcis, pour tenir dans un email ; les données du patient sont
+		copiées telles quelles : anonymisez d'abord).</li>
 </ul>
 
 <div class="note">Les raccourcis natifs de Monaco (<kbd>Ctrl</kbd>+<kbd>F</kbd>
@@ -107,7 +158,8 @@ export const treeSection: ManualSection = {
 	body: `
 <p>L'arbre à gauche reflète la hiérarchie du message HL7 :
 <strong>segments</strong> → <strong>champs</strong> →
-<strong>composants</strong>. Affichez-le ou masquez-le avec
+<strong>composants</strong> ; un champ répété liste chaque répétition
+(<code>PID-3(1)</code>, <code>PID-3(2)</code>) avec ses composants. Affichez-le ou masquez-le avec
 <kbd>Ctrl</kbd>+<kbd>B</kbd> ou <strong>Affichage → Structure du
 message</strong>.</p>
 
@@ -123,6 +175,13 @@ message</strong>.</p>
 		plage du champ.</li>
 </ul>
 
+<p>Les lignes vides entre les segments ne faussent pas les sauts. Dans
+l'arbre, <kbd>↑</kbd>/<kbd>↓</kbd> déplacent la sélection, <kbd>→</kbd>
+développe un nœud et <kbd>←</kbd> le replie ou remonte au parent ;
+<kbd>Début</kbd>/<kbd>Fin</kbd> et <kbd>Pg préc</kbd>/<kbd>Pg suiv</kbd>
+sautent. Pendant l'édition, l'arbre garde ce que vous avez développé et
+sélectionné, et l'Inspecteur de champ affiche la valeur actuelle.</p>
+
 <h3>Panneau Inspecteur de champ</h3>
 <p>Cliquez sur l'icône <strong>ⓘ</strong> dans l'en-tête du panneau de
 l'arbre (ou <strong>Affichage → Inspecteur de champ</strong>) pour
@@ -133,7 +192,7 @@ afficher les métadonnées issues du schéma pour le nœud sélectionné :</p>
 	<li>Type de données (XPN, CX, ST, ...), longueur max., indicateurs
 		obligatoire/répétable, description</li>
 	<li>Valeur actuelle et longueur ; un bouton <em>Voir la valeur
-		complète</em> pour les champs tronqués</li>
+		complète</em> pour les champs longs que l'éditeur affiche repliés</li>
 </ul>
 <p>Les segments inconnus (Z-segments ou codes personnalisés hors
 standard) affichent <em>Non standard HL7</em> mais restent entièrement
@@ -154,6 +213,22 @@ sélectionne le champ et le fait défiler jusqu'à le rendre visible.</p>
 HL7 v2. Pour les ressources FHIR, utilisez le filtre propre au
 visualiseur de Bundle ou le <kbd>Ctrl</kbd>+<kbd>F</kbd> de
 l'éditeur.</p>
+
+<h3>Grille des segments</h3>
+<p>Un message de résultats peut contenir des dizaines d'OBX ; l'arbre les
+montre un nœud à la fois. <strong>Affichage → Grille des segments</strong>
+(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>), ou <em>Afficher tous les
+OBX en tableau</em> dans le menu contextuel d'un segment, ouvre un panneau
+en bas qui présente toutes les occurrences d'un type de segment sous forme
+de tableau : une ligne par occurrence, une colonne par champ renseigné
+dans au moins l'une d'elles, avec la position et le nom du champ dans la
+version HL7 du message. Les valeurs codées affichent leur signification
+sous le code, comme dans l'arbre ; les valeurs longues sont coupées par
+des points de suspension. Choisissez un autre segment dans la liste
+(chacun indique son nombre d'occurrences), tapez dans <em>Filtrer les
+lignes</em> pour ne garder que les lignes contenant un texte, et cliquez
+sur une cellule pour sélectionner ce champ dans l'éditeur. La grille est
+en lecture seule et suit le message au fil des modifications.</p>
 
 <h3>Comparer deux messages</h3>
 <p><strong>Outils → Comparer les messages…</strong> ouvre un diff côte à
@@ -212,6 +287,7 @@ pour parcourir la liste complète des champs jusqu'aux composants des types
 composés (ex. OBX-16 → composants XCN). <strong>Clic droit sur un segment
 grisé → Insérer le segment</strong> pour ajouter son squelette au message à
 la position standard, avec les séparateurs jusqu'au dernier champ
-obligatoire.</p>
+obligatoire. Le squelette utilise les séparateurs du message, et
+<kbd>Ctrl</kbd>+<kbd>Z</kbd> le retire.</p>
 `,
 };

@@ -7,7 +7,7 @@
 //! {
 //!   "format": "bridgelab-test-cases",
 //!   "format_version": 1,
-//!   "app_version": "1.8.1",
+//!   "app_version": "2.0.0",
 //!   "exported_at": "2026-09-29T10:00:00Z",
 //!   "test_cases": [ { "id": "…", "name": "…", "content": "MSH|…", … } ]
 //! }
@@ -96,33 +96,42 @@ impl From<&TestCase> for PackedTestCase {
 
 impl PackedTestCase {
     pub fn into_test_case(self, id: String, now: &str) -> TestCase {
+        let (category, expected_validation_result) = (self.stored_category(), self.stored_result());
         TestCase {
             id,
             name: self.name,
             description: self.description,
-            category: if self.category.trim().is_empty() { default_category() } else { self.category },
+            category,
+            expected_validation_result,
             tags: self.tags,
             content: self.content,
             expected_message_type: self.expected_message_type,
-            expected_validation_result: if self.expected_validation_result == "invalid" {
-                "invalid".into()
-            } else {
-                "valid".into()
-            },
             created_at: if self.created_at.is_empty() { now.to_string() } else { self.created_at },
             updated_at: now.to_string(),
         }
     }
 
-    /// Same test case as far as the user can tell: timestamps aside.
+    /// The category as the library stores it: an empty one is "general".
+    fn stored_category(&self) -> String {
+        if self.category.trim().is_empty() { default_category() } else { self.category.clone() }
+    }
+
+    /// The expected result as the library stores it: "invalid" or "valid".
+    fn stored_result(&self) -> String {
+        if self.expected_validation_result == "invalid" { "invalid".into() } else { "valid".into() }
+    }
+
+    /// Same test case as far as the user can tell: timestamps aside, and
+    /// compared as the library would store it (a pack with an empty
+    /// category was "Differs" on every re-import).
     fn same_as(&self, tc: &TestCase) -> bool {
         self.name == tc.name
             && self.description == tc.description
-            && self.category == tc.category
+            && self.stored_category() == tc.category
             && self.tags == tc.tags
             && self.content == tc.content
             && self.expected_message_type == tc.expected_message_type
-            && self.expected_validation_result == tc.expected_validation_result
+            && self.stored_result() == tc.expected_validation_result
     }
 }
 
@@ -162,8 +171,23 @@ pub fn parse_pack(json: &str) -> Result<TestCasePack, String> {
             version
         ));
     }
-    let pack: TestCasePack =
+    let mut pack: TestCasePack =
         serde_json::from_value(value).map_err(|e| format!("Malformed test case pack: {}", e))?;
+    // Only "valid" and "invalid" mean something: anything else read as
+    // "valid" would turn a typo into a silent expectation.
+    for tc in pack.test_cases.iter_mut() {
+        let result = tc.expected_validation_result.trim().to_ascii_lowercase();
+        tc.expected_validation_result = match result.as_str() {
+            "" | "valid" => "valid".into(),
+            "invalid" => "invalid".into(),
+            _ => {
+                return Err(format!(
+                    "Test case \"{}\": expected_validation_result must be \"valid\" or \"invalid\", found \"{}\"",
+                    tc.name, tc.expected_validation_result
+                ))
+            }
+        };
+    }
     let mut seen_ids = std::collections::HashSet::new();
     for (i, tc) in pack.test_cases.iter().enumerate() {
         // Two cases with one id would both plan against the library and
@@ -367,6 +391,61 @@ pub fn anonymize_pack(pack: &mut TestCasePack, extra: &[ExtraPhiField]) -> usize
     masked
 }
 
+// --- Running a test case ---------------------------------------------------
+//
+// The same comparison the Test Case Library makes in the app: the caller
+// parses and validates the content (with whatever engines it has) and this
+// decides pass or fail against the expectations.
+
+/// What parsing and validating a test case's content produced.
+pub struct Observed {
+    /// `ADT^A01` for HL7 v2, the resource type for FHIR; empty if unknown.
+    pub message_type: String,
+    /// `Err` with the parser's message when the content did not parse.
+    pub errors: Result<usize, String>,
+}
+
+/// Compares the components the expectation gives, case-insensitively:
+/// "ADT" matches any ADT event, "ADT^A01" matches `ADT^A01` and
+/// `ADT^A01^ADT_A01` (v2.3.1+ adds the message structure as a third
+/// component) but not `ADT^A04`; "ADT^A01^ADT_A01" needs all three.
+pub fn type_matches(expected: &str, actual: &str) -> bool {
+    let expected = expected.trim().to_uppercase();
+    if expected.is_empty() {
+        return true;
+    }
+    let actual = actual.trim().to_uppercase();
+    let actual: Vec<&str> = actual.split('^').collect();
+    expected
+        .split('^')
+        .enumerate()
+        .all(|(i, want)| actual.get(i).map(|got| got.trim() == want.trim()).unwrap_or(false))
+}
+
+/// The reasons a test case fails; empty when it passes.
+pub fn check_expectations(
+    expected_message_type: &str,
+    expected_validation_result: &str,
+    observed: &Observed,
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    if !type_matches(expected_message_type, &observed.message_type) {
+        problems.push(format!(
+            "expected type {}, got {}",
+            expected_message_type.trim(),
+            if observed.message_type.is_empty() { "—" } else { &observed.message_type }
+        ));
+    }
+    let expect_invalid = expected_validation_result.trim().eq_ignore_ascii_case("invalid");
+    match &observed.errors {
+        Err(e) if !expect_invalid => problems.push(format!("does not parse: {}", e)),
+        Ok(n) if *n > 0 && !expect_invalid => problems.push(format!("{} validation error(s)", n)),
+        Ok(0) if expect_invalid => problems.push("expected invalid, but it validates clean".into()),
+        _ => {}
+    }
+    problems
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,6 +466,29 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
         }
+    }
+
+    #[test]
+    fn expectations_follow_the_library_rules() {
+        let ok = |t: &str| Observed { message_type: t.into(), errors: Ok(0) };
+        assert!(type_matches("ADT", "ADT^A01"));
+        assert!(type_matches("adt^a01", "ADT^A01"));
+        assert!(!type_matches("ADT^A04", "ADT^A01"));
+        assert!(!type_matches("AD", "ADT^A01"), "a prefix of the code is not a match");
+        assert!(type_matches("", "anything"));
+        assert!(type_matches("ADT^A01", "ADT^A01^ADT_A01"), "components not given are not compared");
+        assert!(type_matches("ADT^A01^ADT_A01", "ADT^A01^ADT_A01"));
+        assert!(!type_matches("ADT^A01^ADT_A01", "ADT^A01"));
+        assert!(!type_matches("ADT^A04", "ADT^A04X^ADT_A01"));
+        assert!(check_expectations("ADT", "valid", &ok("ADT^A01")).is_empty());
+        assert_eq!(check_expectations("ORU", "valid", &ok("ADT^A01")).len(), 1);
+        let two = Observed { message_type: "ADT^A01".into(), errors: Ok(2) };
+        assert!(check_expectations("", "valid", &two)[0].contains("2 validation error"));
+        assert!(check_expectations("", "invalid", &two).is_empty());
+        assert!(check_expectations("", "invalid", &ok("ADT^A01"))[0].contains("expected invalid"));
+        let broken = Observed { message_type: String::new(), errors: Err("no MSH".into()) };
+        assert!(check_expectations("", "valid", &broken)[0].contains("does not parse"));
+        assert!(check_expectations("", "invalid", &broken).is_empty(), "unparsable counts as invalid");
     }
 
     #[test]
@@ -478,5 +580,34 @@ mod tests {
         assert_eq!(masked, 1);
         assert!(!pack.test_cases[0].content.contains("SMITH"));
         assert_eq!(pack.test_cases[1].content, fhir);
+    }
+
+    #[test]
+    fn expected_result_must_be_valid_or_invalid() {
+        let pack = |r: &str| format!(
+            r#"{{"format":"bridgelab-test-cases","format_version":1,"test_cases":[{{"name":"a","content":"MSH|x","expected_validation_result":"{r}"}}]}}"#
+        );
+        assert_eq!(parse_pack(&pack("INVALID")).unwrap().test_cases[0].expected_validation_result, "invalid");
+        assert_eq!(parse_pack(&pack(" Valid ")).unwrap().test_cases[0].expected_validation_result, "valid");
+        assert!(parse_pack(&pack("invalud")).unwrap_err().contains("invalud"));
+    }
+
+    #[test]
+    fn an_empty_category_matches_what_the_import_stored() {
+        let packed = PackedTestCase {
+            id: "x".into(),
+            name: "n".into(),
+            description: String::new(),
+            category: String::new(),
+            tags: String::new(),
+            content: "MSH|^~\\&|".into(),
+            expected_message_type: String::new(),
+            expected_validation_result: "whatever".into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        let stored = packed.clone().into_test_case("x".into(), "2026-01-01T00:00:00Z");
+        assert_eq!(stored.category, "general");
+        assert!(packed.same_as(&stored), "re-importing the same pack must not be Differs");
     }
 }

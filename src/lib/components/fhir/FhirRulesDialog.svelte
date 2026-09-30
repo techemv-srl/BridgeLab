@@ -1,10 +1,11 @@
 <script lang="ts">
 	import {
 		listFhirRules, saveFhirRules, checkFhirRule, testFhirRule, blankRule,
-		type FhirRule, type FhirCheck, type FhirRuleTest, type Severity,
+		type FhirRule, type FhirCheck, type FhirRuleTest, type FhirRuleSet, type Severity,
 	} from '$lib/ipc/fhirRules';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { t } from '$lib/i18n';
+	import { dialogStore } from '$lib/stores/dialog.svelte';
 
 	interface Props {
 		/** Message to test rules against; null when no FHIR resource is open. */
@@ -16,6 +17,9 @@
 
 	let rules = $state<FhirRule[]>([]);
 	let packPath = $state('');
+	/** The file as it was read, so Save does not overwrite later changes. */
+	let packStamp = $state<string | null>(null);
+	let packStatus = $state<FhirRuleSet['status']>(null);
 	let selected = $state<number | null>(null);
 	let loading = $state(true);
 	let saving = $state(false);
@@ -23,6 +27,12 @@
 	let ruleError = $state<string | null>(null);
 	let testResult = $state<FhirRuleTest | null>(null);
 	let dirty = $state(false);
+
+	/** Close, asking first when there are rules not saved yet. */
+	async function requestClose() {
+		if (dirty && !(await dialogStore.confirm(t('dialog.discardRules'), t('dialog.unsavedTitle')))) return;
+		onClose();
+	}
 
 	const CHECK_TYPES: FhirCheck['type'][] = [
 		'not_empty', 'cardinality', 'regex', 'one_of', 'contains', 'min_length', 'max_length',
@@ -83,6 +93,8 @@
 			const set = await listFhirRules();
 			rules = set.rules;
 			packPath = set.path;
+			packStamp = set.stamp;
+			packStatus = set.status;
 			selected = rules.length > 0 ? 0 : null;
 		} catch (e) {
 			error = String(e);
@@ -186,9 +198,11 @@
 		error = null;
 		ruleError = null;
 		try {
-			const set = await saveFhirRules(rules);
+			const set = await saveFhirRules(rules, packStamp);
 			rules = set.rules;
 			packPath = set.path;
+			packStamp = set.stamp;
+			packStatus = set.status;
 			dirty = false;
 		} catch (e) {
 			ruleError = describe(e);
@@ -207,16 +221,22 @@
 	}
 </script>
 
-<div class="modal-backdrop" role="presentation" onclick={onClose}>
+<div class="modal-backdrop" role="presentation" onclick={requestClose}>
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="modal rules-modal" onclick={(e) => e.stopPropagation()}>
 		<div class="modal-header">
 			<h2>{t('fhirRules.title')}</h2>
-			<button class="close-btn" onclick={onClose} aria-label="Close">×</button>
+			<button class="close-btn" onclick={requestClose} aria-label="Close">×</button>
 		</div>
 
 		<div class="modal-body">
 			<p class="intro">{t('fhirRules.intro')}</p>
+
+			{#if packStatus}
+				<!-- The intro says the rules run on every validation; say so
+				     when they do not, or Test would contradict F6. -->
+				<div class="banner warn" role="status">{t(`fhirRules.status.${packStatus}`)}</div>
+			{/if}
 
 			{#if error}
 				<div class="banner error">{error}</div>
@@ -464,7 +484,7 @@
 		</div>
 
 		<div class="modal-footer">
-			<button class="btn" onclick={onClose}>{t('common.close')}</button>
+			<button class="btn" onclick={requestClose}>{t('modal.close')}</button>
 			<button class="btn btn-primary" onclick={save} disabled={saving || !dirty}>
 				{saving ? t('fhirRules.saving') : t('fhirRules.save')}
 			</button>
@@ -485,6 +505,7 @@
 	.intro { margin: 0 0 10px; color: var(--color-text-secondary); }
 	.banner { padding: 8px 10px; border-radius: 4px; background: var(--color-bg-tertiary); margin-bottom: 8px; }
 	.banner.error { background: rgba(220, 60, 60, 0.15); color: var(--color-error, #e06c6c); }
+	.banner.warn { color: var(--color-warning); border: 1px solid var(--color-warning); }
 
 	.rules-layout { display: grid; grid-template-columns: 250px 1fr; gap: 14px; align-items: start; }
 	.rules-list { border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden; }
@@ -519,7 +540,7 @@
 	.hint.inline { align-self: center; }
 	.editor-actions { display: flex; gap: 8px; align-items: center; }
 	.btn { padding: 5px 12px; border: 1px solid var(--color-border); border-radius: 4px; background: none; color: var(--color-text-primary); font-family: inherit; font-size: 12px; cursor: pointer; }
-	.btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+	.btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg-primary); }
 	.btn.danger { margin-left: auto; color: #e06c6c; }
 	.btn:disabled { opacity: 0.5; cursor: default; }
 

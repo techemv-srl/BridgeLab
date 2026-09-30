@@ -14,6 +14,9 @@
 		cursorLine?: number;
 		cursorColumn?: number;
 		isModified?: boolean;
+		/** Why the current text did not parse, when what is shown comes
+		 *  from an earlier version of it. */
+		parseStale?: string | null;
 		/** Validation summary from the last run; null = not validated yet. */
 		errorCount?: number | null;
 		warningCount?: number | null;
@@ -33,11 +36,17 @@
 		cursorLine = 1,
 		cursorColumn = 1,
 		isModified = false,
+		parseStale = null,
 		errorCount = null,
 		warningCount = null,
 		onShowValidation,
 		onExpandAll,
 	}: Props = $props();
+
+	/** "1 segment" / "3 segments": the key with a `.one` variant for 1. */
+	function counted(key: string, count: number): string {
+		return tr(count === 1 ? `${key}.one` : key, { count });
+	}
 
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -53,6 +62,9 @@
 		{:else}
 			<span class="status-item hint">{tr('status.notParsed')}</span>
 		{/if}
+		{#if parseStale}
+			<span class="status-item stale" title={parseStale}>⚠ {tr('status.parseStale')}</span>
+		{/if}
 		{#if messageType}
 			<span class="status-item">{messageType}</span>
 		{/if}
@@ -60,7 +72,8 @@
 			<span class="status-item" title={tr('xsd.version')}>v{version}</span>
 		{/if}
 		{#if segmentCount > 0}
-			<span class="status-item">{tr('status.segments', { count: segmentCount })}</span>
+			<!-- A FHIR resource has elements, not segments. -->
+			<span class="status-item">{counted(format.startsWith('FHIR') ? 'status.elements' : 'status.segments', segmentCount)}</span>
 		{/if}
 		{#if truncationCount > 0}
 			<button
@@ -68,7 +81,7 @@
 				title={tr('status.truncatedHint')}
 				onclick={() => onExpandAll?.()}
 			>
-				{tr('status.truncated', { count: truncationCount })}
+				{counted('status.truncated', truncationCount)}
 			</button>
 		{/if}
 		{#if errorCount !== null || warningCount !== null}
@@ -125,6 +138,11 @@
 
 	.status-item.format {
 		font-weight: 700;
+	}
+
+	.status-item.stale {
+		opacity: 1;
+		font-weight: 600;
 	}
 
 	.status-item.truncated {

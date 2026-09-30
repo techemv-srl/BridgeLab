@@ -26,7 +26,7 @@ pub fn parse(input: &str) -> Result<Expr, String> {
     if tokens.is_empty() {
         return Err("Empty expression".into());
     }
-    let mut p = Parser { tokens, pos: 0 };
+    let mut p = Parser { tokens, pos: 0, nesting: 0 };
     let expr = p.parse_expr(0)?;
     if p.pos < p.tokens.len() {
         return Err(format!("Unexpected trailing input at '{}'", p.tokens[p.pos]));
@@ -46,9 +46,83 @@ const BP_TYPE: u8 = 8;
 const BP_ADDITIVE: u8 = 9;
 const BP_MULTIPLICATIVE: u8 = 10;
 
+/// How deep an expression may nest: parentheses, operators, path steps and
+/// function arguments together. Evaluating (and even dropping) a deeper
+/// tree recurses once per level and could overflow the stack, which aborts
+/// the whole app; real expressions stay far below this.
+pub const MAX_DEPTH: usize = 64;
+
+fn too_deep() -> String {
+    format!("Expression is nested more than {} levels deep", MAX_DEPTH)
+}
+
+/// Depth of `e`, or `None` once it passes [`MAX_DEPTH`] (the walk stops
+/// there, so it never recurses deeper than the limit).
+fn depth_within_limit(e: &Expr) -> Option<usize> {
+    fn walk(e: &Expr, level: usize) -> Option<usize> {
+        if level > MAX_DEPTH {
+            return None;
+        }
+        let next = level + 1;
+        let deepest = |children: &mut dyn Iterator<Item = &Expr>| -> Option<usize> {
+            let mut max = level;
+            for c in children {
+                max = max.max(walk(c, next)?);
+            }
+            Some(max)
+        };
+        match e {
+            Expr::Literal(_) | Expr::Variable(_) | Expr::EnvConstant(_) => Some(level),
+            Expr::Member { base, .. } => deepest(&mut base.as_deref().into_iter()),
+            Expr::Function { base, args, .. } => {
+                deepest(&mut base.as_deref().into_iter().chain(args.iter()))
+            }
+            Expr::Index { base, index } => deepest(&mut [base.as_ref(), index.as_ref()].into_iter()),
+            Expr::Unary { operand, .. } => deepest(&mut std::iter::once(operand.as_ref())),
+            Expr::TypeOp { operand, .. } => deepest(&mut std::iter::once(operand.as_ref())),
+            Expr::Binary { left, right, .. } => deepest(&mut [left.as_ref(), right.as_ref()].into_iter()),
+        }
+    }
+    walk(e, 1)
+}
+
+/// Refuse `e` once it is nested too deep, before anything is built on it.
+fn guard(e: Expr) -> Result<Expr, String> {
+    match depth_within_limit(&e) {
+        Some(_) => Ok(e),
+        None => {
+            // Taken apart level by level: the default drop of a deep tree
+            // recurses as far as the tree goes.
+            dismantle(e);
+            Err(too_deep())
+        }
+    }
+}
+
+/// Drop a tree without recursing once per level.
+fn dismantle(e: Expr) {
+    let mut stack = vec![e];
+    while let Some(e) = stack.pop() {
+        match e {
+            Expr::Literal(_) | Expr::Variable(_) | Expr::EnvConstant(_) => {}
+            Expr::Member { base, .. } => stack.extend(base.map(|b| *b)),
+            Expr::Function { base, args, .. } => {
+                stack.extend(base.map(|b| *b));
+                stack.extend(args);
+            }
+            Expr::Index { base, index } => stack.extend([*base, *index]),
+            Expr::Unary { operand, .. } | Expr::TypeOp { operand, .. } => stack.push(*operand),
+            Expr::Binary { left, right, .. } => stack.extend([*left, *right]),
+        }
+    }
+}
+
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    /// Current recursion depth of the parser itself (parentheses and
+    /// prefix operators recurse without always deepening the tree).
+    nesting: usize,
 }
 
 impl Parser {
@@ -87,6 +161,13 @@ impl Parser {
     /// Precedence climbing: parse a unary/postfix operand, then fold in
     /// every infix operator that binds at least as tightly as `min_bp`.
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, String> {
+        self.nesting += 1;
+        let out = if self.nesting > MAX_DEPTH { Err(too_deep()) } else { self.parse_expr_inner(min_bp) };
+        self.nesting -= 1;
+        out
+    }
+
+    fn parse_expr_inner(&mut self, min_bp: u8) -> Result<Expr, String> {
         let mut left = self.parse_unary()?;
 
         while let Some(token) = self.peek() {
@@ -113,7 +194,7 @@ impl Parser {
                 // which is what anyone writing it means. Real namespaces
                 // (`System.`, `FHIR.`) are still folded into the type name by
                 // parse_type_name, so nothing legitimate is lost.
-                left = self.parse_suffixes(typed)?;
+                left = self.parse_suffixes(guard(typed)?)?;
                 continue;
             }
 
@@ -125,17 +206,29 @@ impl Parser {
             // `implies` is right-associative; everything else is left.
             let next_min = if op == BinOp::Implies { bp } else { bp + 1 };
             let right = self.parse_expr(next_min)?;
-            left = Expr::Binary {
+            left = guard(Expr::Binary {
                 op,
                 left: Box::new(left),
                 right: Box::new(right),
-            };
+            })?;
         }
 
         Ok(left)
     }
 
     fn parse_unary(&mut self) -> Result<Expr, String> {
+        // Only a sign recurses here; anything else goes on to a primary.
+        let sign = matches!(self.peek(), Some(Token::Symbol(Symbol::Minus | Symbol::Plus)));
+        if !sign {
+            return self.parse_unary_inner().and_then(guard);
+        }
+        self.nesting += 1;
+        let out = if self.nesting > MAX_DEPTH { Err(too_deep()) } else { self.parse_unary_inner() };
+        self.nesting -= 1;
+        out.and_then(guard)
+    }
+
+    fn parse_unary_inner(&mut self) -> Result<Expr, String> {
         match self.peek() {
             Some(Token::Symbol(Symbol::Minus)) => {
                 self.bump();
@@ -162,14 +255,14 @@ impl Parser {
     fn parse_suffixes(&mut self, mut expr: Expr) -> Result<Expr, String> {
         loop {
             if self.eat_symbol(Symbol::Dot) {
-                expr = self.parse_invocation(Some(expr))?;
+                expr = guard(self.parse_invocation(Some(expr))?)?;
             } else if self.eat_symbol(Symbol::LBracket) {
                 let index = self.parse_expr(0)?;
                 self.expect_symbol(Symbol::RBracket)?;
-                expr = Expr::Index {
+                expr = guard(Expr::Index {
                     base: Box::new(expr),
                     index: Box::new(index),
-                };
+                })?;
             } else {
                 break;
             }
@@ -242,6 +335,9 @@ impl Parser {
             }
             Some(Token::DateTime(s)) => {
                 self.bump();
+                if super::types::as_temporal(&s).is_none() {
+                    return Err(format!("'@{}' is not a valid date or time", s));
+                }
                 Ok(Expr::Literal(Literal::DateTime(s)))
             }
             Some(Token::Keyword(Keyword::True)) => {

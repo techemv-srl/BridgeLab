@@ -26,8 +26,13 @@
 ;;   license.json   so a reinstall stays licensed; the seat of an online
 ;;                  activation is freed with Deactivate in the app, which
 ;;                  the uninstaller cannot do;
-;;   trial.json and %LOCALAPPDATA%\BridgeLab\.bl-state.json, so
-;;                  uninstalling is not a way to restart the trial.
+;;   trial.json and .bl-state.json (the trial's second copy, here
+;;                  since 1.9) and %LOCALAPPDATA%\BridgeLab\.bl-state.json,
+;;                  so uninstalling is not a way to restart the trial.
+;; Since 1.9 the app keeps license.json and trial.json in
+;; %LOCALAPPDATA%\BridgeLab (bound to this machine, so not roaming) and
+;; moves the %APPDATA% copies there on first start; the purge below only
+;; ever touches %APPDATA%, so both locations are kept.
 ;;
 ;; Language: the setup remembers the chosen language in
 ;; HKCU\Software\TECHEMV SRL\BridgeLab "Installer Language" and, by default,
@@ -98,6 +103,7 @@
       StrCmp $R2 ".." bl_purge_next
       StrCmp $R2 "license.json" bl_purge_next
       StrCmp $R2 "trial.json" bl_purge_next
+      StrCmp $R2 ".bl-state.json" bl_purge_next
       IfFileExists "$R0\BridgeLab\$R2\*.*" 0 bl_purge_file
         RMDir /r "$R0\BridgeLab\$R2"
         Goto bl_purge_next

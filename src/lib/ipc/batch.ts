@@ -56,3 +56,17 @@ export async function generateTestMessages(
 ): Promise<GeneratedMessage[]> {
 	return invoke('generate_test_messages', { kind, count, seed: seed ?? null });
 }
+
+export interface SaveOutcome {
+	name: string;
+	/** `"exists"` when a file of that name was already there (left as it was), otherwise the write error; null when written. */
+	error: string | null;
+}
+
+/** Write generated messages into `dir`; a file already there is never replaced. */
+export async function saveGeneratedMessages(
+	dir: string,
+	files: { name: string; content: string }[],
+): Promise<SaveOutcome[]> {
+	return invoke('save_generated_messages', { dir, files });
+}

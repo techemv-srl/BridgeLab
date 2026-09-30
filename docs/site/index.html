@@ -4,8 +4,9 @@
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>BridgeLab &mdash; HL7/FHIR made simple</title>
-	<meta name="description" content="A modern, open-source HL7 v2 and FHIR message editor. Handles 10 MB messages with base64 payloads, MLLP/HTTP listeners, anonymization, validation and plugin rule packs. Windows, macOS, Linux." />
+	<meta name="description" content="A modern, open-source HL7 v2 and FHIR message editor. Handles 10 MB messages with base64 payloads, an MLLP listener and HTTP client, anonymization, validation and plugin rule packs. Windows, macOS, Linux." />
 	<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+	<link rel="preload" href="assets/fonts/plex-sans-var.woff2" as="font" type="font/woff2" crossorigin>
 	<link rel="stylesheet" href="style.css" />
 
 	<meta property="og:type" content="website" />
@@ -25,6 +26,7 @@
 
 <header class="nav">
 	<div class="nav-wrap">
+		<div class="brand-group">
 		<a class="brand" href="#">
 			<svg class="brand-icon" viewBox="0 0 120 50" width="34" height="14" aria-hidden="true">
 				<defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#89b4fa"/><stop offset="100%" stop-color="#cba6f7"/></linearGradient></defs>
@@ -37,6 +39,8 @@
 			</svg>
 			<span>BridgeLab</span>
 		</a>
+		<a class="brand-by" href="https://techemvee.eu/en/">by TECHEMV</a>
+		</div>
 		<nav class="nav-links">
 			<a href="#features">Features</a>
 			<a href="#compare">Compare</a>
@@ -69,7 +73,7 @@
 				</svg>
 				<span>BridgeLab</span>
 			</div>
-			<span class="eyebrow"><span id="version-badge">v1.3.1</span> &middot; Open Core &middot; MIT</span>
+			<span class="eyebrow"><span id="version-badge">v2.0.0</span> &middot; Open Core &middot; MIT</span>
 			<h1>HL7/FHIR <span class="grad">made simple.</span></h1>
 			<p class="lede">
 				A modern message editor for healthcare integration. Handles
@@ -84,7 +88,7 @@
 			</div>
 			<ul class="kpi">
 				<li><strong>&lt; 2s</strong><span>open a 10 MB message</span></li>
-				<li><strong>&lt; 300 MB</strong><span>peak RAM, base64 included</span></li>
+				<li><strong>&lt; 300 MB</strong><span>parser RAM on a 10 MB message</span></li>
 				<li><strong>5</strong><span>UI languages (EN/IT/FR/ES/DE)</span></li>
 			</ul>
 		</div>
@@ -100,7 +104,7 @@
 <span class="seg">EVN</span>|A01|20260415120000
 <span class="seg">PID</span>|1||MRN12345^^^HOSPITAL^MR||<span class="val">DOE^JOHN^A</span>||19800101|M|||...
 <span class="seg">PV1</span>|1|I|WARD01^101^A||||<span class="val">SMITH^JANE^M</span>|||CAR
-<span class="seg">OBX</span>|1|ED|^^PDF^Base64|| <span class="trunc">{...256000 bytes}</span>
+<span class="seg">OBX</span>|1|ED|^^PDF^Base64|| <span class="trunc">⟨Base64 · 250.0 KB #1⟩</span>
 <span class="seg">DG1</span>|1||I10^Essential hypertension|...</pre>
 					<div class="side">
 						<div class="tree-h">Tree</div>
@@ -115,7 +119,7 @@
 								</ul>
 							</li>
 							<li>▸ PV1 <em>(3)</em></li>
-							<li>▸ OBX <em>(4) · truncated</em></li>
+							<li>▸ OBX <em>(4) · folded</em></li>
 						</ul>
 					</div>
 				</div>
@@ -130,17 +134,18 @@
 		<h2>Built for the work integration teams actually do</h2>
 		<div class="features">
 			<article class="feat">
-				<div class="feat-ic">⚡</div>
+				<span class="feat-num" aria-hidden="true">01</span>
 				<h3>Large-message ready</h3>
 				<p>
-					SIMD-accelerated streaming parser with on-demand field
-					truncation. Open multi-megabyte ORU^R01 messages with
-					base64 attachments in under two seconds. The editor
-					never shows you 10 MB of raw text.
+					SIMD-accelerated streaming parser. Open multi-megabyte
+					ORU^R01 messages with base64 attachments in under two
+					seconds. Long fields are folded into a chip in the
+					editor while the text stays whole: you never scroll
+					through 10 MB of base64, and nothing is cut.
 				</p>
 			</article>
 			<article class="feat">
-				<div class="feat-ic">🔗</div>
+				<span class="feat-num" aria-hidden="true">02</span>
 				<h3>Client &amp; listener, bidirectional</h3>
 				<p>
 					Send via MLLP / HTTP / HTTPS, listen on any port with
@@ -153,7 +158,7 @@
 				</p>
 			</article>
 			<article class="feat">
-				<div class="feat-ic">🔍</div>
+				<span class="feat-num" aria-hidden="true">03</span>
 				<h3>Validation &amp; FHIRPath</h3>
 				<p>
 					Structural, field-level and data-type validation out of
@@ -161,27 +166,29 @@
 					StructureDefinitions of the built-in R4 core and any
 					FHIR package you install on top &mdash; cardinality,
 					element types, choice elements, unknown elements,
-					Bundle references. A full FHIRPath&nbsp;2.0 evaluator,
-					checked against the official HL7 test suite. Your own
+					Bundle references. A FHIRPath&nbsp;2.0 evaluator that
+					passes 91% of the official HL7 test suite. Your own
 					rules drop in as declarative JSON plugin packs &mdash;
 					no recompile, no code execution.
 				</p>
 			</article>
 			<article class="feat">
-				<div class="feat-ic">🛡️</div>
+				<span class="feat-num" aria-hidden="true">04</span>
 				<h3>PHI anonymization</h3>
 				<p>
-					21 built-in PHI fields across PID/NK1/IN1/GT1 with
+					89 built-in PHI fields across PID/PV1/MRG/NK1/GT1/IN1/IN2,
+					NTE comments and free-text OBX results, with
 					sensitivity-aware masking. Extend the catalogue with
 					regional PHI via plugin packs. Structure is preserved
 					so anonymized messages remain valid.
 				</p>
 			</article>
 			<article class="feat">
-				<div class="feat-ic">📄</div>
+				<span class="feat-num" aria-hidden="true">05</span>
 				<h3>Field Inspector</h3>
 				<p>
-					Right-click any field in the editor or the tree to see
+					Select any field in the editor or the tree and open the
+					inspector (&#9432; or View &rarr; Field Inspector) to see
 					the HL7 schema-derived name, type, cardinality, length
 					limits and current value. Coded values are explained
 					inline from the 394 HL7 value tables that ship with
@@ -191,17 +198,18 @@
 				</p>
 			</article>
 			<article class="feat">
-				<div class="feat-ic">🌍</div>
+				<span class="feat-num" aria-hidden="true">06</span>
 				<h3>i18n + cross-platform</h3>
 				<p>
 					UI in English, Italian, French, Spanish and German.
 					Native installers for Windows (NSIS + MSI), macOS (DMG)
 					and Linux (.deb, .rpm, AppImage) &mdash; with .hl7 file
-					association and language selector.
+					association (not for the AppImage, which cannot register
+					one) and a language selector.
 				</p>
 			</article>
 			<article class="feat">
-				<div class="feat-ic">📐</div>
+				<span class="feat-num" aria-hidden="true">07</span>
 				<h3>XSD schema export</h3>
 				<p>
 					Generate a standards-compliant XSD for any HL7 v2
@@ -245,7 +253,7 @@
 						<td>Windows, macOS, Linux</td>
 						<td>Yes</td>
 						<td>Free core &middot; Pro &euro;249 / seat / year</td>
-						<td>1.8.1 &mdash; Sep 2026</td>
+						<td>2.0.0 &mdash; Sep 2026</td>
 					</tr>
 					<tr>
 						<td>HL7 Soup</td>
@@ -292,7 +300,7 @@
 		</div>
 		<p class="sub tiny">
 			Figures taken from the vendors&rsquo; public websites on
-			25 September 2026 (<a href="https://www.integrationsoup.com/purchase.html">HL7 Soup</a>,
+			30 September 2026 (<a href="https://www.integrationsoup.com/purchase.html">HL7 Soup</a>,
 			<a href="https://7edit.com/order/">7Edit</a>,
 			<a href="https://hl7spy.ca/hl7spy-v26-2-113-released/">HL7Spy</a>,
 			<a href="https://sourceforge.net/projects/hl7inspector/">HL7 Inspector</a>
@@ -323,7 +331,7 @@
 				<li>Component-level narrowing via the <code>component</code> field</li>
 				<li>FHIR rule packs too: a FHIRPath invariant, or a selector plus a check</li>
 				<li>Extra PHI fields with sensitivity-aware masking</li>
-				<li>Live reload without restarting the app</li>
+				<li>Reload from Settings &rarr; Plugins, no restart needed</li>
 				<li>Per-pack enable/disable, persisted across sessions</li>
 			</ul>
 			<p class="sub">
@@ -350,8 +358,9 @@
 	<div class="wrap">
 		<h2>Download</h2>
 		<p class="sub">
-			Pick your platform. Installers include the MIT license page and
-			a language selector. Starts with a 14-day Pro trial; the free
+			Pick your platform. Installers show the license (MIT, and the
+			BUSL&nbsp;1.1 of the <code>pro/</code> directories) and, on
+			Windows, a language selector. Starts with a 14-day Pro trial; the free
 			tier stays usable for real work forever.
 		</p>
 		<div class="dlgrid">
@@ -363,12 +372,12 @@
 			<a class="dl" href="https://github.com/techemv-srl/BridgeLab/releases/latest">
 				<div class="dl-os">macOS</div>
 				<div class="dl-file">.dmg</div>
-				<div class="dl-hint">Apple Silicon &amp; Intel &middot; 10.15+</div>
+				<div class="dl-hint">Apple Silicon &amp; Intel &middot; 11+ with Safari 16.4 or later</div>
 			</a>
 			<a class="dl" href="https://github.com/techemv-srl/BridgeLab/releases/latest">
 				<div class="dl-os">Linux</div>
 				<div class="dl-file">.AppImage / .deb / .rpm</div>
-				<div class="dl-hint">x64 &middot; glibc 2.31+</div>
+				<div class="dl-hint">x64 &middot; glibc 2.35+ (Ubuntu 22.04, Debian 12 or newer)</div>
 			</a>
 		</div>
 		<p class="sub tiny">
@@ -425,8 +434,8 @@
 					<li>Unlimited plugins &amp; test cases</li>
 					<li>E-mail support</li>
 				</ul>
-				<a class="btn btn-primary" data-buy="PRO" href="mailto:info@techemv.it?subject=BridgeLab%20Pro%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Pro.%0A%0ACompany%3A%20%0ASeats%3A%201%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks">Request a quote</a>
-				<a class="quote-alt sub tiny" hidden href="mailto:info@techemv.it?subject=BridgeLab%20quote%20request">Prefer an invoice? Request a quote</a>
+				<a class="btn btn-primary" data-buy="PRO" data-quote="mailto:info@techemv.it?subject=BridgeLab%20Pro%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Pro.%0A%0ACompany%3A%20%0ASeats%3A%201%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks" href="https://techemv.onfastspring.com/bridgelab-pro">Buy now</a>
+				<a class="quote-alt sub tiny" href="mailto:info@techemv.it?subject=BridgeLab%20quote%20request">Prefer an invoice? Request a quote</a>
 			</div>
 			<div class="price-card">
 				<div class="price-tier">Enterprise</div>
@@ -437,20 +446,21 @@
 					<li>SOAP 1.1/1.2 client with WS-Security (WSDL import coming soon)</li>
 					<li>Priority support</li>
 					<li>Multi-seat: &minus;10% from 3, &minus;15% from 5</li>
-					<li>Offline keys for air-gapped sites</li>
 					<li>PO / wire-transfer invoicing</li>
 				</ul>
-				<a class="btn" data-buy="ENT" href="mailto:info@techemv.it?subject=BridgeLab%20Enterprise%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Enterprise.%0A%0ACompany%3A%20%0ASeats%3A%20%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks">Request a quote</a>
-				<a class="quote-alt sub tiny" hidden href="mailto:info@techemv.it?subject=BridgeLab%20quote%20request">Prefer an invoice? Request a quote</a>
+				<a class="btn" data-buy="ENT" data-quote="mailto:info@techemv.it?subject=BridgeLab%20Enterprise%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Enterprise.%0A%0ACompany%3A%20%0ASeats%3A%20%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks" href="https://techemv.onfastspring.com/bridgelab-ent">Buy now</a>
+				<a class="quote-alt sub tiny" href="mailto:info@techemv.it?subject=BridgeLab%20quote%20request">Prefer an invoice? Request a quote</a>
 			</div>
 		</div>
-		<p class="sub tiny" id="launch-hint" hidden>
-			Launch offer applied automatically at checkout &mdash; &euro;50 off the
-			first year of Pro, on licenses bought by 31 December 2026. Business
-			customers can enter their VAT ID at checkout (reverse charge).
+		<p class="sub tiny" id="launch-hint">
+			Launch offer &mdash; &euro;50 off the first year of Pro, on licenses
+			bought by 31 December 2026. The checkout window applies it
+			automatically; if a checkout page does not show it, enter the code
+			<strong>LAUNCH199</strong>. Business customers can enter their VAT ID
+			at checkout (reverse charge).
 		</p>
 		<p class="sub tiny" id="checkout-done" hidden>
-			&#10003; Order complete &mdash; your activation code is on its way by
+			Order complete &mdash; your activation code is on its way by
 			e-mail from noreply@techemv.it (usually within a minute; check spam
 			the first time). Paste it into BridgeLab&rsquo;s License dialog to activate.
 		</p>
@@ -458,7 +468,7 @@
 			Prices exclude VAT. Quotes are answered within one business day;
 			you receive an activation code by e-mail &mdash; paste it into
 			BridgeLab&rsquo;s License dialog and the seat activates online.
-			<span id="checkout-soon">Self-serve checkout is coming soon.</span>
+			<span id="checkout-soon" hidden>Self-serve checkout is coming soon.</span>
 		</p>
 	</div>
 </section>
@@ -472,13 +482,15 @@
 				<summary>Is the core really free for commercial use?</summary>
 				<p>
 					Yes. The core is MIT-licensed and stays fully usable
-					for production integration work. Pro and Enterprise
-					tiers unlock advanced features &mdash; MLLP listener,
-					PHI masking and batch tools, FHIRPath, the full XSD
-					catalogue, priority support &mdash; plus the SOAP 1.1/1.2
-					client with WS-Security and a team test case library
-					(coming soon), but nothing that blocks day-to-day HL7
-					work.
+					for production integration work. Pro unlocks advanced
+					features &mdash; MLLP listener, PHI masking and batch
+					tools, FHIRPath, the full XSD catalogue, unlimited saved
+					test cases &mdash; and Enterprise adds the SOAP 1.1/1.2
+					client with WS-Security and priority support, but
+					nothing that blocks day-to-day HL7 work. The test case
+					library is in every tier, and teams share it as pack
+					files (Export&hellip; / Import&hellip;) that the free
+					CLI runs in CI.
 				</p>
 			</details>
 			<details>
@@ -500,8 +512,10 @@
 					You receive an activation code (BL-PRO-XXXX-XXXX-XXXX) by
 					e-mail. Paste it into the License dialog: the app makes a
 					single HTTPS call, receives a signed license and from then
-					on everything is verified locally &mdash; no heartbeat, no
-					phone-home required. When you renew, the same code is
+					on everything is verified locally &mdash; nothing to keep
+					online. At start-up the app re-checks the code in the
+					background about once a week (it keeps working if the
+					server cannot be reached). When you renew, the same code is
 					extended server-side &mdash; no new code to distribute:
 					the app picks the new expiry up on its own within two
 					weeks of expiry, or instantly via <em>Update
@@ -535,11 +549,13 @@
 			<details>
 				<summary>How do you handle 10 MB messages with base64 PDFs?</summary>
 				<p>
-					The Rust backend uses a streaming zero-copy parser
-					with field-level truncation. The editor receives
-					truncated text (<code>{...N bytes}</code> markers) so
-					Monaco is never asked to render megabytes. Expansion
-					is on-demand via right-click or per-field.
+					The Rust backend uses a streaming zero-copy parser.
+					The editor holds the full text but shows each long
+					field folded, as a chip such as
+					<code>&#10216;Base64 &middot; 78.1 KB #1&#10217;</code>,
+					so Monaco never lays out megabytes of base64. Expand
+					one field from the context menu, or all of them from
+					the status bar; saving always writes the whole text.
 				</p>
 			</details>
 			<details>
@@ -566,15 +582,18 @@
 						to <code>license-api.techemv.it</code> when you paste
 						an activation code (and when you deactivate). A
 						license activated online repeats that call in the
-						background at most once a day, from 14 days before
-						it expires, to pick up a renewal. Community, trial
-						and offline keys never make it.
+						background at start-up once a week (once a day from
+						14 days before it expires) to pick up a renewal or
+						a revoked code. Community, trial and offline keys
+						never make it.
 					</li>
 					<li>
 						<strong>Telemetry &mdash; off unless you turn it
 						on</strong> in Settings &rarr; Privacy. Then, once a
-						day, usage counters with app version, OS, language,
-						license tier, a random installation ID and &mdash; for
+						day, usage counters with product name, app version,
+						OS and architecture, language, license tier, days
+						since installation, number of active plugin packs,
+						a timestamp, a random installation ID and &mdash; for
 						licenses activated online &mdash; the activation code
 						(used to flag revoked licenses) go to
 						<code>license-api.techemv.it</code>; the app shows the
@@ -608,7 +627,14 @@
 				<p>
 					BridgeLab processes every message locally. Nothing
 					leaves your machine unless you explicitly send it via
-					the Communication panel. Telemetry is off by default
+					the Communication panel. Session tabs, test cases and
+					the communication history are kept in a local database
+					(on Windows in the roaming <code>%APPDATA%</code>, which
+					travels with roaming profiles). The history keeps the
+					full request and response of the latest 100 exchanges
+					(up to 256&nbsp;KB each), messages received by the MLLP
+					listener included, so it holds the patient data they
+					carry. Telemetry is off by default
 					and, when enabled in Settings &rarr; Privacy, carries
 					usage counters, app version, OS, language, license tier,
 					a random installation ID and, for licenses activated
@@ -639,9 +665,11 @@
 					v2.1 through v2.7.1 for segment / field schemas
 					(ten versions, 2,320 selectable message structures)
 					plus the 394 HL7 value tables behind the coded fields.
-					Custom (Z-) segments parse and edit cleanly, they
-					just fall back to raw values in the Field Inspector
-					unless you ship a plugin pack for them.
+					Custom (Z-) segments parse, edit and validate cleanly;
+					the Field Inspector shows their fields as not in the
+					HL7 standard, since it reads the built-in definitions
+					only. Plugin packs can add validation rules and PHI
+					fields for them.
 				</p>
 			</details>
 			<details>
@@ -652,8 +680,14 @@
 					<code>info</code>,
 					<code>anonymize</code>,
 					<code>to-json</code>,
-					<code>batch</code>.
-					Outputs JSON or JUnit XML so you can wire it into CI.
+					<code>batch</code>,
+					<code>test</code> (runs the test case packs you export
+					from the app), <code>fhirpath</code>,
+					<code>send</code> (MLLP, fails unless the ACK is AA or CA)
+					and <code>xsd</code>. Free, no licence; reads files or
+					standard input and outputs JSON or JUnit XML so you can
+					wire it into CI. The Linux binary needs glibc 2.34 or
+					newer (Ubuntu 22.04, Debian 12, RHEL 9).
 				</p>
 			</details>
 		</div>
@@ -679,24 +713,25 @@
 			</div>
 			<p class="foot-copy">
 				HL7/FHIR made simple. Built by
-				<a href="https://www.techemv.it"><strong>TECHEMV SRL</strong></a>
+				<a href="https://techemvee.eu/en/"><strong>TECHEMV SRL</strong></a>
 				&mdash; the team behind
-				<a href="https://techemvee.eu/aurora/">Aurora Integration Engine</a>,
+				<a href="https://techemvee.eu/en/aurora-en/">Aurora Integration Engine</a>,
 				our healthcare integration platform.
 			</p>
 		</div>
 		<div class="foot-links">
-			<a href="https://www.techemv.it">TECHEMV.it</a>
-			<a href="https://techemvee.eu/aurora/">Aurora Engine</a>
+			<a href="https://techemvee.eu/en/">TECHEMV</a>
+			<a href="https://techemvee.eu/en/aurora-en/">Aurora Engine</a>
 			<a href="https://github.com/techemv-srl/BridgeLab">GitHub</a>
 			<a href="https://github.com/techemv-srl/BridgeLab/releases">Releases</a>
+			<a href="https://techemvee.eu/en/bridgelab-hl7-viewer/">Product page</a>
 			<a href="https://github.com/techemv-srl/BridgeLab/blob/main/docs/PLUGINS.md">Plugins</a>
 			<a href="https://github.com/techemv-srl/BridgeLab/blob/main/TEST_PLAN.md">Test plan</a>
 			<a href="https://github.com/techemv-srl/BridgeLab/blob/main/LICENSE">License (MIT / BUSL-1.1)</a>
 		</div>
 	</div>
 	<div class="wrap foot-bottom">
-		<p>&copy; 2026 <a href="https://www.techemv.it">TECHEMV SRL</a> &mdash; Pordenone, Italy &mdash; VAT IT01960380937 &mdash; <a href="mailto:info@techemv.it">info@techemv.it</a></p>
+		<p>&copy; 2026 <a href="https://techemvee.eu/en/">TECHEMV SRL</a> &mdash; 33170 Pordenone, Italy &mdash; VAT IT01960380937 &mdash; <a href="mailto:info@techemv.it">info@techemv.it</a></p>
 		<p><a href="terms.html">Terms &amp; EULA</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="refunds.html">Refund policy</a></p>
 	</div>
 </footer>
@@ -768,7 +803,9 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 
 	// Manual sales get the same attribution: append the stored source to
 	// the mailto quote links' body at click time.
-	document.querySelectorAll('a[href^="mailto:"][data-buy], a.quote-alt[href^="mailto:"]').forEach(function (a) {
+	// (The buy buttons become mailto links only in quote-only mode; the
+	// click handler checks the link at click time.)
+	document.querySelectorAll('a[data-buy], a.quote-alt[href^="mailto:"]').forEach(function (a) {
 		a.addEventListener('click', function () {
 			var s = storedSource();
 			if (!s || !a.getAttribute('href') || a.getAttribute('href').indexOf('mailto:') !== 0) return;
@@ -782,7 +819,10 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 	// --------------------------------------------------------------------
 
 	var force = params.get('checkout') === 'test';
-	if (!FS_CFG.enabled && !force) return;          // quote-only mode: SBL never loaded
+	if (!FS_CFG.enabled && !force) {                // quote-only mode: SBL never loaded
+		quoteOnly();
+		return;
+	}
 	var env = force ? 'test' : FS_CFG.environment;
 
 	// Called by SBL when the popup closes; orderReference is set only on a completed order
@@ -814,6 +854,22 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 		if (LAUNCH_CODE && tier === 'PRO' && launchActive()) fastspring.builder.promo(LAUNCH_CODE);
 		fastspring.builder.add(FS_CFG.products[tier], 1);           // quantity editable in the popup = seats
 		fastspring.builder.checkout();
+	}
+
+	// The static page describes the live store (hosted FastSpring pages, so
+	// it works without scripts). With the store switched off, turn it back
+	// into the quote-only page.
+	function quoteOnly() {
+		document.querySelectorAll('[data-buy]').forEach(function (a) {
+			a.textContent = 'Request a quote';
+			a.setAttribute('href', a.getAttribute('data-quote'));
+			var q = a.parentElement.querySelector('.quote-alt');
+			if (q) q.hidden = true;
+		});
+		var hint = document.getElementById('launch-hint');
+		if (hint) hint.hidden = true;
+		var soon = document.getElementById('checkout-soon');
+		if (soon) soon.hidden = false;
 	}
 
 	function wire() {

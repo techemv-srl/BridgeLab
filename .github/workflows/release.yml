@@ -59,7 +59,7 @@ jobs:
 
             ---
 
-            *BridgeLab is built by TECHEMV SRL — [www.techemv.it](https://www.techemv.it) · info@techemv.it*
+            *BridgeLab is built by [TECHEMV SRL](https://techemvee.eu/en/) · info@techemv.it*
 
   build-app:
     name: Build ${{ matrix.platform.name }}
@@ -120,6 +120,12 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      # The installers' licence page and the licence every bundle carries
+      # (src-tauri/LICENSE-bundle.txt, and LICENSE-installer.txt for the
+      # installer page) must match LICENSE + the pro/ ones.
+      - name: Check the bundled licence is up to date
+        run: node scripts/gen-license-bundle.mjs --check
 
       # macOS Developer ID signing + notarization. The Apple env vars are
       # exported ONLY when the corresponding secrets are non-empty: putting

@@ -10,10 +10,12 @@
 		activeTabId: string | null;
 		onSelectTab: (tabId: string) => void;
 		onCloseTab: (tabId: string) => void;
+		/** Close every tab but `keepId`, with one confirmation for all. */
+		onCloseOthers: (keepId: string) => void;
 		onNewTab: () => void;
 	}
 
-	let { tabs, activeTabId, onSelectTab, onCloseTab, onNewTab }: Props = $props();
+	let { tabs, activeTabId, onSelectTab, onCloseTab, onCloseOthers, onNewTab }: Props = $props();
 
 	let contextMenuTabId = $state<string | null>(null);
 	let contextMenuPos = $state({ x: 0, y: 0 });
@@ -89,11 +91,11 @@
 			{tr('tabs.closeTab')}
 		</button>
 		<button onclick={() => {
-			const keep = contextMenuTabId;
+			const keep = contextMenuTabId!;
 			closeContextMenu();
-			// Per-tab close goes through the host's handler so unsaved-changes
-			// prompts still fire (the dialog store queues them).
-			for (const t of tabs.filter((t) => t.id !== keep)) onCloseTab(t.id);
+			// One grouped unsaved-changes prompt in the host: per-tab prompts
+			// would overwrite each other in the single dialog slot.
+			onCloseOthers(keep);
 		}}>
 			{tr('tabs.closeOthers')}
 		</button>

@@ -1,0 +1,73 @@
+LICENSING OF THIS REPOSITORY
+====================
+
+Everything in this repository is licensed under the MIT License below, EXCEPT the contents of the following directories, which are licensed under the Business Source License 1.1 (see the LICENSE file inside each directory for the full terms and parameters):
+
+  src-tauri/src/pro/
+  src/lib/pro/
+
+Code published in this repository under the MIT License before the introduction of these directories remains MIT-licensed.
+
+====================
+
+MIT License
+
+Copyright (c) 2026 TECHEMV SRL
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+====================
+
+Business Source License 1.1
+
+License text: https://mariadb.com/bsl11/
+
+--------------------
+
+Licensor: TECHEMV SRL, Pordenone, Italy (VAT IT01960380937)
+
+Licensed Work: All source code contained in this directory (src-tauri/src/pro/) and its subdirectories. The Licensed Work is (c) 2026 TECHEMV SRL.
+
+Additional Use Grant: You may use the Licensed Work in production (a) as part of an official TECHEMV build of BridgeLab, under the BridgeLab Terms of Sale & EULA, whatever the edition — the features it implements are unlocked only for the editions that include them; and (b) in any other form, such as a build compiled from source, only with an active BridgeLab Enterprise subscription. Compiling, reading and modifying the Licensed Work for evaluation, review and non-production development is permitted.
+
+Change Date: Four years after the date each version of the Licensed Work is first published.
+
+Change License: MIT
+
+--------------------
+
+Notice
+
+The Business Source License (this document, or the "License") is not an Open Source license. However, the Licensed Work will eventually be made available under an Open Source License, as stated in this License.
+
+For the full text of the Business Source License 1.1, see https://mariadb.com/bsl11/ — the parameters above complete it for this Licensed Work. All other files in this repository outside the directories carrying this LICENSE file remain under the MIT license (see the LICENSE file at the repository root).
+
+====================
+
+Business Source License 1.1
+
+License text: https://mariadb.com/bsl11/
+
+--------------------
+
+Licensor: TECHEMV SRL, Pordenone, Italy (VAT IT01960380937)
+
+Licensed Work: All source code contained in this directory (src/lib/pro/) and its subdirectories. The Licensed Work is (c) 2026 TECHEMV SRL.
+
+Additional Use Grant: You may use the Licensed Work in production (a) as part of an official TECHEMV build of BridgeLab, under the BridgeLab Terms of Sale & EULA, whatever the edition — the features it implements are unlocked only for the editions that include them; and (b) in any other form, such as a build compiled from source, only with an active BridgeLab Enterprise subscription. Compiling, reading and modifying the Licensed Work for evaluation, review and non-production development is permitted.
+
+Change Date: Four years after the date each version of the Licensed Work is first published.
+
+Change License: MIT
+
+--------------------
+
+Notice
+
+The Business Source License (this document, or the "License") is not an Open Source license. However, the Licensed Work will eventually be made available under an Open Source License, as stated in this License.
+
+For the full text of the Business Source License 1.1, see https://mariadb.com/bsl11/ — the parameters above complete it for this Licensed Work. All other files in this repository outside the directories carrying this LICENSE file remain under the MIT license (see the LICENSE file at the repository root).

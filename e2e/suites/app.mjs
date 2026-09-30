@@ -2,6 +2,9 @@
 // catalogue, the FHIRPath engine, the FHIR rules builder and profile
 // validation.
 
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { Key } from 'selenium-webdriver';
+import { tmpdir } from 'node:os';
 import {
 	Report, newSession, ready, waitFor, js, sleep, paste, tools, closeModal,
 	validate, fhirpath, PATIENT, BUNDLE, HL7_V23,
@@ -37,6 +40,31 @@ export async function appSuite() {
 			// show the welcome card.
 			if (state.tabs === 0 && !state.welcome) throw new Error('no tabs and no welcome screen');
 			return state.tabs === 0 ? 'welcome screen' : `session restored (${state.tabs} tabs)`;
+		});
+		await r.check('a sample message opens in a new tab, parsed', async () => {
+			// A restored session (BL_KEEP_PROFILE=1) has no welcome screen;
+			// the File menu offers the same dialog.
+			const via = await js(d, `
+				const b = [...document.querySelectorAll('.welcome-action')].find((x) => x.querySelector('.wa-label')?.textContent === 'Sample messages');
+				if (b) { b.click(); return 'welcome screen'; }
+				return null;`) ?? await (async () => {
+				await js(d, `[...document.querySelectorAll('.menu-trigger')].find((x) => /file/i.test(x.textContent))?.click()`);
+				await sleep(350);
+				const hit = await js(d, `
+					const i = [...document.querySelectorAll('.menu-item')].find((x) => x.textContent.includes('Sample Messages'));
+					if (!i) return false; i.click(); return true;`);
+				if (!hit) throw new Error('no "Sample messages" on the welcome screen or in the File menu');
+				return 'File menu';
+			})();
+			await waitFor(d, 'return document.querySelectorAll(".smp-item").length >= 12', 10000, 'sample list');
+			await js(d, `
+				const it = [...document.querySelectorAll('.smp-item')].find((x) => x.textContent.includes('complete blood count'));
+				it.click();`);
+			await js(d, `[...document.querySelectorAll('.smp-footer .btn-primary')][0].click()`);
+			const label = await waitFor(d, `
+				const t = [...document.querySelectorAll('.tab')].map((x) => x.textContent).find((x) => x.includes('ORU^R01 v2.5.1'));
+				return t && document.querySelectorAll('.tree-node, [data-node-id]').length > 0 ? t.trim() : null;`, 15000, 'sample tab parsed');
+			return `${via}: ${label}`;
 		});
 		await r.check('F1 opens the manual in its own window, with content', async () => {
 			// The window used to load a blob: URL made by the main webview,
@@ -109,6 +137,323 @@ export async function appSuite() {
 			const txt = await validate(d);
 			if (!/severity|error|warning|info/i.test(txt)) throw new Error(txt.slice(0, 120));
 			return txt.slice(0, 70);
+		});
+		await r.check('a Latin-1 file opens with its accents intact', async () => {
+			// ISO-8859-1 with MSH-18 8859/1: refused before 1.9.0 ("stream did
+			// not contain valid UTF-8"); now decoded in the declared charset.
+			const path = `${process.cwd()}/tests/fixtures/hl7/adt_a01_latin1.hl7`;
+			const res = await d.executeAsyncScript(`
+				const done = arguments[arguments.length - 1];
+				window.__TAURI_INTERNALS__.invoke('open_file', { path: arguments[0] })
+					.then((r) => done({ ok: true, text: r.truncated_text, type: r.message_type }))
+					.catch((e) => done({ ok: false, error: String(e) }));
+			`, path);
+			if (!res.ok) throw new Error(res.error);
+			if (!res.text.includes('Müller^Jörg') || !res.text.includes('Lettò 2')) throw new Error(res.text.slice(0, 160));
+			// Save writes it back in the charset MSH-18 declares.
+			const out = `${tmpdir()}/bl-e2e-latin1-${process.pid}.hl7`;
+			const saved = await d.executeAsyncScript(`
+				const done = arguments[arguments.length - 1];
+				window.__TAURI_INTERNALS__.invoke('save_file', { messageId: null, path: arguments[0], content: arguments[1] })
+					.then(() => done({ ok: true })).catch((e) => done({ ok: false, error: String(e) }));
+			`, out, res.text);
+			if (!saved.ok) throw new Error(saved.error);
+			const bytes = readFileSync(out);
+			rmSync(out, { force: true });
+			if (!bytes.includes(Buffer.from('M\xfcller', 'latin1'))) throw new Error('saved file is not ISO-8859-1');
+			return `${res.type}: Müller^Jörg, Lettò 2; saved back as ISO-8859-1`;
+		});
+		await r.check('a greyed standard segment is inserted at its standard position', async () => {
+			// Right-click a ghost row > Insert: the skeleton used to land on
+			// line 1, above MSH, breaking the message.
+			await paste(d, [
+				'MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|MSG3|P|2.5',
+				'PID|1||12345^^^FAC^MR||Smith^Jane||19900515|F',
+				'OBR|1||ORD1|CBC^Blood count',
+				'OBX|1|NM|WBC^Leukocytes||6.1|10*9/L|4.0-10.0|N|||F',
+			].join('\r'));
+			const viewMenu = (label) => js(d, `
+				const t = [...document.querySelectorAll('.menu-trigger')].find((x) => /view/i.test(x.textContent));
+				t.click();
+				return new Promise((res) => setTimeout(() => {
+					const i = [...document.querySelectorAll('.menu-item')].find((x) => x.textContent.includes(${JSON.stringify('Show Schema Fields')}));
+					if (i) i.click();
+					res(!!i);
+				}, 300));`);
+			if (!await viewMenu()) throw new Error('no "Show Schema Fields" in the View menu');
+			try {
+				await waitFor(d, `return [...document.querySelectorAll('.tree-node.placeholder .label')].some((l) => l.textContent.trim().startsWith('PV1')) || null`, 10000, 'ghost PV1 row');
+				await js(d, `
+					const row = [...document.querySelectorAll('.tree-node.placeholder')].find((r) => r.querySelector('.label')?.textContent.trim().startsWith('PV1'));
+					row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 50, clientY: 50 }));`);
+				await sleep(300);
+				const clicked = await js(d, `
+					const b = [...document.querySelectorAll('.context-menu-item')].find((x) => x.textContent.includes('Insert PV1'));
+					if (!b) return false; b.click(); return true;`);
+				if (!clicked) throw new Error('no "Insert PV1 segment" in the context menu');
+				const lines = await waitFor(d, `
+					const t = [...document.querySelectorAll('.monaco-editor .view-line')].map((l) => l.textContent.replace(/\u00a0/g, ' ').trim()).filter(Boolean);
+					return t.some((l) => l.startsWith('PV1')) ? t : null;`, 10000, 'PV1 line in the editor');
+				const order = lines.map((l) => l.slice(0, 3));
+				if (order[0] !== 'MSH') throw new Error(`first line is ${order[0]}: ${order.join(' ')}`);
+				if (!(order.indexOf('PV1') > order.indexOf('PID') && order.indexOf('PV1') < order.indexOf('OBR'))) throw new Error(order.join(' '));
+				return order.join(' ');
+			} finally {
+				await viewMenu();
+			}
+		});
+
+		await r.check('a paste into a text field leaves the open message alone', async () => {
+			// The window-level paste fallback used to replace the whole message
+			// with whatever was pasted into a search box or the licence field.
+			await paste(d, HL7_V23);
+			const before = await js(d, `return document.querySelectorAll('.tab').length`);
+			await js(d, `
+				const i = document.createElement('input');
+				i.id = 'bl-e2e-input';
+				document.body.appendChild(i);
+				i.focus();
+				const dt = new DataTransfer();
+				dt.setData('text/plain', 'Smith');
+				i.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));`);
+			await sleep(800);
+			const text = await js(d, `return [...document.querySelectorAll('.monaco-editor .view-line')].map((l) => l.textContent).join('\\n')`);
+			const after = await js(d, `document.getElementById('bl-e2e-input')?.remove(); return document.querySelectorAll('.tab').length`);
+			if (!text.includes('MSH|')) throw new Error(`message replaced: ${text.slice(0, 80)}`);
+			if (after !== before) throw new Error(`tabs ${before} -> ${after}`);
+			return 'message intact';
+		});
+		await r.check('each tab keeps its own undo history across tab switches', async () => {
+			// Switching tabs used to replace the editor text, which wiped the
+			// undo history: Ctrl+Z after coming back did nothing.
+			const text = () => js(d, `return [...document.querySelectorAll('.monaco-editor .view-line')].map((l) => l.textContent).join('\\n')`);
+			// Key.chord inside sendKeys leaves Ctrl held on WebKitWebDriver, so
+			// the text after it arrived as shortcuts: press and release it.
+			const focus = () => js(d, `document.querySelector('.monaco-editor textarea')?.focus()`);
+			const ctrl = async (key) => {
+				await focus();
+				await d.actions().keyDown(Key.CONTROL).sendKeys(key).keyUp(Key.CONTROL).perform();
+				await sleep(600);
+			};
+			const type = async (s) => {
+				await focus();
+				await d.actions().sendKeys(s).perform();
+				await sleep(600);
+			};
+			await paste(d, 'MSH|^~\\&|A|B|C|D|20240101||ADT^A01|UNDOA|P|2.5\rPID|1||U1');
+			const tabA = (await js(d, 'return document.querySelectorAll(".tab").length')) - 1;
+			await ctrl(Key.END);
+			await type('ZZTYPED');
+			if (!(await text()).includes('ZZTYPED')) throw new Error('typing did not reach the editor');
+			await paste(d, 'MSH|^~\\&|A|B|C|D|20240101||ADT^A01|UNDOB|P|2.5\rPID|1||U2');
+			await ctrl(Key.END);
+			await type('QQOTHER');
+			await js(d, `document.querySelectorAll('.tab')[${tabA}].click()`);
+			await waitFor(d, `return [...document.querySelectorAll('.monaco-editor .view-line')].some((l) => l.textContent.includes('UNDOA')) || null`, 10000, 'tab A shown');
+			await ctrl('z');
+			const undone = await text();
+			if (undone.includes('ZZTYPED')) throw new Error('Ctrl+Z after switching back did not undo the typing');
+			if (!undone.includes('UNDOA')) throw new Error('undo went past the pasted message');
+			await ctrl('y');
+			if (!(await text()).includes('ZZTYPED')) throw new Error('Ctrl+Y did not redo');
+			return 'undo and redo kept per tab';
+		});
+		await r.check('closing a tab with unsaved changes asks first', async () => {
+			await paste(d, HL7_V23);
+			const before = await js(d, `return document.querySelectorAll('.tab').length`);
+			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true }))`);
+			await waitFor(d, `return document.querySelector('.dialog[role="alertdialog"]') ? true : null`, 5000, 'confirmation dialog');
+			await js(d, `[...document.querySelectorAll('.dialog-footer .btn')].find((b) => !b.classList.contains('btn-primary'))?.click()`);
+			await sleep(400);
+			const after = await js(d, `return document.querySelectorAll('.tab').length`);
+			if (after !== before) throw new Error(`tab closed without confirmation: ${before} -> ${after}`);
+			return 'kept after Cancel';
+		});
+
+		await r.check('app shortcuts work with the editor focused (Ctrl+L)', async () => {
+			// Monaco binds Ctrl+L itself and used to swallow it.
+			await paste(d, HL7_V23);
+			await js(d, `
+				const ta = document.querySelector('.monaco-editor textarea');
+				ta.focus();
+				ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', code: 'KeyL', keyCode: 76, ctrlKey: true, bubbles: true, cancelable: true }));`);
+			await waitFor(d, `return document.querySelector('.modal') ? true : null`, 5000, 'Test Case Library');
+			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
+			await waitFor(d, `return document.querySelector('.modal') ? null : true`, 5000, 'library closed');
+			return 'library opened from the editor';
+		});
+		await r.check('Escape closes About and Settings', async () => {
+			for (const open of ['about', 'settings']) {
+				await js(d, open === 'about'
+					? `[...document.querySelectorAll('.menu-trigger')].find((x) => /help/i.test(x.textContent))?.click()`
+					: `window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true }))`);
+				await sleep(350);
+				if (open === 'about') await js(d, `[...document.querySelectorAll('.menu-item')].find((x) => /about/i.test(x.textContent))?.click()`);
+				await waitFor(d, `return document.querySelector('.modal') ? true : null`, 5000, `${open} dialog`);
+				await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
+				await waitFor(d, `return document.querySelector('.modal') ? null : true`, 5000, `${open} closed`);
+			}
+			return 'both closed';
+		});
+		await r.check('editor settings for suggestions, occurrences, links and sticky scroll are saved', async () => {
+			const openSettings = async () => {
+				await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true }))`);
+				await waitFor(d, `return document.getElementById('s-wordsugg') ? true : null`, 5000, 'Settings → Editor');
+				await sleep(800); // let it load the saved values before changing them
+			};
+			const read = () => js(d, `
+				const box = (t) => [...document.querySelectorAll('.setting-check label')].find((l) => l.textContent.includes(t))?.querySelector('input')?.checked;
+				return { sugg: document.getElementById('s-wordsugg').value, occ: box('occurrences'), links: box('Clickable links'), sticky: box('Sticky scroll') };`);
+			const set = (want) => js(d, `
+				const want = ${JSON.stringify(want)};
+				const box = (t) => [...document.querySelectorAll('.setting-check label')].find((l) => l.textContent.includes(t))?.querySelector('input');
+				for (const [t, v] of [['occurrences', want.occ], ['Clickable links', want.links], ['Sticky scroll', want.sticky]]) {
+					const b = box(t); if (b && b.checked !== v) b.click();
+				}
+				const sel = document.getElementById('s-wordsugg'); sel.value = want.sugg; sel.dispatchEvent(new Event('change', { bubbles: true }));
+				document.querySelector('.modal .btn-primary').click();`);
+			await openSettings();
+			const before = await read();
+			if (before.sugg !== 'currentDocument' || before.occ !== true || before.links !== true || before.sticky !== false) {
+				throw new Error(`unexpected defaults: ${JSON.stringify(before)}`);
+			}
+			const changed = { sugg: 'off', occ: false, links: false, sticky: true };
+			await set(changed);
+			await waitFor(d, `return document.getElementById('s-wordsugg') ? null : true`, 5000, 'Settings closed');
+			const stored = await js(d, `return Promise.all(['editor_word_suggestions', 'editor_occurrences', 'editor_links', 'editor_sticky_scroll'].map((key) => window.__TAURI_INTERNALS__.invoke('get_preference', { key })))`);
+			if (JSON.stringify(stored) !== JSON.stringify(['off', 'false', 'false', 'true'])) throw new Error(`stored: ${JSON.stringify(stored)}`);
+			await openSettings();
+			// The dialog loads the saved values after it opens.
+			const want = JSON.stringify(changed);
+			const after = await waitFor(d, `
+				const box = (t) => [...document.querySelectorAll('.setting-check label')].find((l) => l.textContent.includes(t))?.querySelector('input')?.checked;
+				const v = JSON.stringify({ sugg: document.getElementById('s-wordsugg').value, occ: box('occurrences'), links: box('Clickable links'), sticky: box('Sticky scroll') });
+				return v === ${JSON.stringify(want)} ? v : null;`, 5000, 'saved values shown').catch(async () => JSON.stringify(await read()));
+			if (after !== want) throw new Error(`reopened: ${after}`);
+			// Back to the defaults, for the checks that follow.
+			await set(before);
+			await waitFor(d, `return document.getElementById('s-wordsugg') ? null : true`, 5000, 'Settings closed');
+			return 'saved, reloaded and restored';
+		});
+		await r.check('a launch file that does not exist is reported', async () => {
+			const path = `${tmpdir()}/bl-e2e-missing-${process.pid}.hl7`;
+			await js(d, `return window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'app://open-files', payload: [${JSON.stringify(path)}] })`);
+			const text = await waitFor(d, `return document.querySelector('.dialog[role="alertdialog"]')?.textContent ?? null`, 10000, 'error dialog');
+			await js(d, `document.querySelector('.dialog-footer .btn-primary')?.click()`);
+			await sleep(300);
+			if (!text.includes(path)) throw new Error(`dialog: ${text.slice(0, 120)}`);
+			return 'reported';
+		});
+		await r.check('Save asks before overwriting a file changed by another program', async () => {
+			const path = `${tmpdir()}/bl-e2e-ext-${process.pid}.hl7`;
+			const mine = 'MSH|^~\\&|A|B|C|D|20240101||ADT^A01|MINE|P|2.5\rPID|1||1||Old^One\r';
+			const theirs = 'MSH|^~\\&|A|B|C|D|20240101||ADT^A08|THEIRS|P|2.5\rPID|1||1||New^Name^Longer\r';
+			writeFileSync(path, mine);
+			try {
+				await js(d, `return window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'app://open-files', payload: [${JSON.stringify(path)}] })`);
+				await waitFor(d, `return [...document.querySelectorAll('.monaco-editor .view-line')].some((l) => l.textContent.includes('MINE')) ? true : null`, 10000, 'file open');
+				writeFileSync(path, theirs);
+				await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }))`);
+				await waitFor(d, `return document.querySelector('.dialog[role="alertdialog"]') ? true : null`, 5000, 'overwrite question');
+				await js(d, `[...document.querySelectorAll('.dialog-footer .btn')].find((b) => !b.classList.contains('btn-primary'))?.click()`);
+				await sleep(500);
+				const disk = readFileSync(path, 'utf8');
+				if (!disk.includes('THEIRS')) throw new Error('the newer file was overwritten');
+				return 'asked; Cancel kept the newer file';
+			} finally {
+				rmSync(path, { force: true });
+			}
+		});
+
+		await r.check('a long field is folded in the editor and Save keeps the file intact', async () => {
+			// Save used to write the "{...N bytes}" placeholder over the file.
+			const b64 = Buffer.from(Array.from({ length: 3840 }, (_, i) => (i * 37) % 256)).toString('base64');
+			const msg = [
+				'MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|MSGF|P|2.5',
+				'PID|1||12345^^^FAC^MR||Smith^Jane||19900515|F',
+				`OBX|1|ED|PDF^Report||^application^pdf^Base64^${b64}||||||F`,
+			].join('\r') + '\r';
+			const path = `${tmpdir()}/bl-e2e-fold-${process.pid}.hl7`;
+			writeFileSync(path, msg);
+			try {
+				await js(d, `return window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'app://open-files', payload: [${JSON.stringify(path)}] })`);
+				const label = await waitFor(d, `
+					const c = document.querySelector('.monaco-editor .bl-fold');
+					return c ? c.textContent : null;`, 15000, 'folded chip');
+				if (!/Base64\s·\s5\.0\sKB/.test(label)) throw new Error(`chip: ${label}`);
+				await js(d, `document.querySelector('.monaco-editor textarea')?.focus()`);
+				await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }))`);
+				await sleep(1500);
+				const after = readFileSync(path, 'utf8');
+				if (after !== msg) throw new Error(`file changed on save: ${msg.length} -> ${after.length} bytes`);
+				// Clicking the chip expands it in place.
+				await d.findElement({ css: '.monaco-editor .bl-fold' }).click();
+				await waitFor(d, `return document.querySelector('.monaco-editor .bl-fold') ? null : true`, 5000, 'chip expanded');
+				return `${label}; saved ${after.length} bytes unchanged; chip expands on click`;
+			} finally {
+				rmSync(path, { force: true });
+			}
+		});
+
+		await r.check('the segment grid lists every OBX as a row', async () => {
+			await paste(d, [
+				'MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|MSG2|P|2.5',
+				'PID|1||12345^^^FAC^MR||Smith^Jane',
+				'OBR|1||ORD1|CBC^Blood count',
+				'OBX|1|NM|WBC^Leukocytes||6.1|10*9/L|4.0-10.0|N|||F',
+				'OBX|2|NM|HGB^Hemoglobin||10.2|g/dL|12.0-16.0|L|||F',
+				'OBX|3|NM|PLT^Platelets||250|10*9/L|150-400|N|||F',
+			].join('\r'));
+			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'G', ctrlKey: true, shiftKey: true, bubbles: true }))`);
+			const n = await waitFor(d, `
+				const rows = document.querySelectorAll('.grid-table tbody tr').length;
+				return rows >= 3 ? rows : null;
+			`, 15000, 'grid rows');
+			const info = await js(d, `return {
+				seg: document.querySelector('.grid-table .col-pos')?.textContent.trim(),
+				desc: [...document.querySelectorAll('.grid-table .desc')].map((e) => e.textContent.trim()),
+			}`);
+			if (!info.seg?.startsWith('OBX-')) throw new Error(`first column ${info.seg}`);
+			if (n !== 3) throw new Error(`${n} rows`);
+			// Close the panel again so later checks see the usual layout.
+			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'G', ctrlKey: true, shiftKey: true, bubbles: true }))`);
+			return `${n} OBX rows; codes: ${info.desc.slice(0, 3).join(', ')}`;
+		});
+
+		await r.check('a message with thousands of segments draws only the rows in view', async () => {
+			// Every segment used to get a DOM row: 20,000 OBX froze the window.
+			const lines = ['MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|BIG|P|2.5', 'PID|1||1^^^H^MR||Big^Log', 'OBR|1||O1|CBC^Count'];
+			for (let i = 1; i <= 5000; i++) lines.push(`OBX|${i}|NM|WBC^Leukocytes^LN||1.1|10*9/L|4.0-10.0|N|||F`);
+			const t0 = Date.now();
+			await paste(d, lines.join('\r'));
+			const shown = await waitFor(d, `
+				const badge = document.querySelector('.panel-badge')?.textContent.trim();
+				return badge === '5003' ? document.querySelectorAll('.tree-node').length : null;`, 30000, 'tree of 5003 segments');
+			if (shown > 300) throw new Error(`${shown} rows in the DOM`);
+			// Keyboard: End goes to the last segment, which is then drawn.
+			await js(d, `document.querySelector('.tree-node')?.focus()`);
+			await js(d, `document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))`);
+			await waitFor(d, `return document.querySelector('[data-node-id="seg5002"].selected') ? true : null`, 5000, 'last row selected');
+			return `${shown} rows drawn for 5003 segments; parsed and shown in ${Date.now() - t0} ms`;
+		});
+
+		await r.check('clicking a validation issue selects its field, blank lines and all', async () => {
+			await paste(d, [
+				'MSH|^~\\&|A|B|C|D|20240101120000||ADT^A01|1|P|2.5',
+				'',
+				'EVN|A01|20240101',
+				'',
+				'PID|1||1^^^H^MR||Rossi^Mario||19801399|F',
+			].join('\n'));
+			const txt = await validate(d);
+			if (!/PID-7/.test(txt)) throw new Error(`no PID-7 issue: ${txt.slice(0, 120)}`);
+			await js(d, `[...document.querySelectorAll('.issue-row')].find((x) => x.textContent.includes('PID-7'))?.click()`);
+			const status = await waitFor(d, `
+				const t = document.querySelector('.status-bar')?.textContent ?? '';
+				return /Ln 5\\b/.test(t) ? t.replace(/\\s+/g, ' ') : null;`, 5000, 'caret on the PID line');
+			const tree = await waitFor(d, `return document.querySelector('.tree-node.selected')?.dataset.nodeId ?? null`, 5000, 'tree selection');
+			if (tree !== 'seg2.f7') throw new Error(`tree selected ${tree}`);
+			return `${status.match(/Ln \d+, Col \d+/)?.[0]}; tree ${tree}`;
 		});
 
 		// ---- version catalogue -------------------------------------------
@@ -202,6 +547,18 @@ export async function appSuite() {
 			`);
 			if (!t) throw new Error('no trace block');
 			return t;
+		});
+
+		await r.check('FHIR XML has typed primitives, as in JSON', async () => {
+			// Every XML primitive used to arrive as a string: Patient.active
+			// was never "= true" and a Quantity value could not be compared.
+			await paste(d, '<Observation xmlns="http://hl7.org/fhir"><status value="final"/>'
+				+ '<code><text value="Glucose"/></code>'
+				+ '<valueQuantity><value value="6.30"/><unit value="mmol/L"/></valueQuantity></Observation>');
+			const x = await fhirpath(d, 'Observation.value.value > 6.2');
+			if (x.error) throw new Error(x.error);
+			if (x.values.join('') !== 'true') throw new Error(JSON.stringify(x).slice(0, 120));
+			return 'Observation.value.value > 6.2 = true';
 		});
 
 		await r.check('resolve() follows a Reference inside a Bundle', async () => {

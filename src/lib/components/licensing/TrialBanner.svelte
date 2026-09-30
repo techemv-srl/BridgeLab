@@ -55,13 +55,13 @@
 		})();
 	}
 
-	// Urgent = banner cannot be dismissed:
-	// - expired Pro/Enterprise license (must reactivate to regain features)
-	// - trial with ≤3 days left (final warning)
+	// Urgent = banner cannot be dismissed: a trial with ≤3 days left (the
+	// final warning).
 	// Free (trial elapsed) is NOT urgent — community tier remains usable.
+	// An expired or unusable license is not urgent either: Community keeps
+	// working, so the banner can be closed (it returns at the next change).
 	let urgent = $derived(
-		status.license_type === 'expired' ||
-		(status.license_type === 'trial' && (status.days_remaining ?? 0) <= 3)
+		status.license_type === 'trial' && (status.days_remaining ?? 0) <= 3
 	);
 
 	let visible = $derived.by(() => {
@@ -100,11 +100,11 @@
 	<div class="trial-banner" class:urgent>
 		<span class="banner-text">
 			{#if status.license_type === 'trial'}
-				{tr('banner.trialPro', { days: status.days_remaining ?? 0 })}
+				{tr(status.days_remaining === 1 ? 'banner.trialProOne' : 'banner.trialPro', { days: status.days_remaining ?? 0 })}
 			{:else if status.license_type === 'free'}
 				{tr('banner.freeAfterTrial')}
 			{:else if status.license_type === 'expired'}
-				{tr('banner.expired')}
+				{tr(status.problem === 'other_machine' ? 'banner.otherMachine' : status.problem === 'invalid' ? 'banner.invalidLicense' : 'banner.expired')}
 			{/if}
 		</span>
 		<button class="banner-btn" onclick={onActivate}>
@@ -136,7 +136,9 @@
 		min-height: 28px;
 		padding: 3px 8px;
 		background-color: var(--color-warning);
-		color: #1e1e2e;
+		/* Dark on the dark theme's pale yellow, light on the light theme's
+		   dark amber. */
+		color: var(--color-bg-primary);
 		font-size: 11px;
 		font-weight: 600;
 		flex-shrink: 0;

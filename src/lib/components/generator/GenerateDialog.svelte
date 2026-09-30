@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { generateTestMessages, type GeneratedMessage } from '$lib/ipc/batch';
+	import { generateTestMessages, saveGeneratedMessages, type GeneratedMessage } from '$lib/ipc/batch';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -25,15 +25,24 @@
 	let saving = $state(false);
 	let errorMsg = $state('');
 	let savedTo = $state('');
+	/** Files "Save all" left alone because the name was taken, and other failures. */
+	let notSaved = $state<string[]>([]);
+	let saveErrors = $state<string[]>([]);
 
 	async function handleGenerate() {
 		generating = true;
 		errorMsg = '';
 		savedTo = '';
+		notSaved = [];
+		saveErrors = [];
 		try {
-			const seed = seedText.trim() === '' ? undefined : Number(seedText);
-			if (seed !== undefined && !Number.isFinite(seed)) {
-				errorMsg = tr('gen.badSeed');
+			// A whole number the backend's u64 takes exactly: -1, 1.5 or 1e20
+			// used to surface as a raw IPC error, and past 2^53 two seeds
+			// silently gave the same messages.
+			const raw = seedText.trim();
+			const seed = raw === '' ? undefined : /^\d+$/.test(raw) ? Number(raw) : NaN;
+			if (seed !== undefined && !(Number.isSafeInteger(seed) && seed >= 0)) {
+				errorMsg = tr('gen.badSeed', { max: Number.MAX_SAFE_INTEGER });
 				return;
 			}
 			const n = Number.isFinite(count) ? Math.max(1, Math.min(500, Math.trunc(count))) : 10;
@@ -56,17 +65,22 @@
 		if (messages.length === 0) return;
 		saving = true;
 		errorMsg = '';
+		savedTo = '';
+		notSaved = [];
+		saveErrors = [];
 		try {
 			const { open } = await import('@tauri-apps/plugin-dialog');
 			const dir = await open({ directory: true });
 			if (!dir || Array.isArray(dir)) { saving = false; return; }
-			const { writeTextFile } = await import('@tauri-apps/plugin-fs');
 			const prefix = kind === 'mixed' ? 'msg' : kind.replace('^', '_').toLowerCase();
-			for (let i = 0; i < messages.length; i++) {
-				const name = `${prefix}_${String(i + 1).padStart(3, '0')}.hl7`;
-				await writeTextFile(`${dir}/${name}`, messages[i].content);
-			}
-			savedTo = String(dir);
+			const files = messages.map((m, i) => ({ name: `${prefix}_${String(i + 1).padStart(3, '0')}.hl7`, content: m.content }));
+			// Written by the backend with an exclusive create: a file already in
+			// the folder is reported and kept, never replaced.
+			const outcomes = await saveGeneratedMessages(String(dir), files);
+			notSaved = outcomes.filter((o) => o.error === 'exists').map((o) => o.name);
+			saveErrors = outcomes.filter((o) => o.error && o.error !== 'exists').map((o) => `${o.name}: ${o.error}`);
+			const saved = outcomes.filter((o) => !o.error).length;
+			savedTo = saved > 0 ? tr('gen.savedCount', { count: saved, total: files.length, dir: String(dir) }) : '';
 		} catch (e) {
 			errorMsg = String(e);
 		} finally {
@@ -117,7 +131,13 @@
 				<div class="gen-error">{errorMsg}</div>
 			{/if}
 			{#if savedTo}
-				<div class="gen-ok">{tr('gen.savedTo', { dir: savedTo })}</div>
+				<div class="gen-ok">{savedTo}</div>
+			{/if}
+			{#if notSaved.length}
+				<div class="gen-error">{tr('gen.notSavedExists', { count: notSaved.length, names: notSaved.slice(0, 5).join(', ') + (notSaved.length > 5 ? ', …' : '') })}</div>
+			{/if}
+			{#if saveErrors.length}
+				<div class="gen-error">{saveErrors.join('\n')}</div>
 			{/if}
 
 			{#if messages.length > 0}

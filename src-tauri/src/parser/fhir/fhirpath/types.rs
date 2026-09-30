@@ -124,6 +124,67 @@ pub fn is_type(value: &Value, type_name: &str) -> bool {
     }
 }
 
+/// FHIR primitive types, as a choice element's key spells them after the
+/// element name with the first letter upper-cased (`valueDateTime`).
+const FHIR_PRIMITIVES: &[&str] = &[
+    "base64Binary", "boolean", "canonical", "code", "date", "dateTime", "decimal", "id",
+    "instant", "integer", "integer64", "markdown", "oid", "positiveInt", "string", "time",
+    "unsignedInt", "uri", "url", "uuid", "xhtml",
+];
+
+/// Like [`is_type`], for a value whose FHIR type may be known from its key.
+///
+/// `declared` is the suffix of a choice element's key (`DateTime` for
+/// `effectiveDateTime`); `None` falls back to inference from the JSON
+/// shape. A declared type matches itself, its FHIR supertypes (a `code` is
+/// a `string`, an `Age` a `Quantity`) and the System type it maps to.
+pub fn is_declared_type(value: &Value, declared: Option<&str>, type_name: &str) -> bool {
+    let Some(suffix) = declared else { return is_type(value, type_name) };
+    let mut lower = suffix.to_string();
+    if let Some(first) = lower.get_mut(0..1) {
+        first.make_ascii_lowercase();
+    }
+    let declared = if FHIR_PRIMITIVES.contains(&lower.as_str()) { lower } else { suffix.to_string() };
+    let system_only = type_name.starts_with("System.");
+    let name = type_name
+        .strip_prefix("System.")
+        .or_else(|| type_name.strip_prefix("FHIR."))
+        .unwrap_or(type_name);
+    if matches!(name, "Any") {
+        return true;
+    }
+    // The System type a FHIR primitive's value is.
+    let system = match declared.as_str() {
+        "boolean" => Some("Boolean"),
+        "integer" | "positiveInt" | "unsignedInt" => Some("Integer"),
+        "integer64" => Some("Long"),
+        "decimal" => Some("Decimal"),
+        "date" => Some("Date"),
+        "dateTime" | "instant" => Some("DateTime"),
+        "time" => Some("Time"),
+        "string" | "code" | "id" | "markdown" | "uri" | "url" | "canonical" | "oid" | "uuid"
+        | "base64Binary" | "xhtml" => Some("String"),
+        _ => None,
+    };
+    if system == Some(name) {
+        return true;
+    }
+    if system_only {
+        return false;
+    }
+    let supertypes: &[&str] = match declared.as_str() {
+        "code" | "id" | "markdown" => &["string"],
+        "url" | "canonical" | "oid" | "uuid" => &["uri"],
+        "positiveInt" | "unsignedInt" => &["integer"],
+        "Age" | "Count" | "Distance" | "Duration" | "SimpleQuantity" | "MoneyQuantity" => &["Quantity"],
+        _ => &[],
+    };
+    name == declared
+        || supertypes.contains(&name)
+        || matches!(name, "Element" | "DataType")
+        || (system.is_some() && name == "PrimitiveType")
+}
+
 fn is_coding(v: &Value) -> bool {
     let Some(o) = v.as_object() else { return false };
     o.contains_key("code") && !o.contains_key("value") && !o.contains_key("coding")
@@ -393,6 +454,20 @@ fn split_date(s: &str) -> Option<Vec<String>> {
         }
         parts.push(piece.to_string());
     }
+    // A month and a day that exist: 2015-13 and 2015-02-30 are not dates.
+    if let Some(month) = parts.get(1) {
+        let month: u32 = month.parse().ok()?;
+        if !(1..=12).contains(&month) {
+            return None;
+        }
+        if let Some(day) = parts.get(2) {
+            let day: u32 = day.parse().ok()?;
+            let year: i32 = parts[0].parse().ok()?;
+            if day == 0 || day > days_in_month(year, month)? {
+                return None;
+            }
+        }
+    }
     if parts.is_empty() {
         None
     } else {
@@ -573,7 +648,14 @@ impl Temporal {
         }
         let years: i64 = parts.first()?.parse().ok()?;
         if unit == "a" {
-            parts[0] = format!("{:04}", years + amount);
+            let year = years + amount;
+            parts[0] = format!("{:04}", year);
+            // 29 February + 1 year is 28 February, as for months.
+            if parts.len() >= 3 {
+                let month: u32 = parts[1].parse().ok()?;
+                let day: u32 = parts[2].parse().ok()?;
+                parts[2] = format!("{:02}", day.min(days_in_month(year as i32, month)?));
+            }
             return Some(Temporal { parts, ..self.clone() });
         }
         // Months: only meaningful once the value carries a month.

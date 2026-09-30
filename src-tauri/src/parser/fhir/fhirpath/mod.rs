@@ -24,8 +24,8 @@
 //! Element types are inferred from the JSON shape rather than read from
 //! StructureDefinitions — see [`types`] for the rules and their limits.
 //! There is no UCUM engine, so quantity arithmetic and comparison only work
-//! within one unit, and `conformsTo()` reports that profile packages are not
-//! loaded. External terminology (`memberOf()`, `subsumes()`) is likewise out
+//! within one unit, and `conformsTo()` reports that it is not implemented (the
+//! profile validator, not FHIRPath, checks conformance). External terminology (`memberOf()`, `subsumes()`) is likewise out
 //! of scope for an offline desktop app.
 //!
 //! The conformance harness in `tests/fhirpath_suite.rs` runs the official
@@ -66,6 +66,13 @@ pub struct TraceEntry {
 /// reported through `FhirPathResult::error` so the UI can show it inline
 /// next to the expression that caused it.
 pub fn evaluate(expression: &str, root: &Value) -> FhirPathResult {
+    evaluate_within(expression, root, root)
+}
+
+/// Evaluate against `root` as the resource, with `resolve()` searching
+/// `scope`: the Bundle a rule's entry resource sits in, so a reference to
+/// another entry resolves as it does when the whole Bundle is evaluated.
+pub fn evaluate_within(expression: &str, root: &Value, scope: &Value) -> FhirPathResult {
     let expr = expression.trim();
 
     let parsed = match parser::parse(expr) {
@@ -73,7 +80,7 @@ pub fn evaluate(expression: &str, root: &Value) -> FhirPathResult {
         Err(e) => return failed(expr, e),
     };
 
-    let mut env = eval::Env::new(root);
+    let mut env = eval::Env::within(root, scope);
     let focus = vec![root.clone()];
     match eval::eval(&parsed, &focus, &mut env) {
         Ok(results) => FhirPathResult {

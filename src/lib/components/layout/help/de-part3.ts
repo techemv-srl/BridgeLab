@@ -13,8 +13,12 @@ Nachrichtentyp, prüfen Sie das erzeugte Schema in der Vorschau und
 speichern Sie es mit einem Klick.</p>
 
 <h3>Was Sie erhalten</h3>
-<p>Ein eigenständiges XSD nach der Standard-Kodierungskonvention
-HL7 v2.xml:</p>
+<p>Ein eigenständiges XSD, das dem Elementaufbau von HL7 v2.xml folgt
+(Segmente, Felder und Komponenten mit den Namen aus v2.xml), in der Form
+ohne Namespace, die Astraia und ähnliche Werkzeuge verwenden: Das Schema
+deklariert keinen <code>targetNamespace</code>, eine Instanz darf also
+den v2.xml-Namespace (<code>urn:hl7-org:v2xml</code>) nicht tragen, um
+gültig zu sein.</p>
 <ul>
 	<li>Ein Wurzelelement pro Nachricht (z. B. <code>ADT_A01</code>) mit
 		einem Inline-Complex-Type, der die Segmente und Segmentgruppen
@@ -80,9 +84,10 @@ Upgrade-Aufforderung mit Verweis auf
 <h3>Lizenzhinweis</h3>
 <p>BridgeLab verteilt keine urheberrechtlich geschützten XSD-Dateien
 von HL7 weiter. Die Schema-Metadaten werden aus öffentlichen
-HL7-v2-Spezifikationen neu aufgebaut; jede erzeugte Datei trägt einen
-Header, der HL7® als Quellstandard nennt und die Ausgabe als
-abgeleitetes Werk zu Interoperabilitätszwecken kennzeichnet.</p>
+HL7-v2-Spezifikationen neu aufgebaut. HL7® ist der Quellstandard, und
+die Ausgabe ist ein abgeleitetes Werk zu Interoperabilitätszwecken. Die
+erzeugten Dateien haben keinen Kommentar-Header; ergänzen Sie selbst
+einen Hinweis, falls Ihre Richtlinien das verlangen.</p>
 
 <div class="info">Ideales Einsatzziel: Astraia und ähnliche
 Integrationsanwendungen, die handgeschriebene XSD-Definitionen für
@@ -105,26 +110,30 @@ Ressourcenhierarchie als JSON-Pfade zeigt.</p>
 <ul>
 	<li><strong>JSON</strong> - Patient, Observation, Bundle,
 		DiagnosticReport, MedicationRequest und jede andere
-		FHIR-R4/R5-Ressource.</li>
+		FHIR-R4/R5-Ressource. Geprüft wird gegen FHIR R4: Eine R5-Ressource
+		lässt sich öffnen, durchsuchen und mit FHIRPath abfragen, in R5
+		geänderte Elemente werden aber nach R4 gemeldet.</li>
 	<li><strong>XML</strong> - dieselben Ressourcen in XML-Kodierung
 		(<code>&lt;Patient xmlns="http://hl7.org/fhir"&gt;</code>).</li>
 </ul>
 
 <h3>Bundle-Visualisierer (Pro)</h3>
 <p><strong>Werkzeuge → FHIR Bundle-Visualisierer</strong> öffnet eine
-dreigeteilte Ansicht, wenn die aktive Nachricht ein Bundle ist:</p>
+zweigeteilte Ansicht, wenn die aktive Nachricht ein Bundle ist:</p>
 <ul>
 	<li><strong>Linkes Panel:</strong> Liste der Einträge mit
 		Ressourcentyp, Anzeigename (z. B. Patientenname,
-		Observation-Code) und der Anzahl eingehender Referenzen.</li>
-	<li><strong>Mittleres Panel:</strong> ausgehende Referenzen des
-		ausgewählten Eintrags - jedes <code>reference</code>-Feld wird
-		zu einem klickbaren Link, der zum Zieleintrag navigiert.</li>
-	<li><strong>Rechtes Panel:</strong> das rohe JSON der ausgewählten
-		Ressource, mit Syntaxhervorhebung.</li>
+		Observation-Code), Methode der Anfrage und der Anzahl der
+		Referenzen, die der Eintrag enthält.</li>
+	<li><strong>Rechtes Panel:</strong> der ausgewählte Eintrag — seine
+		Details, seine Referenzen (jede ein Link, der zum Zieleintrag
+		navigiert), die Einträge, die auf ihn verweisen, und sein rohes
+		JSON.</li>
 </ul>
 <p><strong>Hängende Referenzen</strong> (die auf nicht im Bundle
-vorhandene Einträge zeigen) werden mit einem roten Badge markiert.</p>
+vorhandene Einträge zeigen) tragen ein Badge <em>verwaist</em> und werden
+in der Kopfzeile gezählt. Eine <code>#id</code>-Referenz auf eine im
+Eintrag enthaltene Ressource ist keine.</p>
 <p>Der Umschalter <strong>Liste / Graph</strong> wechselt zu einem
 Referenzgraphen: Jeder Eintrag ist ein Knoten (nach Ressourcentyp
 eingefärbt), jede <code>reference</code> ein gerichteter Pfeil. Ein
@@ -143,7 +152,11 @@ Spezifikation sowie rund siebzig Funktionen.</p>
 	<li><strong>Navigation:</strong> <code>Patient.name.family</code>,
 		<code>Bundle.entry.resource</code>; Choice-Elemente werden über
 		ihren Basisnamen erreicht — <code>Observation.value</code> findet
-		<code>valueQuantity</code></li>
+		<code>valueQuantity</code>. <code>ofType()</code>, <code>is</code> und
+		<code>as</code> richten sich bei einem Auswahlelement nach dem Typ in
+		seinem Namen: <code>Observation.effective.ofType(dateTime)</code>
+		findet <code>effectiveDateTime</code> auch dann, wenn es nur einen Tag
+		enthält. Sonst wird der Typ aus dem JSON-Wert abgeleitet</li>
 	<li><strong>Indizierung:</strong> <code>Patient.name[0].given</code></li>
 	<li><strong>Filter und Projektion:</strong> <code>where()</code>,
 		<code>select()</code>, <code>repeat()</code>,
@@ -180,17 +193,20 @@ Spezifikation sowie rund siebzig Funktionen.</p>
 Sammlung statt einer Vermutung: <code>@2015-02-04 = @2015-02</code> ist
 weder wahr noch falsch, denn der zweite Wert könnte dieser Tag oder ein
 anderer desselben Monats sein.</p>
-<p>Zuletzt verwendete Ausdrücke stehen in einem Verlaufs-Dropdown zur
-schnellen Wiederverwendung bereit.</p>
+<p>Die zuletzt ausgewerteten Ausdrücke erscheinen als Schaltflächen
+<em>Zuletzt</em> neben den Beispielen (bis zu vier, solange die App offen
+ist). Lässt sich der Text im Editor nicht mehr parsen, sagen das Panel und
+die Statusleiste es: Die Ergebnisse stammen dann aus der letzten gültigen
+Fassung der Ressource.</p>
 
 <h3>FHIR-Validierung</h3>
 <p>F6 funktioniert auch für FHIR-Ressourcen. Fehler markieren fehlende
-Pflichtfelder (z. B. <code>Patient.identifier</code>), ungültige
-Datentypen (gender außerhalb des Value Sets) und strukturelle
-Probleme. Deklarierte kanonische <code>meta.profile</code>-URLs werden
-als Info-Befunde gelistet (die Profilkonformität selbst wird nicht
-geprüft); fehlerhaft aufgebaute Einträge werden als Warnungen
-markiert.</p>
+Pflichtelemente (z. B. <code>Observation.status</code>), ungültige
+Datentypen (gender nicht male, female, other oder unknown) und
+strukturelle Probleme. In <code>meta.profile</code> deklarierte Profile
+werden angewendet, wenn ihre Definitionen vorliegen (siehe
+<em>Profilvalidierung</em> weiter unten); fehlerhaft aufgebaute Einträge
+werden als Warnungen markiert.</p>
 
 <h3>Profilvalidierung (Pro)</h3>
 <p>Standardmäßig wird eine FHIR-Ressource strukturell geprüft: Gibt es einen
@@ -266,9 +282,21 @@ melden.</p>
 <p>Bereits geschriebene Regeln funktionieren in jeder Stufe; der Editor
 erfordert eine Professional-Lizenz. Von Hand geschriebene Packs sind in
 <code>docs/PLUGINS.md</code> dokumentiert.</p>
+<p>Speichern schreibt nur die Regeln neu: Alles andere, was Sie in die
+Datei geschrieben haben (ein <code>$schema</code>, ein Verantwortlicher, ein
+Kommentar an einer Regel), bleibt erhalten. Hat sich die Datei auf der
+Festplatte geändert, während der Editor offen war — die Regel eines
+Kollegen, ein <code>git pull</code> —, verweigert Speichern das
+Überschreiben; schließen und öffnen Sie den Editor erneut, um die aktuellen
+Regeln zu sehen. Zwei Regeln mit derselben ID oder ein Muster, das sich
+nicht kompilieren lässt, werden ebenfalls abgelehnt. Ist das Paket unter
+<strong>Einstellungen → Plugins</strong> ausgeschaltet oder durch das
+Community-Limit aktiver Pakete ausgeschlossen, sagt der Editor das:
+<em>Testen</em> zeigt weiterhin, was eine Regel tun würde, aber F6 führt
+sie nicht aus.</p>
 
 <h3>FHIR-Vorlagen</h3>
-<p><strong>Datei → Neue Nachricht aus Vorlage</strong> enthält eine
+<p><strong>Datei → Neue Nachricht aus Vorlage...</strong> enthält eine
 FHIR-Kategorie: einen minimalen Patient, eine Blutdruck-Observation
 mit Komponenten und ein Transaktions-Bundle, dessen Einträge einander
 über <code>urn:uuid</code> referenzieren — öffnen Sie es und probieren
@@ -361,8 +389,8 @@ bestimmte Komponente einzugrenzen (z. B. den Nachnamen in PID-5.1).</p>
   "name": "EU extra PHI fields",
   "enabled": true,
   "phi_rules": [
-    { "segment": "PID", "field": 25, "sensitivity": "high",
-      "name": "EU National ID" }
+    { "segment": "ZPI", "field": 2,  "sensitivity": "high",
+      "name": "National ID" }
   ]
 }</code></pre>
 
@@ -418,6 +446,8 @@ freischalten, die Integrationsteams und Krankenhäuser benötigen.</p>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>JSON-/CSV-Export</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Batch-Validierung</td>
+		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIR-Profilpakete und Regeleditor</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIRPath-Evaluator + Bundle-Visualisierer</td>
@@ -428,13 +458,22 @@ freischalten, die Integrationsteams und Krankenhäuser benötigen.</p>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>
 
+<p class="note">Die Tabelle gilt für die Desktop-App. Die kostenlose
+<code>bridgelab-cli</code> liest keine Lizenz: ihre Befehle
+<code>anonymize</code>, <code>batch</code>, <code>to-json</code>,
+<code>fhirpath</code> und die Prüfungen mit FHIR-Paketen funktionieren in
+jeder Edition; nur ihr XSD-Export ist auf den Community-Umfang
+beschränkt, und sie wendet die Grenze von 3 Plugin-Paketen an.</p>
+
 <p class="note">Community erlaubt bis zu <strong>3 aktive
 Plugin-Packs</strong> und <strong>10 gespeicherte Testfälle</strong>.
 Nichts wird jemals gesperrt oder gelöscht: Über dem Limit gespeicherte
-Elemente (z. B. aus der Testphase) bleiben sichtbar, bearbeitbar und
-ausführbar — nur neue Speicherungen und Aktivierungen über dem Limit
-fragen nach einem Upgrade, und das Freiwerden eines Platzes
-reaktiviert sie sofort.</p>
+Testfälle (z. B. aus der Testphase) bleiben sichtbar, bearbeitbar und
+ausführbar; Plugin-Packs über dem Limit von 3 bleiben installiert und
+sichtbar, werden aber als inaktiv angezeigt und tragen keine Regeln
+bei, bis ein Platz frei wird oder die Lizenz aufgewertet wird. Nur neue
+Speicherungen und Aktivierungen über dem Limit fragen nach einem
+Upgrade.</p>
 
 <h3>Testversion</h3>
 <p>Beim ersten Start beginnt eine <strong>14-tägige
@@ -450,7 +489,7 @@ und Testfälle bleiben unangetastet.</p>
 <h3>Updates</h3>
 <p>Es wird nichts abgefragt, bevor Sie entschieden haben. Beim ersten
 Start fragt BridgeLab in einem Banner oben im Fenster, ob nach neuen
-Versionen gesucht werden darf (der Windows-Installer fragt bereits bei der
+Versionen gesucht werden darf (das Windows-Setup, die <code>.exe</code>, fragt bereits bei der
 Installation, dann fragt die App nicht erneut). <em>Ja, prüfen</em> und
 <em>Nein</em> werden unter Einstellungen → Datenschutz gespeichert; wird
 das Banner ohne Antwort geschlossen, kommt die Frage beim nächsten Start
@@ -466,7 +505,8 @@ Internetzugang stillschweigend übersprungen. Abschalten unter
 suchen</strong>; <strong>Hilfe → Nach Updates suchen</strong> funktioniert
 jederzeit auf Anfrage.</p>
 <p>Der Windows-Installer stellt dieselbe Frage bei der ersten Installation
-(<em>Ja</em> ist voreingestellt; eine stille Installation fragt nicht).
+(<em>Ja</em> ist voreingestellt; eine stille Installation fragt nicht,
+ebenso wenig das <code>.msi</code>-Paket: Dann fragt die App im Banner).
 Auf verwalteten Rechnern kann der Administrator die Prüfung für alle
 Benutzer abschalten, das Kontrollkästchen in den Einstellungen erscheint
 dann gesperrt: Umgebungsvariable
@@ -481,9 +521,8 @@ dann gesperrt: Umgebungsvariable
 Preisbereich der BridgeLab-Website, wo Professional und Enterprise
 online per Karte gekauft werden; der Aktivierungscode kommt per E-Mail.
 Dieselbe Seite ist einen Klick entfernt über die Schaltflächen
-<em>Preise &amp; Kauf</em> im Aktivierungsdialog, <em>Tarife
-vergleichen</em> im Testversions-Banner und <em>Preise ansehen</em> in
-jedem Hinweis „erfordert eine Professional-Lizenz“. Rechnung,
+<em>Preise &amp; Kauf</em> im Aktivierungsdialog und <em>Tarife
+vergleichen</em> im Testversions-Banner. Rechnung,
 Bestellung oder Angebot nötig? Schreiben Sie an
 <a href="mailto:info@techemv.it">info@techemv.it</a>.</p>
 
@@ -523,10 +562,14 @@ den Namen des Lizenznehmers und die enthaltenen Berechtigungen an.</p>
 <h3>Offline-Verifizierung</h3>
 <p>Unabhängig vom gewählten Weg erfolgt die routinemäßige Lizenzprüfung
 rein lokal - die App muss den Lizenzserver nie kontaktieren, um weiter
-zu funktionieren. Serveraufrufe finden nur statt, wenn Sie sie
-ausdrücklich auslösen: Aktivierung per Code, Freigabe des
-Arbeitsplatzes über <em>Deaktivieren</em> oder Opt-in-
-Nutzungsstatistiken. Der Schlüssel trägt eine Ed25519-Signatur, die
+zu funktionieren. Der Server wird nur kontaktiert für: die
+Aktivierung per Code; die automatische Prüfung beim Start bei online
+aktivierten Lizenzen - einmal pro Woche, und einmal täglich innerhalb
+von 14 Tagen vor Ablauf und danach -, die eine Verlängerung übernimmt
+und, falls der Code widerrufen wurde (etwa nach einer Erstattung), die
+App auf Community zurücksetzt; die Freigabe des Arbeitsplatzes über
+<em>Deaktivieren</em>; und Opt-in-Nutzungsstatistiken. Ist der Server
+nicht erreichbar, ändert die Prüfung nichts. Der Schlüssel trägt eine Ed25519-Signatur, die
 die App gegen einen eingebetteten öffentlichen Schlüssel
 verifiziert.</p>
 
@@ -536,7 +579,9 @@ senden — standardmäßig deaktiviert, aktivierbar unter
 <strong>Einstellungen → Datenschutz</strong>. Wenn aktiviert, erfolgt
 der automatische Versand höchstens einmal täglich; die Schaltfläche
 <em>Jetzt senden</em> überträgt sofort. Jeder Bericht enthält
-Nutzungszähler, App-Version, Betriebssystem, Lizenzstufe, eine
+Produktname, App-Version, Betriebssystem und Prozessorarchitektur,
+Sprache der Oberfläche, Lizenzstufe, Tage seit der Installation, Anzahl
+aktiver Plugin-Packs, Nutzungszähler, einen Zeitstempel, eine
 <strong>zufällige Installations-ID</strong> und — nur bei online
 aktivierten Lizenzen — den <strong>Aktivierungscode</strong> (zur
 Kennzeichnung widerrufener Lizenzen). Die Daten sind daher
@@ -575,23 +620,34 @@ Tastenkombination und bestätigen Sie mit OK.</p>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td><td>Speichern unter</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>W</kbd></td><td>Tab schließen</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Baum ein-/ausblenden</td></tr>
-	<tr><td><kbd>F5</kbd></td><td>Nachricht erneut analysieren</td></tr>
 	<tr><td><kbd>F6</kbd></td><td>Validieren</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Kommunikationspanel</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>FHIRPath-Panel</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>Validierungspanel</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Segmentraster</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>Einstellungen</td></tr>
 	<tr><td><kbd>F1</kbd></td><td>Dieses Benutzerhandbuch</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td>Befehlspalette des Editors (alle Monaco-Befehle: Gehe zu Zeile, Falten, Groß-/Kleinschreibung, Zeilen sortieren…; auch im Kontextmenü des Editors)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Segment im Baum anzeigen (Kontextmenü des Editors)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>C</kbd></td><td>Segment kopieren (Kontextmenü des Editors)</td></tr>
 </table>
 
+<p>Unter macOS ist <kbd>Ctrl</kbd> in diesen Tastenkürzeln <kbd>⌘</kbd> (Befehl) und <kbd>Alt</kbd> ist <kbd>⌥</kbd> (Wahl); die Liste in den Einstellungen zeigt sie so. Dort verwendet der Editor <kbd>⌘⌥F</kbd> für Ersetzen, <kbd>⌘⇧Z</kbd> für Wiederholen und <kbd>⌃G</kbd> (Control) für Gehe zu Zeile.</p>
+
 <h3>Konflikterkennung</h3>
 <p>Wählen Sie eine Tastenkombination, die bereits einer anderen Aktion
 zugewiesen ist, warnt Sie der Editor - bestätigen Sie, um die Belegung
-zu übertragen, oder wählen Sie eine andere Taste. Monacos eigene
-Tastenkombinationen (<kbd>Ctrl</kbd>+<kbd>F</kbd>,
-<kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) haben Vorrang, wenn der Editor den
-Fokus hat.</p>
+zu übertragen, oder wählen Sie eine andere Taste. Die Tastenkürzel von
+BridgeLab wirken auch im Editor: Geben Sie einem eine Taste, die auch
+der Editor verwendet (etwa <kbd>Ctrl</kbd>+<kbd>G</kbd>), weist die
+Warnung darauf hin, und im Editor gewinnt die Aktion von BridgeLab. Die
+eigenen Tasten des Editors (<kbd>Ctrl</kbd>+<kbd>F</kbd>,
+<kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) werden zur Information angezeigt und
+lassen sich nicht neu belegen. Ein Tastenkürzel braucht <kbd>Ctrl</kbd>
+oder <kbd>Alt</kbd>, oder ist eine von <kbd>F2</kbd>-<kbd>F12</kbd>: ein
+einzelner Buchstabe würde beim Tippen auslösen. <kbd>F1</kbd> öffnet
+immer dieses Handbuch. <em>Nachricht erneut analysieren</em> hat keine
+Standardtaste; vergeben Sie bei Bedarf eine.</p>
 
 <h3>Zurücksetzen</h3>
 <p>Klicken Sie auf <em>Alle zurücksetzen</em>, um jede

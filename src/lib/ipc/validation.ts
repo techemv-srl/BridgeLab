@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { trackMessage } from '$lib/stores/message-gc';
 
 export interface ValidationIssue {
 	severity: 'error' | 'warning' | 'info';
@@ -20,6 +21,8 @@ export interface FhirValidationIssue {
 	severity: string;
 	message: string;
 	path: string;
+	/** The custom rule that raised it; absent for built-in checks. */
+	rule_id?: string;
 }
 
 export interface FhirValidationReport {
@@ -44,7 +47,9 @@ export async function validateFhir(content: string): Promise<FhirValidationRepor
 }
 
 export async function parseFhirMessage(content: string): Promise<import('$lib/types/hl7').ParseResult> {
-	return invoke('parse_fhir_message', { content });
+	const result = await invoke<import('$lib/types/hl7').ParseResult>('parse_fhir_message', { content });
+	trackMessage(result.message_id);
+	return result;
 }
 
 export async function getFhirTreeChildren(

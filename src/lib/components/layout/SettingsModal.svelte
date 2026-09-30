@@ -12,6 +12,7 @@
 		type LicenseStatus, type TelemetrySettings,
 	} from '$lib/ipc/licensing';
 	import ShortcutsEditor from '$lib/components/layout/ShortcutsEditor.svelte';
+	import { clampSetting } from '$lib/settings-limits';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -54,6 +55,10 @@
 	let cursorBlinking = $state('smooth');
 	let renderWhitespace = $state('none');
 	let bracketPairColorization = $state(false);
+	let wordSuggestions = $state<'off' | 'currentDocument' | 'allDocuments'>('currentDocument');
+	let occurrencesHighlight = $state(true);
+	let links = $state(true);
+	let stickyScroll = $state(false);
 
 	// Parser settings
 	let truncationThreshold = $state(100);
@@ -63,9 +68,6 @@
 	// Display settings
 	let currentTheme = $state(theme);
 	let currentLocale = $state<Locale>(getLocale());
-
-	// Memory settings
-	let maxOpenMessages = $state(50);
 
 	// Session settings
 	let restoreSession = $state(true);
@@ -93,11 +95,23 @@
 			const ts = await getPreference('editor_tab_size');
 			if (ts) tabSize = parseInt(ts) || 4;
 			const tt = await getPreference('truncation_threshold');
-			if (tt) truncationThreshold = parseInt(tt) || 100;
-			const ap = await getPreference('auto_parse_delay');
-			if (ap) autoParseDelay = parseInt(ap) || 500;
-			const mo = await getPreference('max_open_messages');
-			if (mo) maxOpenMessages = parseInt(mo) || 50;
+			if (tt !== null) truncationThreshold = clampSetting('foldThreshold', tt);
+			const apd = await getPreference('auto_parse_delay');
+			if (apd) autoParseDelay = clampSetting('autoParseDelay', apd);
+			const ap = await getPreference('auto_parse');
+			if (ap !== null) autoParse = ap !== 'false';
+			const ss = await getPreference('editor_smooth_scrolling');
+			if (ss !== null) smoothScrolling = ss !== 'false';
+			const bc = await getPreference('editor_bracket_colors');
+			if (bc !== null) bracketPairColorization = bc === 'true';
+			const wsg = await getPreference('editor_word_suggestions');
+			if (wsg === 'off' || wsg === 'currentDocument' || wsg === 'allDocuments') wordSuggestions = wsg;
+			const occ = await getPreference('editor_occurrences');
+			if (occ !== null) occurrencesHighlight = occ !== 'false';
+			const lk = await getPreference('editor_links');
+			if (lk !== null) links = lk !== 'false';
+			const st = await getPreference('editor_sticky_scroll');
+			if (st !== null) stickyScroll = st === 'true';
 			const rw = await getPreference('editor_render_whitespace');
 			if (rw) renderWhitespace = rw;
 			const rs = await getPreference('restore_session');
@@ -106,6 +120,11 @@
 	}
 
 	async function saveAndClose() {
+		// The inputs' min/max do not stop a typed 400 or an empty box.
+		fontSize = clampSetting('fontSize', fontSize);
+		tabSize = clampSetting('tabSize', tabSize);
+		truncationThreshold = clampSetting('foldThreshold', truncationThreshold);
+		autoParseDelay = clampSetting('autoParseDelay', autoParseDelay);
 		try {
 			await setPreference('editor_font_size', String(fontSize));
 			await setPreference('editor_font_family', fontFamily);
@@ -115,7 +134,13 @@
 			await setPreference('editor_tab_size', String(tabSize));
 			await setPreference('truncation_threshold', String(truncationThreshold));
 			await setPreference('auto_parse_delay', String(autoParseDelay));
-			await setPreference('max_open_messages', String(maxOpenMessages));
+			await setPreference('auto_parse', String(autoParse));
+			await setPreference('editor_smooth_scrolling', String(smoothScrolling));
+			await setPreference('editor_bracket_colors', String(bracketPairColorization));
+			await setPreference('editor_word_suggestions', wordSuggestions);
+			await setPreference('editor_occurrences', String(occurrencesHighlight));
+			await setPreference('editor_links', String(links));
+			await setPreference('editor_sticky_scroll', String(stickyScroll));
 			await setPreference('editor_render_whitespace', renderWhitespace);
 			await setPreference('restore_session', String(restoreSession));
 			await setPreference('theme', currentTheme);
@@ -205,17 +230,22 @@
 		}
 	}
 
-	async function handleTogglePlugin(p: PluginInfo) {
+	async function handleTogglePlugin(p: PluginInfo, e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
 		const nextEnabled = !p.enabled;
+		pluginsError = null;
 		try {
-			await setPluginEnabled(p.id, nextEnabled);
-			await setPreference(`plugin_enabled:${p.id}`, String(nextEnabled));
-			// gated flags may shift when a slot frees up — refresh the list
-			plugins = await listPlugins();
+			await setPluginEnabled(p.key, nextEnabled);
 		} catch (e) {
-			const up = parseUpgradeError(e);
-			pluginsError = up ? tr('upgrade.required', { tier: up.tier }) : String(e);
+			const cap = /^PLUGIN_CAP:(\d+):/.exec(String(e));
+			pluginsError = cap ? tr('plugins.capReached', { max: cap[1] }) : String(e);
 		}
+		// Refresh either way: gated flags shift when a slot frees up, and a
+		// refused switch must show the pack as it really is.
+		try { plugins = await listPlugins(); } catch { /* keep the old list */ }
+		// The checkbox's own state changed on click; when the switch was
+		// refused the list value did not, so Svelte leaves it ticked.
+		input.checked = !!plugins.find((x) => x.path === p.path)?.enabled;
 	}
 
 	async function handleOpenPluginsFolder() {
@@ -241,7 +271,10 @@
 				getPreference(PREF_STARTUP_CHECK).catch(() => null),
 				getUpdatePolicy().catch(() => null),
 			]);
-			updateCheck = effectivePreference(policy, pref).value !== 'false';
+			// Unticked until the first-run question is answered: nothing is
+			// requested before the user decides.
+			const decided = effectivePreference(policy, pref).value;
+			updateCheck = decided != null && decided !== 'false';
 			updatePolicySource = policy?.disabled_by_policy ? (policy.policy_source ?? '') : null;
 		} catch { /* web mode */ }
 		telemetryLoaded = true;
@@ -374,18 +407,18 @@
 				<div class="setting-row">
 					<label for="s-wordwrap">{tr('settings.wordWrap')}</label>
 					<select id="s-wordwrap" bind:value={wordWrap}>
-						<option value="on">On</option>
-						<option value="off">Off</option>
-						<option value="wordWrapColumn">At Column</option>
+						<option value="on">{tr('settings.wrapOn')}</option>
+						<option value="off">{tr('settings.wrapOff')}</option>
+						<option value="wordWrapColumn">{tr('settings.wrapColumn')}</option>
 					</select>
 				</div>
 
 				<div class="setting-row">
 					<label for="s-whitespace">{tr('settings.renderWhitespace')}</label>
 					<select id="s-whitespace" bind:value={renderWhitespace}>
-						<option value="none">None</option>
-						<option value="boundary">Boundary</option>
-						<option value="all">All</option>
+						<option value="none">{tr('settings.whitespaceNone')}</option>
+						<option value="boundary">{tr('settings.whitespaceBoundary')}</option>
+						<option value="all">{tr('settings.whitespaceAll')}</option>
 					</select>
 				</div>
 
@@ -401,6 +434,24 @@
 				<div class="setting-check">
 					<label><input type="checkbox" bind:checked={bracketPairColorization} /> {tr('settings.bracketColors')}</label>
 				</div>
+				<div class="setting-check">
+					<label><input type="checkbox" bind:checked={occurrencesHighlight} /> {tr('settings.occurrences')}</label>
+				</div>
+				<div class="setting-check">
+					<label><input type="checkbox" bind:checked={links} /> {tr('settings.links')}</label>
+				</div>
+				<div class="setting-check">
+					<label><input type="checkbox" bind:checked={stickyScroll} /> {tr('settings.stickyScroll')}</label>
+				</div>
+				<div class="setting-row">
+					<label for="s-wordsugg">{tr('settings.wordSuggestions')}</label>
+					<select id="s-wordsugg" bind:value={wordSuggestions}>
+						<option value="currentDocument">{tr('settings.wordSuggestionsCurrent')}</option>
+						<option value="allDocuments">{tr('settings.wordSuggestionsAll')}</option>
+						<option value="off">{tr('settings.wordSuggestionsOff')}</option>
+					</select>
+				</div>
+				<p class="hint">{tr('settings.wordSuggestionsHint')}</p>
 
 			{:else if activeSection === 'display'}
 				<h3>{tr('settings.display')}</h3>
@@ -447,13 +498,13 @@
 
 				<div class="setting-row">
 					<label for="s-trunc">{tr('settings.truncThreshold')}</label>
-					<input id="s-trunc" type="number" min={50} max={10000} step={50} bind:value={truncationThreshold} class="input-sm" />
+					<input id="s-trunc" type="number" min={0} max={100000} step={50} bind:value={truncationThreshold} class="input-sm" />
 					<span class="hint">{tr('settings.truncHint')}</span>
 				</div>
 
 				<div class="setting-row">
 					<label for="s-autoparsedelay">{tr('settings.autoParseDelay')}</label>
-					<input id="s-autoparsedelay" type="number" min={100} max={5000} step={100} bind:value={autoParseDelay} class="input-sm" />
+					<input id="s-autoparsedelay" type="number" min={100} max={5000} step={100} bind:value={autoParseDelay} class="input-sm" disabled={!autoParse} />
 					<span class="hint">{tr('settings.autoParseDelayHint')}</span>
 				</div>
 
@@ -463,12 +514,6 @@
 
 			{:else if activeSection === 'memory'}
 				<h3>{tr('settings.performance')}</h3>
-
-				<div class="setting-row">
-					<label for="s-maxmsg">{tr('settings.maxOpenMessages')}</label>
-					<input id="s-maxmsg" type="number" min={5} max={200} bind:value={maxOpenMessages} class="input-sm" />
-					<span class="hint">{tr('settings.maxOpenHint')}</span>
-				</div>
 
 				<h3>{tr('settings.session')}</h3>
 
@@ -496,7 +541,6 @@
 					<ul>
 						<li>{tr('settings.memTip1')}</li>
 						<li>{tr('settings.memTip2')}</li>
-						<li>{tr('settings.memTip3')}</li>
 						<li>{tr('settings.memTip4')}</li>
 					</ul>
 				</div>
@@ -526,12 +570,12 @@
 					</div>
 				{/if}
 
-				{#each plugins as p}
+				{#each plugins as p (p.path)}
 					<div class="plugin-row" class:errored={!!p.error}>
 						<div class="plugin-main">
 							<div class="plugin-title">
 								<strong>{p.name}</strong>
-								<span class="plugin-kind">{p.kind}</span>
+								<span class="plugin-kind">{tr('plugins.kind.' + p.kind)}</span>
 								<span class="plugin-version">v{p.version}</span>
 							</div>
 							{#if p.description}
@@ -545,6 +589,9 @@
 							{#if p.error}
 								<div class="plugin-error">{tr('plugins.parseError', { error: p.error })}</div>
 							{/if}
+							{#each p.warnings ?? [] as w}
+								<div class="plugin-warning">⚠ {w}</div>
+							{/each}
 							{#if p.gated}
 								<div class="plugin-gated">{tr('plugins.gated')}</div>
 							{/if}
@@ -554,7 +601,7 @@
 								type="checkbox"
 								checked={p.enabled}
 								disabled={!!p.error}
-								onchange={() => handleTogglePlugin(p)}
+								onchange={(e) => handleTogglePlugin(p, e)}
 							/>
 							{p.enabled ? tr('plugins.enabled') : tr('plugins.disabled')}
 						</label>
@@ -622,9 +669,9 @@
 					<dl class="license-info">
 						<dt>{tr('act.currentStatus')}</dt>
 						<dd class="license-type-badge" class:trial={licenseStatus.license_type === 'trial'} class:pro={licenseStatus.license_type === 'professional'} class:ent={licenseStatus.license_type === 'enterprise'} class:expired={licenseStatus.license_type === 'expired'}>
-							{licenseStatus.license_type}
+							{tr('act.type.' + licenseStatus.license_type)}
 							{#if licenseStatus.days_remaining !== null}
-								({tr('act.daysRemaining', { days: licenseStatus.days_remaining })})
+								({tr(licenseStatus.days_remaining === 1 ? 'act.dayRemaining' : 'act.daysRemaining', { days: licenseStatus.days_remaining })})
 							{/if}
 						</dd>
 
@@ -653,7 +700,7 @@
 						<button class="btn btn-primary" onclick={() => { onClose(); onShowActivation?.(); }}>
 							{tr('act.activate')}
 						</button>
-						{#if licenseStatus.license_type !== 'trial' && licenseStatus.license_type !== 'expired'}
+						{#if licenseStatus.has_license}
 							<button class="btn" onclick={handleDeactivate}>
 								{tr('act.deactivate')}
 							</button>
@@ -723,6 +770,7 @@
 	.plugin-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 10px; color: var(--color-text-secondary); }
 	.plugin-filepath { font-family: 'JetBrains Mono', monospace; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; }
 	.plugin-error { color: var(--color-error); font-size: 11px; margin-top: 4px; }
+	.plugin-warning { color: var(--color-warning); font-size: 11px; margin-top: 2px; }
 	.plugin-gated { color: var(--color-warning); font-size: 11px; margin-top: 4px; }
 	.plugin-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; }
 

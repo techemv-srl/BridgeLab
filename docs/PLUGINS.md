@@ -36,10 +36,18 @@ A reload is also triggered at every app startup.
 - Lists every pack found, grouped by kind (`validation` / `fhir` /
   `anonymization`),
   with author, version, rule count, and the full on-disk path.
-- Toggle individual packs on/off; the preference is persisted so the choice
-  survives restarts.
-- Files that fail to parse are surfaced with a red error block &ndash; the
-  rest of the registry stays loaded.
+- Toggle individual packs on/off. The choice is saved in the plugins folder
+  itself (`.state.json`), so it survives restarts and the
+  [CLI](../tools/bridgelab-cli/README.md) honours it too. The switch belongs
+  to one pack: a validation pack and an anonymization pack that happen to
+  share an id are switched separately.
+- Files that fail to load are surfaced with a red error block &ndash; the
+  rest of the registry stays loaded. A second pack in the same folder with
+  an id already in use is one of them: it is listed with the error, and none
+  of its rules run until it gets its own id. Values the engine does not recognise (a
+  misspelt severity or sensitivity, a pattern that does not compile, FHIRPath
+  that does not parse, a PHI field that cannot be masked) load but are listed under the pack as
+  warnings.
 
 ## Tiers
 
@@ -47,10 +55,12 @@ Plugin packs are not a paid feature: every pack kind and every check type
 runs in every tier, and so do reload and the per-pack toggles. The one
 difference is the number of packs that can be **active at the same time**
 &ndash; up to **3** in Community, unlimited in Pro and Enterprise. Enabling
-a fourth pack in Community is refused with an upgrade prompt; packs that
-were enabled beyond the cap (during a trial, say) are neither locked nor
+a fourth pack in Community is refused with a message naming the limit; packs
+that were enabled beyond the cap (during a trial, say) are neither locked nor
 deleted &ndash; they show an "inactive" badge and contribute rules again the
-moment another pack is disabled or the license is upgraded. The in-app
+moment another pack is disabled or the license is upgraded. Which packs
+stay active is decided by the order they first appeared in the folder, so a
+newly added file never displaces a pack already in use. The in-app
 editor for FHIR packs (below) is the only plugin-related feature that is
 Pro by itself.
 
@@ -108,20 +118,30 @@ Pro by itself.
 |---|---|---|
 | `not_empty` | &ndash; | field (or component) is not blank |
 | `regex` | `pattern` | the regex matches the value |
-| `max_length` | `max` | value bytes `<= max` |
-| `min_length` | `min` | value bytes `>= min` |
+| `max_length` | `max` | value length in characters `<= max` |
+| `min_length` | `min` | value length in characters `>= min` |
 | `one_of` | `values[]` | value exactly equals one of the listed values |
 | `contains` | `value` | value contains the given substring |
 
 ### Severities
 
 `error`, `warning`, `info` &ndash; same semantics as the built-in validator.
-Issue counts in the Validation panel reflect the merged report.
+Issue counts in the Validation panel reflect the merged report. Any other
+value is reported as a warning and listed under the pack in Settings.
+
+A `regex` rule whose pattern does not compile is not skipped: every
+validation reports it, so a broken rule never looks like a passing one.
 
 ### Component-level checks
 
-Set `component` (1-based, `^`-separated) to narrow the check from the full
-field to a single component, e.g. component 1 of `PID-5` (family name).
+Set `component` (1-based) to narrow the check from the full field to a
+single component, e.g. component 1 of `PID-5` (family name). Components are
+split with the message's own component separator (MSH-2), usually `^`.
+
+### Repeating fields
+
+A field with repetitions (`111^^^H^MR~222^^^H^PI`) is checked one repetition
+at a time, and the rule passes only when every repetition does.
 
 ## FHIR pack schema
 
@@ -172,6 +192,12 @@ a check applied to each of them. This is what the in-app builder writes:
 | `check` | What to assert about each selected value. |
 | `message` | Text emitted when the rule fires. Required. |
 
+Other keys, in the pack or in a rule (`$schema`, an owner, a `comment`, a
+ticket reference), are ignored by the validator and kept when the in-app
+builder saves `user-rules.json`. The builder also refuses to save when the
+file changed on disk after it was opened, so a rule added by hand or by a
+`git pull` in the meantime is not overwritten.
+
 ### Supported `check.type` (FHIR)
 
 | Type | Extra fields | Passes when |
@@ -217,7 +243,7 @@ tier under the same plugin-pack cap as HL7 v2 packs.
 	"version": "1.0",
 	"enabled": true,
 	"phi_rules": [
-		{ "segment": "PID", "field": 25, "sensitivity": "high",   "name": "EU National ID" },
+		{ "segment": "ZPI", "field": 2,  "sensitivity": "high",   "name": "National ID" },
 		{ "segment": "ZPI", "field": 3,  "sensitivity": "medium", "name": "ACME internal ID" }
 	]
 }
@@ -227,13 +253,21 @@ tier under the same plugin-pack cap as HL7 v2 packs.
 
 | Level | Replacement strategy |
 |---|---|
-| `high` | text → `REDACTED`, numeric → `000…` of same length |
+| `high` | text → `REDACTED`, numeric → `000…` of the same length, date → `19000101…` of the same precision; also any value that is not one of the three levels |
 | `medium` | first char kept, rest masked (e.g. `J***`) |
-| `low` | first three chars kept, rest replaced with `…` |
+| `low` | first three chars kept, rest replaced with `…`; a value of three characters or fewer is kept whole |
 
-Plugin PHI rules merge with the built-in catalogue. Duplicates (same segment
-+ field already known to the built-in list) are silently skipped, so you
-never double-mask a value.
+Plugin PHI rules merge with the built-in catalogue. A field the built-in
+list already covers is skipped (a rule on OBX-5 replaces the built-in
+free-text one and masks every OBX, whatever its value type), and a field named by more than one pack is
+masked once, at the strongest level any of them asks for, so no value is
+ever masked twice. Every repetition, component and subcomponent is masked on
+its own with the message's delimiters, so the output keeps the structure of
+the input. Field 0 (the segment name) and MSH-1/MSH-2 (the delimiters) are
+not data and are ignored.
+
+PHI fields count wherever the pack sits: `phi_rules` in a pack under
+`validation/` are masked too, not dropped.
 
 ## Not the same thing: FHIR profile packages
 
@@ -257,7 +291,11 @@ convention and nobody has published it.
 - **No network access.** The loader only reads files from the plugins folder.
 - **Best-effort parsing.** A malformed file cannot break the registry &ndash;
   it surfaces as an `error` entry in the Plugins panel and is ignored by the
-  validator / anonymizer.
+  validator / anonymizer. A UTF-8 byte-order mark is accepted, and so is a
+  `.JSON` extension in capitals. Anything that is not a regular file (a named
+  pipe, a device) or is larger than 4 MB is reported instead of read, so it
+  cannot stall startup. Two packs in the same folder with the same `id` are
+  refused: the second is reported.
 - **User-scoped.** Plugins live under the user's config dir, so installing
   BridgeLab for another user on the same machine does not share them.
 

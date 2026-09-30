@@ -13,7 +13,7 @@ Shipped and available:
 
 - Modern desktop UI (Svelte 5 + Monaco) on Windows, macOS (Intel/ARM) and Linux
 - Native HL7 v2 and FHIR (JSON/XML) parsing, tree view and field inspector
-- 10 MB+ message handling with smart truncation (base64 payloads included)
+- 10 MB+ message handling, long fields (base64 payloads included) folded in the editor while the text stays whole
 - HL7 v2 schema catalogue for ten versions, v2.1 through v2.7.1 —
   2,320 selectable message structures behind the tree, the Field
   Inspector and the XSD export
@@ -27,7 +27,7 @@ Shipped and available:
   values, unknown elements)
 - FHIRPath 2.0 evaluator — the full language, verified against the official
   HL7 test suite
-- Anonymization engine (21 built-in PHI fields, extensible via plugins)
+- Anonymization engine (89 built-in PHI fields, extensible via plugins)
 - MLLP client/listener, HTTP client, SOAP 1.1/1.2 client (Enterprise)
 - FHIR Bundle visualizer
 - XSD schema export for HL7 v2 message types
@@ -68,13 +68,15 @@ Shipped and available:
       comes from in the editor. A generic rendering driven by the
       catalogue and the value tables first, then event-specific wording
       for the common ADT / ORU / ORM messages
-- [ ] Sample message library — curated, version-tagged examples of the
-      common message types (ADT A01/A04/A08, ORU R01, ORM O01, SIU, MDM,
-      DFT, VXU…) reachable from the Welcome screen, on top of the
-      built-in templates
-- [ ] Segment grid — a read-only table view of a repeating segment's
-      occurrences (the forty OBX of an ORU, one row each, fields as
-      columns) for scanning results at a glance
+- [x] Sample message library — thirteen complete, version-tagged examples
+      (ADT A01/A04/A08/A03/A40, ORU R01 ×2, ORM O01, SIU S12, MDM T02,
+      DFT P03, VXU V04, ACK) in v2.3, v2.5 and v2.5.1, reachable from the
+      Welcome screen and the File menu; each one validates clean, and a
+      test keeps it that way
+- [x] Segment grid — every occurrence of a segment type as a read-only
+      table (the forty OBX of an ORU, one row each, the populated fields as
+      named columns, coded values explained), in a bottom panel with a row
+      filter; a cell selects its field in the editor
 - [ ] Theme editor — custom colour schemes beyond the built-in dark/light
 - [ ] Open-source the HL7 parser core as a separate crate on crates.io
 - [ ] Documentation site and short video tutorials
@@ -88,9 +90,15 @@ Shipped and available:
       three-valued logic, partial-precision dates, quantities with unit
       conversion, ~70 functions, and `resolve()` against contained and
       bundled resources. Verified against the official HL7 FHIRPath test
-      suite (836 of 922 runnable cases)
+      suite (838 of 922 runnable cases)
 - [ ] Close the remaining FHIRPath gap: `lowBoundary()`/`highBoundary()`
-      (needs exact decimal arithmetic) and compound UCUM units
+      (needs exact decimal arithmetic) and compound UCUM units (55 cases);
+      and 29 cases that need the element definitions at evaluation time:
+      the declared type of ordinary primitives (`Patient.gender.is(id)`,
+      `ofType(string)` and `type()` on a `code`, `@T14:34:28Z.is(Time)`),
+      rejecting unknown element names (`name.given1`,
+      `Encounter.name.given`), strict-mode errors
+      (`children().skip(1)`) and `conformsTo()`
 - [x] Custom FHIR validation rules builder — declarative packs with
       FHIRPath invariants or selector-plus-check rules, an in-app editor
       that tests a rule against the open resource before saving it, and no
@@ -122,7 +130,8 @@ Shipped and available:
 - [x] `bridgelab-cli` — the app's own validators headless: HL7 v2 and
       FHIR (built-in R4 core plus installed packages), plugin packs, PHI
       anonymisation; JSON and JUnit output; a binary per platform with
-      every release. Reads no licence: Community behaviour by construction
+      every release. Free, no licence read; the XSD export offers the
+      Community set
 - [x] Test case library (reusable HL7/FHIR scenarios)
 - [x] SOAP 1.1/1.2 client with WS-Security UsernameToken and WS-Addressing (Enterprise)
 - [ ] WSDL import for the SOAP client
@@ -136,7 +145,9 @@ Shipped and available:
       scenarios by e-mail, a shared folder or Git; an import preview with
       new / unchanged / conflicting cases, a PHI check before export and,
       with Pro, masking in the exported file
-- [ ] Run test case packs from the CLI (JUnit output for CI)
+- [x] Run test case packs from the CLI (`bridgelab-cli test`, JUnit output
+      for CI), plus `fhirpath`, `send` (MLLP) and `xsd` commands and
+      standard input for every command
 - [ ] Git integration (save messages to a repo, diff across commits)
 
 ### Collaboration

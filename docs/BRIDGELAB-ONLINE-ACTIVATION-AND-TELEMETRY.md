@@ -218,7 +218,8 @@ Sending rules:
 - Only if `telemetry_enabled == "true"`.
 - At startup (spawned on the tokio runtime from Tauri `setup`, after DB is managed), **at most once per 24 h** (`telemetry_last_sent`). Also exposed as a command for the Settings "Send now" button.
 - `POST {base}/bridgelab/telemetry`, 5 s timeout. On HTTP 200 update `telemetry_last_sent`. Any failure: log at debug level, nothing else.
-- Response may contain `{ "status": "OK", "revoked": true, "message": "..." }`. If `revoked` is true, store the message in preference `license_server_notice` so the UI can show a non-blocking banner. **Do not delete the local license automatically.**
+- Response may contain `{ "status": "OK", "revoked": true, "message": "..." }`. If `revoked` is true, store the message in preference `license_server_notice` so the UI can show a non-blocking banner, and clear `license_refresh_last_attempt` so the next start re-checks the code. Telemetry itself never touches the local license.
+- Re-check (2.0): an online-activated license re-activates with its stored code at start-up once a week (once a day within 14 days of expiry and after it), perpetual licenses included. `error_code == "REVOKED"` sets the license aside (`license.revoked.json`), stores the server message as the notice and the app runs as Community. Any other failure (unreachable, proxy page, other codes) changes nothing.
 
 ### 3.4 `src-tauri/src/commands/licensing.rs`
 

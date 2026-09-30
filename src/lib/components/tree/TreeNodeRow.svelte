@@ -3,9 +3,9 @@
 	import { t, subscribeLocale } from '$lib/i18n';
 
 	let localeVersion = $state(0);
-	if (typeof window !== 'undefined') {
-		subscribeLocale(() => { localeVersion++; });
-	}
+	// Rows come and go as the tree scrolls: a subscription that outlived
+	// its row kept every row ever shown alive.
+	$effect(() => subscribeLocale(() => { localeVersion++; }));
 	function tr(key: string, params?: Record<string, string | number>): string {
 		void localeVersion;
 		return t(key, params);
@@ -16,15 +16,19 @@
 		isSelected: boolean;
 		isExpanded: boolean;
 		isPlaceholder?: boolean;
+		/** 0 for the row Tab enters the tree on, -1 for the others (arrow
+		 *  keys move between rows). */
+		tabIndex?: number;
 		onToggle: () => void;
 		onSelect: () => void;
 		onExpandTruncated: () => void;
 		onShowInEditor?: () => void;
 		/** Ghost rows: insert this segment's skeleton into the editor. */
 		onInsertSegment?: () => void;
+		onShowInGrid?: () => void;
 	}
 
-	let { node, isSelected, isExpanded, isPlaceholder = false, onToggle, onSelect, onExpandTruncated, onShowInEditor, onInsertSegment }: Props = $props();
+	let { node, isSelected, isExpanded, isPlaceholder = false, tabIndex = 0, onToggle, onSelect, onExpandTruncated, onShowInEditor, onInsertSegment, onShowInGrid }: Props = $props();
 
 	const indent = $derived((node.depth - 1) * 16);
 
@@ -52,7 +56,7 @@
 	}
 
 	function handleContextMenu(e: MouseEvent) {
-		if (!onShowInEditor && !onInsertSegment) return;
+		if (!onShowInEditor && !onInsertSegment && !onShowInGrid) return;
 		e.preventDefault();
 		onSelect();
 		menuX = e.clientX;
@@ -77,6 +81,12 @@
 		onShowInEditor?.();
 	}
 
+	function handleShowInGrid(e: MouseEvent) {
+		e.stopPropagation();
+		menuOpen = false;
+		onShowInGrid?.();
+	}
+
 	function handleInsertSegment(e: MouseEvent) {
 		e.stopPropagation();
 		menuOpen = false;
@@ -90,10 +100,11 @@
 	class:segment={node.node_type === 'segment'}
 	class:field={node.node_type === 'field'}
 	class:component={node.node_type === 'component'}
+	class:repetition={node.node_type === 'repetition'}
 	class:placeholder={isPlaceholder}
 	data-node-id={node.id}
 	role="treeitem"
-	tabindex={0}
+	tabindex={tabIndex}
 	aria-expanded={node.has_children ? isExpanded : undefined}
 	aria-selected={isSelected}
 	onclick={handleClick}
@@ -116,7 +127,7 @@
 		<span class="value">
 			{#if node.is_truncated}
 				<span class="value-text">{node.value_preview}</span>
-				<button class="truncated-btn" onclick={handleTruncatedClick} title="Click to view full content">
+				<button class="truncated-btn" onclick={handleTruncatedClick} title={tr('inspector.viewFull')}>
 					{'{...}'}
 				</button>
 			{:else}
@@ -149,6 +160,11 @@
 				{tr('ctx.showInEditor')}
 			</button>
 		{/if}
+		{#if onShowInGrid}
+			<button class="context-menu-item" onclick={handleShowInGrid}>
+				{tr('ctx.showInGrid', { code: node.label.split(' ')[0] })}
+			</button>
+		{/if}
 		{#if onInsertSegment}
 			<button class="context-menu-item" onclick={handleInsertSegment}>
 				{tr('ctx.insertSegment', { code: node.label.split(' ')[0] })}
@@ -165,7 +181,10 @@
 		padding: 2px 8px;
 		cursor: pointer;
 		white-space: nowrap;
-		min-height: 22px;
+		/* Fixed: the tree's virtual list positions rows by this height. */
+		height: 22px;
+		box-sizing: border-box;
+		overflow: hidden;
 		border-left: 2px solid transparent;
 		transition: background-color 0.1s;
 	}
@@ -208,7 +227,8 @@
 		font-weight: 700;
 	}
 
-	.field .label {
+	.field .label,
+	.repetition .label {
 		color: var(--color-field);
 	}
 

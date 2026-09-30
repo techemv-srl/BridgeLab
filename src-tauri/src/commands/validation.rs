@@ -22,8 +22,11 @@ pub struct FhirValidationReport {
 ///
 /// Runs built-in validations followed by any active user-defined plugin rules
 /// (files in `<config>/BridgeLab/plugins/validation/*.json`).
+///
+/// Async so it runs off the main thread: a large message with many plugin
+/// rules must not freeze the window while it is checked.
 #[tauri::command]
-pub fn validate_message(
+pub async fn validate_message(
     message_id: String,
     store: State<'_, MessageStore>,
     registry: State<'_, PluginRegistry>,
@@ -49,6 +52,10 @@ pub fn validate_message(
             }
             report.issues.push(issue);
         }
+    }
+    if let Some(note) = registry.cap_notice(crate::licensing::feature_gate::active_plugin_limit()) {
+        report.info_count += 1;
+        report.issues.push(note);
     }
 
     Ok(report)
@@ -88,10 +95,9 @@ pub fn validate_fhir(
     // apply to this resource type.
     let mut profiles_applied = false;
     if let Some(json) = &resource.json_value {
-        if let Some(found) = profiles.validate(json) {
-            profiles_applied = true;
-            issues.extend(found);
-        }
+        let (found, applied) = profiles.validate_with_status(json);
+        profiles_applied = applied;
+        issues.extend(found);
     }
     // A resource that got no conformance findings looks clean; say plainly
     // when that is because nothing was checked. With the R4 core built in
@@ -107,6 +113,7 @@ pub fn validate_fhir(
                 resource.resource_type
             ),
             path: "resourceType".into(),
+            rule_id: None,
         });
     }
 

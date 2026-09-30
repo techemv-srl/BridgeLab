@@ -6,10 +6,10 @@
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
 	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
-	// Non-blocking notice pushed by the license server through a telemetry
-	// response (e.g. a revoked activation code). The local license is never
-	// touched automatically — this banner is the only consequence, and
-	// dismissing it clears the stored notice.
+	// Non-blocking notice from the license server: a telemetry response
+	// flagging a revoked code, or the startup re-check that found the code
+	// revoked and returned the app to Community. Dismissing it clears the
+	// stored notice.
 	const NOTICE_KEY = 'license_server_notice';
 
 	let notice = $state('');

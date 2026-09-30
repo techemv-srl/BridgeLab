@@ -1,5 +1,5 @@
 /** Tree node types matching Rust backend */
-export type TreeNodeType = 'message' | 'segment' | 'field' | 'component' | 'subcomponent';
+export type TreeNodeType = 'message' | 'segment' | 'field' | 'repetition' | 'component' | 'subcomponent';
 
 /** Tree node from the backend */
 export interface TreeNode {
@@ -18,6 +18,9 @@ export interface TreeNode {
 	code?: string;
 	/** Meaning of that code from its HL7 table ("Male" for PID-8 = M), when listed. */
 	code_desc?: string;
+	/** A row of the standard structure that is absent from the message
+	 *  (Show Schema Fields): its value is the data type, not a value. */
+	placeholder?: boolean;
 }
 
 /** Result from parse_message IPC command */
@@ -27,10 +30,21 @@ export interface ParseResult {
 	format: string;
 	version: string;
 	truncated_text: string;
+	/** The whole decoded file, set by open_file: what the tab holds and saves. */
+	full_text?: string;
 	tree_roots: TreeNode[];
 	truncation_count: number;
 	file_size_bytes: number;
 	segment_count: number;
+	/** Charset a non-UTF-8 file was decoded with; absent for UTF-8. */
+	source_charset?: string;
+	/** open_file: the file is not a message BridgeLab can parse, and why.
+	 *  It opens as text; everything else in the result is empty. */
+	parse_error?: string;
+	/** open_file: the file was not decoded as its MSH-18 says. `unsupported`:
+	 *  BridgeLab cannot decode the declared charset (text and fields may be
+	 *  wrong); `not_utf8`: UTF-8 declared, other bytes found. */
+	charset_warning?: { kind: 'unsupported' | 'not_utf8'; declared: string };
 }
 
 /** Result from get_field_content IPC command */

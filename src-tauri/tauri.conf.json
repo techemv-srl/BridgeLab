@@ -1,7 +1,7 @@
 {
 	"$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
 	"productName": "BridgeLab",
-	"version": "1.8.1",
+	"version": "2.0.0",
 	"identifier": "com.bridgelab.app",
 	"build": {
 		"frontendDist": "../build",
@@ -53,7 +53,10 @@
 		"publisher": "TECHEMV SRL",
 		"homepage": "https://www.techemv.it",
 		"license": "MIT AND BUSL-1.1",
-		"licenseFile": "../LICENSE",
+		"licenseFile": "LICENSE-installer.txt",
+		"resources": {
+			"LICENSE-bundle.txt": "LICENSE.txt"
+		},
 		"fileAssociations": [
 			{
 				"ext": [
@@ -101,7 +104,7 @@
 			}
 		},
 		"macOS": {
-			"minimumSystemVersion": "10.15",
+			"minimumSystemVersion": "11.0",
 			"dmg": {
 				"windowSize": {
 					"width": 660,
@@ -122,7 +125,10 @@
 				"section": "utils",
 				"priority": "optional",
 				"files": {
-					"/usr/share/mime/packages/bridgelab-hl7.xml": "linux/bridgelab-hl7.xml"
+					"/usr/share/mime/packages/bridgelab-hl7.xml": "linux/bridgelab-hl7.xml",
+					"/usr/share/doc/bridgelab/copyright": "../LICENSE",
+					"/usr/share/doc/bridgelab/LICENSE-pro": "src/pro/LICENSE",
+					"/usr/share/doc/bridgelab/LICENSE-pro-ui": "../src/lib/pro/LICENSE"
 				}
 			},
 			"appimage": {
@@ -134,7 +140,10 @@
 					"gtk3"
 				],
 				"files": {
-					"/usr/share/mime/packages/bridgelab-hl7.xml": "linux/bridgelab-hl7.xml"
+					"/usr/share/mime/packages/bridgelab-hl7.xml": "linux/bridgelab-hl7.xml",
+					"/usr/share/doc/bridgelab/copyright": "../LICENSE",
+					"/usr/share/doc/bridgelab/LICENSE-pro": "src/pro/LICENSE",
+					"/usr/share/doc/bridgelab/LICENSE-pro-ui": "../src/lib/pro/LICENSE"
 				}
 			}
 		}

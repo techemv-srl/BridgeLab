@@ -65,9 +65,9 @@
 
 	function sensitivityBadge(s: string): string {
 		switch (s) {
-			case 'high': return 'HIGH';
-			case 'medium': return 'MED';
-			case 'low': return 'LOW';
+			case 'high': return tr('anon.sens.high');
+			case 'medium': return tr('anon.sens.medium');
+			case 'low': return tr('anon.sens.low');
 			default: return s;
 		}
 	}

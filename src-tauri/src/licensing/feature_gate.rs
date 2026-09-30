@@ -161,7 +161,7 @@ fn check_feature(feature: &str, status: &LicenseStatus) -> Result<(), String> {
             "Professional"
         };
         Err(format!(
-            "UPGRADE_REQUIRED:{}:{}:This feature requires a {} license. \
+            "UPGRADE_REQUIRED:{}:{}:This feature requires the {} edition. \
              Upgrade at Settings → Activation or contact info@techemv.it.",
             feature, tier, tier
         ))
@@ -220,6 +220,8 @@ mod tests {
             email: String::new(),
             features: vec![],
             message: String::new(),
+            has_license: false,
+            problem: None,
         }
     }
 

@@ -208,3 +208,50 @@ describe('session persistence', () => {
 		expect(messageStore.activeTab?.isModified).toBe(true);
 	});
 });
+
+describe('same file, same text', () => {
+	it('finds an open file however its path is written', () => {
+		const id = messageStore.openMessage(fakeParse(), '/tmp/x/a.hl7', 'MSH|1');
+		expect(messageStore.openMessage(fakeParse(), '/tmp/x/../x/a.hl7', 'MSH|1')).toBe(id);
+		expect(messageStore.tabs).toHaveLength(1);
+	});
+
+	it('setting the same text again is not an edit', () => {
+		const id = messageStore.openMessage(fakeParse(), '/tmp/b.hl7', 'MSH|1');
+		messageStore.updateContent(id, 'MSH|1');
+		expect(messageStore.activeTab?.isModified).toBe(false);
+	});
+});
+
+describe('session serialisation', () => {
+	it('leaves out the text of large unedited file tabs, which restore reads from disk', async () => {
+		const { messageStore, SESSION_INLINE_MAX } = await import('./messages.svelte');
+		messageStore.closeAllTabs();
+		const big = 'MSH|' + 'x'.repeat(SESSION_INLINE_MAX + 10);
+		const a = messageStore.newTab();
+		messageStore.updateContent(a, big);
+		messageStore.markSaved(a, '/data/big.hl7');
+		const b = messageStore.newTab();
+		messageStore.updateContent(b, big); // edited, untitled: kept
+		const [sa, sb] = messageStore.serializeSession();
+		expect(sa.content).toBe('');
+		expect(sb.content).toBe(big);
+	});
+});
+
+describe('parseStale', () => {
+	it('marks a parsed tab whose new text failed to parse, and clears on the next parse', () => {
+		const id = messageStore.openMessage(fakeParse(), null, '{"resourceType":"Patient"}');
+		messageStore.updateContent(id, '{"resourceType":"Patient",}');
+		messageStore.markParseStale(id, 'trailing comma');
+		expect(messageStore.activeTab?.parseStale).toBe('trailing comma');
+		messageStore.updateParseResult(id, fakeParse());
+		expect(messageStore.activeTab?.parseStale).toBeNull();
+	});
+
+	it('does nothing for a tab that was never parsed', () => {
+		const id = messageStore.newTab();
+		messageStore.markParseStale(id, 'bad');
+		expect(messageStore.activeTab?.parseStale).toBeFalsy();
+	});
+});

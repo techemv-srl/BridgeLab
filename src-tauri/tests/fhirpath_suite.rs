@@ -38,6 +38,10 @@ use serde_json::Value;
 ///   `Observation.valueQuantity`) and the `type()` of a FHIR primitive need
 ///   the StructureDefinitions loaded.
 /// - Compound units (`2 'cm' * 2 'm'`) need a full UCUM engine.
+/// - The declared type of an ordinary primitive (`Patient.gender.is(id)`,
+///   `ofType(string)` on a `code`), `conformsTo()` and strict-mode
+///   rejections (`children().skip(1)`) need the definitions as well; choice
+///   elements are typed from their key.
 const BASELINE_PASS_RATE: f64 = 0.90;
 
 #[derive(Debug, Default, Clone)]

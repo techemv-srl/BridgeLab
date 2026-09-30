@@ -12,8 +12,12 @@ HL7 y un tipo de mensaje, previsualiza el esquema generado y guárdalo
 con un clic.</p>
 
 <h3>Qué obtienes</h3>
-<p>Un XSD autocontenido que sigue la convención estándar de codificación
-HL7 v2.xml:</p>
+<p>Un XSD autocontenido que sigue la estructura de elementos de HL7
+v2.xml (segmentos, campos y componentes con los nombres de v2.xml), en la
+forma sin espacio de nombres que usan Astraia y herramientas similares:
+el esquema no declara <code>targetNamespace</code>, así que una instancia
+no debe llevar el espacio de nombres de v2.xml
+(<code>urn:hl7-org:v2xml</code>) para validar.</p>
 <ul>
 	<li>Un elemento raíz por mensaje (p. ej. <code>ADT_A01</code>) con un
 		complex type inline que lista los segmentos y grupos de segmentos
@@ -78,9 +82,10 @@ apunta a <strong>Ayuda → Comprar una licencia</strong> (la página de precios)
 <h3>Nota sobre licencias</h3>
 <p>BridgeLab no redistribuye ningún archivo XSD con copyright de HL7.
 Los metadatos de esquema se reconstruyen a partir de las
-especificaciones públicas de HL7 v2; cada archivo generado lleva una
-cabecera que reconoce a HL7® como estándar de origen y señala la salida
-como obra derivada con fines de interoperabilidad.</p>
+especificaciones públicas de HL7 v2. HL7® es el estándar de origen y la
+salida es una obra derivada con fines de interoperabilidad. Los
+archivos generados no llevan cabecera de comentario; añade tu propio
+aviso si tu política lo pide.</p>
 
 <div class="info">Destino ideal: Astraia y aplicaciones de integración
 similares que aceptan definiciones XSD escritas a mano para tipos de
@@ -102,27 +107,30 @@ JSON.</p>
 <h3>Formatos soportados</h3>
 <ul>
 	<li><strong>JSON</strong> - Patient, Observation, Bundle, DiagnosticReport,
-		MedicationRequest y cualquier otro recurso FHIR R4/R5.</li>
+		MedicationRequest y cualquier otro recurso FHIR R4/R5. La validación
+		sigue FHIR R4: un recurso R5 se abre, se recorre y admite FHIRPath,
+		pero los elementos que cambiaron en R5 se señalan según R4.</li>
 	<li><strong>XML</strong> - los mismos recursos en codificación XML
 		(<code>&lt;Patient xmlns="http://hl7.org/fhir"&gt;</code>).</li>
 </ul>
 
 <h3>Visualizador de Bundle (Pro)</h3>
 <p><strong>Herramientas → Visualizador de Bundle FHIR</strong> abre una
-vista de tres paneles cuando el mensaje activo es un Bundle:</p>
+vista de dos paneles cuando el mensaje activo es un Bundle:</p>
 <ul>
 	<li><strong>Panel izquierdo:</strong> lista de entradas con tipo de
 		recurso, nombre visible (p. ej. nombre del Patient, código de la
-		Observation) y un contador de referencias entrantes.</li>
-	<li><strong>Panel central:</strong> referencias salientes de la
-		entrada seleccionada - cada campo <code>reference</code> se
-		convierte en un enlace clicable que navega hasta la entrada de
-		destino.</li>
-	<li><strong>Panel derecho:</strong> el JSON en bruto del recurso
-		seleccionado, con resaltado de sintaxis.</li>
+		Observation), método de la solicitud y número de referencias que
+		hace la entrada.</li>
+	<li><strong>Panel derecho:</strong> la entrada seleccionada — sus
+		detalles, las referencias que hace (cada una un enlace que navega
+		hasta la entrada de destino), las entradas que la referencian y su
+		JSON en bruto.</li>
 </ul>
 <p>Las <strong>referencias colgantes</strong> (que apuntan a entradas no
-presentes en el Bundle) se señalan con una insignia roja.</p>
+presentes en el Bundle) llevan una insignia <em>huérfana</em> y se cuentan
+en la cabecera. Una referencia <code>#id</code> a un recurso contenido en
+la entrada no lo es.</p>
 <p>El conmutador <strong>Lista / Grafo</strong> cambia a un grafo de
 referencias: cada entrada es un nodo (coloreado por tipo de recurso) y
 cada <code>reference</code> una flecha dirigida. Haz clic en un nodo
@@ -140,7 +148,12 @@ la especificación, y unas setenta funciones.</p>
 	<li><strong>Navegación:</strong> <code>Patient.name.family</code>,
 		<code>Bundle.entry.resource</code>; los elementos choice se
 		alcanzan por su nombre base — <code>Observation.value</code>
-		encuentra <code>valueQuantity</code></li>
+		encuentra <code>valueQuantity</code>. <code>ofType()</code>,
+		<code>is</code> y <code>as</code> sobre un elemento de elección siguen
+		el tipo escrito en su nombre:
+		<code>Observation.effective.ofType(dateTime)</code> encuentra
+		<code>effectiveDateTime</code> aunque solo contenga un día. En los
+		demás casos el tipo se deduce del valor JSON</li>
 	<li><strong>Indexación:</strong> <code>Patient.name[0].given</code></li>
 	<li><strong>Filtros y proyección:</strong> <code>where()</code>,
 		<code>select()</code>, <code>repeat()</code>,
@@ -177,17 +190,20 @@ la especificación, y unas setenta funciones.</p>
 lugar de adivinar: <code>@2015-02-04 = @2015-02</code> no es ni
 verdadero ni falso, porque el segundo valor podría ser ese día u otro
 del mismo mes.</p>
-<p>Las expresiones recientes se conservan en un desplegable de historial
-para reutilizarlas rápidamente.</p>
+<p>Las últimas expresiones evaluadas aparecen como botones <em>Recientes</em>
+junto a los ejemplos (hasta cuatro, mientras la aplicación siga abierta).
+Cuando el texto del editor deja de analizarse, el panel y la barra de estado
+lo indican: los resultados proceden entonces de la última versión válida del
+recurso.</p>
 
 <h3>Validación FHIR</h3>
 <p>F6 también funciona con los recursos FHIR. Los errores resaltan
-campos obligatorios ausentes (p. ej. <code>Patient.identifier</code>),
-tipos de dato no válidos (gender fuera del value set) y problemas
-estructurales. Las URL canónicas declaradas en <code>meta.profile</code>
-se listan como hallazgos informativos (la conformidad con el perfil en
-sí no se comprueba); las entradas malformadas se señalan como
-advertencias.</p>
+elementos obligatorios ausentes (p. ej. <code>Observation.status</code>),
+tipos de dato no válidos (gender distinto de male, female, other,
+unknown) y problemas estructurales. Los perfiles declarados en
+<code>meta.profile</code> se aplican cuando sus definiciones están
+disponibles (véase <em>Validación de perfiles</em> más abajo); las
+entradas malformadas se señalan como advertencias.</p>
 
 <h3>Validación de perfiles (Pro)</h3>
 <p>Por defecto un recurso FHIR se comprueba estructuralmente: si hay
@@ -262,9 +278,19 @@ tipo, el editor lo dice en lugar de informar un éxito.</p>
 <p>Las reglas ya escritas funcionan en todos los niveles; el editor requiere
 una licencia Professional. Los packs escritos a mano están documentados en
 <code>docs/PLUGINS.md</code>.</p>
+<p>Guardar reescribe solo las reglas: todo lo demás que hayas escrito en el
+archivo (un <code>$schema</code>, un responsable, un comentario en una
+regla) se conserva. Si el archivo cambió en disco mientras el editor estaba
+abierto — la regla de un compañero, un <code>git pull</code> — Guardar se
+niega en lugar de sobrescribirlo; cierra y vuelve a abrir el editor para
+ver las reglas actuales. También se rechazan dos reglas con el mismo id o
+un patrón que no compila. Cuando el pack está desactivado en
+<strong>Configuración → Plugins</strong>, o queda fuera por el límite
+Community de packs activos, el editor lo indica: <em>Probar</em> sigue
+mostrando lo que haría una regla, pero F6 no la ejecuta.</p>
 
 <h3>Plantillas FHIR</h3>
-<p><strong>Archivo → Nuevo desde plantilla</strong> incluye una
+<p><strong>Archivo → Nuevo Mensaje desde Plantilla...</strong> incluye una
 categoría FHIR: un Patient mínimo, una Observation de presión arterial
 con componentes y un Bundle de tipo transaction cuyas entradas se
 referencian entre sí mediante <code>urn:uuid</code> — ábrelo y prueba la
@@ -356,8 +382,8 @@ componente concreto (p. ej. el apellido dentro de PID-5.1).</p>
   "name": "EU extra PHI fields",
   "enabled": true,
   "phi_rules": [
-    { "segment": "PID", "field": 25, "sensitivity": "high",
-      "name": "EU National ID" }
+    { "segment": "ZPI", "field": 2,  "sensitivity": "high",
+      "name": "National ID" }
   ]
 }</code></pre>
 
@@ -413,6 +439,8 @@ integración y los hospitales.</p>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Exportación JSON/CSV</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Validación por lotes</td>
+		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Paquetes de perfiles FHIR y editor de reglas</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Evaluador FHIRPath + Visualizador de Bundle</td>
@@ -423,13 +451,22 @@ integración y los hospitales.</p>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>
 
+<p class="note">Esta tabla se refiere a la aplicación de escritorio.
+La <code>bridgelab-cli</code> gratuita no lee ninguna licencia: sus
+comandos <code>anonymize</code>, <code>batch</code>, <code>to-json</code>,
+<code>fhirpath</code> y las comprobaciones con paquetes FHIR funcionan en
+todas las ediciones; solo su exportación XSD se limita al conjunto
+Community, y aplica el límite de 3 packs de plugins.</p>
+
 <p class="note">Community conserva hasta <strong>3 packs de plugins
 activos</strong> y <strong>10 casos de prueba guardados</strong>. Nada
-se bloquea ni se elimina nunca: los elementos guardados por encima del
-límite (p. ej. durante una prueba) siguen visibles, editables y
-ejecutables — solo los guardados y activaciones nuevos por encima del
-límite piden una actualización, y liberar un hueco los reactiva de
-inmediato.</p>
+se bloquea ni se elimina nunca: los casos de prueba guardados por
+encima del límite (p. ej. durante una prueba) siguen visibles, editables
+y ejecutables; los packs de plugins por encima del límite de 3 siguen
+instalados y visibles, pero aparecen inactivos y no aplican reglas
+hasta que se libere un hueco o se actualice la licencia. Solo los
+guardados y activaciones nuevos por encima del límite piden una
+actualización.</p>
 
 <h3>Prueba</h3>
 <p>El primer arranque inicia una <strong>prueba Pro de 14 días</strong>
@@ -445,7 +482,7 @@ prueba permanecen intactos.</p>
 <h3>Actualizaciones</h3>
 <p>No se consulta nada hasta que decidas. La primera vez que se inicia,
 BridgeLab pregunta, con un banner en la parte superior de la ventana, si
-puede buscar nuevas versiones (el instalador de Windows lo pregunta
+puede buscar nuevas versiones (el programa de instalación de Windows, el <code>.exe</code>, lo pregunta
 durante la instalación, y entonces la aplicación no vuelve a hacerlo).
 <em>Sí, comprobar</em> y <em>No</em> se guardan en Configuración →
 Privacidad; cerrar el banner sin responder vuelve a preguntar en el
@@ -461,7 +498,8 @@ iniciar</strong>; <strong>Ayuda → Buscar actualizaciones</strong> funciona
 siempre bajo demanda.</p>
 <p>El instalador de Windows hace la misma pregunta en la primera
 instalación (<em>Sí</em> por defecto; una instalación silenciosa no
-pregunta). En equipos gestionados el administrador puede desactivar la
+pregunta, ni tampoco el paquete <code>.msi</code>: entonces pregunta la
+aplicación en su banner). En equipos gestionados el administrador puede desactivar la
 comprobación para todos los usuarios, y la casilla de Configuración
 aparece bloqueada: variable de entorno
 <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>, o un archivo
@@ -476,17 +514,15 @@ la sección de precios del sitio de BridgeLab, donde Professional y
 Enterprise se compran en línea con tarjeta; el código de activación
 llega por correo. La misma página está a un clic de los botones
 <em>Precios y compra</em> del diálogo de activación, del botón
-<em>Comparar planes</em> del banner de prueba y del botón <em>Ver
-precios</em> de cada aviso «requiere una licencia Professional».
-¿Necesitas factura, orden de compra o presupuesto? Escribe a
+<em>Comparar planes</em> del banner de prueba. ¿Necesitas factura, orden de compra o presupuesto? Escribe a
 <a href="mailto:info@techemv.it">info@techemv.it</a>.</p>
 
 <h3>Activación</h3>
 <p>Abre el diálogo de activación desde:</p>
 <ul>
-	<li><strong>Configuración → Licencia → Activar</strong></li>
+	<li><strong>Configuración → Activación de Licencia</strong></li>
 	<li><strong>Ayuda → Activar Licencia</strong></li>
-	<li>El botón <em>Actualizar</em> del banner de prueba</li>
+	<li>El botón <em>Activar</em> del banner de prueba</li>
 </ul>
 
 <p><strong>Activación en línea (predeterminada):</strong> tras la
@@ -506,7 +542,7 @@ errores en equipos sin conexi&oacute;n).</p>
 escribe a <a href="mailto:info@techemv.it">info@techemv.it</a> con tu
 <strong>ID de Hardware</strong> (se muestra bajo "¿Necesitas una clave
 sin conexión?" en el diálogo de activación y también en
-Configuración → Licencia). TECHEMV SRL te devuelve una licencia firmada
+Configuración → Activación de Licencia). TECHEMV SRL te devuelve una licencia firmada
 vinculada a tu máquina — nunca se necesita acceso a internet. El
 diálogo muestra el nombre del titular y las funciones incluidas antes
 de la activación.</p>
@@ -514,10 +550,15 @@ de la activación.</p>
 <h3>Verificación offline</h3>
 <p>Sea cual sea el flujo utilizado, la verificación ordinaria de la
 licencia es puramente local - la aplicación nunca necesita contactar
-con el servidor de licencias para seguir funcionando. Las llamadas al
-servidor solo ocurren cuando las desencadenas explícitamente:
-activación con código, liberación del puesto con <em>Desactivar</em>,
-o estadísticas de uso opt-in. La clave lleva una firma Ed25519 que la
+con el servidor de licencias para seguir funcionando. El servidor
+solo se contacta para: la activación con código; la comprobación
+automática al arrancar para las licencias activadas en línea - una vez
+por semana, y una vez al día en los 14 días previos al vencimiento y
+después de este - que recoge una renovación y, si el código ha sido
+revocado (por ejemplo tras un reembolso), devuelve la aplicación a
+Community; la liberación del puesto con <em>Desactivar</em>; y las
+estadísticas de uso opt-in. Si el servidor no es accesible, la
+comprobación no cambia nada. La clave lleva una firma Ed25519 que la
 aplicación verifica contra una clave pública integrada.</p>
 
 <h3>Privacidad y estadísticas de uso</h3>
@@ -526,8 +567,11 @@ TECHEMV — desactivadas por defecto, activables en
 <strong>Configuración → Privacidad</strong>. Si están activas, el
 envío automático ocurre como máximo una vez al día; el botón
 <em>Enviar ahora</em> transmite de inmediato. Cada informe contiene
-contadores de uso, versión de la aplicación, sistema operativo, tipo
-de licencia, un <strong>ID de instalación aleatorio</strong> y — solo
+el nombre del producto, la versión de la aplicación, el sistema
+operativo y la arquitectura del procesador, el idioma de la interfaz,
+el tipo de licencia, los días desde la instalación, el número de packs
+de plugins activos, contadores de uso, la fecha y hora del envío, un
+<strong>ID de instalación aleatorio</strong> y — solo
 para licencias activadas en línea — el <strong>código de
 activación</strong> (usado para señalar una licencia revocada). Los
 datos son por tanto <strong>seudónimos</strong>, no totalmente
@@ -565,22 +609,33 @@ con OK.</p>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td><td>Guardar como</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>W</kbd></td><td>Cerrar pestaña</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Mostrar/ocultar árbol</td></tr>
-	<tr><td><kbd>F5</kbd></td><td>Re-analizar mensaje</td></tr>
 	<tr><td><kbd>F6</kbd></td><td>Validar</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Panel de comunicación</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>Panel FHIRPath</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>Panel de validación</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Cuadrícula de segmentos</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>Configuración</td></tr>
 	<tr><td><kbd>F1</kbd></td><td>Este manual de usuario</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td>Paleta de comandos del editor (todos los comandos de Monaco: ir a la línea, plegar, mayúsculas/minúsculas, ordenar líneas…; también en el menú contextual del editor)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Mostrar segmento en el árbol (menú contextual del editor)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>C</kbd></td><td>Copiar segmento (menú contextual del editor)</td></tr>
 </table>
 
+<p>En macOS, <kbd>Ctrl</kbd> en estos atajos es <kbd>⌘</kbd> (Comando) y <kbd>Alt</kbd> es <kbd>⌥</kbd> (Opción), y la lista de Configuración los muestra así. Allí el editor usa <kbd>⌘⌥F</kbd> para Reemplazar, <kbd>⌘⇧Z</kbd> para Rehacer y <kbd>⌃G</kbd> (Control) para Ir a la línea.</p>
+
 <h3>Detección de conflictos</h3>
 <p>Si eliges una combinación de teclas ya asignada a otra acción, el
 editor te avisa - confirma para transferir la asignación o elige una
-tecla diferente. Los atajos propios de Monaco
-(<kbd>Ctrl</kbd>+<kbd>F</kbd>, <kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) tienen
-prioridad cuando el editor tiene el foco.</p>
+tecla diferente. Los atajos de BridgeLab funcionan también en el editor:
+si asignas uno a una tecla que el editor también usa (por ejemplo
+<kbd>Ctrl</kbd>+<kbd>G</kbd>), el aviso te lo indica y, dentro del
+editor, gana la acción de BridgeLab. Las teclas propias del editor
+(<kbd>Ctrl</kbd>+<kbd>F</kbd>, <kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) se
+muestran como referencia y no se pueden reasignar. Un atajo necesita
+<kbd>Ctrl</kbd> o <kbd>Alt</kbd>, o es una de <kbd>F2</kbd>-<kbd>F12</kbd>:
+una letra sola se activaría mientras escribes. <kbd>F1</kbd> abre
+siempre este manual. <em>Re-analizar mensaje</em> no tiene tecla
+predeterminada; asígnale una si la necesitas.</p>
 
 <h3>Restablecer</h3>
 <p>Haz clic en <em>Restablecer todo</em> para devolver cada atajo a su

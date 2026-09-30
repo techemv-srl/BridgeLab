@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { saveTarget } from '$lib/save-target';
 	import { t, subscribeLocale } from '$lib/i18n';
 	import { listVersions, listMessages, exportXsd, type VersionOption, type MessageOption } from '$lib/ipc/schemaExport';
 
@@ -30,7 +31,7 @@
 					await reloadMessages();
 				}
 			} catch (e) {
-				error = `Failed to load versions: ${e}`;
+				error = tr('xsd.loadVersionsFailed', { error: String(e) });
 			}
 		})();
 	});
@@ -39,11 +40,13 @@
 		try {
 			messages = await listMessages(selectedVersion);
 			if (messages.length > 0) {
-				selectedMessage = messages[0].code;
+				// The first free message, not the first of the list (ACK, a
+				// Pro one): Community users met an upgrade error on opening.
+				selectedMessage = (messages.find((m) => m.tier === 'free') ?? messages[0]).code;
 				await regeneratePreview();
 			}
 		} catch (e) {
-			error = `Failed to load messages: ${e}`;
+			error = tr('xsd.loadMessagesFailed', { error: String(e) });
 		}
 	}
 
@@ -86,11 +89,12 @@
 				defaultPath: suggested,
 				filters: [{ name: 'XSD', extensions: ['xsd'] }],
 			});
-			if (path) {
-				await writeTextFile(path, preview);
+			const target = path ? await saveTarget(path, 'xsd') : null;
+			if (target) {
+				await writeTextFile(target, preview);
 			}
 		} catch (e) {
-			error = `Save failed: ${e}`;
+			error = tr('xsd.saveFailed', { error: String(e) });
 		}
 	}
 
@@ -99,7 +103,7 @@
 		try {
 			await navigator.clipboard.writeText(preview);
 		} catch (e) {
-			error = `Copy failed: ${e}`;
+			error = tr('xsd.copyFailed', { error: String(e) });
 		}
 	}
 </script>

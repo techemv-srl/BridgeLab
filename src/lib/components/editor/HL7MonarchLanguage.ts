@@ -97,7 +97,7 @@ export function registerHL7Language(monaco: typeof Monaco) {
 			'editor.lineHighlightBackground': '#e6e9ef',
 			'editor.selectionBackground': '#9ca0b066',
 			'editorCursor.foreground': '#dc8a78',
-			'editorLineNumber.foreground': '#9ca0b0',
+			'editorLineNumber.foreground': '#6c6f85',
 			'editorLineNumber.activeForeground': '#4c4f69',
 		},
 	});

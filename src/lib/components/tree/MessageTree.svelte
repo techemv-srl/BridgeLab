@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { tick, untrack } from 'svelte';
 	import type { TreeNode } from '$lib/types/hl7';
+	import { placeAbsentSegments, type FieldTarget } from '$lib/hl7/segment-lines';
 	import { getTreeChildren, getFieldContent, searchMessage, type SearchHit } from '$lib/ipc/parser';
 	import { getFhirTreeChildren } from '$lib/ipc/validation';
 	import {
@@ -15,15 +17,20 @@
 	interface Props {
 		messageId: string;
 		roots: TreeNode[];
-		onNodeSelect?: (node: TreeNode) => void;
+		/** The selected node; null when the selection went away (a re-parse
+		 *  after the selected field was deleted). */
+		onNodeSelect?: (node: TreeNode | null) => void;
 		onFieldExpand?: (content: string) => void;
-		/** Navigate to a specific segment and optionally a field within it. Stamp forces re-trigger. */
-		navigateTo?: { segmentIdx: number; fieldPosition: number | null; stamp: number } | null;
+		/** Navigate to a segment and optionally a field, repetition and
+		 *  component within it. Stamp forces re-trigger. */
+		navigateTo?: { segmentIdx: number; target: FieldTarget | null; stamp: number } | null;
 		/** Callback to request the editor to navigate to the selected tree node */
-		onNavigateToEditor?: (segmentIdx: number, fieldPosition: number | null, componentIdx: number | null) => void;
+		onNavigateToEditor?: (segmentIdx: number, target: FieldTarget) => void;
 		/** Insert a ghost segment's skeleton into the editor. afterSegmentIdx is
 		 *  the real segment (line) it should follow, null = insert at the top. */
 		onInsertSegment?: (code: string, afterSegmentIdx: number | null) => void;
+		/** Show every occurrence of a segment type in the segment grid. */
+		onShowInGrid?: (segmentType: string) => void;
 		/** HL7 version used to look up schema field definitions */
 		version?: string;
 		/** Message type (e.g. "ORU^R01") used to look up the expected segment structure */
@@ -46,6 +53,7 @@
 		navigateTo = null,
 		onNavigateToEditor,
 		onInsertSegment,
+		onShowInGrid,
 		version = '',
 		messageType = '',
 		showSchemaFields = false,
@@ -62,9 +70,78 @@
 		_dataType?: string;
 	};
 
-	// Flat list of visible nodes for virtual scrolling
-	let visibleNodes = $state<VNode[]>([]);
+	// Flat list of the expanded tree, in display order. Only the rows in
+	// view are rendered (see the virtual list below): a message or log with
+	// tens of thousands of segments used to create a DOM row for each and
+	// froze the window. Raw state: the array is always replaced, never
+	// mutated in place, and deep proxies of 20k nodes cost time for nothing.
+	let visibleNodes = $state.raw<VNode[]>([]);
 	let selectedNodeId = $state<string | null>(null);
+
+	// --- Virtual list ---
+	/** Every row is this tall (TreeNodeRow fixes its height to it). */
+	const ROW = 22;
+	/** Rows rendered beyond the viewport on each side. */
+	const OVERSCAN = 20;
+	let containerEl: HTMLDivElement | undefined = $state();
+	let listEl: HTMLDivElement | undefined = $state();
+	let scrollTop = $state(0);
+	let viewportHeight = $state(600);
+	/** Offset of the list inside the scroller (the search bar above it). */
+	let listTop = $state(0);
+
+	$effect(() => {
+		const el = containerEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver(() => {
+			viewportHeight = el.clientHeight;
+			listTop = listEl?.offsetTop ?? 0;
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
+	let range = $derived.by(() => {
+		const first = Math.floor(Math.max(0, scrollTop - listTop) / ROW);
+		const count = Math.ceil(viewportHeight / ROW);
+		return {
+			start: Math.max(0, first - OVERSCAN),
+			end: Math.min(visibleNodes.length, first + count + OVERSCAN),
+		};
+	});
+	let renderedNodes = $derived(visibleNodes.slice(range.start, range.end));
+
+	function handleScroll() {
+		if (!containerEl) return;
+		scrollTop = containerEl.scrollTop;
+		listTop = listEl?.offsetTop ?? listTop;
+	}
+
+	/** Scroll row `idx` into view (centred on request, else just enough),
+	 *  once the list has its new height (an expansion just grew it). */
+	async function scrollToRow(idx: number, center = false) {
+		await tick();
+		const el = containerEl;
+		if (!el || idx < 0) return;
+		listTop = listEl?.offsetTop ?? listTop;
+		const rowTop = listTop + idx * ROW;
+		// The sticky search bar covers the top of the viewport.
+		const covered = listTop;
+		if (center) {
+			el.scrollTop = Math.max(0, rowTop - (el.clientHeight - covered) / 2 - covered);
+		} else if (rowTop < el.scrollTop + covered) {
+			el.scrollTop = rowTop - covered;
+		} else if (rowTop + ROW > el.scrollTop + el.clientHeight) {
+			el.scrollTop = rowTop + ROW - el.clientHeight;
+		}
+		scrollTop = el.scrollTop;
+	}
+
+	/** Move the keyboard focus to a row once it is rendered. */
+	async function focusRow(id: string) {
+		await tick();
+		containerEl?.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`)?.focus();
+	}
 
 	// --- Search ---
 	let searchQuery = $state('');
@@ -113,10 +190,9 @@
 		if (idx < 0 || idx >= searchHits.length) return;
 		activeHitIdx = idx;
 		const hit = searchHits[idx];
-		await navigateToTarget(hit.segment_idx, hit.field_position);
-		const node = visibleNodes.find((n) => n.id === hit.node_id)
-			?? visibleNodes.find((n) => n.id === `seg${hit.segment_idx}`);
-		if (node) onNodeSelect?.(node);
+		await navigateToTarget(hit.segment_idx, hit.field_position === null
+			? null
+			: { field: hit.field_position, repetition: null, component: null });
 	}
 
 	function nextHit() { if (searchHits.length) void gotoHit((activeHitIdx + 1) % searchHits.length); }
@@ -173,29 +249,16 @@
 	});
 
 	/** Root list = real segments, interleaved with ghost rows for expected
-	 *  segments that are absent from the message. Each ghost sits after the
-	 *  last real instance of the nearest preceding present segment code. */
+	 *  segments that are absent from the message, each at its place in the
+	 *  standard structure (see placeAbsentSegments). */
 	function buildRootNodes(): VNode[] {
 		const real: VNode[] = roots.map((r) => ({ ...r, _expanded: false }));
 		if (!showSchemaFields || expectedSegs.length === 0) return real;
 
-		const presentCodes = new Set<string>();
-		for (const r of real) {
-			const c = segmentTypeFromNode(r);
-			if (c) presentCodes.add(c);
-		}
-
-		// One ghost per absent code; first occurrence in the definition wins.
-		const seen = new Set<string>();
-		const ghostsAfter = new Map<string, VNode[]>(); // anchor code, '' = top
-		let anchor = '';
-		for (const e of expectedSegs) {
-			if (seen.has(e.code)) continue;
-			seen.add(e.code);
-			if (presentCodes.has(e.code)) {
-				anchor = e.code;
-				continue;
-			}
+		const placed = placeAbsentSegments(real.map((r) => segmentTypeFromNode(r) ?? ''), expectedSegs);
+		const ghostsBefore = new Map<number, VNode[]>();
+		for (const p of placed) {
+			const e = expectedSegs[p.defIdx];
 			const parts: string[] = [];
 			if (e.group) parts.push(e.group);
 			parts.push(e.required ? tr('tree.expectedRequired') : tr('tree.expectedOptional'));
@@ -210,47 +273,61 @@
 				has_children: true,
 				is_truncated: false,
 				child_count: 0,
+				placeholder: true,
 				_expanded: false,
 				_isPlaceholder: true,
 			};
-			const list = ghostsAfter.get(anchor) ?? [];
-			list.push(ghost);
-			ghostsAfter.set(anchor, list);
+			ghostsBefore.set(p.before, [...(ghostsBefore.get(p.before) ?? []), ghost]);
 		}
 
-		const lastIdxByCode = new Map<string, number>();
+		const out: VNode[] = [];
 		real.forEach((r, i) => {
-			const c = segmentTypeFromNode(r);
-			if (c) lastIdxByCode.set(c, i);
+			out.push(...(ghostsBefore.get(i) ?? []), r);
 		});
-
-		const out: VNode[] = [...(ghostsAfter.get('') ?? [])];
-		const insertAfter = new Map<number, VNode[]>();
-		for (const [code, ghosts] of ghostsAfter) {
-			if (!code) continue;
-			const idx = lastIdxByCode.get(code);
-			if (idx === undefined) {
-				out.push(...ghosts);
-				continue;
-			}
-			insertAfter.set(idx, [...(insertAfter.get(idx) ?? []), ...ghosts]);
-		}
-		real.forEach((r, i) => {
-			out.push(r);
-			const g = insertAfter.get(i);
-			if (g) out.push(...g);
-		});
+		out.push(...(ghostsBefore.get(real.length) ?? []));
 		return out;
 	}
 
-	// Initialize with root nodes (also re-init when showSchemaFields toggles so
-	// previously-expanded segments pick up / drop placeholder rows, and when
-	// the expected structure arrives so ghost segments appear).
+	// (Re)build the root list when the message is re-parsed, when
+	// showSchemaFields toggles (expanded segments pick up / drop placeholder
+	// rows) and when the expected structure arrives (ghost rows appear).
+	// What was expanded and selected stays so: an edit used to collapse the
+	// whole tree and leave the inspector on a node that no longer existed.
+	let rebuildToken = 0;
 	$effect(() => {
+		void roots;
 		void showSchemaFields;
 		void expectedSegs;
-		visibleNodes = buildRootNodes();
+		untrack(() => void rebuild());
 	});
+
+	async function rebuild() {
+		const token = ++rebuildToken;
+		const expanded = visibleNodes.filter((n) => n._expanded).map((n) => ({ id: n.id, label: n.label }));
+		const selected = selectedNodeId;
+		visibleNodes = buildRootNodes();
+		// Each expansion is a backend call: a tree opened far and wide is
+		// not worth restoring node by node.
+		if (expanded.length <= 300) {
+			for (const prev of expanded) {
+				if (token !== rebuildToken) return;
+				const node = visibleNodes.find((n) => n.id === prev.id);
+				// Same id and label: the same segment (an inserted line shifts
+				// the ids of what follows; those are left closed).
+				if (node && node.label === prev.label && node.has_children && !node._expanded) {
+					await toggleNode(node);
+				}
+			}
+		}
+		if (token !== rebuildToken || selected === null) return;
+		const node = visibleNodes.find((n) => n.id === selected);
+		if (node) {
+			onNodeSelect?.(node); // the inspector gets the new value
+		} else {
+			selectedNodeId = null;
+			onNodeSelect?.(null);
+		}
+	}
 
 	// Reset search when the displayed message changes — hits reference node
 	// ids of the previous message.
@@ -269,38 +346,59 @@
 	$effect(() => {
 		if (!navigateTo || navigateTo.stamp === lastNavStamp) return;
 		lastNavStamp = navigateTo.stamp;
-		void navigateToTarget(navigateTo.segmentIdx, navigateTo.fieldPosition);
+		const { segmentIdx, target } = navigateTo;
+		untrack(() => void navigateToTarget(segmentIdx, target));
 	});
 
-	async function navigateToTarget(segmentIdx: number, fieldPosition: number | null) {
+	/** Expand `id` (when collapsed) and return its node as now listed. */
+	async function expandById(id: string): Promise<VNode | undefined> {
+		const node = visibleNodes.find((n) => n.id === id);
+		if (node && node.has_children && !node._expanded) await toggleNode(node);
+		return visibleNodes.find((n) => n.id === id);
+	}
+
+	/** Select a segment, or a field, repetition or component in it (the
+	 *  deepest of them the tree has), scroll it into view and tell the
+	 *  inspector. */
+	async function navigateToTarget(segmentIdx: number, target: FieldTarget | null) {
 		const segId = `seg${segmentIdx}`;
-		let segNode = visibleNodes.find((n) => n.id === segId);
-		if (!segNode) return;
+		let found = visibleNodes.find((n) => n.id === segId);
+		if (!found) return;
 
-		// Expand segment if we need to reach a field
-		if (fieldPosition !== null && !segNode._expanded) {
-			await toggleNode(segNode);
-			segNode = visibleNodes.find((n) => n.id === segId);
-		}
-
-		let targetId = segId;
-		if (fieldPosition !== null && segNode) {
-			const fieldId = `${segId}.f${fieldPosition}`;
+		if (target && target.field > 0) {
+			await expandById(segId);
+			const fieldId = `${segId}.f${target.field}`;
 			const fieldNode = visibleNodes.find((n) => n.id === fieldId);
-			if (fieldNode) targetId = fieldId;
+			if (fieldNode) {
+				found = fieldNode;
+				let parentId = fieldId;
+				if (target.repetition !== null && fieldNode.has_children) {
+					const opened = await expandById(fieldId);
+					const repNode = visibleNodes.find((n) => n.id === `${fieldId}.r${target.repetition}`);
+					if (repNode) {
+						found = repNode;
+						parentId = repNode.id;
+					} else if (opened && !visibleNodes.some((n) => n.id.startsWith(`${fieldId}.r`))) {
+						parentId = fieldId; // the field does not repeat after all
+					}
+				}
+				if (target.component !== null) {
+					await expandById(parentId);
+					const comp = visibleNodes.find((n) => n.id === `${parentId}.c${target.component}`);
+					if (comp) found = comp;
+				}
+			}
 		}
 
-		selectedNodeId = targetId;
-		// Scroll the target into view
-		requestAnimationFrame(() => {
-			const el = document.querySelector(`[data-node-id="${CSS.escape(targetId)}"]`);
-			el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-		});
+		selectedNodeId = found.id;
+		onNodeSelect?.(found);
+		await scrollToRow(visibleNodes.findIndex((n) => n.id === found!.id), true);
 	}
 
 	/** Extract segment-type code (e.g. "PID") from a segment node's label. */
 	function segmentTypeFromNode(node: TreeNode): string | null {
-		const m = node.label.match(/^([A-Z][A-Z0-9]{2})/);
+		// Exactly three characters: "PIDX (2)" is no PID.
+		const m = node.label.match(/^([A-Z][A-Z0-9]{2})(?:\s|$)/);
 		return m ? m[1] : null;
 	}
 
@@ -338,6 +436,7 @@
 					has_children: f.has_components,
 					is_truncated: false,
 					child_count: 0,
+					placeholder: true,
 					_expanded: false,
 					_isPlaceholder: true,
 					_dataType: f.data_type,
@@ -381,6 +480,7 @@
 			];
 		} else {
 			// Expand: fetch children and insert
+			const msgId = messageId;
 			let childNodes: VNode[];
 			if (node._isPlaceholder) {
 				childNodes = await expandPlaceholder(node);
@@ -390,17 +490,21 @@
 					// HL7 command for their children fails with "Message not found"
 					// and the node silently never expands.
 					const children = format === 'HL7v2'
-						? await getTreeChildren(messageId, node.id)
-						: await getFhirTreeChildren(messageId, node.id);
+						? await getTreeChildren(msgId, node.id)
+						: await getFhirTreeChildren(msgId, node.id);
 					node._children = children;
 				}
 				childNodes = await mergeSchemaPlaceholders(node, node._children!);
 			}
+			// The list may have changed while the children loaded (a
+			// re-parse, another expansion): insert where the node is now.
+			const at = visibleNodes.indexOf(node);
+			if (msgId !== messageId || at === -1 || visibleNodes[at]._expanded) return;
 			visibleNodes = [
-				...visibleNodes.slice(0, idx),
+				...visibleNodes.slice(0, at),
 				{ ...node, _expanded: true },
 				...childNodes,
-				...visibleNodes.slice(idx + 1),
+				...visibleNodes.slice(at + 1),
 			];
 		}
 	}
@@ -423,6 +527,7 @@
 					has_children: f.has_components,
 					is_truncated: false,
 					child_count: 0,
+					placeholder: true,
 					_expanded: false,
 					_isPlaceholder: true,
 					_dataType: f.data_type,
@@ -440,6 +545,7 @@
 					has_children: false,
 					is_truncated: false,
 					child_count: 0,
+					placeholder: true,
 					_expanded: false,
 					_isPlaceholder: true,
 				}));
@@ -467,18 +573,17 @@
 		onFieldExpand?.(content.full_text);
 	}
 
-	/** Parse a node id like "seg3", "seg3.f5", "seg3.f5.c2" into navigation parts. */
-	function parseNodeId(id: string): { segmentIdx: number | null; fieldPosition: number | null; componentIdx: number | null } {
-		const parts = id.split('.');
+	/** Parse a node id like "seg3", "seg3.f5", "seg3.f5.r2.c1" into navigation parts. */
+	function parseNodeId(id: string): { segmentIdx: number | null; target: FieldTarget } {
 		let segmentIdx: number | null = null;
-		let fieldPosition: number | null = null;
-		let componentIdx: number | null = null;
-		for (const p of parts) {
-			if (p.startsWith('seg')) segmentIdx = parseInt(p.slice(3));
-			else if (p.startsWith('f')) fieldPosition = parseInt(p.slice(1));
-			else if (p.startsWith('c')) componentIdx = parseInt(p.slice(1));
+		const target: FieldTarget = { field: 0, repetition: null, component: null };
+		for (const p of id.split('.')) {
+			if (/^seg\d+$/.test(p)) segmentIdx = parseInt(p.slice(3));
+			else if (/^f\d+$/.test(p)) target.field = parseInt(p.slice(1));
+			else if (/^r\d+$/.test(p)) target.repetition = parseInt(p.slice(1));
+			else if (/^c\d+$/.test(p)) target.component = parseInt(p.slice(1));
 		}
-		return { segmentIdx, fieldPosition, componentIdx };
+		return { segmentIdx, target };
 	}
 
 	/** For a ghost root, find the real segment (line index) it should follow:
@@ -491,7 +596,11 @@
 		let afterIdx: number | null = null;
 		for (let i = idx - 1; i >= 0; i--) {
 			const n = visibleNodes[i];
-			if (n.depth === 0 && !n._isPlaceholder) {
+			// A real segment is recognised by its id ("seg<N>", which only
+			// top-level segment nodes have), not by depth: the backend numbers
+			// real segments depth 1 while ghost rows are depth 0, so any depth
+			// test missed them and every insert went to the wrong line.
+			if (!n._isPlaceholder) {
 				const m = n.id.match(/^seg(\d+)$/);
 				if (m) { afterIdx = parseInt(m[1]); break; }
 			}
@@ -500,14 +609,72 @@
 	}
 
 	function showInEditor(node: TreeNode) {
-		const { segmentIdx, fieldPosition, componentIdx } = parseNodeId(node.id);
+		const { segmentIdx, target } = parseNodeId(node.id);
 		if (segmentIdx === null) return;
-		onNavigateToEditor?.(segmentIdx, fieldPosition, componentIdx);
+		onNavigateToEditor?.(segmentIdx, target);
 	}
+
+	/**
+	 * Keyboard navigation (WAI-ARIA tree): Up/Down move, Home/End and
+	 * PageUp/PageDown jump, Right opens a node or enters it, Left closes it
+	 * or goes to its parent. Only the rows in view exist, so moving by Tab
+	 * alone would stop at the edge of the rendered window.
+	 */
+	async function handleRowKeydown(e: KeyboardEvent) {
+		const row = e.target;
+		if (!(row instanceof HTMLElement) || !row.matches('[data-node-id]')) return;
+		const idx = visibleNodes.findIndex((n) => n.id === row.getAttribute('data-node-id'));
+		if (idx < 0) return;
+		const node = visibleNodes[idx];
+		const page = Math.max(1, Math.floor(viewportHeight / ROW) - 1);
+		let next = -1;
+		switch (e.key) {
+			case 'ArrowDown': next = Math.min(visibleNodes.length - 1, idx + 1); break;
+			case 'ArrowUp': next = Math.max(0, idx - 1); break;
+			case 'Home': next = 0; break;
+			case 'End': next = visibleNodes.length - 1; break;
+			case 'PageDown': next = Math.min(visibleNodes.length - 1, idx + page); break;
+			case 'PageUp': next = Math.max(0, idx - page); break;
+			case 'ArrowRight':
+				if (!node.has_children) return;
+				if (!node._expanded) {
+					e.preventDefault();
+					await toggleNode(node);
+					return;
+				}
+				next = idx + 1;
+				break;
+			case 'ArrowLeft':
+				if (node._expanded) {
+					e.preventDefault();
+					await toggleNode(node);
+					return;
+				}
+				for (let i = idx - 1; i >= 0; i--) {
+					if (visibleNodes[i].depth < node.depth) { next = i; break; }
+				}
+				break;
+			default:
+				return;
+		}
+		e.preventDefault();
+		if (next < 0 || next >= visibleNodes.length) return;
+		const target = visibleNodes[next];
+		selectNode(target);
+		await scrollToRow(next);
+		await focusRow(target.id);
+	}
+
+	/** The row the Tab key enters the tree on: the selected one, else the first rendered. */
+	let tabStopId = $derived(
+		selectedNodeId !== null && renderedNodes.some((n) => n.id === selectedNodeId)
+			? selectedNodeId
+			: renderedNodes[0]?.id ?? null,
+	);
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="tree-container" onkeydown={handleTreeKeydown}>
+<div class="tree-container" bind:this={containerEl} onkeydown={handleTreeKeydown} onscroll={handleScroll}>
 	{#if visibleNodes.length === 0}
 		<div class="tree-empty">{tr('tree.noMessage')}</div>
 	{:else}
@@ -560,10 +727,19 @@
 			{/if}
 		</div>
 		{/if}
-		<div class="tree-list" role="tree">
-			{#each visibleNodes as node (node.id)}
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<div
+			class="tree-list"
+			role="tree"
+			tabindex={-1}
+			bind:this={listEl}
+			onkeydown={handleRowKeydown}
+			style="height: {visibleNodes.length * ROW + 8}px; padding-top: {range.start * ROW + 4}px"
+		>
+			{#each renderedNodes as node (node.id)}
 				<TreeNodeRow
 					{node}
+					tabIndex={node.id === tabStopId ? 0 : -1}
 					isSelected={selectedNodeId === node.id}
 					isExpanded={node._expanded ?? false}
 					isPlaceholder={node._isPlaceholder ?? false}
@@ -574,6 +750,9 @@
 					onInsertSegment={onInsertSegment && node._isPlaceholder && node.id.startsWith('ghost.') && node.node_type === 'segment'
 						? () => insertGhostSegment(node)
 						: undefined}
+					onShowInGrid={onShowInGrid && format === 'HL7v2' && !node._isPlaceholder && node.node_type === 'segment' && segmentTypeFromNode(node)
+						? () => onShowInGrid(segmentTypeFromNode(node) ?? '')
+						: undefined}
 				/>
 			{/each}
 		</div>
@@ -582,6 +761,7 @@
 
 <style>
 	.tree-container {
+		position: relative; /* offsetTop of the list is measured from here */
 		height: 100%;
 		overflow-y: auto;
 		overflow-x: hidden;
@@ -598,7 +778,8 @@
 	}
 
 	.tree-list {
-		padding: 4px 0;
+		box-sizing: border-box;
+		padding-bottom: 4px;
 	}
 
 	/* --- Search bar --- */

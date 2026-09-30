@@ -1,0 +1,16 @@
+{
+  "format": "bridgelab-test-cases",
+  "format_version": 1,
+  "app_version": "fixture",
+  "exported_at": "2026-09-29T00:00:00Z",
+  "test_cases": [
+    {
+      "id": "fx-wrong",
+      "name": "wrongly expects ORU",
+      "category": "adt",
+      "content": "MSH|^~\\&|SENDING|FAC|RECEIVING|FAC|20260414120000||ADT^A01|MSG20260414001|P|2.5\nEVN|A01|20260414120000\nPID|1||MRN12345^^^HOSPITAL^MR||DOE^JOHN^A||19800101|M|||123 MAIN ST^^SPRINGFIELD^IL^62701||555-0100|||M||ACCT001|123-45-6789\nNK1|1|DOE^JANE|SPO|123 MAIN ST^^SPRINGFIELD^IL^62701|555-0101|\nPV1|1|I|WARD01^101^A||||ATTENDING^SMITH^JOHN|||MED|||||||INS001||||||||||||||||||||||||||20260414120000\n",
+      "expected_message_type": "ORU^R01",
+      "expected_validation_result": "valid"
+    }
+  ]
+}

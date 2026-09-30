@@ -1,10 +1,33 @@
-use memchr::memchr;
+use memchr::{memchr, memchr2};
 
-use super::delimiters::Delimiters;
+use super::delimiters::{is_header_type, Delimiters};
 use super::message::*;
 
 /// Default truncation threshold in bytes.
 const DEFAULT_TRUNCATION_THRESHOLD: usize = 100;
+
+/// Longest segment type kept for a line with no field separator.
+const MAX_SEGMENT_TYPE_LEN: usize = 32;
+
+/// MLLP framing: the start-block (VT) and end-block (FS) bytes.
+fn is_frame_byte(b: u8) -> bool {
+    matches!(b, 0x0B | 0x1C)
+}
+
+/// What a line may hold and still count as blank.
+fn is_blank_byte(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | 0x0B | 0x0C | 0x1C)
+}
+
+/// Offset of the header: past a UTF-8 byte-order mark and any blank lines,
+/// spaces or MLLP start byte before it.
+pub fn message_start(data: &[u8]) -> usize {
+    let mut i = if data.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
+    while i < data.len() && (is_blank_byte(data[i]) || data[i] == b'\r' || data[i] == b'\n') {
+        i += 1;
+    }
+    i
+}
 
 /// Streaming HL7 v2.x parser.
 /// Uses memchr for SIMD-accelerated delimiter scanning.
@@ -26,15 +49,20 @@ impl Hl7Lexer {
     }
 
     /// Parse a raw HL7 message into an Hl7Message with indexed segments.
+    ///
+    /// What may come before the header is skipped rather than refused: a
+    /// byte-order mark, blank lines or spaces (a paste, a Windows editor)
+    /// and an MLLP start-block byte (a capture). Spans still index `data`
+    /// as given, so offsets map straight back onto the text.
     pub fn parse(&self, data: Vec<u8>) -> Result<Hl7Message, String> {
-        if data.len() < 8 {
+        let start = message_start(&data);
+        if data.len() - start < 8 {
             return Err("Message too short".to_string());
         }
 
-        let delimiters = Delimiters::from_msh(&data)
-            .map_err(|e| e.to_string())?;
+        let delimiters = Delimiters::from_msh(&data[start..])?;
 
-        let segments = self.index_segments(&data, &delimiters);
+        let segments = self.index_segments(&data, start, &delimiters);
 
         let version = self.extract_msh_field(&data, &segments, &delimiters, 12)
             .unwrap_or_default();
@@ -51,42 +79,50 @@ impl Hl7Lexer {
     }
 
     /// Index all segments in the message using SIMD-accelerated newline scanning.
-    fn index_segments(&self, data: &[u8], delimiters: &Delimiters) -> Vec<SegmentIndex> {
+    ///
+    /// A line holding nothing but blanks or MLLP frame bytes is no segment
+    /// (the editor keeps it as a line: navigation skips such lines the same
+    /// way, see segment-lines.ts), and frame bytes around a segment are not
+    /// part of it.
+    fn index_segments(&self, data: &[u8], start: usize, delimiters: &Delimiters) -> Vec<SegmentIndex> {
         let mut segments = Vec::new();
-        let mut offset = 0;
+        let mut offset = start;
         let mut seg_position = 0;
 
         while offset < data.len() {
             // Find end of segment (CR, LF, or CRLF)
-            let seg_end = self.find_segment_end(data, offset);
-            let seg_data = &data[offset..seg_end];
+            let line_end = self.find_segment_end(data, offset);
+            let mut seg_start = offset;
+            let mut seg_end = line_end;
+            while seg_start < seg_end && is_frame_byte(data[seg_start]) {
+                seg_start += 1;
+            }
+            while seg_end > seg_start && is_frame_byte(data[seg_end - 1]) {
+                seg_end -= 1;
+            }
 
-            if !seg_data.is_empty() {
-                let segment = self.index_one_segment(data, offset, seg_end, delimiters, seg_position);
+            if !data[seg_start..seg_end].iter().all(|&b| is_blank_byte(b)) {
+                let segment = self.index_one_segment(data, seg_start, seg_end, delimiters, seg_position);
                 segments.push(segment);
                 seg_position += 1;
             }
 
             // Skip past the line ending
-            offset = self.skip_line_ending(data, seg_end);
+            offset = self.skip_line_ending(data, line_end);
         }
 
         segments
     }
 
     /// Find the end of the current segment (before CR/LF).
+    ///
+    /// One pass for either terminator: searching for CR and LF separately
+    /// scans to the end of the buffer for the one a file never uses, which
+    /// made CR-only and LF-only files quadratic in the segment count.
     fn find_segment_end(&self, data: &[u8], start: usize) -> usize {
-        let remaining = &data[start..];
-        // Search for CR or LF using memchr
-        let cr_pos = memchr(b'\r', remaining);
-        let lf_pos = memchr(b'\n', remaining);
-
-        match (cr_pos, lf_pos) {
-            (Some(cr), Some(lf)) => start + cr.min(lf),
-            (Some(cr), None) => start + cr,
-            (None, Some(lf)) => start + lf,
-            (None, None) => data.len(),
-        }
+        memchr2(b'\r', b'\n', &data[start..])
+            .map(|p| start + p)
+            .unwrap_or(data.len())
     }
 
     /// Skip past CR, LF, or CRLF at the given position.
@@ -118,11 +154,14 @@ impl Hl7Lexer {
     ) -> SegmentIndex {
         let seg_bytes = &data[seg_start..seg_end];
 
-        // Extract segment type (first 3 chars)
-        let type_end = seg_bytes.len().min(3);
+        // The segment type is everything before the first field separator:
+        // "PIDX|..." is a PIDX (reported as invalid), not a PID with an
+        // odd first field. Capped, for a line of free text with no separator.
+        let type_end = memchr(delimiters.field, seg_bytes).unwrap_or(seg_bytes.len()).min(MAX_SEGMENT_TYPE_LEN);
         let segment_type = String::from_utf8_lossy(&seg_bytes[..type_end]).to_string();
 
-        let is_msh = segment_type == "MSH";
+        // FHS and BHS carry the delimiters in fields 1 and 2 like MSH.
+        let is_msh = is_header_type(segment_type.as_bytes()) && type_end == 3;
 
         // Find fields within segment
         let fields = self.index_fields(data, seg_start, seg_end, delimiters, is_msh);
@@ -344,10 +383,8 @@ impl Hl7Lexer {
         _delimiters: &Delimiters,
         field_position: usize,
     ) -> Option<String> {
-        let msh = segments.first()?;
-        if msh.segment_type != "MSH" {
-            return None;
-        }
+        // The first MSH: a batch file opens with FHS/BHS.
+        let msh = segments.iter().find(|s| s.segment_type == "MSH")?;
         let field = msh.fields.iter().find(|f| f.position == field_position)?;
         Some(field.span.as_str(data).to_string())
     }
@@ -451,6 +488,52 @@ mod tests {
     }
 
     #[test]
+    fn leading_blanks_bom_and_mllp_framing_are_skipped() {
+        let body = "MSH|^~\\&|S|F|R|F|20240101||ADT^A01|1|P|2.5\rPID|||123\rPV1||I";
+        for prefix in ["\r\n", "\n\n  ", "  ", "\u{FEFF}", "\u{0B}", "\u{FEFF}\r\n\t"] {
+            let msg = Hl7Lexer::new().parse(format!("{}{}\r\u{1C}\r", prefix, body).into_bytes()).unwrap();
+            assert_eq!(msg.segments.len(), 3, "prefix {:?}", prefix);
+            assert_eq!(msg.segments[0].segment_type, "MSH");
+            assert_eq!(msg.version, "2.5");
+            assert_eq!(msg.segments[2].span.as_str(&msg.raw), "PV1||I");
+        }
+        // End block glued to the last segment is not part of its value.
+        let msg = Hl7Lexer::new().parse(format!("\u{0B}{}\u{1C}\r", body).into_bytes()).unwrap();
+        assert_eq!(msg.segments[2].span.as_str(&msg.raw), "PV1||I");
+    }
+
+    #[test]
+    fn blank_lines_between_segments_are_not_segments() {
+        let data = b"MSH|^~\\&|S|F|R|F|20240101||ADT^A01|1|P|2.5\n\nPID|||123\n  \nPV1||I\n".to_vec();
+        let msg = Hl7Lexer::new().parse(data).unwrap();
+        let types: Vec<_> = msg.segments.iter().map(|s| s.segment_type.as_str()).collect();
+        assert_eq!(types, ["MSH", "PID", "PV1"]);
+        assert_eq!(msg.segments[2].position, 2);
+    }
+
+    #[test]
+    fn segment_type_runs_to_the_field_separator() {
+        let data = b"MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPIDX|1||1\rZZ|a\rOBX1|1|NM\rPV1".to_vec();
+        let msg = Hl7Lexer::new().parse(data).unwrap();
+        let types: Vec<_> = msg.segments.iter().map(|s| s.segment_type.as_str()).collect();
+        assert_eq!(types, ["MSH", "PIDX", "ZZ", "OBX1", "PV1"]);
+        assert_eq!(msg.segments[1].fields[0].span.as_str(&msg.raw), "1");
+    }
+
+    #[test]
+    fn a_batch_file_opens_with_fhs_and_bhs() {
+        let data = b"FHS|^~\\&|APP\rBHS|^~\\&|APP\rMSH|^~\\&|A|B|C|D|20240101||ORU^R01|1|P|2.4\rPID|1\rBTS|1\rFTS|1".to_vec();
+        let msg = Hl7Lexer::new().parse(data).unwrap();
+        assert_eq!(msg.version, "2.4");
+        assert_eq!(msg.message_type, "ORU^R01");
+        let fhs = &msg.segments[0];
+        assert_eq!(fhs.segment_type, "FHS");
+        assert_eq!(fhs.fields[1].span.as_str(&msg.raw), "^~\\&");
+        assert_eq!(fhs.fields[2].position, 3);
+        assert_eq!(fhs.fields[2].span.as_str(&msg.raw), "APP");
+    }
+
+    #[test]
     fn test_lf_line_endings() {
         let data = b"MSH|^~\\&|S|F|R|F|20240101||ADT^A01|1|P|2.5\nPID|||123\nPV1||I".to_vec();
         let lexer = Hl7Lexer::new();
@@ -499,5 +582,52 @@ mod bench_tests {
         let total = parse_duration + trunc_duration;
         println!("TOTAL time: {:?}", total);
         assert!(total.as_secs_f64() < 1.0, "Total time exceeded 1 second: {:?}", total);
+    }
+
+    fn big_message(n: usize, eol: &str) -> Vec<u8> {
+        let mut s = String::from("MSH|^~\\&|A|B|C|D|20240101||ORU^R01|1|P|2.5");
+        s.push_str(eol);
+        s.push_str("PID|1||12345^^^H^MR||Rossi^Mario");
+        for i in 0..n {
+            s.push_str(eol);
+            s.push_str(&format!("OBX|{}|NM|X^Y||{}||||||F", i + 1, i));
+        }
+        s.push_str(eol);
+        s.into_bytes()
+    }
+
+    #[test]
+    fn large_cr_only_message_parses_in_linear_time() {
+        // 50k segments joined by CR alone: a scan to the end of the buffer
+        // per segment (the old two-memchr search) takes tens of seconds.
+        let data = big_message(50_000, "\r");
+        let start = std::time::Instant::now();
+        let msg = Hl7Lexer::new().parse(data).unwrap();
+        let elapsed = start.elapsed();
+        assert_eq!(msg.segments.len(), 50_002);
+        assert!(elapsed.as_secs_f64() < 5.0, "CR-only parse took {:?}", elapsed);
+
+        let data = big_message(50_000, "\n");
+        let start = std::time::Instant::now();
+        let msg = Hl7Lexer::new().parse(data).unwrap();
+        assert_eq!(msg.segments.len(), 50_002);
+        assert!(start.elapsed().as_secs_f64() < 5.0, "LF-only parse took {:?}", start.elapsed());
+    }
+
+    #[test]
+    fn cr_lf_and_crlf_give_the_same_segments() {
+        let texts: Vec<Vec<String>> = ["\r", "\n", "\r\n"]
+            .iter()
+            .map(|eol| {
+                let msg = Hl7Lexer::new().parse(big_message(3, eol)).unwrap();
+                msg.segments
+                    .iter()
+                    .map(|s| s.span.as_str(&msg.raw).to_string())
+                    .collect()
+            })
+            .collect();
+        assert_eq!(texts[0].len(), 5);
+        assert_eq!(texts[0], texts[1]);
+        assert_eq!(texts[0], texts[2]);
     }
 }

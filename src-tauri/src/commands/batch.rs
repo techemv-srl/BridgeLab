@@ -107,12 +107,16 @@ async fn process_file(path: &std::path::Path, plugin_rules: &[ValidationRule]) -
         };
     }
 
-    let content = match tokio::fs::read_to_string(path).await {
-        Ok(c) => c,
+    let content = match tokio::fs::read(path).await {
+        Ok(b) => match crate::parser::hl7::charset::decode_input(&b) {
+            // Fields may be split wrongly: no result is better than a wrong one.
+            crate::parser::hl7::charset::Decoded { warning: Some(w), .. } if w.is_unsupported() => {
+                return BatchFileResult { parse_error: Some(w.to_string()), ..base };
+            }
+            d => d.text,
+        },
         Err(e) => return BatchFileResult { parse_error: Some(format!("read failed: {}", e)), ..base },
     };
-    // Strip UTF-8 BOM like the interactive open path does.
-    let content = content.strip_prefix('\u{FEFF}').unwrap_or(&content).to_string();
 
     let lexer = Hl7Lexer::new().with_truncation_threshold(100);
     let msg = match lexer.parse(content.into_bytes()) {
@@ -238,13 +242,17 @@ async fn anonymize_file(
         };
     }
 
-    let content = match tokio::fs::read_to_string(path).await {
-        Ok(c) => c,
+    let decoded = match tokio::fs::read(path).await {
+        Ok(b) => crate::parser::hl7::charset::decode_input(&b),
         Err(e) => return BatchAnonFileResult { error: Some(format!("read failed: {}", e)), ..base },
     };
-    let content = content.strip_prefix('\u{FEFF}').unwrap_or(&content).to_string();
+    // In a charset BridgeLab cannot decode, a byte of a character can read
+    // as a delimiter and shift the fields: a birth date could stay in clear.
+    if let Some(w) = decoded.warning.as_ref().filter(|w| w.is_unsupported()) {
+        return BatchAnonFileResult { error: Some(format!("not anonymized: {}", w)), ..base };
+    }
 
-    let msg = match Hl7Lexer::new().parse(content.into_bytes()) {
+    let msg = match Hl7Lexer::new().parse(decoded.text.into_bytes()) {
         Ok(m) => m,
         Err(e) => return BatchAnonFileResult { error: Some(e), ..base },
     };
@@ -252,15 +260,42 @@ async fn anonymize_file(
     let masked = crate::anonymization::detect_phi_with_extra(&msg, extra).len();
     let anonymized = crate::anonymization::anonymize_message_with_extra(&msg, extra);
 
-    if let Err(e) = tokio::fs::write(&out_path, anonymized).await {
-        return BatchAnonFileResult { error: Some(format!("write failed: {}", e)), ..base };
+    // The masked copy keeps the source's character set, so MSH-18 stays true.
+    let bytes = crate::parser::hl7::charset::encode_output(&anonymized, decoded.charset.as_deref().unwrap_or(""));
+    if let Err(e) = write_new(&out_path, &bytes).await {
+        let error = if e.kind() == std::io::ErrorKind::AlreadyExists {
+            "a file with this name already exists in the output folder — nothing was overwritten; pick an empty folder".to_string()
+        } else {
+            format!("write failed: {}", e)
+        };
+        return BatchAnonFileResult { error: Some(error), ..base };
     }
     BatchAnonFileResult {
-        output_path: out_path.display().to_string(),
+        output_path: crate::commands::fileio::without_verbatim_prefix(&out_path.display().to_string()),
         phi_fields_masked: masked,
         error: None,
         ..base
     }
+}
+
+/// Write `bytes` to a file that must not exist yet. Nothing already in the
+/// output folder is ever replaced: not an unselected file of the same name,
+/// and not a symlink or hard link that leads to a source (the exclusive
+/// create refuses any existing name without following it). A write that
+/// fails half way removes its own partial file.
+pub(crate) async fn write_new(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let mut file = tokio::fs::OpenOptions::new().write(true).create_new(true).open(path).await?;
+    let written = async {
+        file.write_all(bytes).await?;
+        file.sync_all().await
+    }
+    .await;
+    if written.is_err() {
+        drop(file);
+        let _ = tokio::fs::remove_file(path).await;
+    }
+    written
 }
 
 /// Anonymize every message file in `paths` (files and/or directories),
@@ -396,6 +431,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_anonymize_file_charsets() {
+        let dir = std::env::temp_dir().join(format!("bl_anon_cs_{}", std::process::id()));
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let out = std::fs::canonicalize(&out).unwrap();
+        // ISO IR87 (ISO-2022-JP) is 7-bit and cannot be decoded: refused.
+        let jp = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5|||||JPN|ISO IR87\rPID|1||1||山田^太郎||19900515\r";
+        let src = dir.join("jp.hl7");
+        std::fs::write(&src, encoding_rs::ISO_2022_JP.encode(jp).0).unwrap();
+        let sources = std::collections::HashSet::from([path_key(&std::fs::canonicalize(&src).unwrap())]);
+        let r = anonymize_file(&src, &out, "jp.hl7", &sources, &[]).await;
+        assert!(r.error.as_deref().is_some_and(|e| e.contains("ISO IR87")), "{:?}", r.error);
+        assert!(!out.join("jp.hl7").exists());
+        let v = process_file(&src, &[]).await;
+        assert!(v.parse_error.as_deref().is_some_and(|e| e.contains("ISO IR87")), "{:?}", v.parse_error);
+        // MSH-18 ASCII with an 8-bit byte: the copy stays 7-bit.
+        let src = dir.join("ascii.hl7");
+        std::fs::write(&src, b"MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5|||||USA|ASCII\rPID|1||1||M\xfcller||19900515\rNTE|1||Caf\xe9\r").unwrap();
+        let sources = std::collections::HashSet::from([path_key(&std::fs::canonicalize(&src).unwrap())]);
+        let r = anonymize_file(&src, &out, "ascii.hl7", &sources, &[]).await;
+        assert!(r.error.is_none(), "{:?}", r.error);
+        assert!(std::fs::read(&r.output_path).unwrap().is_ascii());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
     async fn test_anonymize_file_refuses_overwriting_source() {
         let dir = std::env::temp_dir().join(format!("bl_anon2_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -502,6 +563,52 @@ mod tests {
         assert!(r.error.as_deref().unwrap_or("").contains("overwrite"), "got: {:?}", r.error);
         let untouched = std::fs::read_to_string(&b).unwrap();
         assert!(untouched.contains("ROSSI"), "the other selected source must stay untouched");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An unselected file of the same name in the output folder is never
+    /// replaced: the row reports it and the file keeps its content.
+    #[tokio::test]
+    async fn an_existing_unselected_file_is_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("bl_anon6_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let src = write_tmp(&dir, "patient.hl7", SAMPLE);
+        let other = write_tmp(&out, "patient.hl7", "ORIGINAL^UNSELECTED");
+
+        let sources = std::collections::HashSet::from([path_key(&std::fs::canonicalize(&src).unwrap())]);
+        let r = anonymize_file(&src, &std::fs::canonicalize(&out).unwrap(), "patient.hl7", &sources, &[]).await;
+        assert!(r.error.as_deref().unwrap_or("").contains("already exists"), "got: {:?}", r.error);
+        assert!(r.output_path.is_empty());
+        assert_eq!(std::fs::read_to_string(&other).unwrap(), "ORIGINAL^UNSELECTED");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A symlink or a hard link in the output folder that leads to the
+    /// selected source must not let the masked copy land on the original.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn links_to_a_source_in_the_output_folder_are_refused() {
+        let dir = std::env::temp_dir().join(format!("bl_anon7_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let src = write_tmp(&dir, "a.hl7", SAMPLE);
+        std::os::unix::fs::symlink(&src, out.join("a.hl7")).unwrap();
+        let src2 = write_tmp(&dir, "b.hl7", SAMPLE);
+        std::fs::hard_link(&src2, out.join("b.hl7")).unwrap();
+
+        let canon_out = std::fs::canonicalize(&out).unwrap();
+        let sources = std::collections::HashSet::from([
+            path_key(&std::fs::canonicalize(&src).unwrap()),
+            path_key(&std::fs::canonicalize(&src2).unwrap()),
+        ]);
+        for (f, name) in [(&src, "a.hl7"), (&src2, "b.hl7")] {
+            let r = anonymize_file(f, &canon_out, name, &sources, &[]).await;
+            assert!(r.error.is_some(), "{name}: must be refused");
+            assert!(std::fs::read_to_string(f).unwrap().contains("ROSSI"), "{name}: source must stay untouched");
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 }

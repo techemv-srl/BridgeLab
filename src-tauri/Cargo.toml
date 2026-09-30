@@ -1,9 +1,9 @@
 [package]
 name = "bridgelab"
-version = "1.8.1"
+version = "2.0.0"
 edition = "2021"
 description = "BridgeLab - HL7 made simple"
-authors = ["1warpengine"]
+authors = ["TECHEMV SRL <info@techemv.it>"]
 
 [[bin]]
 name = "bridgelab"
@@ -16,8 +16,10 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 # Official TECHEMV builds ship with "pro" enabled. Building with
-# --no-default-features --features desktop produces a Community-only
-# binary that compiles without the BUSL-licensed src/pro/ directory;
+# --no-default-features --features desktop compiles without the
+# BUSL-licensed src/pro/ directory (the SOAP client); it is not a
+# Community-only binary: the licence check still unlocks the other paid
+# features, which are MIT code;
 # --no-default-features alone builds the headless core library that
 # bridgelab-cli is built on (the binary needs `desktop`, see [[bin]]).
 default = ["pro", "desktop"]
@@ -57,17 +59,32 @@ thiserror = "2"
 base64 = "0.22"
 rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "6"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+# rustls with both root sets: the bundled Mozilla roots, and the operating
+# system's store, so a company's own CA (a TLS-inspecting proxy) is trusted
+# for activation, renewal, telemetry and the HTTP tool as it is by the OS.
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "rustls-tls-native-roots"], default-features = false }
 chrono = { version = "0.4", features = ["serde"] }
 hostname = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 sha2 = "0.10"
+# The pre-1.9 hardware ID, frozen (std's DefaultHasher may change).
+siphasher = "1"
 rand = "0.9"
 regex = "1"
 encoding_rs = "0.8"
 quick-xml = "0.41"
 flate2 = "1"
 tar = "0.4"
+
+# Hand freed memory back to the OS after messages are released (glibc keeps
+# it otherwise, and a closed 5 MB message stayed in the process size).
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+libc = "0.2"
+
+# MachineGuid for the hardware ID, through the registry API (reg.exe can be
+# blocked by policy).
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
 
 [profile.release]
 panic = "abort"

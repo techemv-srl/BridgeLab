@@ -1,16 +1,18 @@
 <script lang="ts">
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
 	import { parseMessage } from '$lib/ipc/parser';
+	import { saveTarget } from '$lib/save-target';
+	import { hl7ToolTarget } from '$lib/tool-target';
 	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { validateMessage, parseFhirMessage } from '$lib/ipc/validation';
-	import { getMessageFullText, getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
+	import { getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
 	import { t, setLocale, subscribeLocale, type Locale } from '$lib/i18n';
 	import { messageStore, type MessageTab } from '$lib/stores/messages.svelte';
 	import { editorOptionsStore } from '$lib/stores/editor-options.svelte';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { fileOpsStore } from '$lib/stores/file-ops.svelte';
-	import { shortcutStore, shortcutCapture, matchesKeys } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, shortcutCapture, matchesKeys, displayKeys } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { openPricing } from '$lib/licensing/pricing';
@@ -30,9 +32,15 @@
 	import UpdateBanner from '$lib/components/layout/UpdateBanner.svelte';
 	import { isNewerVersion, fetchLatestRelease } from '$lib/updates';
 	import FhirPathPanel from '$lib/components/fhirpath/FhirPathPanel.svelte';
+	import SegmentGridPanel from '$lib/components/tree/SegmentGridPanel.svelte';
 	import type { TestCase } from '$lib/ipc/testcases';
 	import { checkLicense, type LicenseStatus } from '$lib/ipc/licensing';
 	import type { MessageTemplate } from '$lib/ipc/templates';
+	import { sampleTabLabel, type Sample } from '$lib/ipc/samples';
+	import {
+		splitLines, segmentOfLine, lineOfSegment, separatorsOf, fieldAtColumn, fieldRange,
+		segmentSkeleton, insertionLine, type FieldTarget,
+	} from '$lib/hl7/segment-lines';
 
 	// UI state
 	let treeWidth = $state(350);
@@ -59,8 +67,11 @@
 	let showGenerate = $state(false);
 	let showActivation = $state(false);
 	let showTemplates = $state(false);
+	let showSamples = $state(false);
 	let showBundleVisualizer = $state(false);
 	let showFhirPath = $state(false);
+	let showSegmentGrid = $state(false);
+	let segmentGridRequest = $state<{ segment: string; stamp: number } | null>(null);
 	let showTestCases = $state(false);
 	let showHelp = $state(false);
 	let licenseStatus = $state<LicenseStatus | null>(null);
@@ -81,13 +92,16 @@
 
 	// --- Bottom panel tabs ---
 	// The open bottom panels share ONE resizable container and render as tabs.
-	type BottomPanelId = 'validation' | 'communication' | 'fhirpath';
+	type BottomPanelId = 'validation' | 'communication' | 'fhirpath' | 'segments';
 	let activeBottomPanel = $state<BottomPanelId>('validation');
 	let openBottomPanels = $derived.by<BottomPanelId[]>(() => {
 		const out: BottomPanelId[] = [];
 		if (showValidation && validationReport) out.push('validation');
 		if (showCommunication) out.push('communication');
-		if (showFhirPath && activeTab?.parseResult) out.push('fhirpath');
+		// FHIRPath evaluates FHIR only: on an HL7 v2 tab it answered
+		// "Message not found". The panel comes back on a FHIR tab.
+		if (showFhirPath && activeTab?.parseResult?.format?.startsWith('FHIR')) out.push('fhirpath');
+		if (showSegmentGrid && activeTab?.parseResult?.format === 'HL7v2') out.push('segments');
 		return out;
 	});
 	// Keep the active tab valid when its panel closes (fall back to the first
@@ -101,6 +115,7 @@
 	function closeActiveBottomPanel() {
 		if (activeBottomPanel === 'validation') showValidation = false;
 		else if (activeBottomPanel === 'communication') showCommunication = false;
+		else if (activeBottomPanel === 'segments') showSegmentGrid = false;
 		else showFhirPath = false;
 	}
 
@@ -108,16 +123,23 @@
 	function toggleBottomPanel(id: BottomPanelId) {
 		if (id === 'validation') showValidation = !showValidation;
 		else if (id === 'communication') showCommunication = !showCommunication;
+		else if (id === 'segments') showSegmentGrid = !showSegmentGrid;
 		else showFhirPath = !showFhirPath;
 		const nowOpen =
 			(id === 'validation' && showValidation) ||
 			(id === 'communication' && showCommunication) ||
+			(id === 'segments' && showSegmentGrid) ||
 			(id === 'fhirpath' && showFhirPath);
 		if (nowOpen) activeBottomPanel = id;
 	}
 
 	// Validation state
 	let validationReport = $state<ValidationReport | null>(null);
+	/** The text the report was made from: a later edit makes it stale. */
+	let validatedContent = $state<string | null>(null);
+	let validationStale = $derived(
+		validationReport !== null && validatedContent !== null && messageStore.activeTab?.content !== validatedContent,
+	);
 
 	// The report is global while tabs are per-message: switching tab would
 	// otherwise show (and open) the previous tab's results as if they were
@@ -159,11 +181,13 @@
 				const savedInspectorHeight = await getPreference('inspector_height');
 				if (savedInspectorHeight) inspectorHeight = parseInt(savedInspectorHeight) || 260;
 				const savedRestore = await getPreference('restore_session');
-				if (savedRestore !== null) sessionStore.restoreEnabled = savedRestore !== 'false';
+				// Off: also clears tabs a version that did not delete them left.
+				if (savedRestore === 'false') await sessionStore.setRestoreEnabled(false);
 				await fileOpsStore.refreshRecent();
 				await editorOptionsStore.loadFromPrefs();
 
-				// Apply plugin enable/disable overrides (stored as plugin_enabled:<id>)
+				// On/off choices saved before 1.9.0 as plugin_enabled:<id> preferences;
+				// the backend copies them into the plugins folder's state file.
 				try {
 					const { getAllPreferences } = await import('$lib/ipc/database');
 					const { applyPluginOverrides } = await import('$lib/ipc/plugins');
@@ -180,9 +204,26 @@
 					}
 				} catch { /* web mode */ }
 
-				// Notepad++-style tab restore (skip conditions live in the store)
-				sessionRestored = await sessionStore.restoreFromDisk((content) => {
-					void autoParse(content);
+				// Notepad++-style tab restore (skip conditions live in the store).
+				// An unedited file tab shows its file as it is now; the others
+				// parse their stored text. Files gone since are reported once.
+				const missing: string[] = [];
+				const adopted: Promise<void>[] = [];
+				// Only the active tab is loaded now; the others when first shown
+				// (see the effect on activeTabId). Reading and parsing ten large
+				// files at launch made the start slow and the memory peak high.
+				sessionRestored = await sessionStore.restoreFromDisk((tabId, content) => {
+					if (tabId === messageStore.activeTabId) {
+						adopted.push(loadRestoredTab(tabId, content, missing));
+					} else {
+						deferredRestore.set(tabId, content);
+						adopted.push(fileOpsStore.checkRestoredFile(tabId, missing));
+					}
+				});
+				void Promise.all(adopted).then(async () => {
+					if (missing.length > 0) {
+						await dialogStore.warning(t('file.missingAtRestore', { paths: missing.join('\n') }), t('file.notFoundTitle'));
+					}
 				});
 			} catch {
 				// Running in web-only mode without Tauri backend
@@ -198,10 +239,9 @@
 			// files forwarded by later launches (single-instance): both open
 			// as tabs in this window.
 			try {
+				// Listen first, then drain: the backend queues files until the
+				// drain and emits them afterwards, so none falls in between.
 				const { getLaunchFiles } = await import('$lib/ipc/parser');
-				for (const p of await getLaunchFiles()) {
-					await fileOpsStore.openPath(p, suppressAutoParse);
-				}
 				const { listen } = await import('@tauri-apps/api/event');
 				await listen<string[]>('app://open-files', (e) => {
 					void (async () => {
@@ -209,6 +249,39 @@
 							await fileOpsStore.openPath(p, suppressAutoParse);
 						}
 					})();
+				});
+				for (const p of await getLaunchFiles()) {
+					await fileOpsStore.openPath(p, suppressAutoParse);
+				}
+			} catch { /* web mode */ }
+
+			// Back in the app after working elsewhere: say which open files
+			// another program changed or deleted meanwhile.
+			try {
+				const { getCurrentWindow } = await import('@tauri-apps/api/window');
+				await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+					if (focused) void fileOpsStore.checkAllTabs();
+				});
+			} catch { /* web mode */ }
+
+			// Closing the window: write the session now (the autosave is
+			// debounced, and the last keystrokes were lost), and without
+			// session restore ask before unsaved work is dropped for good.
+			try {
+				const { getCurrentWindow } = await import('@tauri-apps/api/window');
+				await getCurrentWindow().onCloseRequested(async (event) => {
+					const saved = await sessionStore.flush();
+					if (sessionStore.restoreEnabled && !saved && dirtyTabs(messageStore.tabs).length > 0) {
+						// The session could not be written (disk full...): the
+						// unsaved tabs would not come back. Ask.
+						if (!(await dialogStore.confirm(t('dialog.sessionSaveFailed'), t('dialog.unsavedTitle')))) {
+							event.preventDefault();
+						}
+						return;
+					}
+					if (!sessionStore.restoreEnabled && !(await confirmDiscard(messageStore.tabs))) {
+						event.preventDefault();
+					}
 				});
 			} catch { /* web mode */ }
 
@@ -234,9 +307,10 @@
 	});
 
 	// Session autosave: persist open tabs whenever they change, debounced.
+	// Not before startup (restore included) has finished.
 	$effect(() => {
 		if (!appInitialized || typeof window === 'undefined') return;
-		if (!sessionStore.restoreEnabled) return;
+		if (!sessionStore.restoreEnabled || !sessionStore.startupComplete) return;
 		// Track tabs + active id as dependencies
 		void messageStore.tabs;
 		void messageStore.activeTabId;
@@ -245,6 +319,8 @@
 			void t.label;
 			void t.filePath;
 			void t.isModified;
+			void t.cursorLine;
+			void t.cursorColumn;
 		}
 		sessionStore.scheduleAutosave();
 	});
@@ -254,11 +330,16 @@
 		messageStore.newTab();
 		const newTab = messageStore.activeTab;
 		if (newTab) {
-			skipNextAutoParse = true;
+			suppressAutoParse();
 			messageStore.updateContent(newTab.id, tc.content);
 			newTab.label = tc.name;
 			autoParse(tc.content);
 		}
+	}
+
+	function handleSampleSelected(sample: Sample) {
+		showSamples = false;
+		handleOpenGenerated(sample.content, sampleTabLabel(sample));
 	}
 
 	function handleTemplateSelected(template: MessageTemplate) {
@@ -267,7 +348,7 @@
 		messageStore.newTab();
 		const newTab = messageStore.activeTab;
 		if (newTab) {
-			skipNextAutoParse = true;
+			suppressAutoParse();
 			messageStore.updateContent(newTab.id, template.content);
 			newTab.label = template.name.split(' - ')[0] || template.name;
 			// Trigger parse
@@ -286,11 +367,12 @@
 	}
 
 	/**
-	 * Help → Check for updates. Preferred path: the Tauri updater (signed
-	 * artifacts + latest.json) with in-app download and relaunch. Until
-	 * artifact signing is configured on the release pipeline, that check
-	 * errors out and we fall back to the GitHub releases API: compare
-	 * versions and take the user to the release page to download.
+	 * Help → Check for updates: the same GitHub releases API request as the
+	 * daily check (compare versions, then open the release page to
+	 * download). The Tauri updater (signed artifacts, latest.json, in-app
+	 * install) is not queried until release signing is configured: until
+	 * then its request to github.com could only fail, and the privacy page
+	 * promises the one request to api.github.com.
 	 */
 	async function handleCheckUpdates() {
 		let current = '';
@@ -298,36 +380,6 @@
 			const { getVersion } = await import('@tauri-apps/api/app');
 			current = await getVersion();
 		} catch { /* web mode */ }
-
-		try {
-			const { check } = await import('@tauri-apps/plugin-updater');
-			const update = await check();
-			if (update) {
-				const go = await dialogStore.confirm(
-					t('update.available', { version: update.version, current }),
-					t('update.title'),
-				);
-				if (go) {
-					await update.downloadAndInstall();
-					const restart = await dialogStore.confirm(t('update.restart'), t('update.title'));
-					if (restart) {
-						// A relaunch failure must NOT bubble into the GitHub
-						// fallback below — the update IS installed at this point.
-						try {
-							const { relaunch } = await import('@tauri-apps/plugin-process');
-							await relaunch();
-						} catch {
-							await dialogStore.info(t('update.restartManually'), t('update.title'));
-						}
-					}
-				}
-			} else {
-				await dialogStore.info(t('update.upToDate', { current }), t('update.title'));
-			}
-			return;
-		} catch {
-			// Updater unavailable (unsigned artifacts) — GitHub fallback below.
-		}
 
 		try {
 			const { version: latest, url } = await fetchLatestRelease();
@@ -388,27 +440,100 @@
 		messageStore.newTab();
 	}
 
-	function handleCloseTab(tabId?: string) {
-		const id = tabId ?? messageStore.activeTabId;
-		if (id) messageStore.closeTab(id);
+	/** Unsaved work in these tabs. Only an untitled tab left empty has
+	 *  nothing to lose; a file emptied by the user is an unsaved change. */
+	function dirtyTabs(tabs: typeof messageStore.tabs) {
+		return tabs.filter((tab) => tab.isModified && (tab.filePath !== null || tab.content.trim() !== ''));
 	}
 
-	function handleCloseAllTabs() {
+	/** Ask before discarding unsaved changes. True when it is fine to close. */
+	async function confirmDiscard(tabs: typeof messageStore.tabs): Promise<boolean> {
+		const dirty = dirtyTabs(tabs);
+		if (dirty.length === 0) return true;
+		const names = dirty.map((tab) => tab.label).join(', ');
+		return dialogStore.confirm(t('dialog.discardTabs', { names }), t('dialog.unsavedTitle'));
+	}
+
+	async function handleCloseTab(tabId?: string) {
+		const id = tabId ?? messageStore.activeTabId;
+		const tab = messageStore.tabs.find((x) => x.id === id);
+		if (!id || !tab) return;
+		if (!(await confirmDiscard([tab]))) return;
+		messageStore.closeTab(id);
+	}
+
+	async function handleCloseOthers(keepId: string) {
+		const others = messageStore.tabs.filter((tab) => tab.id !== keepId);
+		if (!(await confirmDiscard(others))) return;
+		messageStore.closeOtherTabs(keepId);
+	}
+
+	async function handleCloseAllTabs() {
+		if (!(await confirmDiscard(messageStore.tabs))) return;
 		messageStore.closeAllTabs();
 		messageStore.newTab();
+	}
+
+	/** Parse `content` into tab `tabId` — not into whichever tab is active
+	 *  when the IPC returns (session restore parses every tab at once). */
+	/** Restored tabs not loaded yet, with their stored text. */
+	const deferredRestore = new Map<string, string>();
+
+	function loadRestoredTab(tabId: string, content: string, missing: string[] = []): Promise<void> {
+		return fileOpsStore.adoptRestoredTab(tabId, missing).then((reloaded) => {
+			if (!reloaded) return parseIntoTab(tabId, content);
+		});
+	}
+
+	$effect(() => {
+		const id = messageStore.activeTabId;
+		if (!id || !deferredRestore.has(id)) return;
+		const content = deferredRestore.get(id)!;
+		deferredRestore.delete(id);
+		void loadRestoredTab(id, content);
+	});
+
+	async function parseIntoTab(tabId: string, content: string) {
+		const trimmed = content.trim();
+		try {
+			if (looksLikeHl7(trimmed)) {
+				messageStore.updateParseResult(tabId, await parseMessage(content));
+			} else if (looksLikeFhir(trimmed)) {
+				messageStore.updateParseResult(tabId, await parseFhirMessage(content));
+			}
+		} catch { /* not parseable yet: the tab shows it unparsed */ }
 	}
 
 	// --- Editor operations ---
 
 	let skipNextAutoParse = false;
-	let autoParseTimer: ReturnType<typeof setTimeout> | null = null;
+	/** One debounce timer per tab: an edit in one tab followed by a switch
+	 *  (or a paste into a new tab) must still get its own tab parsed. */
+	const autoParseTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+	function cancelAutoParse(tabId: string) {
+		const timer = autoParseTimers.get(tabId);
+		if (timer) clearTimeout(timer);
+		autoParseTimers.delete(tabId);
+	}
+
+	/** Text the HL7 parser takes: a header (any field separator) after
+	 *  what it skips (BOM, blank lines, an MLLP start byte). */
+	function looksLikeHl7(trimmed: string): boolean {
+		return /^(MSH|FHS|BHS)/.test(trimmed);
+	}
+
+	function looksLikeFhir(trimmed: string): boolean {
+		return (trimmed.startsWith('{') && trimmed.includes('"resourceType"')) || trimmed.startsWith('<');
+	}
 
 	async function handleContentChange(value: string) {
-		if (!messageStore.activeTabId) return;
+		const tabId = messageStore.activeTabId;
+		if (!tabId) return;
 
 		// Always save the current editor text to the tab - even if autoparse should be skipped.
 		// Previously this return was above updateContent, causing user edits to be lost.
-		messageStore.updateContent(messageStore.activeTabId, value);
+		messageStore.updateContent(tabId, value);
 
 		// Skip auto-parse if content was just set by file open / parse action
 		if (skipNextAutoParse) {
@@ -416,30 +541,73 @@
 			return;
 		}
 
-		// Debounced auto-parse (500ms after user stops typing/pasting)
-		if (autoParseTimer) clearTimeout(autoParseTimer);
-		autoParseTimer = setTimeout(() => autoParse(value), 500);
+		// Debounced auto-parse, after the delay set in Settings → Parser;
+		// off there, the message is parsed by Validate / Re-parse only.
+		cancelAutoParse(tabId);
+		if (!editorOptionsStore.autoParse) return;
+		autoParseTimers.set(tabId, setTimeout(() => {
+			autoParseTimers.delete(tabId);
+			void autoParse(value, tabId);
+		}, editorOptionsStore.autoParseDelay));
 	}
 
-	async function autoParse(value: string) {
-		if (!messageStore.activeTabId || !value || value.length < 10) return;
+	/** Parse `value` into `tabId` (default: the active tab), if it is still
+	 *  that tab's text when the parse returns. */
+	async function autoParse(value: string, tabId = messageStore.activeTabId) {
+		if (!tabId) return;
+		// The parse answers for this tab and this text only: a slower,
+		// older parse (a debounced edit overtaken by a paste) or a tab
+		// switch in the meantime must not overwrite a newer result.
+		const current = () => messageStore.tabs.find((t) => t.id === tabId)?.content === value;
+		if (!value || value.length < 10) {
+			messageStore.markParseStale(tabId, t('status.parseStaleEmpty'));
+			return;
+		}
 		const trimmed = value.trim();
 		try {
-			if (trimmed.startsWith('MSH|')) {
+			if (looksLikeHl7(trimmed)) {
 				const result = await parseMessage(value);
 				// Background parse while user is typing: update parseResult only,
 				// do NOT replace editor content (would reset cursor to 1:1).
-				messageStore.updateParseResult(messageStore.activeTabId!, result);
-			} else if (
-				(trimmed.startsWith('{') && trimmed.includes('"resourceType"')) ||
-				trimmed.startsWith('<')
-			) {
+				if (current()) {
+					messageStore.updateParseResult(tabId, result);
+					await revalidateAfterParse(tabId, value, result);
+				}
+			} else if (looksLikeFhir(trimmed)) {
 				const result = await parseFhirMessage(value);
-				messageStore.updateParseResult(messageStore.activeTabId!, result);
+				if (current()) {
+					messageStore.updateParseResult(tabId, result);
+					await revalidateAfterParse(tabId, value);
+				}
+			} else if (current()) {
+				messageStore.markParseStale(tabId, t('status.parseStaleUnknown'));
 			}
-		} catch {
-			// Not valid yet, ignore
+		} catch (e) {
+			// Not valid yet: keep the last parse, but say it is out of date
+			// (the tree, status bar and FHIRPath would describe old text).
+			if (current()) messageStore.markParseStale(tabId, String(e));
 		}
+	}
+
+	/** A validation report on screen follows the text: re-run it when the
+	 *  tab it belongs to is parsed again (the counts and the issue list
+	 *  used to keep describing segments that had been deleted). */
+	async function revalidateAfterParse(tabId: string, value: string, hl7?: ParseResult) {
+		if (!validationReport || messageStore.activeTabId !== tabId || validatedContent === value) return;
+		const tab = messageStore.activeTab;
+		if (!tab || tab.content !== value) return;
+		if (!hl7) {
+			await runValidation(tab);
+			return;
+		}
+		// The message was just parsed: validate that parse, not a second one.
+		try {
+			const report = await validateMessage(hl7.message_id);
+			if (messageStore.activeTabId === tabId && tab.content === value) {
+				validationReport = report;
+				validatedContent = value;
+			}
+		} catch { /* keep the old report, marked stale */ }
 	}
 
 	/**
@@ -463,16 +631,26 @@
 		}
 		showValidation = true;
 		activeBottomPanel = 'validation';
-		const content = activeTab.content;
+		await runValidation(activeTab);
+	}
+
+	/** Parse `tab`'s text afresh, validate it and show the report. */
+	async function runValidation(tab: MessageTab) {
+		const content = tab.content;
 		const trimmed = content.trim();
+		const done = (report: ValidationReport) => {
+			// Another tab since: this report is not for the one on screen.
+			if (messageStore.activeTabId !== tab.id) return;
+			validationReport = report;
+			validatedContent = content;
+		};
 
 		// FHIR branch (JSON or XML — the backend routes each to its parser
 		// and runs the same rule set on both)
-		if ((trimmed.startsWith('{') && trimmed.includes('"resourceType"')) || trimmed.startsWith('<')) {
+		if (looksLikeFhir(trimmed)) {
 			try {
 				const result = await parseFhirMessage(trimmed);
-				skipNextAutoParse = true;
-				messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
+				if (tab.content === content) messageStore.updateParseResult(tab.id, result);
 				// Real FHIR validation (resourceType, id, per-resource field
 				// rules) — mapped into the panel's HL7-shaped report, using
 				// the JSON path where a segment reference would go.
@@ -490,12 +668,12 @@
 						message: t('fhir.profilesApplied'),
 					}]
 					: [];
-				validationReport = {
+				done({
 					issues: [...profileNote, ...fhirReport.issues.map((i) => ({
 						severity: (['error', 'warning', 'info'].includes(i.severity)
 							? i.severity
 							: 'info') as 'error' | 'warning' | 'info',
-						rule_id: 'FHIR',
+						rule_id: i.rule_id || 'FHIR',
 						segment_idx: null,
 						segment_type: i.path || null,
 						field_position: null,
@@ -504,9 +682,9 @@
 					error_count: fhirReport.error_count,
 					warning_count: fhirReport.warning_count,
 					info_count: fhirReport.info_count + profileNote.length,
-				};
+				});
 			} catch (e) {
-				validationReport = buildSyntheticReport(content, String(e));
+				done(buildSyntheticReport(content, String(e)));
 			}
 			return;
 		}
@@ -514,25 +692,26 @@
 		// HL7 v2 branch: try to parse fresh
 		try {
 			const result = await parseMessage(content);
-			skipNextAutoParse = true;
-			messageStore.updateParseResult(activeTab.id, result, result.truncated_text);
+			if (tab.content === content) messageStore.updateParseResult(tab.id, result);
 			try {
-				validationReport = await validateMessage(result.message_id);
+				done(await validateMessage(result.message_id));
 			} catch (ve) {
 				console.error('Validation IPC error:', ve);
-				validationReport = buildSyntheticReport(content, String(ve));
+				done(buildSyntheticReport(content, String(ve)));
 			}
 		} catch (e) {
 			// Parse failed - produce a detailed synthetic report explaining why
 			console.error('Parse error:', e);
-			validationReport = buildSyntheticReport(content, String(e));
+			done(buildSyntheticReport(content, String(e)));
 		}
 	}
 
 	/** Build a synthetic validation report when parsing fails. */
 	function buildSyntheticReport(content: string, parseError: string): ValidationReport {
 		const issues: ValidationIssue[] = [];
-		const firstLine = content.split(/[\r\n]/)[0] ?? '';
+		// The first line with something on it, as the parser sees it: blank
+		// lines before MSH are skipped there too.
+		const firstLine = content.replace(/^[\ufeff\s\x1c]+/, '').split(/[\r\n]/)[0] ?? '';
 		const firstSegType = firstLine.substring(0, 3);
 
 		if (firstLine.length < 8) {
@@ -541,7 +720,7 @@
 				segment_idx: null, segment_type: null, field_position: null,
 				message: t('val.tooShort'),
 			});
-		} else if (!firstLine.startsWith('MSH|')) {
+		} else if (!/^(MSH|FHS|BHS)/.test(firstLine)) {
 			issues.push({
 				severity: 'error', rule_id: 'STRUCT-002',
 				segment_idx: 0, segment_type: firstSegType || null, field_position: null,
@@ -568,11 +747,13 @@
 		};
 	}
 
+	/** An issue row: select its segment (and field) in the editor and the tree. */
 	function handleValidationIssueClick(issue: ValidationIssue) {
-		// Navigate to the segment in the tree/editor
-		if (issue.segment_idx !== null && issue.segment_idx !== undefined) {
-			// Scroll editor to the segment line (segments are 1-indexed lines)
-			// The segment index maps roughly to line numbers in the truncated text
+		if (issue.segment_idx === null || issue.segment_idx === undefined) return;
+		const target: FieldTarget = { field: issue.field_position ?? 0, repetition: null, component: null };
+		handleTreeNavigateToEditor(issue.segment_idx, target);
+		if (activeTab?.parseResult) {
+			treeNavigation = { tabId: activeTab.id, segmentIdx: issue.segment_idx, target, stamp: Date.now() };
 		}
 	}
 
@@ -587,7 +768,7 @@
 	/** Currently selected tree node (for Field Inspector) */
 	let selectedTreeNode = $state<TreeNode | null>(null);
 
-	function handleNodeSelect(node: TreeNode) {
+	function handleNodeSelect(node: TreeNode | null) {
 		selectedTreeNode = node;
 	}
 
@@ -597,11 +778,17 @@
 	$effect(() => {
 		void messageStore.activeTabId;
 		selectedTreeNode = null;
+		// The tree is rebuilt for the other tab: a jump asked of the
+		// previous one must not replay there.
+		treeNavigation = null;
 	});
 
 	/** Derive the segment type code (e.g. "PID") for the currently selected tree node. */
 	let selectedSegmentType = $derived.by<string | null>(() => {
 		if (!selectedTreeNode || !activeTab?.parseResult) return null;
+		// A greyed segment of the standard structure: "ghost.OBX[.f5]".
+		const ghost = selectedTreeNode.id.match(/^ghost\.([A-Z][A-Z0-9]{2})(?:\.|$)/);
+		if (ghost) return ghost[1];
 		const parts = selectedTreeNode.id.split('.');
 		const segPart = parts.find((p) => p.startsWith('seg'));
 		if (!segPart) return null;
@@ -609,7 +796,8 @@
 		const segNode = activeTab.parseResult.tree_roots[segIdx];
 		if (!segNode) return null;
 		// Segment label is "MSH (0)" / "PID (1)" — take the 3-char code
-		const m = segNode.label.match(/^([A-Z][A-Z0-9]{2})/);
+		// ("PIDX (2)" has none: it is no PID).
+		const m = segNode.label.match(/^([A-Z][A-Z0-9]{2}) /);
 		return m ? m[1] : null;
 	});
 
@@ -617,133 +805,59 @@
 		expandedFieldContent = content;
 	}
 
-	/** Handle expand truncated: replace truncated text inline with full content.
-	 *  fieldPositionStr is the HL7 field position number determined by counting pipes. */
-	async function handleEditorExpandTruncated(lineNumber: number, fieldPositionStr: string) {
-		if (!activeTab?.parseResult) return;
-		const segIdx = lineNumber - 1;
-		const msgId = activeTab.parseResult.message_id;
-		const fieldPosition = parseInt(fieldPositionStr) || 0;
+	/** The editor component: folds long runs visually, expands on request. */
+	let editorRef = $state<ReturnType<typeof MonacoEditor> | undefined>(undefined);
+	/** Folded runs the editor currently shows (status-bar badge). */
+	let foldCount = $state(0);
 
-		try {
-			const { expandFieldInline } = await import('$lib/ipc/parser');
-			const expandedText = await expandFieldInline(msgId, segIdx, fieldPosition);
-			if (messageStore.activeTabId) {
-				skipNextAutoParse = true;
-				messageStore.updateContent(messageStore.activeTabId, expandedText);
-			}
-		} catch (e) {
-			console.error('Failed to expand field:', e);
-		}
+	function handleExpandAll() {
+		editorRef?.expandAllFolds();
 	}
 
-	/** Expand ALL truncated fields inline */
-	async function handleExpandAll() {
-		if (!activeTab?.parseResult) return;
-		try {
-			const { expandAllFields } = await import('$lib/ipc/parser');
-			const fullText = await expandAllFields(activeTab.parseResult.message_id);
-			if (messageStore.activeTabId) {
-				skipNextAutoParse = true;
-				messageStore.updateContent(messageStore.activeTabId, fullText);
-			}
-		} catch (e) {
-			console.error('Failed to expand all fields:', e);
-		}
-	}
-
-	/** Re-truncate all expanded fields */
-	async function handleCollapseAll() {
-		if (!activeTab?.parseResult) return;
-		try {
-			const { collapseAllFields } = await import('$lib/ipc/parser');
-			const truncatedText = await collapseAllFields(activeTab.parseResult.message_id);
-			if (messageStore.activeTabId) {
-				skipNextAutoParse = true;
-				messageStore.updateContent(messageStore.activeTabId, truncatedText);
-			}
-		} catch (e) {
-			console.error('Failed to collapse fields:', e);
-		}
-	}
-
-	/** Handle "Show in Tree" - expand tree panel and select the segment + optional field */
-	function handleEditorNavigateSegment(lineNumber: number, _segmentType: string, fieldPosition?: number) {
+	/** Show Segment in Tree: select what is under the caret (segment,
+	 *  field, repetition, component) in the tree. */
+	function handleEditorNavigateSegment(lineNumber: number, column: number) {
 		showTree = true;
-		const segIdx = lineNumber - 1;
-		if (activeTab?.parseResult) {
-			treeNavigation = {
-				segmentIdx: segIdx,
-				fieldPosition: fieldPosition ?? null,
-				stamp: Date.now(),  // stamp to force re-trigger even on same target
-			};
-		}
+		const text = activeTab?.content;
+		if (!text || !activeTab?.parseResult) return;
+		const lines = splitLines(text);
+		// Segment N is not line N + 1 when there are blank lines.
+		const segIdx = segmentOfLine(lines, lineNumber - 1);
+		if (segIdx === null) return;
+		const target = fieldAtColumn(lines[lineNumber - 1], column, separatorsOf(lines), segIdx === 0);
+		treeNavigation = {
+			tabId: activeTab.id,
+			segmentIdx: segIdx,
+			target: target && target.field > 0 ? target : null,
+			stamp: Date.now(),  // stamp to force re-trigger even on same target
+		};
 	}
 
-	/** Tree navigation request from editor: includes segment index and optional field position */
-	let treeNavigation = $state<{ segmentIdx: number; fieldPosition: number | null; stamp: number } | null>(null);
+	/** Tree navigation request from editor: segment index and optional field target */
+	let treeNavigation = $state<{ tabId: string; segmentIdx: number; target: FieldTarget | null; stamp: number } | null>(null);
 
 	/** Editor navigation request from tree: scrolls Monaco to a specific position */
 	let editorNavigation = $state<{ line: number; column: number; selectionLength: number; stamp: number } | null>(null);
 
 	/** Handle a tree node requesting to show its position in the editor */
-	function handleTreeNavigateToEditor(segmentIdx: number, fieldPosition: number | null, componentIdx: number | null) {
-		if (!activeTab?.parseResult) return;
-		const text = activeTab.content;
-		const lines = text.split(/\r\n|\r|\n/);
-		if (segmentIdx >= lines.length) return;
+	/** Open the segment grid on one segment type (tree context menu). */
+	function showSegmentInGrid(segmentType: string) {
+		segmentGridRequest = { segment: segmentType, stamp: Date.now() };
+		showSegmentGrid = true;
+		activeBottomPanel = 'segments';
+	}
 
-		const line = lines[segmentIdx];
-		const lineNumber = segmentIdx + 1;
-		let column = 1;
-		let selectionLength = line.length;
-
-		if (fieldPosition !== null && fieldPosition !== undefined) {
-			// Find the start column of this field by counting pipes
-			const isMsh = line.startsWith('MSH');
-			let pipeIdx = 0;
-			let cursor = 0;
-
-			if (isMsh && fieldPosition === 1) {
-				// MSH-1 is the field separator at position 4
-				column = 4;
-				selectionLength = 1;
-			} else if (isMsh && fieldPosition === 2) {
-				// MSH-2 is the encoding chars at position 5
-				column = 5;
-				selectionLength = 4;
-			} else {
-				// For non-MSH segments: pipes start counting after segment name
-				// fieldPosition 1 = first field after first pipe
-				// For MSH: fieldPosition 3 = third field after the encoding chars
-				const targetPipe = isMsh ? fieldPosition - 1 : fieldPosition;
-				while (cursor < line.length && pipeIdx < targetPipe) {
-					if (line[cursor] === '|') pipeIdx++;
-					cursor++;
-				}
-				column = cursor + 1;
-				// Find the end of this field (next pipe or end of line)
-				let end = cursor;
-				while (end < line.length && line[end] !== '|') end++;
-				selectionLength = Math.max(1, end - cursor);
-
-				// Optionally narrow to component
-				if (componentIdx !== null && componentIdx !== undefined && componentIdx > 0) {
-					const fieldText = line.substring(cursor, end);
-					const components = fieldText.split('^');
-					if (componentIdx <= components.length) {
-						let compStart = 0;
-						for (let i = 0; i < componentIdx - 1; i++) {
-							compStart += components[i].length + 1; // +1 for '^'
-						}
-						column = cursor + compStart + 1;
-						selectionLength = Math.max(1, components[componentIdx - 1].length);
-					}
-				}
-			}
-		}
-
-		editorNavigation = { line: lineNumber, column, selectionLength, stamp: Date.now() };
+	/** Select a segment, field, repetition or component in the editor. */
+	function handleTreeNavigateToEditor(segmentIdx: number, target: FieldTarget) {
+		if (!activeTab) return;
+		const lines = splitLines(activeTab.content);
+		// Blank lines are no segments: count segments, not lines.
+		const lineIdx = lineOfSegment(lines, segmentIdx);
+		if (lineIdx === null) return;
+		// The separators the message declares in MSH-1/MSH-2, not the usual
+		// '|' and '^': the parser honours them, so navigation must too.
+		const { column, length } = fieldRange(lines[lineIdx], target, separatorsOf(lines), segmentIdx === 0);
+		editorNavigation = { line: lineIdx + 1, column, selectionLength: length, stamp: Date.now() };
 	}
 
 	/** Insert a skeleton for a standard segment (from a ghost row in the
@@ -762,21 +876,26 @@
 				pipes = Math.max(1, ...lastRequired);
 			}
 		} catch { /* skeleton with a single separator */ }
-		const skeleton = code === 'MSH' ? 'MSH|^~\\&' + '|'.repeat(Math.max(0, pipes - 2)) : code + '|'.repeat(pipes);
-
 		const content = tab.content;
-		const sep = content.includes('\r\n') ? '\r\n' : content.includes('\r') ? '\r' : '\n';
-		const lines = content.split(sep);
-		const at = afterSegmentIdx === null ? 0 : Math.min(afterSegmentIdx + 1, lines.length);
-		lines.splice(at, 0, skeleton);
-		const updated = lines.join(sep);
-		messageStore.updateContent(tab.id, updated);
+		const lines = splitLines(content);
+		// With the message's own separators: a '#'-delimited message got '|'.
+		const skeleton = segmentSkeleton(code, pipes, separatorsOf(lines));
+		const at = insertionLine(lines, afterSegmentIdx, code);
+		// Through the editor, as one undoable step: replacing the text
+		// wholesale cleared the undo history, edits before it included.
+		const viaEditor = messageStore.activeTabId === tab.id && (editorRef?.insertLine(at, skeleton) ?? false);
+		if (!viaEditor) {
+			const eol = content.includes('\r\n') ? '\r\n' : content.includes('\r') ? '\r' : '\n';
+			lines.splice(at, 0, skeleton);
+			messageStore.updateContent(tab.id, lines.join(eol));
+		}
+		const updated = tab.content;
 		// Parse bound to THIS tab id — autoParse resolves the active tab when
 		// the IPC returns, and the user may have switched tabs meanwhile.
+		cancelAutoParse(tab.id);
 		try {
 			const result = await parseMessage(updated);
-			skipNextAutoParse = true;
-			messageStore.updateParseResult(tab.id, result);
+			if (tab.content === updated) messageStore.updateParseResult(tab.id, result);
 		} catch { /* leave unparsed */ }
 	}
 
@@ -807,8 +926,57 @@
 
 	// --- Anonymization / Copy / Export ---
 
-	function handleShowAnonymize() {
-		if (activeTab?.parseResult) showAnonymize = true;
+	/** The HL7 v2 message a Tools command works on: the editor text of the
+	 *  tab the command started on, parsed now (see hl7ToolTarget). Says why
+	 *  not when there is none, and returns null. */
+	async function requireHl7(): Promise<{ tabId: string; result: ParseResult } | null> {
+		const tab = activeTab;
+		if (tab) cancelAutoParse(tab.id);
+		const target = await hl7ToolTarget(tab ? { id: tab.id, content: tab.content } : null, {
+			parse: parseMessage,
+			current: () => {
+				const now = messageStore.activeTab;
+				return now ? { id: now.id, content: now.content } : null;
+			},
+			looksLikeHl7,
+			looksLikeFhir,
+		});
+		if (target.ok) {
+			messageStore.updateParseResult(target.tabId, target.result);
+			return { tabId: target.tabId, result: target.result };
+		}
+		switch (target.reason) {
+			case 'empty': await dialogStore.warning(t('dialog.parseFirst')); break;
+			case 'fhir': await dialogStore.warning(t('dialog.hl7Only')); break;
+			case 'notHl7': await dialogStore.warning(t('dialog.notHl7Tool')); break;
+			case 'parseFailed': await dialogStore.warning(t('dialog.parseFailedTool', { error: target.error })); break;
+			case 'changed': break; // the user moved on: run the command again
+		}
+		return null;
+	}
+
+	async function handleShowAnonymize() {
+		const target = await requireHl7();
+		// The dialog works on the active tab: it is the one just parsed.
+		if (target && messageStore.activeTabId === target.tabId) showAnonymize = true;
+	}
+
+	/** Opening FHIRPath on a tab that is not FHIR says why nothing opens;
+	 *  closing it works anywhere. */
+	async function handleToggleFhirPath() {
+		if (!showFhirPath && !activeTab?.parseResult?.format?.startsWith('FHIR')) {
+			await dialogStore.warning(t(activeTab?.parseResult ? 'dialog.fhirPathFhirOnly' : 'dialog.parseFirst'));
+			return;
+		}
+		toggleBottomPanel('fhirpath');
+	}
+
+	async function handleShowBundleVisualizer() {
+		if (!activeTab?.parseResult?.format?.startsWith('FHIR')) {
+			await dialogStore.warning(t('dialog.fhirOnly'));
+			return;
+		}
+		showBundleVisualizer = true;
 	}
 
 	function handleAnonymized(text: string) {
@@ -818,7 +986,7 @@
 		const newTab = messageStore.activeTab;
 		if (newTab) {
 			messageStore.updateContent(newTab.id, text);
-			newTab.label = 'Anonymized';
+			newTab.label = t('tab.anonymized');
 		}
 	}
 
@@ -836,7 +1004,7 @@
 			void (async () => {
 				try {
 					const result = await parseMessage(content);
-					skipNextAutoParse = true;
+					suppressAutoParse();
 					messageStore.updateParseResult(tabId, result);
 				} catch { /* leave unparsed */ }
 			})();
@@ -848,23 +1016,31 @@
 			await dialogStore.warning(t('diff.needTwoTabs'));
 			return;
 		}
+		// Restored tabs not shown yet hold no text (a large file is read
+		// back when first shown): load them, or one side of the diff would
+		// be empty without a hint.
+		const pending = [...deferredRestore];
+		deferredRestore.clear();
+		await Promise.all(pending.map(([id, content]) => loadRestoredTab(id, content)));
 		showCompare = true;
 	}
 
 	async function handleCopyFull() {
-		if (!activeTab?.parseResult) return;
-		try {
-			const text = await getMessageFullText(activeTab.parseResult.message_id);
-			await navigator.clipboard.writeText(text);
-		} catch { /* fallback: copy editor content */
-			if (activeTab?.content) await navigator.clipboard.writeText(activeTab.content);
+		// The tab content is the full text, edits included.
+		if (!activeTab?.content) {
+			await dialogStore.warning(t('dialog.noMessage'));
+			return;
 		}
+		try {
+			await navigator.clipboard.writeText(activeTab.content);
+		} catch { /* no clipboard in this context */ }
 	}
 
 	async function handleCopyTruncated() {
-		if (!activeTab?.parseResult) return;
+		const target = await requireHl7();
+		if (!target) return;
 		try {
-			const text = await getMessageTruncatedText(activeTab.parseResult.message_id, 100);
+			const text = await getMessageTruncatedText(target.result.message_id, 100);
 			await navigator.clipboard.writeText(text);
 		} catch {
 			// web mode fallback
@@ -872,33 +1048,38 @@
 	}
 
 	async function handleExportJson() {
-		if (!activeTab?.parseResult) return;
-		try {
-			const json = await exportAsJson(activeTab.parseResult.message_id);
-			downloadFile(json, `${activeTab.label || 'message'}.json`, 'application/json');
-		} catch (e) {
-			if (!await handleUpgradeError(e)) console.error('Export JSON failed:', e);
-		}
+		await exportStructured('json');
 	}
 
 	async function handleExportCsv() {
-		if (!activeTab?.parseResult) return;
-		try {
-			const csv = await exportAsCsv(activeTab.parseResult.message_id);
-			downloadFile(csv, `${activeTab.label || 'message'}.csv`, 'text/csv');
-		} catch (e) {
-			if (!await handleUpgradeError(e)) console.error('Export CSV failed:', e);
-		}
+		await exportStructured('csv');
 	}
 
-	function downloadFile(content: string, filename: string, mimeType: string) {
-		const blob = new Blob([content], { type: mimeType });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = filename;
-		a.click();
-		URL.revokeObjectURL(url);
+	/** Tools → Export JSON / CSV: ask where, then write. A blob download
+	 *  wrote the file wherever the webview chose (or nowhere), silently. */
+	async function exportStructured(kind: 'json' | 'csv') {
+		const target = await requireHl7();
+		if (!target) return;
+		const messageId = target.result.message_id;
+		const label = messageStore.tabs.find((x) => x.id === target.tabId)?.label;
+		const base = (label || 'message').replace(/\.[^.]*$/, '');
+		try {
+			const text = kind === 'json' ? await exportAsJson(messageId) : await exportAsCsv(messageId);
+			const { save } = await import('@tauri-apps/plugin-dialog');
+			const path = await save({
+				title: t(kind === 'json' ? 'menu.tools.exportJson' : 'menu.tools.exportCsv'),
+				defaultPath: `${base}.${kind}`,
+				filters: [{ name: kind.toUpperCase(), extensions: [kind] }],
+			});
+			const target = path ? await saveTarget(path, kind) : null;
+			if (!target) return;
+			const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+			await writeTextFile(target, text);
+		} catch (e) {
+			if (!(await handleUpgradeError(e))) {
+				await dialogStore.error(t('dialog.exportFailed'), undefined, String(e));
+			}
+		}
 	}
 
 	async function handleSetTheme(newTheme: string) {
@@ -963,7 +1144,7 @@
 				const text = await file.text();
 				if (text.startsWith('MSH|')) {
 					const result = await parseMessage(text, file.name);
-					messageStore.openMessage(result, null, result.truncated_text);
+					messageStore.openMessage(result, null, text);
 					messageStore.tabs[messageStore.tabs.length - 1].label = file.name;
 				}
 			} catch {
@@ -1016,26 +1197,29 @@
 	// --- Paste handler (fallback for when Monaco doesn't have focus) ---
 
 	async function handlePaste(e: ClipboardEvent) {
-		// Only intercept if Monaco doesn't have focus
-		const activeEl = document.activeElement;
-		const isMonacoFocused = activeEl?.closest('.editor-container') ||
-			activeEl?.classList.contains('monaco-editor') ||
-			activeEl?.closest('.monaco-editor');
-
-		if (isMonacoFocused) return; // Let Monaco handle it
+		// A paste that lands in any text control (the editor, a search box,
+		// the MLLP host, the licence key, FHIRPath...) belongs to that
+		// control: this window-level fallback used to replace the whole
+		// message with it.
+		const inTextControl = (el: EventTarget | null) => el instanceof Element && !!el.closest(
+			'input, textarea, select, [contenteditable=""], [contenteditable="true"], .editor-container, .monaco-editor, [role="dialog"], .modal, .modal-overlay',
+		);
+		if (inTextControl(e.target) || inTextControl(document.activeElement)) return;
 
 		const text = e.clipboardData?.getData('text/plain');
 		if (!text) return;
-		// Paste with zero tabs (welcome screen): create the first tab so
-		// paste-to-start works as the onboarding promises.
-		if (!messageStore.activeTabId) messageStore.newTab();
-		if (!messageStore.activeTabId) return;
-
 		e.preventDefault();
-		messageStore.updateContent(messageStore.activeTabId, text);
+		// Paste-to-start: into the empty active tab, otherwise into a NEW
+		// tab. Never over an existing message, which has no undo here.
+		const active = messageStore.activeTab;
+		if (!active || active.content.trim() !== '') messageStore.newTab();
+		if (!messageStore.activeTabId) return;
+		const pastedInto = messageStore.activeTabId;
+		cancelAutoParse(pastedInto);
+		messageStore.updateContent(pastedInto, text);
 
 		// Trigger auto-parse
-		await autoParse(text);
+		await autoParse(text, pastedInto);
 	}
 
 	// --- Keyboard shortcuts ---
@@ -1052,17 +1236,56 @@
 		'view.toggleTree': () => handleToggleTree(),
 		'view.toggleValidation': () => toggleBottomPanel('validation'),
 		'view.toggleCommunication': () => toggleBottomPanel('communication'),
-		'view.toggleFhirPath': () => toggleBottomPanel('fhirpath'),
+		'view.toggleFhirPath': () => { void handleToggleFhirPath(); },
+		'view.toggleSegmentGrid': () => toggleBottomPanel('segments'),
 		'tools.reparse': () => handleParse(),
 		'tools.validate': () => handleValidate(),
 	};
 
+	/**
+	 * Edit menu. The menu does not take the focus, so the command goes to
+	 * what the user was working in: the editor through its own API, a text
+	 * field through execCommand (paste through the clipboard API, since
+	 * script-issued 'paste' is blocked).
+	 */
+	async function handleEditCommand(cmd: 'undo' | 'redo' | 'cut' | 'copy' | 'paste') {
+		const el = document.activeElement;
+		const field = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
+		let ok = true;
+		if (field && !editorRef?.hasTextFocus()) {
+			if (cmd !== 'paste') {
+				ok = document.execCommand(cmd);
+			} else {
+				try {
+					const text = await navigator.clipboard.readText();
+					field.focus();
+					ok = document.execCommand('insertText', false, text);
+				} catch {
+					ok = false;
+				}
+			}
+		} else if (editorRef && activeTab) {
+			ok = await editorRef.runEditCommand(cmd);
+		}
+		if (!ok && (cmd === 'cut' || cmd === 'copy' || cmd === 'paste')) {
+			const key = { cut: 'Ctrl+X', copy: 'Ctrl+C', paste: 'Ctrl+V' }[cmd];
+			await dialogStore.info(t('dialog.clipboardBlocked', { keys: displayKeys(key) }));
+		}
+	}
+
+	/**
+	 * App shortcuts, in the capture phase: they must reach the app before
+	 * the editor, which otherwise keeps keys it also binds (Ctrl+L, Ctrl+K)
+	 * for itself. A binding the user gives an editor key wins over the
+	 * editor; the shortcut editor says so when the binding is made.
+	 */
 	function handleKeydown(e: KeyboardEvent) {
 		// Stand down while the ShortcutsEditor is capturing a combo — pressing
 		// Ctrl+O to *assign* it must not also open the file picker.
 		if (shortcutCapture.active) return;
 		if (e.key === 'F1') {
 			e.preventDefault();
+			e.stopPropagation();
 			showHelp = !showHelp;
 			return;
 		}
@@ -1081,15 +1304,34 @@
 			const keys = shortcutStore.get(id);
 			if (keys && matchesKeys(e, keys)) {
 				e.preventDefault();
+				e.stopPropagation();
 				action();
 				return;
 			}
 		}
 	}
+
+	/**
+	 * Browser keys that would act on the page itself: on Windows, WebView2
+	 * reloads on Ctrl+R (losing panels, and every tab when session restore
+	 * is off) and prints on Ctrl+P. Runs in the bubble phase, so a key the
+	 * editor or a field used (Ctrl+F in the editor opens its Find) is left
+	 * alone; the rest are cancelled.
+	 */
+	function blockBrowserKeys(e: KeyboardEvent) {
+		if (e.defaultPrevented) return;
+		const ctrl = e.ctrlKey || e.metaKey;
+		const k = e.key.toLowerCase();
+		const reload = e.key === 'F5' || (ctrl && k === 'r');
+		const pageAction = ctrl && !e.altKey && !e.shiftKey && ['p', 'f', 'g', 'u', 'j', 'h'].includes(k);
+		const caretBrowsing = e.key === 'F7' || e.key === 'F3';
+		if (reload || pageAction || caretBrowsing) e.preventDefault();
+	}
 </script>
 
 <svelte:window
-	onkeydown={handleKeydown}
+	onkeydowncapture={handleKeydown}
+	onkeydown={blockBrowserKeys}
 	onmousemove={handleMouseMove}
 	onmouseup={stopDrag}
 	onpaste={handlePaste}
@@ -1124,14 +1366,16 @@
 		onClearRecent={handleClearRecent}
 		onOpenRecentFile={handleOpenRecentFile}
 		onNewFromTemplate={() => { showTemplates = true; }}
+		onShowSamples={() => { showSamples = true; }}
 		onShowTestCases={() => { showTestCases = true; }}
 		onParse={handleParse}
 		onValidate={handleValidate}
 		onToggleValidation={() => toggleBottomPanel('validation')}
 		onToggleCommunication={() => toggleBottomPanel('communication')}
 		onAnonymize={handleShowAnonymize}
-		onShowBundleVisualizer={() => { showBundleVisualizer = true; }}
-		onToggleFhirPath={() => toggleBottomPanel('fhirpath')}
+		onShowBundleVisualizer={handleShowBundleVisualizer}
+		onToggleFhirPath={() => { void handleToggleFhirPath(); }}
+		onToggleSegmentGrid={() => toggleBottomPanel('segments')}
 		onCopyFull={handleCopyFull}
 		onCopyTruncated={handleCopyTruncated}
 		onExportJson={handleExportJson}
@@ -1148,6 +1392,7 @@
 		onToggleSchemaFields={() => { showSchemaFields = !showSchemaFields; }}
 		onSetTheme={handleSetTheme}
 		onSetLanguage={handleSetLanguage}
+		onEditCommand={handleEditCommand}
 		onShowSettings={() => { settingsSection = 'editor'; showSettings = true; }}
 		onShowShortcuts={() => { settingsSection = 'shortcuts'; showSettings = true; }}
 		onCheckUpdates={handleCheckUpdates}
@@ -1181,6 +1426,9 @@
 						</button>
 					</div>
 					<div class="tree-scroll">
+						<!-- One tree per tab: re-parses of the same tab keep what is
+						     expanded and selected, another tab starts fresh. -->
+						{#key activeTab.id}
 						<MessageTree
 							messageId={activeTab.parseResult.message_id}
 							roots={activeTab.parseResult.tree_roots}
@@ -1190,10 +1438,12 @@
 							showSchemaFields={showSchemaFields}
 							onNodeSelect={handleNodeSelect}
 							onFieldExpand={handleFieldExpand}
-							navigateTo={treeNavigation}
+							navigateTo={treeNavigation?.tabId === activeTab.id ? treeNavigation : null}
 							onNavigateToEditor={handleTreeNavigateToEditor}
 							onInsertSegment={handleInsertSegment}
+							onShowInGrid={showSegmentInGrid}
 						/>
+						{/key}
 					</div>
 					{#if showInspector}
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1205,7 +1455,7 @@
 							tabindex={0}
 							aria-orientation="horizontal"
 							onmousedown={startInspectorDrag}
-							title="Drag to resize"
+							title={tr('common.dragResize')}
 						></div>
 						<div class="inspector-wrapper" style="height: {inspectorHeight}px">
 							<FieldInspector
@@ -1224,7 +1474,9 @@
 					</div>
 					<div class="panel-empty">
 						<p>{tr('tree.empty')}</p>
-						<p class="shortcut-hint">{tr('tree.shortcutHint')}</p>
+						{#if shortcutStore.get('file.open')}
+							<p class="shortcut-hint">{tr('tree.shortcutHint', { keys: displayKeys(shortcutStore.get('file.open')) })}</p>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -1248,6 +1500,7 @@
 				activeTabId={messageStore.activeTabId}
 				onSelectTab={(id) => messageStore.setActiveTab(id)}
 				onCloseTab={(id) => handleCloseTab(id)}
+				onCloseOthers={(id) => handleCloseOthers(id)}
 				onNewTab={handleNewTab}
 			/>
 
@@ -1255,7 +1508,12 @@
 			<div class="editor-area">
 				{#if activeTab}
 					<MonacoEditor
+						bind:this={editorRef}
 						content={activeTab.content}
+						docKey={activeTab.id}
+						openDocs={messageStore.tabs.map((t) => t.id)}
+						cursorLine={activeTab.cursorLine}
+						cursorColumn={activeTab.cursorColumn}
 						theme={theme === 'light' ? 'bridgelab-light' : 'bridgelab-dark'}
 						language={activeTab.parseResult?.format?.startsWith('FHIR JSON') ? 'json'
 							: activeTab.parseResult?.format?.startsWith('FHIR XML') ? 'xml'
@@ -1263,10 +1521,9 @@
 						options={editorOptionsStore.options}
 						onContentChange={handleContentChange}
 						onCursorChange={handleCursorChange}
-						onExpandTruncated={handleEditorExpandTruncated}
-						onExpandAll={handleExpandAll}
 						onNavigateToSegment={handleEditorNavigateSegment}
-						onCollapseAll={handleCollapseAll}
+						foldThreshold={editorOptionsStore.foldThreshold}
+						onFoldCountChange={(n) => { foldCount = n; }}
 						onCopyFullMessage={handleCopyFull}
 						onCopyTruncatedMessage={handleCopyTruncated}
 						navigation={editorNavigation}
@@ -1275,6 +1532,7 @@
 					<WelcomeScreen
 						onOpenFile={handleOpenFile}
 						onNewFromTemplate={() => { showTemplates = true; }}
+						onShowSamples={() => { showSamples = true; }}
 						onShowTestCases={() => { showTestCases = true; }}
 						onShowHelp={() => { showHelp = true; }}
 						onNewTab={handleNewTab}
@@ -1320,6 +1578,7 @@
 								errorCount={validationReport.error_count}
 								warningCount={validationReport.warning_count}
 								infoCount={validationReport.info_count}
+								stale={validationStale}
 								onIssueClick={handleValidationIssueClick}
 							/>
 						</div>
@@ -1329,6 +1588,7 @@
 							<CommunicationPanel
 								currentMessage={activeTab?.content ?? ''}
 								activeTabLabel={activeTab?.label ?? ''}
+								activeTabCharset={activeTab?.charset ?? null}
 								onMessageReceived={(content) => {
 									// Open each incoming MLLP message in a fresh tab so the
 									// user does not lose the message currently in the editor.
@@ -1337,16 +1597,25 @@
 									if (t) {
 										messageStore.updateContent(t.id, content);
 										const ts = new Date().toLocaleTimeString();
-										t.label = `Inbox ${ts}`;
+										t.label = tr('tab.inbox', { time: ts });
 									}
 								}}
 								onOpenGenerated={handleOpenGenerated}
 							/>
 						</div>
 					{/if}
-					{#if showFhirPath && activeTab?.parseResult}
+					{#if showFhirPath && activeTab?.parseResult?.format?.startsWith('FHIR')}
 						<div class="panel-body" class:hidden-panel={activeBottomPanel !== 'fhirpath'}>
-							<FhirPathPanel messageId={activeTab.parseResult.message_id} />
+							<FhirPathPanel messageId={activeTab.parseResult.message_id} stale={activeTab.parseStale ?? null} />
+						</div>
+					{/if}
+					{#if showSegmentGrid && activeTab?.parseResult?.format === 'HL7v2'}
+						<div class="panel-body" class:hidden-panel={activeBottomPanel !== 'segments'}>
+							<SegmentGridPanel
+								messageId={activeTab.parseResult.message_id}
+								request={segmentGridRequest}
+								onNavigate={(segIdx, pos) => handleTreeNavigateToEditor(segIdx, { field: pos, repetition: null, component: null })}
+							/>
 						</div>
 					{/if}
 				</div>
@@ -1361,6 +1630,7 @@
 		bind:showBundleVisualizer
 		bind:showTestCases
 		bind:showTemplates
+		bind:showSamples
 		bind:showActivation
 		bind:showSettings
 		bind:showSchemaExport
@@ -1376,6 +1646,7 @@
 		{theme}
 		onTestCaseLoaded={handleTestCaseLoaded}
 		onTemplateSelected={handleTemplateSelected}
+		onSampleSelected={handleSampleSelected}
 		onAnonymized={handleAnonymized}
 		onSetTheme={handleSetTheme}
 		onOpenRecentFile={(path) => { void handleOpenRecentFile(path); }}
@@ -1391,10 +1662,11 @@
 		format={activeTab?.parseResult?.format}
 		segmentCount={activeTab?.parseResult?.segment_count}
 		fileSize={activeTab?.parseResult?.file_size_bytes}
-		truncationCount={activeTab?.parseResult?.truncation_count}
+		truncationCount={foldCount}
 		cursorLine={activeTab?.cursorLine}
 		cursorColumn={activeTab?.cursorColumn}
 		isModified={activeTab?.isModified ?? false}
+		parseStale={activeTab?.parseResult ? (activeTab?.parseStale ?? null) : null}
 		errorCount={validationReport ? validationReport.error_count : null}
 		warningCount={validationReport ? validationReport.warning_count : null}
 		onShowValidation={() => { showValidation = true; activeBottomPanel = 'validation'; }}

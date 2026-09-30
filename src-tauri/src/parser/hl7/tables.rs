@@ -139,6 +139,31 @@ fn table_for<'a>(tables: &'a HashMap<String, Hl7Table>, version: &str) -> Option
         .or_else(|| fallback_table(tables))
 }
 
+/// The catalogue version that stands in for `version` when BridgeLab holds
+/// no catalogue for it exactly — `Some("2.5")` for a declared `2.8` or a
+/// typo, `Some("2.3")` for a `2.3.9` — or `None` when the version is known
+/// (or empty: a missing MSH-12 is reported on its own). Validators name it,
+/// so findings from another version's catalogue are never mistaken for the
+/// declared one's.
+pub fn fallback_version_for(version: &str) -> Option<String> {
+    let number = schema::version_number(version);
+    if number.is_empty() {
+        // Missing MSH-12 is reported on its own; anything else that holds
+        // no version number ("banana", "v2.5") still falls back.
+        let declared = version.split('^').next().unwrap_or("").trim();
+        return (!declared.is_empty()).then(|| DEFAULT_VERSION.to_string());
+    }
+    let tables = get_tables();
+    if tables.contains_key(number) {
+        return None;
+    }
+    let major_minor = number.split('.').take(2).collect::<Vec<_>>().join(".");
+    if tables.contains_key(&major_minor) {
+        return Some(major_minor);
+    }
+    Some(DEFAULT_VERSION.to_string())
+}
+
 /// Get the tables cache, initializing if needed.
 fn get_tables() -> &'static HashMap<String, Hl7Table> {
     TABLES.get_or_init(init_tables)
@@ -687,5 +712,13 @@ mod tests {
     #[test]
     fn test_unknown_segment() {
         assert!(get_segment_info("ZZZ", "2.5").is_none());
+    }
+
+    #[test]
+    fn a_malformed_version_is_named_as_falling_back() {
+        assert_eq!(fallback_version_for("banana").as_deref(), Some(DEFAULT_VERSION));
+        assert_eq!(fallback_version_for("v2.5").as_deref(), Some(DEFAULT_VERSION));
+        assert_eq!(fallback_version_for(""), None);
+        assert_eq!(fallback_version_for("2.5"), None);
     }
 }

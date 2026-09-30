@@ -66,6 +66,16 @@ pub fn validate_declared(
     resource: &Value,
     index: &ProfileIndex,
 ) -> Option<Vec<FhirValidationIssue>> {
+    validate_declared_status(resource, index).map(|(issues, _)| issues)
+}
+
+/// As [`validate_declared`], also telling whether any definition was
+/// actually applied: `false` when the only findings are "declared but not
+/// installed" notes, so a caller never reports such a resource as checked.
+pub fn validate_declared_status(
+    resource: &Value,
+    index: &ProfileIndex,
+) -> Option<(Vec<FhirValidationIssue>, bool)> {
     use crate::parser::fhir::profile::model::Lookup;
 
     let resource_type = resource.get("resourceType")?.as_str()?;
@@ -110,6 +120,7 @@ pub fn validate_declared(
                 severity: "warning".into(),
                 message: skipped,
                 path: "meta.profile".into(),
+                rule_id: None,
             });
         }
     }
@@ -118,10 +129,11 @@ pub fn validate_declared(
         return None;
     }
 
+    let checked = !applied.is_empty();
     for profile in applied {
         issues.extend(validate_against(resource, profile, index));
     }
-    Some(dedup_issues(issues))
+    Some((dedup_issues(issues), checked))
 }
 
 /// How many resources may nest inside one another before the walk stops:
@@ -251,6 +263,14 @@ fn walk(
                     }
                 } else {
                     known.insert(element.base_name().to_string());
+                    // A primitive may be present only through its
+                    // extensions (`_birthDate` with no `birthDate`).
+                    let sibling = format!("_{}", element.base_name());
+                    if let Some(ext) = object.get(&sibling) {
+                        known.insert(sibling.clone());
+                        check_primitive_sibling(ext, &format!("{}.{}", report_path, sibling), index, depth, seen_types, issues);
+                        continue;
+                    }
                 }
                 if element.min > 0 {
                     issues.push(issue(
@@ -292,9 +312,23 @@ fn walk(
         }
         // FHIR carries a primitive's id and extensions in a sibling key
         // prefixed with '_'; it belongs to the same element.
-        known.insert(format!("_{}", key));
+        let sibling = format!("_{}", key);
+        if let Some(ext) = object.get(&sibling) {
+            check_primitive_sibling(ext, &format!("{}.{}", report_path, sibling), index, depth, seen_types, issues);
+        }
+        known.insert(sibling);
 
         check_cardinality(element, values.len(), report_path, &key, issues);
+
+        // FHIR's JSON has no empty values: a missing element is left out,
+        // not written as "", [] or {}.
+        if object.get(&key).is_some_and(|v| v.as_array().is_some_and(|a| a.is_empty())) {
+            issues.push(issue(
+                "error",
+                format!("{} is an empty array; leave the element out instead", element.path),
+                format!("{}.{}", report_path, key),
+            ));
+        }
 
         for (i, value) in values.iter().enumerate() {
             let child_report = if values.len() > 1 || object.get(&key).is_some_and(|v| v.is_array())
@@ -307,6 +341,30 @@ fn walk(
             // Which of a choice element's types applies is decided by the
             // key the instance used, not by the order they are declared in.
             let applicable = applicable_type(element, &key);
+            // A resource's own id is an `id` (at most 64 letters, digits,
+            // '-' and '.'), although the definition types it as a string.
+            let applicable = if profile.kind == "resource"
+                && element.path == format!("{}.id", profile.type_name)
+                && value.is_string()
+            {
+                Some("id")
+            } else {
+                applicable
+            };
+
+            let empty = match value {
+                Value::String(t) => t.is_empty().then_some("an empty string"),
+                Value::Object(o) => o.is_empty().then_some("an empty object"),
+                _ => None,
+            };
+            if let Some(what) = empty {
+                issues.push(issue(
+                    "error",
+                    format!("{} is {}; leave the element out instead", element.path, what),
+                    child_report.clone(),
+                ));
+                continue;
+            }
 
             check_type(element, applicable, value, &child_report, issues);
             check_fixed(element, value, &child_report, issues);
@@ -326,6 +384,47 @@ fn walk(
     }
 
     report_unknown(object, &known, profile, report_path, issues);
+}
+
+/// The `_name` sibling of a primitive: an Element (id and extensions), or
+/// for a repeating primitive an array of them with `null` for the values
+/// that have none. Its extensions are checked like any other.
+fn check_primitive_sibling(
+    value: &Value,
+    report_path: &str,
+    index: &ProfileIndex,
+    depth: usize,
+    seen_types: &mut Vec<String>,
+    issues: &mut Vec<FhirValidationIssue>,
+) {
+    let items: Vec<(String, &Value)> = match value {
+        Value::Array(arr) => arr.iter().enumerate().map(|(i, v)| (format!("{}[{}]", report_path, i), v)).collect(),
+        v => vec![(report_path.to_string(), v)],
+    };
+    for (path, item) in items {
+        match item {
+            Value::Null if value.is_array() => {}
+            Value::Object(_) => {
+                if depth >= MAX_DEPTH || seen_types.iter().any(|t| t == "Element") {
+                    continue;
+                }
+                let Some(element) = index.base_for_type("Element") else { continue };
+                seen_types.push("Element".into());
+                let root = element.type_name.clone();
+                walk(item, element, &root, &path, index, depth + 1, seen_types, issues);
+                seen_types.pop();
+            }
+            other => issues.push(issue(
+                "error",
+                format!(
+                    "{} holds a primitive's id and extensions, so it must be an object, not {}",
+                    path.rsplit('.').next().unwrap_or(&path),
+                    json_kind(other)
+                ),
+                path.clone(),
+            )),
+        }
+    }
 }
 
 /// The declared type that applies to the value found under `key`.
@@ -606,8 +705,18 @@ fn primitive_format_problem(
     };
     let bad = |what: &str| Some(("error", format!("is a {} but '{}' is not a valid {}", declared, shown(), what)));
 
+    // The regular expressions allow 31 days in every month.
+    let impossible_day = || {
+        let (y, m, d) = (text.get(0..4)?, text.get(5..7)?, text.get(8..10)?);
+        let (y, m, d) = (y.parse::<i32>().ok()?, m.parse::<u32>().ok()?, d.parse::<u32>().ok()?);
+        chrono::NaiveDate::from_ymd_opt(y, m, d).is_none().then_some(())
+    };
+
     match declared {
         "date" if !DATE.is_match(text) => bad("date (YYYY, YYYY-MM or YYYY-MM-DD)"),
+        "date" | "dateTime" | "instant" if impossible_day().is_some() => {
+            bad("date (that day does not exist)")
+        }
         "dateTime" if !DATE_TIME.is_match(text) => {
             bad("dateTime (a date, or a date with a time and a time zone)")
         }
@@ -775,6 +884,7 @@ fn issue(severity: &str, message: String, path: String) -> FhirValidationIssue {
         severity: severity.into(),
         message,
         path,
+        rule_id: None,
     }
 }
 
@@ -1262,5 +1372,58 @@ mod tests {
         assert!(msg("Thing.day").unwrap().1.contains("not a valid date"), "{issues:?}");
         assert!(msg("Thing.kind").unwrap().1.contains("whitespace"), "{issues:?}");
         assert!(msg("Thing.rank").unwrap().1.contains("positive"), "{issues:?}");
+    }
+
+    #[test]
+    fn a_primitive_extension_sibling_is_checked_against_the_core() {
+        let mut index = ProfileIndex::default();
+        index.add_builtin(crate::parser::fhir::profile::package::builtin().expect("built-in core"));
+        let bad = json!({"resourceType": "Patient", "id": "pj", "name": [{"family": "x", "_given": [null, 3]}],
+            "birthDate": "1970-01-01",
+            "_birthDate": {"extension": [{"valueString": "x"}], "bogus": 1},
+            "_gender": 5});
+        let (issues, _) = validate_declared_status(&bad, &index).unwrap();
+        let text: Vec<String> = issues.iter().map(|i| format!("{} | {}", i.path, i.message)).collect();
+        assert!(text.iter().any(|t| t.contains("_birthDate") && t.contains("url is required")), "{:#?}", text);
+        assert!(text.iter().any(|t| t.contains("'bogus'")), "{:#?}", text);
+        assert!(text.iter().any(|t| t.contains("_gender") && t.contains("must be an object")), "{:#?}", text);
+        assert!(text.iter().any(|t| t.contains("_given[1]") && t.contains("must be an object")), "{:#?}", text);
+
+        let good = json!({"resourceType": "Patient", "id": "pj",
+            "_birthDate": {"extension": [{"url": "http://hl7.org/fhir/StructureDefinition/patient-birthTime",
+                "valueDateTime": "1970-01-01T10:00:00Z"}]}});
+        let (issues, _) = validate_declared_status(&good, &index).unwrap();
+        assert!(issues.iter().all(|i| i.severity != "error"), "{:#?}", issues);
+    }
+
+    #[test]
+    fn impossible_dates_bad_ids_and_empty_values_are_reported() {
+        let mut index = ProfileIndex::default();
+        index.add_builtin(crate::parser::fhir::profile::package::builtin().expect("built-in core"));
+        let errors = |r: Value| -> Vec<String> {
+            validate_declared_status(&r, &index)
+                .unwrap()
+                .0
+                .into_iter()
+                .filter(|i| i.severity == "error")
+                .map(|i| format!("{} | {}", i.path, i.message))
+                .collect()
+        };
+        let e = errors(json!({"resourceType": "Patient", "id": "p", "birthDate": "2019-02-29"}));
+        assert!(e.iter().any(|m| m.contains("birthDate") && m.contains("does not exist")), "{e:#?}");
+        let e = errors(json!({"resourceType": "Observation", "id": "o", "status": "final", "code": {"text": "x"},
+            "effectiveDateTime": "2020-02-30T10:00:00Z", "issued": "2021-04-31T00:00:00Z"}));
+        assert_eq!(e.iter().filter(|m| m.contains("does not exist")).count(), 2, "{e:#?}");
+        let e = errors(json!({"resourceType": "Patient", "id": "has spaces and is far too long to be an id ever, really, truly"}));
+        assert!(e.iter().any(|m| m.contains("Patient.id") && m.contains("not a valid id")), "{e:#?}");
+        let e = errors(json!({"resourceType": "Patient", "id": "p", "name": [], "maritalStatus": {},
+            "telecom": [{"value": ""}]}));
+        assert!(e.iter().any(|m| m.contains("name") && m.contains("empty array")), "{e:#?}");
+        assert!(e.iter().any(|m| m.contains("maritalStatus") && m.contains("empty object")), "{e:#?}");
+        assert!(e.iter().any(|m| m.contains("telecom") && m.contains("empty string")), "{e:#?}");
+        // A leap day and an ordinary resource stay clean.
+        let e = errors(json!({"resourceType": "Patient", "id": "p-1.x", "birthDate": "2020-02-29",
+            "name": [{"family": "x"}]}));
+        assert!(e.is_empty(), "{e:#?}");
     }
 }

@@ -12,6 +12,25 @@
 
 	let { onSelect, onClose }: Props = $props();
 
+	/** The backend's names are English: show them in the UI language
+	 *  (a template the translations do not know keeps its own). */
+	function trOr(key: string, fallback: string): string {
+		const v = tr(key);
+		return v === key ? fallback : v;
+	}
+	const CATEGORY_KEYS: Record<string, string> = {
+		'Admission / Discharge / Transfer': 'adt',
+		'Observation / Result': 'oru',
+		'Order Management': 'orm',
+		Scheduling: 'siu',
+		'Medical Document': 'mdm',
+		Acknowledgment: 'ack',
+		FHIR: 'fhir',
+	};
+	const tmplName = (m: MessageTemplate) => trOr(`tmpl.name.${m.id}`, m.name);
+	const tmplDesc = (m: MessageTemplate) => trOr(`tmpl.desc.${m.id}`, m.description);
+	const catLabel = (c: string) => (CATEGORY_KEYS[c] ? trOr(`tmpl.cat.${CATEGORY_KEYS[c]}`, c) : c);
+
 	let groups = $state<[string, MessageTemplate[]][]>([]);
 	let selectedId = $state<string | null>(null);
 	let search = $state('');
@@ -22,8 +41,12 @@
 	 *  substitutes {now}/{msg_id}; here we must do it ourselves or the user
 	 *  gets literal placeholders that fail parse + validation. */
 	function builtinTemplates(): MessageTemplate[] {
-		const now = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
-		const msgId = 'MSG' + now;
+		// Local time with its offset, and a control ID unique to the call.
+		const d = new Date();
+		const p2 = (n: number) => String(Math.abs(n)).padStart(2, '0');
+		const off = -d.getTimezoneOffset();
+		const now = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}${off < 0 ? '-' : '+'}${p2(Math.trunc(off / 60))}${p2(off % 60)}`;
+		const msgId = 'MSG' + now.slice(2, 14) + String(d.getMilliseconds()).padStart(3, '0') + String(Math.floor(Math.random() * 100)).padStart(2, '0');
 		return [
 			{
 				id: 'adt-a01', name: 'ADT^A01 - Patient Admission', message_type: 'ADT',
@@ -68,6 +91,8 @@
 					(t) =>
 						t.name.toLowerCase().includes(q) ||
 						t.description.toLowerCase().includes(q) ||
+						tmplName(t).toLowerCase().includes(q) ||
+						tmplDesc(t).toLowerCase().includes(q) ||
 						t.message_type.toLowerCase().includes(q)
 				),
 			] as [string, MessageTemplate[]])
@@ -120,7 +145,7 @@
 				<div class="tmpl-empty">{tr('tmpl.empty')}</div>
 			{:else}
 				{#each filtered as [category, items]}
-					<div class="tmpl-category">{category}</div>
+					<div class="tmpl-category">{catLabel(category)}</div>
 					{#each items as t (t.id)}
 						<button
 							class="tmpl-item"
@@ -128,8 +153,8 @@
 							onclick={() => { selectedId = t.id; }}
 							ondblclick={handleSelect}
 						>
-							<div class="tmpl-name">{t.name}</div>
-							<div class="tmpl-desc">{t.description}</div>
+							<div class="tmpl-name">{tmplName(t)}</div>
+							<div class="tmpl-desc">{tmplDesc(t)}</div>
 						</button>
 					{/each}
 				{/each}

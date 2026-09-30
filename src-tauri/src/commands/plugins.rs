@@ -20,42 +20,44 @@ pub fn reload_plugins(registry: State<'_, PluginRegistry>) -> Result<Vec<PluginI
     Ok(registry.list(feature_gate::active_plugin_limit()))
 }
 
-/// Persist / apply an override for a specific plugin id. The frontend is
-/// responsible for also writing the preference (`plugin_enabled:<id>`) so
-/// the override survives restarts.
+/// Switch one pack on or off. `key` is the pack's `<kind>/<id>` (see
+/// `PluginInfo.key`); the choice is saved in the plugins folder, where the
+/// CLI reads it too.
 ///
-/// Enabling a pack beyond the Community cap returns an UPGRADE_REQUIRED
-/// error; disabling is always allowed.
+/// Enabling a pack beyond the Community cap is refused with a message that
+/// names the cap; disabling is always allowed.
 #[tauri::command]
 pub fn set_plugin_enabled(
-    id: String,
+    key: String,
     enabled: bool,
     registry: State<'_, PluginRegistry>,
 ) -> Result<(), String> {
     if enabled {
         if let Some(max) = feature_gate::active_plugin_limit() {
-            let already_enabled = registry
+            let others = registry
                 .list(None)
                 .iter()
-                .filter(|p| p.enabled && p.id != id)
+                .filter(|p| p.enabled && p.key != key)
                 .count();
-            if already_enabled >= max {
-                feature_gate::require("plugins_unlimited")?;
+            if others >= max {
+                return Err(format!(
+                    "PLUGIN_CAP:{}: the Community edition runs up to {} plugin packs at a time. Switch another pack off first, or upgrade to Professional for no limit.",
+                    max, max
+                ));
             }
         }
     }
-    registry.set_override(&id, enabled);
-    Ok(())
+    registry.set_enabled(&key, enabled)
 }
 
-/// Bulk-apply overrides (called on startup after the frontend has read the
-/// preferences table). Keys are plugin ids.
+/// Choices an older version saved as `plugin_enabled:<id>` preferences,
+/// applied on startup until each pack has a choice of its own.
 #[tauri::command]
 pub fn apply_plugin_overrides(
     overrides: HashMap<String, bool>,
     registry: State<'_, PluginRegistry>,
 ) -> Result<(), String> {
-    registry.set_overrides(overrides);
+    registry.apply_legacy_overrides(overrides);
     Ok(())
 }
 
@@ -66,8 +68,9 @@ pub fn get_plugins_dir() -> Result<String, String> {
     let root: PathBuf = plugins_root()
         .ok_or_else(|| "Could not determine config directory".to_string())?;
     // Ensure subdirs exist so the UI finds an expected layout
-    let _ = std::fs::create_dir_all(root.join("validation"));
-    let _ = std::fs::create_dir_all(root.join("anonymization"));
+    for sub in ["validation", "fhir", "anonymization"] {
+        let _ = std::fs::create_dir_all(root.join(sub));
+    }
     Ok(root.display().to_string())
 }
 
@@ -76,8 +79,9 @@ pub fn get_plugins_dir() -> Result<String, String> {
 pub fn open_plugins_folder() -> Result<(), String> {
     let root: PathBuf = plugins_root()
         .ok_or_else(|| "Could not determine config directory".to_string())?;
-    let _ = std::fs::create_dir_all(root.join("validation"));
-    let _ = std::fs::create_dir_all(root.join("anonymization"));
+    for sub in ["validation", "fhir", "anonymization"] {
+        let _ = std::fs::create_dir_all(root.join(sub));
+    }
 
     #[cfg(target_os = "windows")]
     let cmd = ("explorer", vec![root.display().to_string()]);

@@ -1,0 +1,7 @@
+MSH|^~\&|DICT|RIVERSIDE_GH|EMR|RIVERSIDE_GH|20260918150000||MDM^T02^MDM_T02|RGH0008|P|2.5
+EVN|T02|20260918150000
+PID|1||MRN100245^^^RGH^MR||Bianchi^Laura^Maria||19740322|F
+PV1|1|I|CARD^204^B^RIVERSIDE_GH
+TXA|1|DS^Discharge summary|TX|20260918140000|DOC4410^Verdi^Marco^^^Dr.||20260918150000|||||DOC20260918001|||||AU
+OBX|1|TX|DS^Discharge summary||Admitted 15/09 for unstable angina. Troponin negative x2.||||||F
+OBX|2|TX|DS^Discharge summary||Discharged home on 18/09, cardiology follow-up in 3 weeks.||||||F

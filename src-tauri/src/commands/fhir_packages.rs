@@ -24,9 +24,9 @@ pub fn fhir_packages_reload(registry: State<'_, ProfileRegistry>) -> Result<Vec<
 ///
 /// Reading the archive is the slow part (a core package holds thousands of
 /// files), so it happens once here and the distilled index is what the app
-/// loads from then on.
+/// loads from then on. Async, so a large package does not freeze the window.
 #[tauri::command]
-pub fn fhir_packages_install(
+pub async fn fhir_packages_install(
     path: String,
     registry: State<'_, ProfileRegistry>,
 ) -> Result<Vec<PackageInfo>, String> {

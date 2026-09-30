@@ -2,6 +2,21 @@
 
 Utility scripts for BridgeLab development and QA.
 
+## `gen-license-bundle.mjs`
+
+Regenerates `src-tauri/LICENSE-bundle.txt` — the root `LICENSE` followed by
+the Business Source License 1.1 of `src-tauri/src/pro/` and `src/lib/pro/` —
+which every package ships, and `src-tauri/LICENSE-installer.txt`, the same
+words with one line per paragraph for the installers' licence page (which
+wraps lines itself). Run it after changing any of those licences; `--check`
+only reports whether the committed files are up to date (the release
+workflow runs it, and `src-tauri/tests/license_bundle.rs` fails on a stale
+file).
+
+```bash
+node scripts/gen-license-bundle.mjs
+```
+
 ## `test_plan_to_excel.py`
 
 Export the TEST_PLAN.md file to a formatted Excel workbook.

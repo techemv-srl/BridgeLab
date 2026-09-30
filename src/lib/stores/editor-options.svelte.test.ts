@@ -14,6 +14,8 @@ function prefs(map: Record<string, string | null>) {
 beforeEach(() => {
 	vi.mocked(getPreference).mockReset().mockResolvedValue(null);
 	editorOptionsStore.options = {};
+	editorOptionsStore.autoParse = true;
+	editorOptionsStore.autoParseDelay = 500;
 });
 
 describe('loadFromPrefs', () => {
@@ -63,5 +65,46 @@ describe('loadFromPrefs', () => {
 		vi.mocked(getPreference).mockRejectedValue(new Error('no tauri'));
 		await editorOptionsStore.loadFromPrefs();
 		expect(editorOptionsStore.options).toEqual({ fontSize: 15 });
+	});
+});
+
+describe('parser and scrolling prefs', () => {
+	it('reads auto-parse, its delay, smooth scrolling and bracket colours', async () => {
+		prefs({
+			auto_parse: 'false',
+			auto_parse_delay: '2000',
+			editor_smooth_scrolling: 'false',
+			editor_bracket_colors: 'true',
+		});
+		await editorOptionsStore.loadFromPrefs();
+		expect(editorOptionsStore.autoParse).toBe(false);
+		expect(editorOptionsStore.autoParseDelay).toBe(2000);
+		expect(editorOptionsStore.options.smoothScrolling).toBe(false);
+		expect(editorOptionsStore.options.bracketPairColorization).toBe(true);
+	});
+
+	it('clamps out-of-range numbers saved by older versions', async () => {
+		prefs({ editor_font_size: '400', editor_tab_size: 'null', auto_parse_delay: '5' });
+		await editorOptionsStore.loadFromPrefs();
+		expect(editorOptionsStore.options.fontSize).toBe(32);
+		expect(editorOptionsStore.options.tabSize).toBe(4);
+		expect(editorOptionsStore.autoParseDelay).toBe(100);
+	});
+});
+
+describe('new editor settings', () => {
+	it('loads word suggestions, occurrences, links and sticky scroll from the preferences', async () => {
+		const prefs: Record<string, string> = {
+			editor_word_suggestions: 'allDocuments',
+			editor_occurrences: 'false',
+			editor_links: 'false',
+			editor_sticky_scroll: 'true',
+		};
+		vi.mocked(getPreference).mockImplementation(async (k: string) => prefs[k] ?? null);
+		await editorOptionsStore.loadFromPrefs();
+		expect(editorOptionsStore.options).toMatchObject({ wordSuggestions: 'allDocuments', occurrencesHighlight: false, links: false, stickyScroll: true });
+		prefs.editor_word_suggestions = 'bogus';
+		await editorOptionsStore.loadFromPrefs();
+		expect(editorOptionsStore.options.wordSuggestions).toBeUndefined();
 	});
 });

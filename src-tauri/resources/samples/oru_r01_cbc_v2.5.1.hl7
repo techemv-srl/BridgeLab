@@ -1,0 +1,17 @@
+MSH|^~\&|LIS|RIVERSIDE_LAB|HIS|RIVERSIDE_GH|20260915120530||ORU^R01^ORU_R01|LAB0001|P|2.5.1|||AL|NE
+PID|1||MRN100245^^^RGH^MR||Bianchi^Laura^Maria||19740322|F
+PV1|1|I|CARD^204^B^RIVERSIDE_GH
+ORC|RE|ORD7781|FIL5521
+OBR|1|ORD7781|FIL5521|58410-2^CBC panel - Blood by Automated count^LN|||20260915093000|||||||||DOC4410^Verdi^Marco^^^Dr.||||||20260915120500|||F
+OBX|1|NM|6690-2^Leukocytes [#/volume] in Blood^LN||7.8|10*3/uL|4.0-10.5|N|||F|||20260915115000
+OBX|2|NM|789-8^Erythrocytes [#/volume] in Blood^LN||4.10|10*6/uL|4.20-5.40|L|||F|||20260915115000
+OBX|3|NM|718-7^Hemoglobin [Mass/volume] in Blood^LN||11.9|g/dL|12.0-16.0|L|||F|||20260915115000
+OBX|4|NM|4544-3^Hematocrit [Volume Fraction] of Blood^LN||36.1|%|36.0-46.0|N|||F|||20260915115000
+OBX|5|NM|787-2^MCV [Entitic volume]^LN||88|fL|80-100|N|||F|||20260915115000
+OBX|6|NM|785-6^MCH [Entitic mass]^LN||29.0|pg|27.0-33.0|N|||F|||20260915115000
+OBX|7|NM|786-4^MCHC [Mass/volume]^LN||33.0|g/dL|32.0-36.0|N|||F|||20260915115000
+OBX|8|NM|788-0^Erythrocyte distribution width [Ratio]^LN||14.8|%|11.5-14.5|H|||F|||20260915115000
+OBX|9|NM|777-3^Platelets [#/volume] in Blood^LN||245|10*3/uL|150-400|N|||F|||20260915115000
+OBX|10|NM|770-8^Neutrophils/100 leukocytes in Blood^LN||62|%|40-75|N|||F|||20260915115000
+OBX|11|NM|736-9^Lymphocytes/100 leukocytes in Blood^LN||28|%|20-45|N|||F|||20260915115000
+OBX|12|NM|5905-5^Monocytes/100 leukocytes in Blood^LN||7|%|2-10|N|||F|||20260915115000

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { saveTarget } from '$lib/save-target';
 	import { batchValidate, type BatchFileResult } from '$lib/ipc/batch';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { t, subscribeLocale } from '$lib/i18n';
@@ -90,7 +91,9 @@
 				defaultPath: 'batch-validation.csv',
 				filters: [{ name: 'CSV', extensions: ['csv'] }],
 			});
-			if (path) await writeTextFile(path, rows);
+			const target = path ? await saveTarget(path, 'csv') : null;
+			// The BOM tells Excel the file is UTF-8 (ü read as Ã¼ without it).
+			if (target) await writeTextFile(target, '\ufeff' + rows);
 		} catch (e) { errorMsg = String(e); }
 	}
 

@@ -36,7 +36,7 @@ rm -f "$DEST/examples/package.json" "$DEST/examples/.index.json"
 count=$(find "$DEST/examples" -name '*.json' | wc -l | tr -d ' ')
 echo
 echo "Package:  $TGZ"
-echo "Examples: $DEST/examples ($count resources)"
+echo "Examples: $DEST/examples ($count conformance resources)"
 echo
 echo "Run the tests with:"
 echo "  BL_FHIR_PACKAGE=$TGZ BL_FHIR_EXAMPLES=$DEST/examples \\"

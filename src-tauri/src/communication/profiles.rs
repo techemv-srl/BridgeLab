@@ -26,8 +26,30 @@ pub enum ProfileType {
     Soap,
 }
 
+/// How many history entries are kept: older ones are deleted as new ones
+/// are added.
+pub const HISTORY_KEPT: usize = 100;
+
+/// Longest request or response text kept in a history entry, in bytes; a
+/// longer one is cut and says so. Real HL7 messages and ACKs are a few KB,
+/// and a message can reach 10 MB.
+pub const HISTORY_TEXT_CAP: usize = 256 * 1024;
+
+/// `text` as stored in the history: whole up to [`HISTORY_TEXT_CAP`],
+/// otherwise cut at a character boundary with a note of the full size.
+pub fn history_text(text: &str) -> String {
+    if text.len() <= HISTORY_TEXT_CAP {
+        return text.to_string();
+    }
+    let mut end = HISTORY_TEXT_CAP;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n… (cut: {} bytes in all)", &text[..end], text.len())
+}
+
 /// A request/response history entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HistoryEntry {
     pub id: String,
     pub profile_name: String,
@@ -42,4 +64,33 @@ pub struct HistoryEntry {
     /// a failed send, or an HTTP/SOAP request.
     #[serde(default)]
     pub ack_code: Option<String>,
+    /// Where it went or came from: `host:port` for MLLP (the peer's
+    /// address for a received message), the URL for HTTP and SOAP (with
+    /// any credentials redacted). Empty in entries from older versions.
+    #[serde(default)]
+    pub target: String,
+    /// Size of the message sent or received, in bytes.
+    #[serde(default)]
+    pub size_bytes: u64,
+    /// The message sent or received (see [`history_text`]).
+    #[serde(default)]
+    pub request: String,
+    /// The reply: the ACK received or sent back, the HTTP response body or
+    /// the SOAP Body or Fault.
+    #[serde(default)]
+    pub response: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_history_text_is_cut_at_a_character_boundary() {
+        assert_eq!(history_text("MSH|x"), "MSH|x");
+        let long = "é".repeat(HISTORY_TEXT_CAP);
+        let kept = history_text(&long);
+        assert!(kept.len() < long.len());
+        assert!(kept.ends_with(&format!("(cut: {} bytes in all)", long.len())));
+    }
 }

@@ -114,7 +114,7 @@ pub fn export_test_cases(
     );
     let anonymized = if anonymize { test_packs::anonymize_pack(&mut pack, &plugin_phi_rules(&registry)) } else { 0 };
     let json = serde_json::to_string_pretty(&pack).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| format!("Could not write {}: {}", path, e))?;
+    crate::utils::atomic_write::write_atomic(&path, json.as_bytes()).map_err(|e| format!("Could not write {}: {}", path, e))?;
     Ok(PackExportResult { exported: pack.test_cases.len(), anonymized })
 }
 
@@ -187,7 +187,9 @@ pub fn import_test_cases(
         || Uuid::new_v4().to_string(),
     );
     if let Some(max) = feature_gate::test_case_limit() {
-        if existing.len() + write.added.len() > max {
+        // Only new cases count against the cap: replacing cases already in
+        // the library is editing them, which stays allowed over the cap.
+        if !write.added.is_empty() && existing.len() + write.added.len() > max {
             feature_gate::require("test_cases_unlimited")?;
         }
     }

@@ -64,7 +64,12 @@ pub async fn activate_license_online(
 pub async fn deactivate_license(app: tauri::AppHandle) -> Result<LicenseStatus, String> {
     if let Some(license) = licensing::load_license() {
         if let Some(code) = license.activation_code {
-            let hardware_id = licensing::get_hardware_id();
+            // The ID the seat was taken with, which the server knows it by.
+            let hardware_id = if license.payload.hardware_id.is_empty() {
+                licensing::get_hardware_id()
+            } else {
+                license.payload.hardware_id.clone()
+            };
             let app_version = app.package_info().version.to_string();
             if let Err(_e) = online::deactivate_online(&code, &hardware_id, &app_version).await {
                 #[cfg(debug_assertions)]

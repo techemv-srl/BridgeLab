@@ -11,7 +11,7 @@ use serde_json::{Map, Value};
 use super::ast::Expr;
 use super::eval::{
     as_condition, as_tri, children_of, dedup, descendants_of, equal, eval, eval_per_item,
-    resolve_reference, singleton, string_of, Env,
+    singleton, string_of, Env,
 };
 use super::types;
 
@@ -456,7 +456,7 @@ pub fn call(
                     .and_then(|r| r.as_str())
                     .or_else(|| item.as_str());
                 if let Some(r) = reference {
-                    if let Some(found) = resolve_reference(r, env.root) {
+                    if let Some(found) = env.resolve(r, item, None) {
                         out.push(found);
                     }
                 }
@@ -499,8 +499,12 @@ pub fn call(
             "{}() needs exact decimal arithmetic, which this engine does not implement",
             name
         )),
+        // The validator checks profiles (F6, `bridgelab-cli validate`);
+        // the FHIRPath engine does not call into it.
         "conformsTo" => Err(
-            "conformsTo() needs the profile packages, which this build does not load".into(),
+            "conformsTo() is not implemented in FHIRPath here; validate the resource to check \
+             it against its profiles"
+                .into(),
         ),
 
         other => Err(format!("Unknown function: {}()", other)),
@@ -520,6 +524,26 @@ fn no_args(name: &str, args: &[Expr]) -> Result<(), String> {
         Ok(())
     } else {
         Err(arity(name, "no", args.len()))
+    }
+}
+
+/// `ofType()`, `is()` and `as()` over items whose declared type may be
+/// known (see [`super::eval::typed_members`]).
+pub fn type_call(
+    name: &str,
+    args: &[Expr],
+    focus: &[(Value, Option<String>)],
+) -> Result<Vec<Value>, String> {
+    let type_name = type_arg(name, args)?;
+    let test = |(v, d): &(Value, Option<String>)| types::is_declared_type(v, d.as_deref(), &type_name);
+    match name {
+        "ofType" => Ok(focus.iter().filter(|i| test(i)).map(|(v, _)| v.clone()).collect()),
+        _ => match focus {
+            [] => Ok(vec![]),
+            [one] if name == "is" => Ok(vec![Value::Bool(test(one))]),
+            [one] => Ok(if test(one) { vec![one.0.clone()] } else { vec![] }),
+            many => Err(format!("Expected a single value but the expression produced {}", many.len())),
+        },
     }
 }
 
@@ -887,7 +911,9 @@ fn decode(s: &str, format: &str) -> Option<String> {
         "base64" => base64::engine::general_purpose::STANDARD.decode(s).ok()?,
         "urlbase64" => base64::engine::general_purpose::URL_SAFE.decode(s).ok()?,
         "hex" => {
-            if !s.len().is_multiple_of(2) {
+            // Hex is ASCII: a string with anything else is not hex, and
+            // slicing it two bytes at a time would cut a character in half.
+            if !s.is_ascii() || !s.len().is_multiple_of(2) {
                 return None;
             }
             (0..s.len())

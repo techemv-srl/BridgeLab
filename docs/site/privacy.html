@@ -6,12 +6,14 @@
 	<title>Privacy policy &mdash; BridgeLab</title>
 	<meta name="robots" content="index,follow" />
 	<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+	<link rel="preload" href="assets/fonts/plex-sans-var.woff2" as="font" type="font/woff2" crossorigin>
 	<link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
 <header class="nav">
 	<div class="nav-wrap">
+		<div class="brand-group">
 		<a class="brand" href="index.html">
 			<svg class="brand-icon" viewBox="0 0 120 50" width="34" height="14" aria-hidden="true">
 				<defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#89b4fa"/><stop offset="100%" stop-color="#cba6f7"/></linearGradient></defs>
@@ -24,6 +26,8 @@
 			</svg>
 			<span>BridgeLab</span>
 		</a>
+		<a class="brand-by" href="https://techemvee.eu/en/">by TECHEMV</a>
+		</div>
 		<nav class="nav-links">
 			<a href="index.html#features">Features</a>
 			<a href="index.html#compare">Compare</a>
@@ -43,7 +47,7 @@
 <section class="section">
 	<div class="wrap legal">
 		<h1>Privacy policy</h1>
-		<p class="sub">Last updated: September 25, 2026</p>
+		<p class="sub">Last updated: September 30, 2026</p>
 
 		<p>Data controller: TECHEMV SRL, Pordenone, Italy
 		&mdash; VAT IT01960380937 &mdash;
@@ -60,6 +64,17 @@
 		privacy policy; TECHEMV receives the order details needed for
 		fulfilment (name, company, e-mail, VAT ID, order id) and never sees
 		full payment card data.</p>
+		<p>To know which channels bring customers, an online order carries
+		a tag with where the visit came from and the page it was placed
+		on: the <code>utm_source</code> and <code>utm_medium</code> of the
+		link that opened this website (the Software&rsquo;s own links use
+		<code>utm_source=app</code> and name the menu or dialog that was
+		used), otherwise the host name of the referring site, otherwise
+		&ldquo;direct&rdquo;. The same source is added as a
+		&ldquo;Source&rdquo; line to a quote e-mail started from this
+		website. The source is kept in the browser tab only for the visit
+		(session storage) and names no person (legal basis: legitimate
+		interest in measuring sales channels).</p>
 
 		<h2>License activation</h2>
 		<p>When an activation code is used, the Software sends the code, a
@@ -72,22 +87,25 @@
 		contract). After activation the license is verified locally: the
 		Software does not need to contact our servers again to keep
 		working.</p>
-		<p>One exception, to pick up a renewal without asking you to do
-		anything: from 14 days before a license activated online expires
-		(and after it has expired), the Software repeats the activation
-		request above in the background at start-up, at most once a day,
-		with the stored code. If our server cannot be reached nothing
-		changes and no error is shown; the license already on the machine
-		keeps working until its own expiry date. Licenses without an expiry
-		date, and offline license keys, never trigger it.</p>
+		<p>One exception: a license activated online repeats the activation
+		request above in the background at start-up, with the stored code
+		and the same data &mdash; once a week, and at most once a day from
+		14 days before it expires (and after it has expired). This picks up
+		a renewal without asking you to do anything and, if the activation
+		code has been revoked (for example after a refund), returns the
+		Software to the Community tier. If our server cannot be reached
+		nothing changes and no error is shown. Offline license keys never
+		trigger it.</p>
 
 		<h2>Usage statistics (opt-in, default OFF)</h2>
 		<p>If &mdash; and only if &mdash; you enable &ldquo;Send usage
 		statistics&rdquo; in Settings&nbsp;&rarr;&nbsp;Privacy, the Software
-		sends, at most once a day: usage counters (e.g. messages parsed,
-		validations run), app version, OS, language, license tier, the
-		random installation identifier and &mdash; for licenses activated
-		online &mdash; the activation code (used to flag revoked licenses).
+		sends, at most once a day: the product name, app version, OS and
+		processor architecture, app language, license tier, days since
+		installation, number of active plugin packs, usage counters (e.g.
+		messages parsed, validations run), a timestamp, the random
+		installation identifier and &mdash; for licenses activated online
+		&mdash; the activation code (used to flag revoked licenses).
 		<strong>Never</strong> sent: message content, patient data, file
 		names, host names, user names. The exact payload can be previewed
 		in the app before enabling. Telemetry records are deleted
@@ -128,8 +146,14 @@
 		may log IP addresses for security; the site itself sets no cookies.
 		This website uses Cloudflare Web Analytics, a cookieless,
 		privacy-first analytics service that does not fingerprint or track
-		individual visitors. The FastSpring checkout, when used, sets its
-		own functional cookies.</p>
+		individual visitors. Each view of the home page also asks GitHub
+		(<code>api.github.com</code>) for the number of the latest release,
+		to show it; the request reaches GitHub from your IP address and
+		carries nothing else. When online checkout is available, the home
+		page loads FastSpring&rsquo;s checkout script
+		(<code>sbl.onfastspring.com</code>) on every view, not only when you
+		buy, so FastSpring receives your IP address and may set its own
+		functional cookies.</p>
 
 		<h2>Your rights</h2>
 		<p>Access, rectification, erasure, restriction, portability,
@@ -142,6 +166,17 @@
 		<p>HL7/FHIR content you open in BridgeLab stays on your machine;
 		TECHEMV has no access to it. You remain the controller of any
 		personal data contained in your messages.</p>
+		<p>BridgeLab keeps some of it in its local database: the open tabs
+		of the session (when session restore is on), the communication
+		history, and your test cases. The history keeps the full request
+		and response of the latest 100 exchanges, up to 256&nbsp;KB each,
+		including the messages the MLLP listener receives and the ACKs it
+		returns, so it holds the patient data those messages carry. On
+		Windows that database is in <code>%APPDATA%\BridgeLab</code>, the
+		roaming part of the profile: where roaming profiles or folder
+		redirection are in use it is copied to the server with the rest of
+		the profile. Turn off session restore, clear the history and keep
+		test cases anonymized if that matters for you.</p>
 	</div>
 </section>
 
@@ -164,24 +199,25 @@
 			</div>
 			<p class="foot-copy">
 				HL7/FHIR made simple. Built by
-				<a href="https://www.techemv.it"><strong>TECHEMV SRL</strong></a>
+				<a href="https://techemvee.eu/en/"><strong>TECHEMV SRL</strong></a>
 				&mdash; the team behind
-				<a href="https://techemvee.eu/aurora/">Aurora Integration Engine</a>,
+				<a href="https://techemvee.eu/en/aurora-en/">Aurora Integration Engine</a>,
 				our healthcare integration platform.
 			</p>
 		</div>
 		<div class="foot-links">
-			<a href="https://www.techemv.it">TECHEMV.it</a>
-			<a href="https://techemvee.eu/aurora/">Aurora Engine</a>
+			<a href="https://techemvee.eu/en/">TECHEMV</a>
+			<a href="https://techemvee.eu/en/aurora-en/">Aurora Engine</a>
 			<a href="https://github.com/techemv-srl/BridgeLab">GitHub</a>
 			<a href="https://github.com/techemv-srl/BridgeLab/releases">Releases</a>
+			<a href="https://techemvee.eu/en/bridgelab-hl7-viewer/">Product page</a>
 			<a href="https://github.com/techemv-srl/BridgeLab/blob/main/docs/PLUGINS.md">Plugins</a>
 			<a href="https://github.com/techemv-srl/BridgeLab/blob/main/TEST_PLAN.md">Test plan</a>
 			<a href="https://github.com/techemv-srl/BridgeLab/blob/main/LICENSE">License (MIT / BUSL-1.1)</a>
 		</div>
 	</div>
 	<div class="wrap foot-bottom">
-		<p>&copy; 2026 <a href="https://www.techemv.it">TECHEMV SRL</a> &mdash; Pordenone, Italy &mdash; VAT IT01960380937 &mdash; <a href="mailto:info@techemv.it">info@techemv.it</a></p>
+		<p>&copy; 2026 <a href="https://techemvee.eu/en/">TECHEMV SRL</a> &mdash; 33170 Pordenone, Italy &mdash; VAT IT01960380937 &mdash; <a href="mailto:info@techemv.it">info@techemv.it</a></p>
 		<p><a href="terms.html">Terms &amp; EULA</a> &middot; <a href="privacy.html">Privacy</a> &middot; <a href="refunds.html">Refund policy</a></p>
 	</div>
 </footer>

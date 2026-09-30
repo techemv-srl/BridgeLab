@@ -246,6 +246,146 @@ jobs:
           echo "$OUT" | jq -e '.[0].report.issues | map(select(.rule_id | startswith("MSH"))) | length > 0' > /dev/null
           echo "BL-VALID-03 PASSED"
 
+      - name: Test - data type checks (BL-VALID-15)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          printf 'MSH|^~\\&|A|B|C|D|2024-01-01 12:00||ORU^R01|1|P|2.5\rPID|1||1^^^H^MR||Rossi^Mario||19801399|F\rOBX|1|NM|X^Y||abc||||||F\r' > /tmp/types.hl7
+          OUT=$($CLI validate /tmp/types.hl7 --format json || true)
+          for r in TYPE-DTM-MSH-7 TYPE-DTM-PID-7 TYPE-NM-OBX-5; do
+            echo "$OUT" | jq -e --arg r "$r" '[.[0].report.issues[].rule_id] | index($r) != null' > /dev/null || { echo "BL-VALID-15 FAILED: $r"; exit 1; }
+          done
+          echo "BL-VALID-15 PASSED"
+      - name: Test - FHIR XML typed like JSON (BL-FHIR-XML-01)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          echo '<Patient xmlns="http://hl7.org/fhir"><id value="p1"/><active value="true"/><name><family value="Rossi"/></name><multipleBirthInteger value="2"/></Patient>' > /tmp/pat.xml
+          $CLI validate /tmp/pat.xml --format json | jq -e '.[0].report.valid == true' > /dev/null
+          [ "$($CLI fhirpath 'Patient.active = true' /tmp/pat.xml)" = "true" ]
+          echo '<Observation xmlns="http://hl7.org/fhir"><status value="final"/><code><text value="x"/></code><valueQuantity><value value="6.30"/><unit value="mmol/L"/></valueQuantity></Observation>' > /tmp/obs.xml
+          $CLI fhirpath 'Observation.value.ofType(Quantity)' /tmp/obs.xml --json | jq -e '.count == 1' > /dev/null
+          echo "BL-FHIR-XML-01 PASSED"
+
+      - name: Test - standard input (BL-CLI-19)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          cat tests/fixtures/hl7/adt_a01_small.hl7 | $CLI validate - --format json | jq -e '.[0].report.valid == true' > /dev/null
+          cat tests/fixtures/fhir/bundle_patient.json | $CLI info - --json | jq -e '.[0].message_type == "Bundle"' > /dev/null
+          cat tests/fixtures/hl7/adt_a01_small.hl7 | $CLI to-json - | jq -e '.message_type | startswith("ADT^A01")' > /dev/null
+          echo "BL-CLI-19 PASSED"
+
+      - name: Test - fhirpath (BL-CLI-20)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          F=tests/fixtures/fhir/bundle_patient.json
+          [ "$($CLI fhirpath 'Bundle.entry.count()' $F)" -ge 1 ]
+          $CLI fhirpath 'Bundle.entry.count()' $F --json | jq -e '.error == null and .count == 1' > /dev/null
+          if $CLI fhirpath 'Patient.nosuch(' $F 2>/dev/null; then echo "BL-CLI-20 FAILED: bad expression exited 0"; exit 1; fi
+          echo "BL-CLI-20 PASSED"
+
+      - name: Test - xsd Community set only (BL-CLI-21)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          $CLI xsd ADT^A01 > /tmp/adt.xsd
+          xmllint --noout /tmp/adt.xsd
+          grep -q 'name="ADT_A01"' /tmp/adt.xsd
+          if $CLI xsd SIU_S12 2>/tmp/xsd.err; then echo "BL-CLI-21 FAILED: full catalogue exported"; exit 1; fi
+          grep -q "BridgeLab Pro" /tmp/xsd.err
+          echo "BL-CLI-21 PASSED"
+
+      - name: Test - send over MLLP (BL-CLI-22)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          python3 tests/tools/mllp_ack_server.py 47201 AA & sleep 1
+          $CLI send tests/fixtures/hl7/adt_a01_small.hl7 --host 127.0.0.1 --port 47201 --json | jq -e '.ack_code == "AA"' > /dev/null
+          wait
+          python3 tests/tools/mllp_ack_server.py 47201 AE & sleep 1
+          if $CLI send tests/fixtures/hl7/adt_a01_small.hl7 --host 127.0.0.1 --port 47201 > /dev/null; then echo "BL-CLI-22 FAILED: AE exited 0"; exit 1; fi
+          wait
+          if $CLI send tests/fixtures/hl7/adt_a01_small.hl7 --host 127.0.0.1 --port 47202 --timeout 2 2>/dev/null; then echo "BL-CLI-22 FAILED: refused exited 0"; exit 1; fi
+          echo "BL-CLI-22 PASSED"
+
+      - name: Test - run test case packs (BL-CLI-23)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          $CLI test tests/fixtures/packs/regression.bltests.json --format json | jq -e '.failed == 0 and .passed == 4' > /dev/null
+          $CLI test tests/fixtures/packs/regression.bltests.json --format junit > /tmp/pack.xml
+          xmllint --noout /tmp/pack.xml
+          if $CLI test tests/fixtures/packs/failing.bltests.json > /tmp/fail.txt; then echo "BL-CLI-23 FAILED: failing pack exited 0"; exit 1; fi
+          grep -q "expected type ORU^R01" /tmp/fail.txt
+          echo "BL-CLI-23 PASSED"
+
+      - name: Test - legacy charset files (BL-CLI-24)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          F=tests/fixtures/hl7/adt_a01_latin1.hl7
+          $CLI validate $F --format json | jq -e '.[0].report.valid == true' > /dev/null
+          $CLI to-json $F | jq -e '.segments[2].fields["PID-5"] == "Müller^Jörg"' > /dev/null
+          $CLI anonymize $F -o /tmp/anon.hl7
+          if grep -q "invalid utf8" /tmp/anon.hl7; then echo "BL-CLI-24 FAILED: segments destroyed"; exit 1; fi
+          iconv -f ISO-8859-1 -t UTF-8 /tmp/anon.hl7 | grep -q "Lettò 2"
+          python3 tests/tools/mllp_ack_server.py 47203 AA & sleep 1
+          $CLI send $F --host 127.0.0.1 --port 47203 > /dev/null
+          wait
+          if $CLI send $F --host 127.0.0.1 --port 47203 --encoding FOO 2>/dev/null; then echo "BL-CLI-24 FAILED: unknown encoding accepted"; exit 1; fi
+          echo "BL-CLI-24 PASSED"
+
+      - name: Test - nothing silently skipped (BL-CLI-25)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          if $CLI validate tests/fixtures/hl7/adt_a01_small.hl7 tests/fixtures/hl7/DOES_NOT_EXIST.hl7 > /tmp/v.txt 2>/dev/null; then echo "BL-CLI-25 FAILED: missing path exited 0"; exit 1; fi
+          grep -q "NOT FOUND" /tmp/v.txt
+          $CLI validate tests/fixtures/hl7/adt_a01_small.hl7 missing.hl7 --format junit 2>/dev/null > /tmp/v.xml || true
+          xmllint --noout /tmp/v.xml
+          grep -q 'classname="INPUT"' /tmp/v.xml
+          if $CLI test tests/fixtures/packs/regression.bltests.json missing.bltests.json > /dev/null 2>&1; then echo "BL-CLI-25 FAILED: missing pack exited 0"; exit 1; fi
+          set +e; $CLI test missing.bltests.json > /dev/null 2>&1; RC=$?; set -e
+          [ "$RC" = 1 ] || { echo "BL-CLI-25 FAILED: missing pack alone exited $RC"; exit 1; }
+          mkdir -p /tmp/bl-batch/sub /tmp/bl-empty
+          cp tests/fixtures/hl7/missing_msh9.hl7 /tmp/bl-batch/sub/BAD.HL7
+          $CLI batch /tmp/bl-batch --extension .hl7 --json > /tmp/b.json || true
+          jq -e '.total_files == 1 and (.results[0].issues | length) > 0' /tmp/b.json > /dev/null
+          if $CLI batch /tmp/bl-empty > /dev/null 2>&1; then echo "BL-CLI-25 FAILED: empty folder exited 0"; exit 1; fi
+          echo '{"format":"bridgelab-test-cases","format_version":1,"test_cases":[]}' > /tmp/empty.bltests.json
+          if $CLI test /tmp/empty.bltests.json > /dev/null 2>&1; then echo "BL-CLI-25 FAILED: empty pack exited 0"; exit 1; fi
+          echo "BL-CLI-25 PASSED"
+
+      - name: Test - not checked is not a pass (BL-CLI-26)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          $CLI validate tests/fixtures/fhir/patient_simple.json --no-plugins --fhir-packages /nonexistent --format junit 2> /tmp/pk.err > /tmp/pk.xml
+          grep -q "fhir-packages /nonexistent" /tmp/pk.err
+          xmllint --noout /tmp/pk.xml
+          grep -q "<skipped" /tmp/pk.xml
+          echo '{"name":"not-fhir"}' > /tmp/package.json
+          $CLI validate /tmp/package.json > /tmp/pj.txt || true
+          grep -q "Not a FHIR resource" /tmp/pj.txt
+          printf '{"resourceType":"Patient","id":"x","gender":"bo\\u0007gus"}' > /tmp/ctl.json
+          $CLI validate /tmp/ctl.json --format junit > /tmp/ctl.xml || true
+          xmllint --noout /tmp/ctl.xml
+          echo "BL-CLI-26 PASSED"
+
+      - name: Test - expected type components and versions (BL-CLI-23b, BL-VALID-17)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          printf '{"format":"bridgelab-test-cases","format_version":1,"test_cases":[{"name":"three components","content":"MSH|^~\\\\&|A|B|C|D|20240101||ADT^A01^ADT_A01|1|P|2.5\\rEVN|A01|20240101\\rPID|1||1^^^H^MR||Rossi^Mario||19800101|M\\rPV1|1|I\\r","expected_message_type":"ADT^A01"}]}' > /tmp/t3.bltests.json
+          $CLI test /tmp/t3.bltests.json --no-plugins --format json | jq -e '.passed == 1' > /dev/null
+          printf 'MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.8\rPID|1||1^^^H^MR||Rossi^Mario||19800101|M\r' > /tmp/v28.hl7
+          $CLI validate /tmp/v28.hl7 --no-plugins --format json | jq -e '[.[0].report.issues[].rule_id] | index("MSH-005") != null' > /dev/null
+          echo "BL-CLI-23b/BL-VALID-17 PASSED"
+
+      - name: Test - multi-message send and MSA-2 (BL-CLI-27)
+        run: |
+          CLI=./tools/bridgelab-cli/target/release/bridgelab-cli
+          printf 'MSH|^~\\&|A|B|C|D|20240101||ADT^A01|M1|P|2.5\nPID|1||1\nMSH|^~\\&|A|B|C|D|20240101||ADT^A01|M2|P|2.5\nPID|1||2\n' > /tmp/two.hl7
+          python3 tests/tools/mllp_ack_server.py 47204 AA 2 > /tmp/srv.out & sleep 1
+          $CLI send /tmp/two.hl7 --host 127.0.0.1 --port 47204 --json | jq -e '.ack_code == "AA" and (.results | length) == 2' > /dev/null
+          wait
+          grep -q "received=2" /tmp/srv.out
+          python3 tests/tools/mllp_ack_server.py 47205 AA 1 OTHER-999 > /dev/null & sleep 1
+          if $CLI send tests/fixtures/hl7/adt_a01_small.hl7 --host 127.0.0.1 --port 47205 > /dev/null 2>&1; then echo "BL-CLI-27 FAILED: ACK for another message accepted"; exit 1; fi
+          wait
+          echo "BL-CLI-27 PASSED"
+
   fhir-fixture-tests:
     name: FHIR Fixture Tests
     runs-on: ${{ fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}

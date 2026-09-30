@@ -31,12 +31,41 @@ fn ensure_root() -> Result<PathBuf, String> {
 }
 
 /// Read a `.tgz` and distil the StructureDefinitions it contains.
+/// Largest single file read from a package, and the most read in total.
+const MAX_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
+/// Most JSON values (objects, arrays and list items) a StructureDefinition
+/// may hold before it is parsed into a tree. Parsed, each small value costs
+/// tens of bytes, so a few MB of `[0,0,…]` or `[{},{},…]` would take
+/// gigabytes; the largest core definition has about 12 000.
+const MAX_JSON_ITEMS: usize = 1_000_000;
+/// Largest `fixed[x]` / `pattern[x]` value kept from a definition. Kept
+/// values stay in memory for as long as the package is installed; real
+/// ones are a code or a small CodeableConcept.
+const MAX_FIXED_BYTES: usize = 64 * 1024;
+
+/// Just the `resourceType` of a JSON resource. Every other field is
+/// skipped without being built, so a file that is not a
+/// StructureDefinition costs no memory beyond its text.
+#[derive(serde::Deserialize)]
+struct Head {
+    #[serde(rename = "resourceType")]
+    resource_type: Option<String>,
+}
+
+/// An upper bound on the values a JSON text holds (commas and brackets,
+/// including any inside strings).
+fn json_items(text: &str) -> usize {
+    text.bytes().filter(|b| matches!(b, b'{' | b'[' | b',')).count()
+}
+
 pub fn read_package(tgz: &Path) -> Result<ProfilePackage, String> {
     let file = fs::File::open(tgz).map_err(|e| format!("Could not open {}: {}", tgz.display(), e))?;
     let decoder = flate2::read::GzDecoder::new(file);
     let mut archive = tar::Archive::new(decoder);
 
     let mut name = String::new();
+    let mut total_read: u64 = 0;
     let mut version = String::new();
     let mut title = String::new();
     let mut fhir_version = String::new();
@@ -52,6 +81,26 @@ pub fn read_package(tgz: &Path) -> Result<ProfilePackage, String> {
             .path()
             .map_err(|e| format!("Corrupt archive entry path: {}", e))?
             .to_path_buf();
+
+        // Checked for every entry, read or skipped: moving past an entry
+        // still decompresses it. A resource file is at most a few MB; a
+        // larger entry (a decompression bomb, 3 GB of spaces in a 3 MB
+        // archive) or too much in total refuses the package.
+        if entry.size() > MAX_ENTRY_BYTES {
+            return Err(format!(
+                "The package holds a file of {} MB ({}); files over {} MB are not accepted",
+                entry.size() >> 20,
+                path.display(),
+                MAX_ENTRY_BYTES >> 20
+            ));
+        }
+        total_read += entry.size();
+        if total_read > MAX_TOTAL_BYTES {
+            return Err(format!(
+                "The package unpacks to more than {} MB of resources; not installed",
+                MAX_TOTAL_BYTES >> 20
+            ));
+        }
 
         let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
@@ -75,12 +124,30 @@ pub fn read_package(tgz: &Path) -> Result<ProfilePackage, String> {
         }
 
         let mut text = String::new();
-        if entry.read_to_string(&mut text).is_err() {
+        if std::io::Read::take(&mut entry, MAX_ENTRY_BYTES).read_to_string(&mut text).is_err() {
             continue; // binary or non-UTF-8 payload: not a resource we read
+        }
+        // Only package.json and StructureDefinitions are read; everything
+        // else is recognised without building it.
+        if file_name != "package.json" {
+            match serde_json::from_str::<Head>(&text) {
+                Ok(Head { resource_type: Some(rt) }) if rt == "StructureDefinition" => {}
+                _ => continue,
+            }
+            if json_items(&text) > MAX_JSON_ITEMS {
+                return Err(format!(
+                    "{} holds more than {} JSON values, far more than a StructureDefinition needs; not installed",
+                    path.display(),
+                    MAX_JSON_ITEMS
+                ));
+            }
+        } else if json_items(&text) > MAX_JSON_ITEMS {
+            return Err("package.json is far larger than package metadata; not installed".into());
         }
         let Ok(json) = serde_json::from_str::<Value>(&text) else {
             continue;
         };
+        drop(text);
 
         if file_name == "package.json" {
             name = string_at(&json, "name");
@@ -100,6 +167,19 @@ pub fn read_package(tgz: &Path) -> Result<ProfilePackage, String> {
             continue;
         }
         if let Some(profile) = from_structure_definition(&json) {
+            let oversized = profile.elements.iter().find(|e| {
+                [&e.fixed, &e.pattern].into_iter().flatten().any(|v| {
+                    serde_json::to_string(v).map_or(true, |t| t.len() > MAX_FIXED_BYTES)
+                })
+            });
+            if let Some(e) = oversized {
+                return Err(format!(
+                    "{} fixes {} to a value over {} KB; not installed",
+                    profile.url,
+                    e.path,
+                    MAX_FIXED_BYTES >> 10
+                ));
+            }
             profiles.push(profile);
         }
     }
@@ -189,24 +269,41 @@ pub fn load_installed() -> Vec<ProfilePackage> {
 /// default, any directory for a CI checkout or an air-gapped provisioning
 /// folder.
 pub fn load_installed_from(root: &Path) -> Vec<ProfilePackage> {
-    let Ok(entries) = fs::read_dir(root) else {
-        return vec![];
-    };
+    scan_installed_from(root).map(|scan| scan.packages).unwrap_or_default()
+}
 
-    let mut out = Vec::new();
+/// What reading a packages directory found: the packages, and every
+/// `.json` file that could not be read as one (path, reason).
+pub struct InstalledScan {
+    pub packages: Vec<ProfilePackage>,
+    pub skipped: Vec<(PathBuf, String)>,
+}
+
+/// As [`load_installed_from`], but reports what went wrong instead of
+/// silently returning less: `Err` when the directory cannot be read at
+/// all, and each file that is not a distilled package in `skipped`. The
+/// CLI uses it so a mistyped `--fhir-packages` never looks like a clean
+/// run against the core alone.
+pub fn scan_installed_from(root: &Path) -> Result<InstalledScan, String> {
+    let entries = fs::read_dir(root).map_err(|e| format!("{}: {}", root.display(), e))?;
+
+    let mut packages = Vec::new();
+    let mut skipped = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        if let Ok(text) = fs::read_to_string(&path) {
-            if let Ok(pkg) = serde_json::from_str::<ProfilePackage>(&text) {
-                out.push(pkg);
-            }
+        match fs::read_to_string(&path) {
+            Ok(text) => match serde_json::from_str::<ProfilePackage>(&text) {
+                Ok(pkg) => packages.push(pkg),
+                Err(e) => skipped.push((path, format!("not a distilled FHIR package: {}", e))),
+            },
+            Err(e) => skipped.push((path, e.to_string())),
         }
     }
-    out.sort_by(|a, b| a.name.cmp(&b.name).then(a.version.cmp(&b.version)));
-    out
+    packages.sort_by(|a, b| a.name.cmp(&b.name).then(a.version.cmp(&b.version)));
+    Ok(InstalledScan { packages, skipped })
 }
 
 fn string_at(v: &Value, key: &str) -> String {
@@ -329,6 +426,32 @@ mod tests {
     }
 
     #[test]
+    fn value_bombs_are_refused_or_skipped_without_being_built() {
+        let tmp = std::env::temp_dir().join(format!("bl-pkg-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&tmp).unwrap();
+        let meta = ("package.json", json!({"name": "bomb", "version": "1.0"}));
+        let good = ("StructureDefinition-P.json", sd("http://acme.org/StructureDefinition/P", "Patient"));
+
+        // Not a StructureDefinition: skipped however many values it holds.
+        let array = ("StructureDefinition-bomb.json", Value::Array(vec![json!(0); MAX_JSON_ITEMS + 10]));
+        let tgz = make_tgz(&tmp, &[meta.clone(), good.clone(), array]);
+        assert_eq!(read_package(&tgz).unwrap().profiles.len(), 1);
+
+        // A StructureDefinition that would expand to a huge tree.
+        let mut big = sd("http://acme.org/StructureDefinition/Big", "Big");
+        big["extra"] = Value::Array(vec![json!({}); MAX_JSON_ITEMS + 10]);
+        let tgz = make_tgz(&tmp, &[meta.clone(), ("StructureDefinition-Big.json", big)]);
+        assert!(read_package(&tgz).unwrap_err().contains("JSON values"));
+
+        // A pattern value that would stay in memory for good.
+        let mut fixed = sd("http://acme.org/StructureDefinition/F", "Patient");
+        fixed["snapshot"]["element"][1]["patternString"] = json!("x".repeat(MAX_FIXED_BYTES + 1));
+        let tgz = make_tgz(&tmp, &[meta, ("StructureDefinition-F.json", fixed)]);
+        assert!(read_package(&tgz).unwrap_err().contains("KB"));
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
     fn stored_names_are_filesystem_safe() {
         assert_eq!(stored_name("hl7.fhir.r4.core", "4.0.1"), "hl7.fhir.r4.core#4.0.1.json");
         assert_eq!(stored_name("a/b", "1:0"), "a_b#1_0.json");
@@ -348,4 +471,26 @@ mod tests {
         }
         assert!(index.packages()[0].builtin);
     }
+
+    #[test]
+    fn an_oversized_entry_refuses_the_package_even_outside_package_dir() {
+        let tmp = std::env::temp_dir().join(format!("bl-pkg-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&tmp).unwrap();
+        let path = tmp.join("bomb.tgz");
+        let encoder = flate2::write::GzEncoder::new(fs::File::create(&path).unwrap(), flate2::Compression::fast());
+        let mut builder = tar::Builder::new(encoder);
+        let size = MAX_ENTRY_BYTES + 1;
+        let mut header = tar::Header::new_gnu();
+        header.set_size(size);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "examples/huge.txt", std::io::Read::take(std::io::repeat(b' '), size))
+            .unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+        let err = read_package(&path).unwrap_err();
+        assert!(err.contains("not accepted"), "{err}");
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }
+

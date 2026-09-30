@@ -7,6 +7,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use serde_json::{Map, Value};
 
@@ -26,17 +27,35 @@ pub struct Env<'a> {
     pub total: Option<Vec<Value>>,
     /// Lines emitted by `trace()`, in order.
     pub trace: Vec<(String, Vec<Value>)>,
+    /// What `resolve()` searches: the root, or the Bundle a rule's entry
+    /// resource sits in.
+    scope: &'a Value,
+    /// Built on the first `resolve()`, then reused for every reference.
+    references: Option<ResolveIndex<'a>>,
 }
 
 impl<'a> Env<'a> {
-    pub fn new(root: &'a Value) -> Self {
+    /// Evaluate against `root`, resolving references in `scope` (the Bundle
+    /// `root` is an entry of).
+    pub fn within(root: &'a Value, scope: &'a Value) -> Self {
         Env {
             root,
             this: None,
             index: None,
             total: None,
             trace: Vec::new(),
+            scope,
+            references: None,
         }
+    }
+
+    /// Follow a reference found in `item` (a Reference element or its
+    /// string) to the resource it names.
+    /// `holder` is the resource the reference sits in, when known.
+    pub fn resolve(&mut self, reference: &str, item: &Value, holder: Option<&Value>) -> Option<Value> {
+        let (root, scope) = (self.root, self.scope);
+        let index = self.references.get_or_insert_with(|| ResolveIndex::build(scope));
+        index.resolve(reference, item, holder, root)
     }
 
     /// The context node ordinary function arguments are evaluated against:
@@ -89,11 +108,52 @@ pub fn eval(expr: &Expr, focus: &[Value], env: &mut Env) -> Result<Vec<Value>, S
         Expr::EnvConstant(name) => env_constant(name, env),
 
         Expr::Member { base, name } => {
+            // A primitive's id and extensions live in its `_name` sibling:
+            // `Patient.birthDate.extension` reads `_birthDate.extension`.
+            if name == "extension" || name == "id" {
+                if let Some((values, elements)) = with_primitive_elements(base.as_deref(), focus, env)? {
+                    let mut out = member_access(&values, name, false, env.root);
+                    out.extend(member_access(&elements, name, false, env.root));
+                    return Ok(out);
+                }
+            }
             let target = resolve_base(base.as_deref(), focus, env)?;
             Ok(member_access(&target, name, base.is_none(), env.root))
         }
 
         Expr::Function { base, name, args } => {
+            // A type test straight on a path keeps the type a choice
+            // element declares in its key (`effectiveDateTime`).
+            if matches!(name.as_str(), "ofType" | "is" | "as") {
+                if let Some(typed) = typed_members(base.as_deref(), focus, env)? {
+                    return super::functions::type_call(name, args, &typed);
+                }
+            }
+            if name == "extension" {
+                if let Some((mut values, elements)) = with_primitive_elements(base.as_deref(), focus, env)? {
+                    values.extend(elements);
+                    return super::functions::call(name, args, &values, env);
+                }
+            }
+            // resolve() needs to know which resource each reference sits
+            // in, so `#id` finds that resource's contained one.
+            if name == "resolve" && args.is_empty() {
+                let items = match base.as_deref() {
+                    Some(b) => with_holders(b, focus, env)?,
+                    None => focus.iter().map(|v| (v.clone(), None)).collect(),
+                };
+                let mut out = Vec::new();
+                for (item, holder) in &items {
+                    let reference = item
+                        .get("reference")
+                        .and_then(|r| r.as_str())
+                        .or_else(|| item.as_str());
+                    if let Some(r) = reference {
+                        out.extend(env.resolve(r, item, holder.as_deref()));
+                    }
+                }
+                return Ok(out);
+            }
             let target = resolve_base(base.as_deref(), focus, env)?;
             super::functions::call(name, args, &target, env)
         }
@@ -125,11 +185,16 @@ pub fn eval(expr: &Expr, focus: &[Value], env: &mut Env) -> Result<Vec<Value>, S
         }
 
         Expr::TypeOp { op, operand, type_name } => {
-            let vals = eval(operand, focus, env)?;
-            let Some(v) = singleton(&vals)? else {
-                return Ok(vec![]);
+            let typed = match typed_members(Some(operand), focus, env)? {
+                Some(t) => t,
+                None => eval(operand, focus, env)?.into_iter().map(|v| (v, None)).collect(),
             };
-            let matches = types::is_type(v, type_name);
+            let (v, declared) = match typed.as_slice() {
+                [] => return Ok(vec![]),
+                [one] => one,
+                many => return Err(format!("Expected a single value but the expression produced {}", many.len())),
+            };
+            let matches = types::is_declared_type(v, declared.as_deref(), type_name);
             match op {
                 TypeOp::Is => Ok(vec![Value::Bool(matches)]),
                 TypeOp::As => Ok(if matches { vec![v.clone()] } else { vec![] }),
@@ -238,13 +303,116 @@ pub fn member_access(focus: &[Value], name: &str, leading: bool, root: &Value) -
 
 /// A `<name><Type>` key, e.g. `valueQuantity` for `value`.
 fn choice_element<'a>(obj: &'a Map<String, Value>, name: &str) -> Option<&'a Value> {
+    choice_entry(obj, name).map(|(_, v)| v)
+}
+
+/// The type suffix and value of a `<name><Type>` key.
+fn choice_entry<'a, 'k>(obj: &'a Map<String, Value>, name: &'k str) -> Option<(&'a str, &'a Value)> {
     obj.iter()
         .find(|(k, _)| {
             k.len() > name.len()
                 && k.starts_with(name)
                 && k[name.len()..].starts_with(|c: char| c.is_ascii_uppercase())
         })
-        .map(|(_, v)| v)
+        .map(|(k, v)| (&k[name.len()..], v))
+}
+
+/// When `expr` is a path step `parent.name`: its values, plus the
+/// `_name` Elements that carry the id and extensions of primitive values
+/// (for a repeating primitive, the non-null entries of the `_name` array).
+fn with_primitive_elements(
+    expr: Option<&Expr>,
+    focus: &[Value],
+    env: &mut Env,
+) -> Result<Option<(Vec<Value>, Vec<Value>)>, String> {
+    let Some(Expr::Member { base, name }) = expr else { return Ok(None) };
+    let parents = resolve_base(base.as_deref(), focus, env)?;
+    let values = member_access(&parents, name, base.is_none(), env.root);
+    let sibling = format!("_{}", name);
+    let mut elements = Vec::new();
+    for parent in &parents {
+        match parent.get(&sibling) {
+            Some(Value::Array(arr)) => elements.extend(arr.iter().filter(|v| v.is_object()).cloned()),
+            Some(v @ Value::Object(_)) => elements.push(v.clone()),
+            _ => {}
+        }
+    }
+    Ok(Some((values, elements)))
+}
+
+/// The items `expr` yields, each with the nearest resource it was reached
+/// through along the path (`Bundle.entry[1].resource.basedOn` → entry 1's
+/// resource). Steps other than a member access keep only resources
+/// themselves as holders.
+fn with_holders(
+    expr: &Expr,
+    focus: &[Value],
+    env: &mut Env,
+) -> Result<Vec<(Value, Option<Rc<Value>>)>, String> {
+    let is_resource = |v: &Value| v.get("resourceType").is_some_and(|t| t.is_string());
+    // Shared, so the entries of a Bundle do not each copy it.
+    let tag = |v: Value, holder: &Option<Rc<Value>>| {
+        let h = if is_resource(&v) { Some(Rc::new(v.clone())) } else { holder.clone() };
+        (v, h)
+    };
+    match expr {
+        Expr::Member { base: Some(b), name } => {
+            let parents = with_holders(b, focus, env)?;
+            let mut out = Vec::new();
+            for (parent, holder) in parents {
+                for v in member_access(std::slice::from_ref(&parent), name, false, env.root) {
+                    out.push(tag(v, &holder));
+                }
+            }
+            Ok(out)
+        }
+        Expr::Member { base: None, .. } => {
+            let holder = match focus {
+                [one] if is_resource(one) => Some(Rc::new(one.clone())),
+                _ => None,
+            };
+            Ok(eval(expr, focus, env)?.into_iter().map(|v| tag(v, &holder)).collect())
+        }
+        _ => Ok(eval(expr, focus, env)?.into_iter().map(|v| tag(v, &None)).collect()),
+    }
+}
+
+/// When `expr` is a path step, its items paired with the type a choice
+/// element declares in its JSON key (`Date` for `effectiveDate`, `None`
+/// for an ordinary element). JSON alone cannot tell a day-precision
+/// `dateTime` from a `date`, or a `code` from a `string`; the key can.
+pub fn typed_members(
+    expr: Option<&Expr>,
+    focus: &[Value],
+    env: &mut Env,
+) -> Result<Option<Vec<(Value, Option<String>)>>, String> {
+    let Some(Expr::Member { base, name }) = expr else { return Ok(None) };
+    let target = resolve_base(base.as_deref(), focus, env)?;
+    let leading = base.is_none();
+    if leading
+        && ((target.len() == 1 && resource_type_of(&target[0]) == Some(name.as_str()))
+            || (target.is_empty() && resource_type_of(env.root) == Some(name.as_str())))
+    {
+        return Ok(Some(
+            member_access(&target, name, true, env.root).into_iter().map(|v| (v, None)).collect(),
+        ));
+    }
+    let mut out = Vec::new();
+    for item in &target {
+        let Some(obj) = item.as_object() else { continue };
+        let (declared, v) = match obj.get(name.as_str()) {
+            Some(v) => (None, v),
+            None => match choice_entry(obj, name) {
+                Some((suffix, v)) => (Some(suffix.to_string()), v),
+                None => continue,
+            },
+        };
+        match v {
+            Value::Array(arr) => out.extend(arr.iter().map(|x| (x.clone(), declared.clone()))),
+            v => out.push((v.clone(), declared)),
+        }
+    }
+    Ok(Some(out))
 }
 
 fn resource_type_of(v: &Value) -> Option<&str> {
@@ -433,6 +601,15 @@ fn arithmetic(op: BinOp, a: &Value, b: &Value) -> Result<Vec<Value>, String> {
     };
     let both_int = a.is_i64() && b.is_i64();
 
+    // Integers are exact, and a result the type cannot hold is empty (the
+    // specification's rule for overflow), not a number rounded through
+    // f64 or saturated at the bound.
+    if let (true, Some(x), Some(y)) = (both_int, a.as_i64(), b.as_i64()) {
+        if !matches!(op, BinOp::Div) {
+            return Ok(integer_arithmetic(op, x, y).map(Value::from).into_iter().collect());
+        }
+    }
+
     // FHIRPath decimals are exact; f64 is not. Rounding the result to the
     // scale exact decimal arithmetic would have produced keeps
     // `1.8 - 1.2 = 0.6` true instead of 0.5999999999999999.
@@ -480,6 +657,25 @@ fn arithmetic(op: BinOp, a: &Value, b: &Value) -> Result<Vec<Value>, String> {
     } else {
         Value::from(result)
     }])
+}
+
+/// `+ - * div mod` on two integers; `None` for division by zero or a
+/// result out of range. FHIRPath's Integer is 32-bit; operands already
+/// beyond that (an `integer64` from the resource) are held to 64 bits.
+fn integer_arithmetic(op: BinOp, x: i64, y: i64) -> Option<i64> {
+    let result = match op {
+        BinOp::Add => x.checked_add(y)?,
+        BinOp::Sub => x.checked_sub(y)?,
+        BinOp::Mul => x.checked_mul(y)?,
+        BinOp::IntDiv => x.checked_div(y)?,
+        BinOp::Mod => x.checked_rem(y)?,
+        _ => return None,
+    };
+    let fits32 = |n: i64| i32::try_from(n).is_ok();
+    if fits32(x) && fits32(y) && !fits32(result) {
+        return None;
+    }
+    Some(result)
 }
 
 fn quantity_arithmetic(op: BinOp, a: &Value, b: &Value) -> Result<Vec<Value>, String> {
@@ -537,7 +733,7 @@ fn quantity_arithmetic(op: BinOp, a: &Value, b: &Value) -> Result<Vec<Value>, St
 
 fn negate(v: &Value) -> Result<Value, String> {
     if let Some(n) = v.as_i64() {
-        return Ok(Value::from(-n));
+        return Ok(n.checked_neg().map(Value::from).unwrap_or(Value::from(-(n as f64))));
     }
     if let Some(n) = v.as_f64() {
         return Ok(Value::from(-n));
@@ -864,36 +1060,158 @@ pub fn descendants_of(value: &Value) -> Vec<Value> {
     out
 }
 
-/// Resolve a `Reference` against the contained/bundled resources reachable
-/// from the root. Only local resolution is possible offline.
-pub fn resolve_reference(reference: &str, root: &Value) -> Option<Value> {
-    let target = reference.trim();
+/// Where each resource in the evaluation scope can be found. Holds
+/// references into the scope, so one index serves every `resolve()` of an
+/// evaluation without copying the Bundle.
+struct ResolveIndex<'a> {
+    /// Bundle entries by their fullUrl, as written.
+    by_full_url: HashMap<&'a str, &'a Value>,
+    /// `Type/id` of each resource (not the contained ones), and of each
+    /// entry whose fullUrl ends in it.
+    by_identity: HashMap<String, &'a Value>,
+    /// Resources that contain other resources, for `#id` references.
+    containers: Vec<&'a Value>,
+}
 
-    // "#contained-id"
-    if let Some(id) = target.strip_prefix('#') {
-        return find_in_array(root.get("contained"), id);
+impl<'a> ResolveIndex<'a> {
+    fn build(scope: &'a Value) -> Self {
+        let mut index = ResolveIndex {
+            by_full_url: HashMap::new(),
+            by_identity: HashMap::new(),
+            containers: Vec::new(),
+        };
+        index.collect(scope);
+        index
     }
 
-    let mut index: HashMap<String, Value> = HashMap::new();
-    collect_resources(root, &mut index);
-
-    // A bundle entry is reachable by its fullUrl as written — which for a
-    // message or transaction bundle is a urn:uuid, with no type or id in
-    // it to fall back on.
-    if let Some(found) = index.get(target) {
-        return Some(found.clone());
+    fn collect(&mut self, value: &'a Value) {
+        match value {
+            Value::Object(map) => {
+                if let (Some(rt), Some(id)) = (
+                    map.get("resourceType").and_then(|v| v.as_str()),
+                    map.get("id").and_then(|v| v.as_str()),
+                ) {
+                    self.by_identity.entry(format!("{}/{}", rt, id)).or_insert(value);
+                }
+                if map.contains_key("resourceType") && map.get("contained").is_some_and(|c| c.is_array()) {
+                    self.containers.push(value);
+                }
+                // A Bundle entry: the fullUrl names the resource beside it.
+                if let (Some(url), Some(resource)) =
+                    (map.get("fullUrl").and_then(|v| v.as_str()), map.get("resource"))
+                {
+                    self.by_full_url.entry(url).or_insert(resource);
+                    if !url.starts_with("urn:") {
+                        if let Some(identity) = identity_of(url) {
+                            self.by_identity.entry(identity).or_insert(resource);
+                        }
+                    }
+                }
+                for (key, v) in map {
+                    // A contained resource is reached by `#id` from its
+                    // container only, never by `Type/id`.
+                    if key != "contained" {
+                        self.collect(v);
+                    }
+                }
+            }
+            Value::Array(arr) => {
+                for v in arr {
+                    self.collect(v);
+                }
+            }
+            _ => {}
+        }
     }
 
-    // "Patient/p1" or a full URL ending in the same.
-    let tail = target.rsplit('/').take(2).collect::<Vec<_>>();
-    let (rtype, id) = match tail.as_slice() {
-        [id, rtype] => (*rtype, *id),
-        _ => return None,
-    };
-    index
-        .get(&format!("{}/{}", rtype, id))
-        .or_else(|| index.get(id))
-        .cloned()
+    fn resolve(&self, reference: &str, item: &Value, holder: Option<&Value>, root: &Value) -> Option<Value> {
+        let target = reference.trim();
+
+        // "#contained-id": a resource contained in the one the reference
+        // sits in — the root, or the entry holding `item` in a Bundle.
+        if let Some(id) = target.strip_prefix('#') {
+            if let Some(found) = holder.and_then(|h| find_in_array(h.get("contained"), id)) {
+                return Some(found);
+            }
+            if let Some(found) = find_in_array(root.get("contained"), id) {
+                return Some(found);
+            }
+            let holders: Vec<&Value> = self
+                .containers
+                .iter()
+                .copied()
+                .filter(|c| find_in_array(c.get("contained"), id).is_some())
+                .collect();
+            let holder = match holders.as_slice() {
+                [one] => Some(*one),
+                _ => holders.iter().copied().find(|c| contains_value(c, item)),
+            };
+            return holder.and_then(|c| find_in_array(c.get("contained"), id));
+        }
+
+        // A versioned reference matches with the version removed, then only
+        // a resource at that version (FHIR's Bundle resolution rules): one
+        // whose meta.versionId says otherwise is another version.
+        let version = history_version(target);
+        let target = strip_history(target);
+        // An absolute reference (a URL or a urn) names an entry only by its
+        // exact fullUrl: another server's `Practitioner/1` is not ours.
+        let found = if target.starts_with("urn:") || target.contains("://") {
+            self.by_full_url.get(target)
+        } else {
+            // A relative one ("Patient/p1") names a resource by type and id.
+            let identity = identity_of(target)?;
+            if identity != target {
+                return None;
+            }
+            self.by_identity.get(&identity)
+        }?;
+        if let Some(wanted) = version {
+            let held = found.get("meta").and_then(|m| m.get("versionId")).and_then(Value::as_str);
+            if held.is_some_and(|v| v != wanted) {
+                return None;
+            }
+        }
+        Some((*found).clone())
+    }
+}
+
+/// `Type/id` at the end of a reference or fullUrl, if it has that shape.
+fn identity_of(url: &str) -> Option<String> {
+    let url = strip_history(url);
+    let mut parts = url.rsplit('/');
+    let id = parts.next()?;
+    let rtype = parts.next()?;
+    let is_type = rtype.starts_with(|c: char| c.is_ascii_uppercase())
+        && rtype.chars().all(|c| c.is_ascii_alphanumeric());
+    (is_type && !id.is_empty()).then(|| format!("{}/{}", rtype, id))
+}
+
+/// `Patient/1/_history/2` names Patient/1 (as it was at version 2).
+fn strip_history(reference: &str) -> &str {
+    match reference.find("/_history/") {
+        Some(i) => &reference[..i],
+        None => reference,
+    }
+}
+
+/// The version a `…/_history/2` reference asks for.
+fn history_version(reference: &str) -> Option<&str> {
+    let (_, rest) = reference.split_once("/_history/")?;
+    let v = rest.split(['/', '?', '#']).next().unwrap_or("");
+    (!v.is_empty()).then_some(v)
+}
+
+/// Is `needle` somewhere inside `haystack` (or `haystack` itself)?
+fn contains_value(haystack: &Value, needle: &Value) -> bool {
+    if haystack == needle {
+        return true;
+    }
+    match haystack {
+        Value::Object(map) => map.values().any(|v| contains_value(v, needle)),
+        Value::Array(arr) => arr.iter().any(|v| contains_value(v, needle)),
+        _ => false,
+    }
 }
 
 fn find_in_array(arr: Option<&Value>, id: &str) -> Option<Value> {
@@ -901,35 +1219,4 @@ fn find_in_array(arr: Option<&Value>, id: &str) -> Option<Value> {
         .iter()
         .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(id))
         .cloned()
-}
-
-fn collect_resources(value: &Value, out: &mut HashMap<String, Value>) {
-    if let (Some(rt), Some(id)) = (
-        value.get("resourceType").and_then(|v| v.as_str()),
-        value.get("id").and_then(|v| v.as_str()),
-    ) {
-        out.entry(format!("{}/{}", rt, id))
-            .or_insert_with(|| value.clone());
-        out.entry(id.to_string()).or_insert_with(|| value.clone());
-    }
-    // A Bundle entry: the fullUrl names the resource beside it.
-    if let (Some(url), Some(resource)) = (
-        value.get("fullUrl").and_then(|v| v.as_str()),
-        value.get("resource"),
-    ) {
-        out.entry(url.to_string()).or_insert_with(|| resource.clone());
-    }
-    match value {
-        Value::Object(map) => {
-            for v in map.values() {
-                collect_resources(v, out);
-            }
-        }
-        Value::Array(arr) => {
-            for v in arr {
-                collect_resources(v, out);
-            }
-        }
-        _ => {}
-    }
 }

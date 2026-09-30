@@ -5,7 +5,7 @@
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const MAX_COUNT: usize = 500;
 
@@ -113,7 +113,7 @@ fn build_adt(rng: &mut StdRng, idx: usize, event: &str) -> String {
         msh(&ts, &format!("ADT^{}", event), &ctrl),
         format!("EVN|{}|{}", event, ts),
         pid(&p),
-        format!("PV1|1|{}|WARD{}^{}^A|||||||MED||||||||V{}", class, ward, room, idx + 1),
+        format!("PV1|1|{}|WARD{}^{}^A|||||||MED|||||||||V{}", class, ward, room, idx + 1),
     ]
     .join("\r")
 }
@@ -198,6 +198,49 @@ pub fn generate_test_messages(
     Ok(out)
 }
 
+/// One generated message to write, under a bare file name.
+#[derive(Debug, Clone, Deserialize)]
+pub struct NamedMessage {
+    pub name: String,
+    pub content: String,
+}
+
+/// What happened to one file of "Save all to folder".
+#[derive(Debug, Clone, Serialize)]
+pub struct SaveOutcome {
+    pub name: String,
+    /// `"exists"` when a file of that name was already there (it is left as
+    /// it was), otherwise the write error; `None` when written.
+    pub error: Option<String>,
+}
+
+/// Write generated messages into `dir`, each under its own name. A name
+/// already taken in the folder is never replaced (nor a link at that name
+/// followed): that file is reported as `exists` and the rest are written.
+#[tauri::command]
+pub async fn save_generated_messages(dir: String, files: Vec<NamedMessage>) -> Result<Vec<SaveOutcome>, String> {
+    let dir = std::path::PathBuf::from(dir);
+    if !tokio::fs::metadata(&dir).await.map(|m| m.is_dir()).unwrap_or(false) {
+        return Err(format!("{} is not a folder", dir.display()));
+    }
+    let mut out = Vec::with_capacity(files.len());
+    for f in files {
+        // A bare name only: the folder is the one the user picked.
+        let bare = std::path::Path::new(&f.name).file_name().map(|n| n == f.name.as_str()).unwrap_or(false);
+        let error = if !bare || f.name.contains(['/', '\\']) {
+            Some(format!("invalid file name: {}", f.name))
+        } else {
+            match crate::commands::batch::write_new(&dir.join(&f.name), f.content.as_bytes()).await {
+                Ok(()) => None,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Some("exists".into()),
+                Err(e) => Some(e.to_string()),
+            }
+        };
+        out.push(SaveOutcome { name: f.name, error });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,5 +285,37 @@ mod tests {
     #[test]
     fn test_unknown_kind() {
         assert!(generate_test_messages("XXX^Y99".into(), 1, Some(1)).is_err());
+    }
+
+    #[test]
+    fn the_visit_number_is_pv1_19() {
+        for m in generate_test_messages("ADT^A01".into(), 60, Some(1234)).unwrap() {
+            let pv1 = m.content.split('\r').find(|s| s.starts_with("PV1|")).unwrap();
+            let fields: Vec<&str> = pv1.split('|').collect();
+            assert!(fields[19].starts_with('V') && fields[18].is_empty(), "{pv1}");
+            let report = validate_hl7_message(&Hl7Lexer::new().parse(m.content.clone().into_bytes()).unwrap());
+            assert!(!report.issues.iter().any(|i| i.rule_id.contains("PV1-18")), "{:?}", report.issues);
+        }
+    }
+
+    #[tokio::test]
+    async fn save_all_never_replaces_an_existing_file() {
+        let dir = std::env::temp_dir().join(format!("bl_gen_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("adt_a01_001.hl7"), "OLD").unwrap();
+        let files = vec![
+            NamedMessage { name: "adt_a01_001.hl7".into(), content: "NEW1".into() },
+            NamedMessage { name: "adt_a01_002.hl7".into(), content: "NEW2".into() },
+            NamedMessage { name: "../escape.hl7".into(), content: "X".into() },
+        ];
+        let out = save_generated_messages(dir.display().to_string(), files).await.unwrap();
+        assert_eq!(out[0].error.as_deref(), Some("exists"));
+        assert!(out[1].error.is_none());
+        assert!(out[2].error.as_deref().unwrap_or("").contains("invalid"));
+        assert_eq!(std::fs::read_to_string(dir.join("adt_a01_001.hl7")).unwrap(), "OLD");
+        assert_eq!(std::fs::read_to_string(dir.join("adt_a01_002.hl7")).unwrap(), "NEW2");
+        assert!(!dir.parent().unwrap().join("escape.hl7").exists());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

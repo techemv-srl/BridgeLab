@@ -1,13 +1,15 @@
 <script lang="ts">
-	import { t, subscribeLocale } from '$lib/i18n';
+	import { t, subscribeLocale, getLocale } from '$lib/i18n';
 	import { openPricing } from '$lib/licensing/pricing';
 	import type { RecentFile } from '$lib/ipc/database';
-	import { shortcutStore } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, displayKeys, isMacPlatform } from '$lib/stores/shortcuts.svelte';
 
 	/** Get current key combination for a shortcut id. */
 	function sc(id: string): string {
-		return shortcutStore.get(id);
+		return displayKeys(shortcutStore.get(id));
 	}
+	// Redo is Cmd+Shift+Z on macOS (what the editor binds there).
+	const redoKeys = isMacPlatform() ? 'Ctrl+Shift+Z' : 'Ctrl+Y';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') {
@@ -32,6 +34,7 @@
 		onClearRecent: () => void;
 		onOpenRecentFile: (path: string) => void;
 		onNewFromTemplate: () => void;
+		onShowSamples: () => void;
 		onShowTestCases: () => void;
 		onParse: () => void;
 		onValidate: () => void;
@@ -43,6 +46,7 @@
 		onAnonymize: () => void;
 		onShowBundleVisualizer: () => void;
 		onToggleFhirPath: () => void;
+		onToggleSegmentGrid: () => void;
 		onCopyFull: () => void;
 		onCopyTruncated: () => void;
 		onExportJson: () => void;
@@ -56,6 +60,8 @@
 		onGenerateMessages: () => void;
 		onSetTheme: (theme: string) => void;
 		onSetLanguage: (lang: string) => void;
+		/** Edit menu: run on whatever had the focus before the menu opened. */
+		onEditCommand: (cmd: 'undo' | 'redo' | 'cut' | 'copy' | 'paste') => void;
 		onShowSettings: () => void;
 		onShowShortcuts: () => void;
 		onCheckUpdates: () => void;
@@ -78,6 +84,7 @@
 		onClearRecent,
 		onOpenRecentFile,
 		onNewFromTemplate,
+		onShowSamples,
 		onShowTestCases,
 		onParse,
 		onValidate,
@@ -89,6 +96,7 @@
 		onAnonymize,
 		onShowBundleVisualizer,
 		onToggleFhirPath,
+		onToggleSegmentGrid,
 		onCopyFull,
 		onCopyTruncated,
 		onExportJson,
@@ -102,6 +110,7 @@
 		onGenerateMessages,
 		onSetTheme,
 		onSetLanguage,
+		onEditCommand,
 		onShowSettings,
 		onShowShortcuts,
 		onCheckUpdates,
@@ -131,11 +140,27 @@
 		fn();
 		closeMenu();
 	}
+
+	// Checked mark on the language in use.
+	let locale = $derived.by(() => { void localeVersion; return getLocale(); });
+	const languages = [
+		{ code: 'en', name: 'English' },
+		{ code: 'it', name: 'Italiano' },
+		{ code: 'fr', name: 'Français' },
+		{ code: 'es', name: 'Español' },
+		{ code: 'de', name: 'Deutsch' },
+	];
+
+	/** Clicking the menu must not take the focus (and the selection) away
+	 *  from the editor or text field the Edit commands act on. */
+	function keepFocus(e: MouseEvent) {
+		e.preventDefault();
+	}
 </script>
 
 <svelte:window onclick={closeMenu} />
 
-<div class="menubar" role="menubar">
+<div class="menubar" role="menubar" tabindex="-1" onmousedown={keepFocus}>
 	<!-- File Menu -->
 	<div class="menu-wrapper">
 		<button
@@ -151,6 +176,9 @@
 				<button class="menu-item" onclick={() => menuAction(onNewFromTemplate)}>
 					<span>{tr('tmpl.title')}...</span>
 					<span class="shortcut">{sc('file.newFromTemplate')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onShowSamples)}>
+					<span>{tr('samples.title')}...</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onShowTestCases)}>
 					<span>{tr('tc.title')}...</span>
@@ -212,26 +240,26 @@
 		</button>
 		{#if openMenu === 'edit'}
 			<div class="menu-dropdown" onclick={(e) => e.stopPropagation()}>
-				<button class="menu-item" onclick={() => { document.execCommand('undo'); closeMenu(); }}>
+				<button class="menu-item" onclick={() => menuAction(() => onEditCommand('undo'))}>
 					<span>{tr('menu.edit.undo')}</span>
-					<span class="shortcut">Ctrl+Z</span>
+					<span class="shortcut">{displayKeys('Ctrl+Z')}</span>
 				</button>
-				<button class="menu-item" onclick={() => { document.execCommand('redo'); closeMenu(); }}>
+				<button class="menu-item" onclick={() => menuAction(() => onEditCommand('redo'))}>
 					<span>{tr('menu.edit.redo')}</span>
-					<span class="shortcut">Ctrl+Y</span>
+					<span class="shortcut">{displayKeys(redoKeys)}</span>
 				</button>
 				<div class="menu-separator"></div>
-				<button class="menu-item" onclick={() => { document.execCommand('cut'); closeMenu(); }}>
+				<button class="menu-item" onclick={() => menuAction(() => onEditCommand('cut'))}>
 					<span>{tr('menu.edit.cut')}</span>
-					<span class="shortcut">Ctrl+X</span>
+					<span class="shortcut">{displayKeys('Ctrl+X')}</span>
 				</button>
-				<button class="menu-item" onclick={() => { document.execCommand('copy'); closeMenu(); }}>
+				<button class="menu-item" onclick={() => menuAction(() => onEditCommand('copy'))}>
 					<span>{tr('menu.edit.copy')}</span>
-					<span class="shortcut">Ctrl+C</span>
+					<span class="shortcut">{displayKeys('Ctrl+C')}</span>
 				</button>
-				<button class="menu-item" onclick={() => { document.execCommand('paste'); closeMenu(); }}>
+				<button class="menu-item" onclick={() => menuAction(() => onEditCommand('paste'))}>
 					<span>{tr('menu.edit.paste')}</span>
-					<span class="shortcut">Ctrl+V</span>
+					<span class="shortcut">{displayKeys('Ctrl+V')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<button class="menu-item" onclick={() => menuAction(onShowSettings)}>
@@ -265,8 +293,12 @@
 					<span>{tr('view.schemaFields')}</span>
 				</button>
 				<button class="menu-item" onclick={() => menuAction(onToggleValidation)}>
-					<span>{tr('menu.tools.validate')}</span>
+					<span>{tr('panel.validation')}</span>
 					<span class="shortcut">{sc('view.toggleValidation')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onToggleSegmentGrid)}>
+					<span>{tr('panel.segments')}</span>
+					<span class="shortcut">{sc('view.toggleSegmentGrid')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<div class="menu-label">{tr('menu.view.theme')}</div>
@@ -278,11 +310,9 @@
 				</button>
 				<div class="menu-separator"></div>
 				<div class="menu-label">{tr('menu.view.language')}</div>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('en'))}><span>English</span></button>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('it'))}><span>Italiano</span></button>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('fr'))}><span>Français</span></button>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('es'))}><span>Español</span></button>
-				<button class="menu-item" onclick={() => menuAction(() => onSetLanguage('de'))}><span>Deutsch</span></button>
+				{#each languages as lang (lang.code)}
+					<button class="menu-item" class:checked={locale === lang.code} onclick={() => menuAction(() => onSetLanguage(lang.code))}><span>{lang.name}</span></button>
+				{/each}
 			</div>
 		{/if}
 	</div>

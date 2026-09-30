@@ -6,8 +6,10 @@
 		saveConnectionProfile, getConnectionProfiles, deleteConnectionProfile,
 		type MllpSendResult, type HttpResult, type HistoryEntry,
 		type ListenerStatus, type MllpReceivedEvent, type ConnectionProfile,
+		HISTORY_KEPT,
 	} from '$lib/ipc/communication';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
+	import { ackFamily, ackLabel, httpBodyFor, methodSendsMessage, wireSize } from './comm-helpers';
 	import { soapSend, type SoapResult } from '$lib/pro/soap/ipc';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { t, subscribeLocale } from '$lib/i18n';
@@ -18,32 +20,36 @@
 	interface Props {
 		currentMessage?: string;
 		activeTabLabel?: string;
+		/** Charset the active tab's file was read in (null for UTF-8). */
+		activeTabCharset?: string | null;
 		onMessageReceived?: (content: string) => void;
 		/** Open generated content (e.g. an ACK) in a new tab with a label. */
 		onOpenGenerated?: (content: string, label: string) => void;
 	}
 
-	let { currentMessage = '', activeTabLabel = '', onMessageReceived, onOpenGenerated }: Props = $props();
+	let { currentMessage = '', activeTabLabel = '', activeTabCharset = null, onMessageReceived, onOpenGenerated }: Props = $props();
 
 	// --- ACK generator (for the message currently in the editor) ---
 	let ackGenCode = $state('AA');
 	let ackGenError = $state('');
 
+	/** MSH-10 of `message`, read with the separator MSH-1 declares; the
+	 *  header may follow a byte-order mark or blank lines. */
+	function controlIdOf(message: string): string {
+		const msh = message.replace(/^\uFEFF/, '').split(/[\r\n]/).find((seg) => seg.startsWith('MSH')) ?? '';
+		const sep = msh.length > 3 ? msh[3] : '|';
+		return msh.split(sep)[9]?.trim() ?? '';
+	}
+
 	async function handleGenerateAck() {
 		ackGenError = '';
-		const firstLine = currentMessage.split(/[\r\n]/)[0] ?? '';
-		// MSH-1 (the field separator) is the 4th character of MSH — messages
-		// may legitimately use a separator other than '|'.
-		const sep = firstLine.length > 3 ? firstLine[3] : '|';
-		const controlId = firstLine.startsWith('MSH')
-			? firstLine.split(sep)[9]?.trim() ?? ''
-			: '';
+		const controlId = controlIdOf(currentMessage);
 		if (!controlId) {
 			ackGenError = tr('comm.ackNoControlId');
 			return;
 		}
 		try {
-			const ack = await generateAck(ackGenCode, controlId);
+			const ack = await generateAck(ackGenCode, currentMessage);
 			onOpenGenerated?.(ack, `ACK ${controlId}`);
 		} catch (e) {
 			ackGenError = String(e);
@@ -71,7 +77,8 @@
 	});
 	let listenAckCode = $state('AA');
 	let listenReadTimeout = $state(30);
-	let listenEncoding = $state('UTF-8');
+	// 'auto': MSH-18 when it names a charset, else UTF-8, else Latin-1.
+	let listenEncoding = $state('auto');
 	let listenStatus = $state<ListenerStatus>({ running: false, port: null, bind_address: null });
 	let listenError = $state<string | null>(null);
 	let listenInboxCount = $state(0);
@@ -146,19 +153,20 @@
 			case 'all': return true;
 			case 'fail': return e.kind === 'error';
 			case 'noack': return e.kind === 'msg' && !e.ack;
-			default: return e.kind === 'msg' && e.ack === f;
+			default: return e.kind === 'msg' && ackFamily(e.ack) === f;
 		}
 	}
 
 	/** History rows: `fail` is a request that never got a reply, `noack` an
 	 *  MLLP send that got one without a readable MSA-1 (HTTP and SOAP have no
-	 *  ACK code and only ever match `all` and `fail`). */
+	 *  ACK code and only ever match `all` and `fail`). The commit-mode codes
+	 *  CA, CE and CR count under AA, AE and AR. */
 	function historyMatches(e: HistoryEntry, f: AckFilter): boolean {
 		switch (f) {
 			case 'all': return true;
 			case 'fail': return e.status === 'FAILED';
 			case 'noack': return e.profile_type === 'mllp' && e.status !== 'FAILED' && !e.ack_code;
-			default: return e.ack_code === f;
+			default: return ackFamily(e.ack_code) === f;
 		}
 	}
 
@@ -178,7 +186,8 @@
 	// MLLP advanced options
 	let mllpResponseTimeout = $state(30);
 	let mllpAutoAck = $state(true);
-	let mllpEncoding = $state('UTF-8');
+	// 'auto': MSH-18, else the charset the tab's file was read in, else UTF-8.
+	let mllpEncoding = $state('auto');
 	let mllpStartChar = $state('0x0B');
 	let mllpEndChar1 = $state('0x1C');
 	let mllpEndChar2 = $state('0x0D');
@@ -349,6 +358,7 @@
 					timeoutSecs: mllpTimeout,
 					responseTimeoutSecs: mllpResponseTimeout,
 					encoding: mllpEncoding,
+					sourceCharset: activeTabCharset,
 					startChar: mllpStartChar,
 					endChar1: mllpEndChar1,
 					endChar2: mllpEndChar2,
@@ -455,7 +465,9 @@
 					headers['Authorization'] = 'Bearer ' + httpAuthUser;
 				}
 			}
-			const body = httpBody.trim() || currentMessage || undefined;
+			// GET and DELETE carry a body only when one is typed: the active
+			// message is not sent along with a query.
+			const body = httpBodyFor(httpMethod, httpBody, currentMessage);
 			httpResult = await httpRequest(
 				httpUrl, httpMethod, headers, body,
 				httpTimeout, httpFollowRedirects, activeTabLabel || undefined,
@@ -495,7 +507,7 @@
 
 	// --- History ---
 	async function loadHistory() {
-		try { history = await getRequestHistory(50); } catch { /* web mode */ }
+		try { history = await getRequestHistory(HISTORY_KEPT); } catch { /* web mode */ }
 	}
 	async function handleClearHistory() {
 		try { await clearRequestHistory(); history = []; selectedHistoryId = null; } catch { /* */ }
@@ -503,6 +515,16 @@
 	$effect(() => { loadHistory(); });
 
 	let selectedHistory = $derived(history.find(h => h.id === selectedHistoryId));
+
+	function formatBytes(n: number | undefined): string {
+		if (!n) return '';
+		return n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+	}
+
+	/** A request the server answered with an error status or a fault. */
+	function isErrorStatus(status: string): boolean {
+		return status === 'FAILED' || /^[45]\d\d/.test(status) || status.startsWith('FAULT');
+	}
 
 	function formatTimestamp(ts: string): string {
 		try {
@@ -542,7 +564,7 @@
 		<div class="tab-message-info">
 			{#if hasMessage}
 				<span class="msg-indicator" title={messagePreview}>
-					{activeTabLabel || 'Untitled'}
+					{activeTabLabel || tr('tab.untitled')}
 				</span>
 			{:else}
 				<span class="msg-indicator empty">{tr('comm.noMessageShort')}</span>
@@ -596,6 +618,7 @@
 							<label for="mllp-encoding">{tr('comm.encoding')}</label>
 							<select id="mllp-encoding" bind:value={mllpEncoding}
 								style="min-width: 150px; padding: 4px 6px;">
+								<option value="auto">{tr('comm.encAutoSend')}</option>
 								<option value="UTF-8">UTF-8 ({tr('comm.encUnicode')})</option>
 								<option value="ISO-8859-1">ISO-8859-1 ({tr('comm.encLatin1')})</option>
 								<option value="ISO-8859-2">ISO-8859-2 ({tr('comm.encLatin2')})</option>
@@ -631,7 +654,7 @@
 				{#if !hasMessage}
 					<div class="info-box">{tr('comm.noMessage')}</div>
 				{:else}
-					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: currentMessage.length })}</div>
+					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: wireSize(currentMessage) })}</div>
 				{/if}
 				<div class="form-actions">
 					<button class="btn btn-primary" onclick={handleMllpSend} disabled={mllpSending || !hasMessage}>
@@ -711,6 +734,7 @@
 							<label for="mllp-listen-encoding">{tr('comm.encoding')}</label>
 							<select id="mllp-listen-encoding" bind:value={listenEncoding}
 								style="min-width: 150px; padding: 4px 6px;">
+								<option value="auto">{tr('comm.encAutoListen')}</option>
 								<option value="UTF-8">UTF-8 ({tr('comm.encUnicode')})</option>
 								<option value="ISO-8859-1">ISO-8859-1 ({tr('comm.encLatin1')})</option>
 								<option value="ISO-8859-2">ISO-8859-2 ({tr('comm.encLatin2')})</option>
@@ -793,23 +817,14 @@
 						<div class="result-header">
 							<span>{mllpResult.success ? 'OK' : 'FAILED'}</span>
 							<span>{mllpHost}:{mllpPort}</span>
+							{#if mllpResult.encoding}<span>{mllpResult.encoding}</span>{/if}
 							<span>{mllpResult.response_time_ms}ms</span>
 						</div>
 						{#if mllpResult.error}
 							<div class="result-error">{mllpResult.error}</div>
 						{/if}
 						{#if mllpResult.response}
-							<div class="result-label">
-								{#if mllpResult.response.includes('MSA|AA')}
-									ACK (Accept)
-								{:else if mllpResult.response.includes('MSA|AE')}
-									NACK (Application Error)
-								{:else if mllpResult.response.includes('MSA|AR')}
-									NACK (Application Reject)
-								{:else}
-									Response
-								{/if}
-							</div>
+							<div class="result-label">{ackLabel(mllpResult.ack_code)}</div>
 							<pre class="result-body">{mllpResult.response}</pre>
 						{/if}
 					</div>
@@ -888,8 +903,10 @@
 				<div class="section-label">{tr('comm.body')} <span class="hint">{tr('comm.bodyHint')}</span></div>
 				<textarea bind:value={httpBody} rows={2} placeholder={tr('comm.bodyPlaceholder')} class="input-area"></textarea>
 
-				{#if !httpBody.trim() && hasMessage}
-					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: currentMessage.length })}</div>
+				{#if !httpBody.trim() && !methodSendsMessage(httpMethod)}
+					<div class="info-box">{tr('comm.noBodyForMethod', { method: httpMethod })}</div>
+				{:else if !httpBody.trim() && hasMessage}
+					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: wireSize(currentMessage) })}</div>
 				{:else if !httpBody.trim() && !hasMessage}
 					<div class="info-box">{tr('comm.noBodyNoMessage')}</div>
 				{/if}
@@ -906,6 +923,12 @@
 							<span>{httpResult.status_code} {httpResult.status_text}</span>
 							<span>{httpResult.response_time_ms}ms</span>
 						</div>
+						{#if httpResult.final_url}
+							<div class="result-redirect">{tr('comm.redirectedTo', { url: httpResult.final_url })}</div>
+						{/if}
+						{#if httpResult.status_code >= 300 && httpResult.status_code < 400 && httpResult.headers['location']}
+							<div class="result-redirect">{tr('comm.redirectNotFollowed', { url: httpResult.headers['location'] })}</div>
+						{/if}
 						{#if httpResult.error}
 							<div class="result-error">{httpResult.error}</div>
 						{/if}
@@ -996,7 +1019,7 @@
 				<textarea bind:value={soapBody} rows={2} placeholder={tr('comm.bodyPlaceholder')} class="input-area"></textarea>
 
 				{#if !soapBody.trim() && hasMessage}
-					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: currentMessage.length })}</div>
+					<div class="info-box ok">{tr('comm.willSend', { tab: activeTabLabel || tr('editor.untitled'), size: wireSize(currentMessage) })}</div>
 				{:else if !soapBody.trim() && !hasMessage}
 					<div class="info-box">{tr('comm.noBodyNoMessage')}</div>
 				{/if}
@@ -1048,11 +1071,12 @@
 							>
 								<span class="h-type">{entry.profile_type.toUpperCase()}</span>
 								<span class="h-dir">{entry.direction === 'send' ? '\u2191' : '\u2193'}</span>
-								<span class="h-status" class:ok={entry.status.startsWith('OK') || entry.status.startsWith('2')} class:fail={entry.status === 'FAILED'}>{entry.status}</span>
+								<span class="h-status" class:ok={entry.status.startsWith('OK') || entry.status.startsWith('2')} class:fail={isErrorStatus(entry.status)}>{entry.status}</span>
 								{#if entry.ack_code}
-									<span class="c-ack" class:ack-ok={entry.ack_code === 'AA' || entry.ack_code === 'CA'} class:ack-err={entry.ack_code === 'AE' || entry.ack_code === 'AR' || entry.ack_code === 'CE' || entry.ack_code === 'CR'}>{entry.ack_code}</span>
+									<span class="c-ack" class:ack-ok={ackFamily(entry.ack_code) === 'AA'} class:ack-err={ackFamily(entry.ack_code) === 'AE' || ackFamily(entry.ack_code) === 'AR'}>{entry.ack_code}</span>
 								{/if}
-								<span class="h-target">{entry.profile_name}</span>
+								<span class="h-target">{entry.target || entry.profile_name}</span>
+								<span class="h-size">{formatBytes(entry.size_bytes)}</span>
 								<span class="h-time">{entry.response_time_ms}ms</span>
 								<span class="h-ts">{formatTimestamp(entry.timestamp)}</span>
 							</button>
@@ -1065,13 +1089,31 @@
 						<div class="detail-grid">
 							<span class="dl">{tr('comm.protocol')}</span><span class="dv">{selectedHistory.profile_type.toUpperCase()}</span>
 							<span class="dl">{tr('comm.direction')}</span><span class="dv">{selectedHistory.direction === 'send' ? tr('comm.outgoing') : tr('comm.incoming')}</span>
-							<span class="dl">{tr('comm.target')}</span><span class="dv">{selectedHistory.profile_name}</span>
+							<span class="dl">{tr('comm.target')}</span><span class="dv">{selectedHistory.target || selectedHistory.profile_name}</span>
+							{#if selectedHistory.target && selectedHistory.direction === 'send' && selectedHistory.profile_name !== selectedHistory.target}
+								<span class="dl">{tr('comm.historyTab')}</span><span class="dv">{selectedHistory.profile_name}</span>
+							{/if}
+							{#if selectedHistory.size_bytes}
+								<span class="dl">{tr('comm.size')}</span><span class="dv">{tr('comm.sizeBytes', { size: selectedHistory.size_bytes })}</span>
+							{/if}
 							<span class="dl">{tr('comm.status')}</span><span class="dv">{selectedHistory.status}{selectedHistory.ack_code ? ` · ACK ${selectedHistory.ack_code}` : ''}</span>
 							<span class="dl">{tr('comm.responseTime')}</span><span class="dv">{selectedHistory.response_time_ms}ms</span>
 							<span class="dl">{tr('comm.timestamp')}</span><span class="dv">{formatTimestamp(selectedHistory.timestamp)}</span>
 						</div>
-						<div class="detail-header">{tr('comm.contentPreview')}</div>
-						<pre class="detail-body">{selectedHistory.content_preview}</pre>
+						{#if selectedHistory.request || selectedHistory.response}
+							{#if selectedHistory.content_preview}
+								<div class="detail-header">{tr('comm.contentPreview')}</div>
+								<pre class="detail-body">{selectedHistory.content_preview}</pre>
+							{/if}
+							<div class="detail-header">{tr('comm.request')}</div>
+							<pre class="detail-body">{(selectedHistory.request ?? '').replace(/\r(?!\n)/g, '\n')}</pre>
+							<div class="detail-header">{tr('comm.historyResponse')}</div>
+							<pre class="detail-body">{(selectedHistory.response ?? '').replace(/\r(?!\n)/g, '\n')}</pre>
+						{:else}
+							<!-- Entries from older versions kept only a preview. -->
+							<div class="detail-header">{tr('comm.contentPreview')}</div>
+							<pre class="detail-body">{selectedHistory.content_preview}</pre>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -1126,6 +1168,7 @@
 	.result-header { display: flex; justify-content: space-between; padding: 4px 8px; background: var(--color-bg-tertiary); font-weight: 600; font-size: 11px; gap: 12px; }
 	.result.success .result-header { color: var(--color-success); }
 	.result.error .result-header { color: var(--color-error); }
+	.result-redirect { font-size: 11px; color: var(--color-warning); padding: 2px 8px; word-break: break-all; }
 	.result-error { padding: 4px 8px; color: var(--color-error); font-size: 11px; }
 	.result-label { padding: 3px 8px; font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--color-text-secondary); background: var(--color-bg-primary); }
 	.result-body { padding: 4px 8px; margin: 0; font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow-y: auto; color: var(--color-text-primary); }
@@ -1150,6 +1193,7 @@
 	.h-status.ok { color: var(--color-success); }
 	.h-status.fail { color: var(--color-error); }
 	.h-target { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); }
+	.h-size { width: 56px; flex-shrink: 0; text-align: right; color: var(--color-text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
 	.h-time { width: 50px; flex-shrink: 0; text-align: right; color: var(--color-text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
 	.h-ts { width: 130px; flex-shrink: 0; text-align: right; font-size: 10px; color: var(--color-text-secondary); }
 
@@ -1159,7 +1203,7 @@
 	.detail-grid { display: grid; grid-template-columns: 100px 1fr; gap: 2px 8px; font-size: 11px; margin-bottom: 8px; }
 	.dl { color: var(--color-text-secondary); }
 	.dv { color: var(--color-text-primary); font-family: 'JetBrains Mono', monospace; }
-	.detail-body { font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-all; margin: 0; padding: 4px; background: var(--color-bg-primary); border-radius: 3px; max-height: 80px; overflow-y: auto; color: var(--color-text-primary); }
+	.detail-body { font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; word-break: break-all; margin: 0; padding: 4px; background: var(--color-bg-primary); border-radius: 3px; max-height: 160px; overflow-y: auto; color: var(--color-text-primary); }
 	.comm-empty { padding: 16px; text-align: center; color: var(--color-text-secondary); font-style: italic; }
 
 	/* Outcome filter chips (console + history) */

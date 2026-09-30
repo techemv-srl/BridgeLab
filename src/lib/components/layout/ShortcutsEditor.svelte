@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { shortcutStore, shortcutCapture, SHORTCUTS, eventToKeys, type ShortcutDef } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, shortcutCapture, SHORTCUTS, eventToKeys, bindingProblem, displayKeys, monacoKeys, type ShortcutDef } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 
@@ -10,6 +10,8 @@
 	let capturingId = $state<string | null>(null);
 	let capturedKeys = $state('');
 	let conflictWarning = $state('');
+	/** Set when the captured keys cannot be used at all (OK disabled). */
+	let bindingError = $state('');
 
 	// Load from preferences on first mount
 	let loaded = false;
@@ -26,29 +28,41 @@
 		capturingId = id;
 		capturedKeys = shortcutStore.get(id);
 		conflictWarning = '';
+		bindingError = '';
 		shortcutCapture.active = true;
 	}
 
+	// Runs in the capture phase: when Settings was opened from the editor,
+	// the editor still has the focus behind the modal and would take Ctrl+F
+	// or Ctrl+G for itself before a bubbling listener saw them.
 	function handleCaptureKeydown(e: KeyboardEvent) {
 		if (!capturingId) return;
 		e.preventDefault();
 		e.stopPropagation();
 
 		if (e.key === 'Escape') {
-			capturingId = null;
-			capturedKeys = '';
-			conflictWarning = '';
-			shortcutCapture.active = false;
+			cancelCapture();
 			return;
 		}
 		if (e.key === 'Backspace' || e.key === 'Delete') {
 			capturedKeys = '';
+			conflictWarning = '';
+			bindingError = '';
 			return;
 		}
 
 		const keys = eventToKeys(e);
 		if (!keys) return; // bare modifier
 		capturedKeys = keys;
+
+		const problem = bindingProblem(keys);
+		bindingError = problem === 'reserved'
+			? tr('shortcuts.reserved', { keys: displayKeys(keys) })
+			: problem === 'needsModifier' ? tr('shortcuts.needsModifier') : '';
+		if (bindingError) {
+			conflictWarning = '';
+			return;
+		}
 
 		// Check for conflicts
 		const existing = shortcutStore.findByKeys(keys, capturingId);
@@ -63,7 +77,7 @@
 	}
 
 	async function applyCapture() {
-		if (!capturingId) return;
+		if (!capturingId || bindingError) return;
 		const newKeys = capturedKeys;
 
 		// If conflict with another app shortcut, clear that one first
@@ -74,16 +88,14 @@
 
 		shortcutStore.set(capturingId, newKeys);
 		await shortcutStore.save();
-		capturingId = null;
-		capturedKeys = '';
-		conflictWarning = '';
-		shortcutCapture.active = false;
+		cancelCapture();
 	}
 
 	function cancelCapture() {
 		capturingId = null;
 		capturedKeys = '';
 		conflictWarning = '';
+		bindingError = '';
 		shortcutCapture.active = false;
 	}
 
@@ -122,7 +134,7 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleCaptureKeydown} />
+<svelte:window onkeydowncapture={handleCaptureKeydown} />
 
 <div class="shortcuts-editor">
 	<div class="header-row">
@@ -146,21 +158,26 @@
 					{#if capturingId === s.id}
 						<div class="capture-area">
 							<span class="capture-keys">
-								{capturedKeys || tr('shortcuts.pressKey')}
+								{displayKeys(capturedKeys) || tr('shortcuts.pressKey')}
 							</span>
-							{#if conflictWarning}
+							{#if bindingError}
+								<span class="conflict">{bindingError}</span>
+							{:else if conflictWarning}
 								<span class="conflict">{conflictWarning}</span>
 							{/if}
-							<button class="btn-xs btn-primary" onclick={applyCapture} disabled={!capturedKeys}>{conflictWarning ? tr('shortcuts.reassign') : tr('dialog.ok')}</button>
+							<button class="btn-xs btn-primary" onclick={applyCapture} disabled={!capturedKeys || !!bindingError}>{conflictWarning ? tr('shortcuts.reassign') : tr('dialog.ok')}</button>
 							<button class="btn-xs" onclick={cancelCapture}>{tr('dialog.cancel')}</button>
 						</div>
+					{:else if s.isMonaco}
+						<!-- The editor's own keys: shown for reference only. -->
+						<span class="binding fixed" title={tr('shortcuts.editorFixed')}>{displayKeys(monacoKeys(s))}</span>
 					{:else}
 						<div class="binding-area">
 							<button class="binding" onclick={() => startCapture(s.id)} title={tr('shortcuts.clickToRebind')}>
-								{shortcutStore.get(s.id) || tr('shortcuts.none')}
+								{displayKeys(shortcutStore.get(s.id)) || tr('shortcuts.none')}
 							</button>
 							{#if shortcutStore.get(s.id) !== s.defaultKeys}
-								<button class="btn-xs reset-btn" onclick={() => resetToDefault(s.id)} title={tr('shortcuts.resetOne', { keys: s.defaultKeys })}>
+								<button class="btn-xs reset-btn" onclick={() => resetToDefault(s.id)} title={tr('shortcuts.resetOne', { keys: displayKeys(s.defaultKeys) })}>
 									&#8634;
 								</button>
 							{/if}
@@ -188,6 +205,8 @@
 	.binding-area { display: flex; align-items: center; gap: 4px; }
 	.binding { padding: 2px 10px; border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-bg-tertiary); color: var(--color-text-primary); font-family: 'JetBrains Mono', monospace; font-size: 11px; cursor: pointer; min-width: 100px; text-align: center; }
 	.binding:hover { background: var(--color-border); }
+	.binding.fixed { cursor: default; opacity: 0.75; }
+	.binding.fixed:hover { background: var(--color-bg-tertiary); }
 	.reset-btn { padding: 0 6px; font-size: 12px; background: none; border: none; color: var(--color-text-secondary); cursor: pointer; }
 	.reset-btn:hover { color: var(--color-accent); }
 

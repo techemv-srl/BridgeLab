@@ -1,13 +1,19 @@
 <script lang="ts">
 	import { evaluateFhirPath, type FhirPathResult } from '$lib/ipc/fhirpath';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
-	import { t } from '$lib/i18n';
+	import { t, subscribeLocale } from '$lib/i18n';
+	let localeVersion = $state(0);
+	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
 
 	interface Props {
 		messageId: string;
+		/** Why the editor text did not parse, when the resource evaluated
+		 *  is an earlier version of it. */
+		stale?: string | null;
 	}
 
-	let { messageId }: Props = $props();
+	let { messageId, stale = null }: Props = $props();
 
 	let expression = $state('');
 	let result = $state<FhirPathResult | null>(null);
@@ -68,11 +74,11 @@
 
 <div class="fp-panel">
 	<div class="fp-header">
-		<span>FHIRPath Evaluator</span>
+		<span>{tr('fp.title')}</span>
 	</div>
 
 	<div class="fp-input-area">
-		<label for="fp-expr" class="input-label">Expression</label>
+		<label for="fp-expr" class="input-label">{tr('fp.expression')}</label>
 		<div class="input-row">
 			<input
 				id="fp-expr"
@@ -82,19 +88,19 @@
 				class="expr-input"
 			/>
 			<button class="btn btn-primary" onclick={evaluate} disabled={evaluating || !expression.trim()}>
-				{evaluating ? 'Eval...' : 'Evaluate'}
+				{evaluating ? tr('fp.evaluating') : tr('fp.evaluate')}
 			</button>
 		</div>
 
 		<div class="examples-row">
-			<span class="examples-label">Examples:</span>
+			<span class="examples-label">{tr('fp.examples')}</span>
 			{#each examples.slice(0, 4) as ex}
 				<button class="example-chip" onclick={() => useExample(ex)}>{ex}</button>
 			{/each}
 			<!-- Recent expressions share the row: a separate footer used to push
 			     the result list out of the (short) bottom panel entirely. -->
 			{#if history.length > 0}
-				<span class="examples-label history-label">Recent:</span>
+				<span class="examples-label history-label">{tr('fp.recent')}</span>
 				{#each history.slice(0, 4) as h}
 					<button class="history-chip" onclick={() => useExample(h)}>{h}</button>
 				{/each}
@@ -102,19 +108,23 @@
 		</div>
 	</div>
 
+	{#if stale}
+		<div class="fp-stale" role="status">⚠ {tr('fp.stale', { reason: stale })}</div>
+	{/if}
+
 	<div class="fp-output">
 		{#if result}
 			{#if result.error}
 				<div class="result-error">
-					<strong>Error:</strong> {result.error}
+					<strong>{tr('fp.error')}</strong> {result.error}
 				</div>
 			{:else}
 				<div class="result-summary">
-					<span class="result-count">{result.count} result{result.count !== 1 ? 's' : ''}</span>
+					<span class="result-count">{tr(result.count === 1 ? 'fp.results.one' : 'fp.results', { count: result.count })}</span>
 					<span class="result-expr">{result.expression}</span>
 				</div>
 				{#if result.count === 0}
-					<div class="result-empty">No results (path returned empty set)</div>
+					<div class="result-empty">{tr('fp.noResults')}</div>
 				{:else}
 					<div class="result-list">
 						{#each result.results as val, i}
@@ -140,7 +150,7 @@
 				{/if}
 			{/if}
 		{:else}
-			<div class="fp-empty">Enter a FHIRPath expression and press Enter</div>
+			<div class="fp-empty">{tr('fp.hint')}</div>
 		{/if}
 	</div>
 
@@ -150,6 +160,7 @@
 	.fp-panel { display: flex; flex-direction: column; height: 100%; background: var(--color-bg-secondary); font-size: 12px; overflow-y: auto; }
 	.fp-header { padding: 6px 12px; border-bottom: 1px solid var(--color-border); font-weight: 600; font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; }
 
+	.fp-stale { padding: 5px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-bg-tertiary); color: var(--color-warning); font-size: 11px; flex-shrink: 0; }
 	.fp-input-area { padding: 8px 12px; border-bottom: 1px solid var(--color-border); flex-shrink: 0; }
 	.input-label { font-size: 10px; color: var(--color-text-secondary); display: block; margin-bottom: 3px; }
 	.input-row { display: flex; gap: 6px; align-items: center; }

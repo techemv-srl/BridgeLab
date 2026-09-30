@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use chrono::Utc;
+use chrono::Local;
 
 /// A message template definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,8 +14,11 @@ pub struct MessageTemplate {
 
 /// Get all built-in templates with placeholders filled with current timestamps.
 pub fn get_builtin_templates() -> Vec<MessageTemplate> {
-    let now = Utc::now().format("%Y%m%d%H%M%S").to_string();
-    let msg_id = format!("MSG{}", Utc::now().format("%Y%m%d%H%M%S"));
+    // Local time with its UTC offset (20260930133008+0200): a bare UTC time
+    // read as local time was hours off.
+    let local = Local::now();
+    let now = local.format("%Y%m%d%H%M%S%z").to_string();
+    let msg_id = message_control_id(&local);
 
     vec![
         MessageTemplate {
@@ -102,7 +105,7 @@ pub fn get_builtin_templates() -> Vec<MessageTemplate> {
             description: "New appointment booking".into(),
             content: format!(
                 "MSH|^~\\&|SCHED_APP|CLINIC|EMR|MAIN|{now}||SIU^S12|{msg_id}|P|2.5\r\
-                SCH|APPT001|FILLER001|||||^^^NORMAL||||^^30^{now}||||PROVIDER^DOC^M\r\
+                SCH|APPT001^SCHED_APP|FILLER001^SCHED_APP||||VISIT^Office visit|ROUTINE^Routine|NORMAL^Normal|30|MIN^minutes|^^30^{now}|||||PROVIDER^DOC^M||||CLERK^ANNA|||||BOOKED^Booked\r\
                 PID|1||MRN001^^^HOSPITAL^MR||DOE^JOHN||19800101|M|\r\
                 PV1|1|O|CLINIC01|\r\
                 RGS|1\r\
@@ -123,7 +126,7 @@ pub fn get_builtin_templates() -> Vec<MessageTemplate> {
                 EVN|T02|{now}\r\
                 PID|1||MRN001^^^HOSPITAL^MR||DOE^JOHN||19800101|M|\r\
                 PV1|1|O|CLINIC01||||ATTENDING^DOC^M|\r\
-                TXA|1|DS|TX||{now}||||PROVIDER^DOC^M||||DOC001||AU\r\
+                TXA|1|DS|TX||{now}||||PROVIDER^DOC^M|||DOC001|||||AU\r\
                 OBX|1|TX|NOTE||Patient presents with symptoms of...||||||F\r",
                 now = now, msg_id = msg_id
             ),
@@ -224,6 +227,15 @@ pub fn get_builtin_templates() -> Vec<MessageTemplate> {
     ]
 }
 
+/// A message control ID unique to the call, not just to the second: two
+/// messages created from templates in the same second used to share it.
+/// Milliseconds plus a counter, 20 characters (MSH-10's length in v2.5).
+fn message_control_id(now: &chrono::DateTime<Local>) -> String {
+    static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 100;
+    format!("MSG{}{:02}", now.format("%y%m%d%H%M%S%3f"), n)
+}
+
 /// Get templates grouped by category.
 pub fn get_templates_by_category() -> Vec<(String, Vec<MessageTemplate>)> {
     let templates = get_builtin_templates();
@@ -298,5 +310,26 @@ mod tests {
         let templates = get_builtin_templates();
         let ids: std::collections::HashSet<&str> = templates.iter().map(|t| t.id.as_str()).collect();
         assert_eq!(ids.len(), templates.len(), "All template IDs must be unique");
+    }
+
+    #[test]
+    fn hl7_templates_validate_without_errors() {
+        for t in get_builtin_templates().into_iter().filter(|t| t.category != "FHIR") {
+            let msg = crate::parser::hl7::lexer::Hl7Lexer::new().parse(t.content.clone().into_bytes()).unwrap();
+            let report = crate::validation::validate_hl7_message(&msg);
+            let errors: Vec<_> = report.issues.iter().filter(|i| i.severity == crate::validation::Severity::Error || i.rule_id.starts_with("TYPE-") || i.rule_id.starts_with("LEN-")).map(|i| format!("{} {}", i.rule_id, i.message)).collect();
+            assert!(errors.is_empty(), "{}: {:?}", t.id, errors);
+        }
+    }
+
+    #[test]
+    fn timestamps_carry_the_offset_and_control_ids_differ() {
+        let a = get_builtin_templates();
+        let b = get_builtin_templates();
+        let msh = |t: &MessageTemplate| t.content.split('\r').next().unwrap().split('|').map(String::from).collect::<Vec<_>>();
+        let (ma, mb) = (msh(&a[0]), msh(&b[0]));
+        assert!(ma[6].len() == 19 && (ma[6].contains('+') || ma[6].contains('-')), "MSH-7 {}", ma[6]);
+        assert_ne!(ma[9], mb[9], "MSH-10 must differ between two calls");
+        assert_eq!(ma[9].len(), 20);
     }
 }

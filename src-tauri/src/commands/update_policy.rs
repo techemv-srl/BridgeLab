@@ -32,7 +32,7 @@ pub const TELEMETRY_POLICY_ENV: &str = "BRIDGELAB_DISABLE_TELEMETRY";
 pub struct UpdatePolicy {
     /// True when a machine policy turns the startup check off.
     pub disabled_by_policy: bool,
-    /// What turned it off ("environment" or the policy file path), for the
+    /// What turned it off (the environment variable's name or the policy file path), for the
     /// Settings hint.
     pub policy_source: Option<String>,
     /// The Windows installer's choice, when one was recorded.
@@ -43,22 +43,42 @@ pub struct UpdatePolicy {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct TelemetryPolicy {
     pub disabled_by_policy: bool,
-    /// "environment (…)" or the policy file path, for the Settings hint.
+    /// The environment variable's name or the policy file path, for the Settings hint.
     pub policy_source: Option<String>,
 }
 
-#[derive(Deserialize)]
 struct PolicyFile {
-    #[serde(default)]
     disable_update_check: bool,
-    #[serde(default)]
     disable_telemetry: bool,
 }
 
+/// A policy switch, read leniently: IT tooling writes `true`, `"true"`,
+/// `1` or `"yes"` alike, and an administrator who asked for "off" must get
+/// it whichever they typed.
+fn policy_flag(v: Option<&serde_json::Value>) -> bool {
+    match v {
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(serde_json::Value::Number(n)) => n.as_i64() == Some(1),
+        Some(serde_json::Value::String(s)) => env_says_disabled(Some(s.clone())),
+        _ => false,
+    }
+}
+
 fn read_policy_file(policy_file: &Path) -> Option<PolicyFile> {
-    std::fs::read_to_string(policy_file)
-        .ok()
-        .and_then(|s| serde_json::from_str::<PolicyFile>(&s).ok())
+    let text = std::fs::read_to_string(policy_file).ok()?;
+    // PowerShell 5.1 (`Set-Content -Encoding UTF8`) writes a byte-order
+    // mark, which a JSON parser rejects: the policy was then ignored.
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+    match serde_json::from_str::<serde_json::Value>(text) {
+        Ok(v) => Some(PolicyFile {
+            disable_update_check: policy_flag(v.get("disable_update_check")),
+            disable_telemetry: policy_flag(v.get("disable_telemetry")),
+        }),
+        Err(e) => {
+            eprintln!("BridgeLab: machine policy {} is not valid JSON and was ignored: {}", policy_file.display(), e);
+            None
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -106,7 +126,7 @@ pub fn resolve(env_value: Option<String>, policy_file: &Path, installer_file: Op
     if env_says_disabled(env_value) {
         return UpdatePolicy {
             disabled_by_policy: true,
-            policy_source: Some(format!("environment ({})", POLICY_ENV)),
+            policy_source: Some(POLICY_ENV.to_string()),
             installer_choice: None,
         };
     }
@@ -138,7 +158,7 @@ pub fn resolve_telemetry(env_value: Option<String>, policy_file: &Path) -> Telem
     if env_says_disabled(env_value) {
         return TelemetryPolicy {
             disabled_by_policy: true,
-            policy_source: Some(format!("environment ({})", TELEMETRY_POLICY_ENV)),
+            policy_source: Some(TELEMETRY_POLICY_ENV.to_string()),
         };
     }
     let from_file = read_policy_file(policy_file)
@@ -240,5 +260,17 @@ mod tests {
         assert_eq!(resolve(None, missing, Some(&yes)).installer_choice, Some(true));
         let junk = tmp("inst-junk", "{}");
         assert_eq!(resolve(None, missing, Some(&junk)).installer_choice, None);
+    }
+
+    #[test]
+    fn a_policy_file_with_a_bom_or_string_values_still_applies() {
+        let bom = tmp("bom", "\u{feff}{\"disable_telemetry\": true, \"disable_update_check\": true}");
+        assert!(resolve(None, &bom, None).disabled_by_policy);
+        assert!(resolve_telemetry(None, &bom).disabled_by_policy);
+        let strings = tmp("strings", r#"{"disable_telemetry": "true", "disable_update_check": 1}"#);
+        assert!(resolve(None, &strings, None).disabled_by_policy);
+        assert!(resolve_telemetry(None, &strings).disabled_by_policy);
+        let off = tmp("off", r#"{"disable_telemetry": "no"}"#);
+        assert!(!resolve_telemetry(None, &off).disabled_by_policy);
     }
 }

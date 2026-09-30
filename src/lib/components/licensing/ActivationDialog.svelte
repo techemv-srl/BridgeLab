@@ -95,7 +95,7 @@
 			// Refocus the textarea so Enter/edit keystrokes go to it
 			keyTextarea?.focus();
 		} catch (e) {
-			error = `Clipboard read failed: ${e}`;
+			error = tr('activation.clipboardFailed', { error: String(e) });
 		}
 	}
 
@@ -170,11 +170,12 @@
 		}
 	}
 
-	// "Active" = a real paid license is installed. Free (no license) and trial
-	// (auto-grace) do not have anything to deactivate, so the deactivate button
-	// must stay hidden in those states. Expired = a Pro license that lapsed —
-	// also nothing to deactivate (already inactive).
+	// A license file is installed, in force or not. Deactivate is offered for
+	// an expired license, one for another machine or one that no longer
+	// verifies too: it frees the seat and is the way back to the trial or to
+	// Community.
 	let isActive = $derived(
+		!!currentStatus.has_license ||
 		currentStatus.license_type === 'professional' ||
 		currentStatus.license_type === 'enterprise'
 	);
@@ -191,9 +192,9 @@
 		<div class="status-section">
 			<div class="status-label">{tr('act.currentStatus')}</div>
 			<div class="status-value" class:valid={currentStatus.is_valid} class:invalid={!currentStatus.is_valid}>
-				{currentStatus.license_type.toUpperCase()}
+				{tr('act.type.' + currentStatus.license_type).toUpperCase()}
 				{#if currentStatus.days_remaining !== null}
-					- {tr('act.daysRemaining', { days: currentStatus.days_remaining })}
+					- {tr(currentStatus.days_remaining === 1 ? 'act.dayRemaining' : 'act.daysRemaining', { days: currentStatus.days_remaining })}
 				{/if}
 			</div>
 			{#if currentStatus.licensee}
@@ -319,7 +320,7 @@
 					<div class="type-card">
 						<div class="type-name">Community</div>
 						<div class="type-desc">{tr('act.communityDesc')}</div>
-						<div class="type-price">Free</div>
+						<div class="type-price">{tr('act.free')}</div>
 					</div>
 					<div class="type-card highlight">
 						<div class="type-name">Professional</div>

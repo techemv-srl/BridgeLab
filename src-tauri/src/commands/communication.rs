@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use tauri::State;
 
+use crate::communication::credentials::{is_auth_header, redact_credentials, url_has_credentials};
 use crate::communication::http_client::{self, HttpMethod, HttpResult};
 use crate::communication::mllp::{self, MllpSendResult};
 use crate::communication::mllp_listener::{ListenerConfig, ListenerState, ListenerStatus};
-use crate::communication::profiles::{ConnectionProfile, HistoryEntry};
+use crate::communication::profiles::{history_text, ConnectionProfile, HistoryEntry, HISTORY_KEPT};
 use crate::database::Database;
 use crate::licensing::feature_gate;
 
@@ -37,43 +38,77 @@ pub async fn mllp_send(
     end_char1: Option<String>,
     end_char2: Option<String>,
     profile_name: Option<String>,
+    source_charset: Option<String>,
     db: State<'_, Database>,
     tel: State<'_, crate::licensing::telemetry::UsageCounters>,
 ) -> Result<MllpSendResult, String> {
     feature_gate::require("mllp_send")?;
     tel.bump_mem("mllp_sent");
 
+    // Segments end with CR on the wire, whatever the editor's line endings.
+    let message = crate::parser::hl7::to_wire_segments(&message).into_owned();
+    // "auto" (the panel's default, and a missing value) sends in the
+    // charset MSH-18 declares, else the file's, else UTF-8.
+    let requested = encoding.filter(|e| !e.trim().is_empty()).unwrap_or_else(|| mllp::AUTO.into());
+    let wire = mllp::resolve_send_encoding(&message, &requested, source_charset.as_deref());
+    if !crate::parser::hl7::charset::is_known_label(&wire) {
+        return Err(format!("Unknown encoding '{}'", wire));
+    }
+    let lost = mllp::unencodable_chars(&message, &wire);
+    if !lost.is_empty() {
+        // Refused, not sent with '?' in place of a patient's name.
+        let shown = lost.iter().take(8).map(char::to_string).collect::<Vec<_>>().join(" ");
+        return Ok(MllpSendResult {
+            success: false,
+            response: String::new(),
+            response_time_ms: 0,
+            error: Some(format!(
+                "Not sent: {} cannot represent {} character(s) of this message ({}). Choose an encoding that can (UTF-8), or correct MSH-18.",
+                wire,
+                lost.len(),
+                shown
+            )),
+            encoding: wire,
+            ack_code: None,
+        });
+    }
+
     let connect_timeout = timeout_secs.unwrap_or(30);
     let opts = mllp::SendOptions {
         connect_timeout_secs: connect_timeout,
         response_timeout_secs: response_timeout_secs.unwrap_or(connect_timeout),
-        encoding: encoding.unwrap_or_default(),
+        // Kept as asked ("auto"): send_with_options resolves the same wire
+        // charset, and in automatic mode decodes the ACK by its own MSH-18
+        // and bytes rather than by the request's charset.
+        encoding: requested,
+        source_charset: source_charset.clone(),
         start_byte: parse_framing_byte(&start_char, mllp::MLLP_START),
         end_byte_1: parse_framing_byte(&end_char1, mllp::MLLP_END_1),
         end_byte_2: parse_framing_byte(&end_char2, mllp::MLLP_END_2),
     };
+    let size_bytes = mllp::encode_with_label(&message, &wire).len() as u64;
     let result = mllp::send_with_options(&host, port, &message, &opts).await;
 
-    let preview: String = message.chars().take(100).collect();
     let status = if result.success { "OK" } else { "FAILED" };
     // What the receiver answered, so the history can be filtered by
     // outcome: a send that reached the peer and got an AE back is "OK" at
     // the transport level and a rejection at the application level.
-    let ack_code = if result.success {
-        crate::parser::hl7::ack::ack_code_of(&result.response)
-    } else {
-        None
-    };
+    let ack_code = result.ack_code.clone();
+    let target = format!("{}:{}", host, port);
     let entry = HistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        profile_name: profile_name.unwrap_or_else(|| format!("{}:{}", host, port)),
+        profile_name: profile_name.unwrap_or_else(|| target.clone()),
         profile_type: "mllp".into(),
         direction: "send".into(),
-        content_preview: preview,
+        content_preview: String::new(),
         status: status.into(),
         response_time_ms: result.response_time_ms,
         timestamp: chrono::Utc::now().to_rfc3339(),
         ack_code,
+        target,
+        size_bytes,
+        request: history_text(&message),
+        response: history_text(&result.response),
     };
     let _ = db.add_history_entry(&entry);
 
@@ -137,12 +172,17 @@ pub async fn http_request(
         _ => feature_gate::require("http_mutate")?,
     }
 
-    // Auth headers require Pro
+    // Authentication of any kind is Pro: an Authorization header, any
+    // header that carries a key, token, secret, signature, session or
+    // cookie, user:password in the URL (which the client turns into an
+    // Authorization header itself) and credentials in the query string.
     let hdrs = headers.unwrap_or_default();
-    if hdrs.keys().any(|k| k.to_lowercase() == "authorization") {
+    if hdrs.iter().any(|(k, v)| is_auth_header(k, v)) || url_has_credentials(&url) {
         feature_gate::require("http_auth")?;
     }
 
+    // An HL7 v2 body goes out with CR segment terminators, as over MLLP.
+    let body = body.map(|b| crate::parser::hl7::to_wire_segments(&b).into_owned());
     let timeout = timeout_secs.unwrap_or(30);
     let result = http_client::send_request(
         &url,
@@ -153,22 +193,30 @@ pub async fn http_request(
         follow_redirects.unwrap_or(true),
     ).await;
 
-    let preview: String = body.as_deref().unwrap_or("").chars().take(100).collect();
-    let status = if result.success {
-        format!("{} {}", result.status_code, result.status_text)
+    // A server that answered, with whatever status, is not a failed
+    // request: a 404 or a 500 is shown with its code.
+    let status = if result.status_code > 0 {
+        format!("{} {}", result.status_code, result.status_text).trim_end().to_string()
     } else {
         "FAILED".into()
     };
+    // Never keep a password or an API key in the history.
+    let target = redact_credentials(&url);
+    let body_text = body.as_deref().unwrap_or("");
     let entry = HistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        profile_name: profile_name.unwrap_or_else(|| url.clone()),
+        profile_name: profile_name.unwrap_or_else(|| target.clone()),
         profile_type: "http".into(),
         direction: "send".into(),
-        content_preview: format!("{} {} | {}", method.to_uppercase(), url, preview),
+        content_preview: format!("{} {}", method.to_uppercase(), target),
         status,
         response_time_ms: result.response_time_ms,
         timestamp: chrono::Utc::now().to_rfc3339(),
         ack_code: None,
+        target,
+        size_bytes: body_text.len() as u64,
+        request: history_text(body_text),
+        response: history_text(&result.body),
     };
     let _ = db.add_history_entry(&entry);
 
@@ -177,19 +225,20 @@ pub async fn http_request(
 
 // --- ACK Generation ---
 
+/// The acknowledgment of `message`, mirroring its header (see
+/// [`crate::parser::hl7::ack::ack_for`]). Refused when the message has no
+/// MSH-10: an ACK that cannot be correlated is no use to the sender.
 #[tauri::command]
 pub fn generate_ack(
     ack_code: String,
-    message_control_id: String,
+    message: String,
     text_message: Option<String>,
 ) -> Result<String, String> {
-    Ok(crate::parser::hl7::ack::generate_ack(
-        &ack_code,
-        &message_control_id,
-        "BridgeLab",
-        "RemoteApp",
-        text_message.as_deref(),
-    ))
+    use crate::parser::hl7::ack;
+    if ack::extract_message_control_id(&message).is_none() {
+        return Err("No Message Control ID (MSH-10) found in the message".into());
+    }
+    Ok(ack::ack_for(&message, &ack_code, text_message.as_deref()))
 }
 
 // --- Connection Profiles ---
@@ -217,7 +266,7 @@ pub fn get_request_history(
     limit: Option<usize>,
     db: State<'_, Database>,
 ) -> Result<Vec<HistoryEntry>, String> {
-    db.get_request_history(limit.unwrap_or(50))
+    db.get_request_history(limit.unwrap_or(HISTORY_KEPT))
 }
 
 #[tauri::command]

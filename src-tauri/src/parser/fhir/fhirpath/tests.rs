@@ -368,6 +368,37 @@ fn choice_elements_resolve_through_their_type_suffix() {
 }
 
 #[test]
+fn type_tests_on_a_choice_element_use_the_type_in_its_key() {
+    let obs = json!({"resourceType": "Observation", "id": "o1", "status": "final",
+        "code": {"text": "x"}, "effectiveDateTime": "2016-03-28", "valueString": "abc",
+        "extension": [{"url": "u", "valueString": "s"}]});
+    // A day-precision dateTime is still a dateTime, not a date.
+    assert_eq!(one("Observation.effective.ofType(dateTime)", &obs), json!("2016-03-28"));
+    assert_eq!(one("Observation.effective is dateTime", &obs), json!(true));
+    assert_eq!(one("Observation.effective.is(DateTime)", &obs), json!(true));
+    assert_eq!(one("Observation.effective is date", &obs), json!(false));
+    empty("Observation.effective.ofType(date)", &obs);
+    assert_eq!(one("(Observation.effective as dateTime)", &obs), json!("2016-03-28"));
+    assert_eq!(one("effective.exists() implies effective.ofType(dateTime).exists() or effective.ofType(Period).exists()", &obs), json!(true));
+    // A string is a string, not a code or a dateTime.
+    assert_eq!(one("Observation.value.ofType(string)", &obs), json!("abc"));
+    empty("Observation.extension.value.ofType(code)", &obs);
+    let dt = json!({"resourceType": "Observation", "valueDateTime": "2020-01-01"});
+    empty("Observation.value.ofType(string)", &dt);
+    // Subtypes: a code is a string, an Age is a Quantity.
+    let cond = json!({"resourceType": "Condition", "onsetAge": {"value": 3, "unit": "a"},
+        "abatementString": "later"});
+    assert_eq!(one("Condition.onset.ofType(Quantity).value", &cond), json!(3));
+    assert_eq!(one("Condition.onset is Age", &cond), json!(true));
+    let code = json!({"resourceType": "Observation", "valueCode": "x"});
+    assert_eq!(one("Observation.value is string", &code), json!(true));
+    assert_eq!(one("Observation.value is System.String", &code), json!(true));
+    // The SearchParameter expression for Condition.onset-date.
+    let onset = json!({"resourceType": "Condition", "onsetDateTime": "2016-03-28"});
+    assert_eq!(one("Condition.onset.as(dateTime) | Condition.onset.as(Period)", &onset), json!("2016-03-28"));
+}
+
+#[test]
 fn type_reports_a_namespace_and_a_name() {
     let p = patient();
     assert_eq!(
@@ -525,6 +556,75 @@ fn resolve_finds_bundled_and_contained_resources() {
         one("Observation.subject.resolve().id", &contained),
         json!("inner")
     );
+}
+
+#[test]
+fn resolve_matches_type_and_server_not_just_the_id() {
+    let b = json!({"resourceType": "Bundle", "type": "collection", "entry": [
+        {"fullUrl": "http://x/fhir/Patient/123",
+         "resource": {"resourceType": "Patient", "id": "123", "name": [{"family": "WrongPerson"}]}},
+        {"fullUrl": "http://x/fhir/Organization/2",
+         "resource": {"resourceType": "Organization", "id": "2"}},
+        {"fullUrl": "http://x/fhir/Observation/o1",
+         "resource": {"resourceType": "Observation", "id": "o1", "status": "final",
+            "performer": [{"reference": "Practitioner/123"},
+                          {"reference": "http://elsewhere.example/fhir/Patient/123"}],
+            "subject": {"reference": "Patient/123/_history/2"},
+            "focus": [{"reference": "http://x/fhir/Patient/123"}]}}
+    ]});
+    empty("Bundle.entry[2].resource.performer.resolve()", &b);
+    // A versioned reference names the resource, not a resource with id 2.
+    assert_eq!(one("Bundle.entry[2].resource.subject.resolve().resourceType", &b), json!("Patient"));
+    assert_eq!(one("Bundle.entry[2].resource.focus.resolve().id", &b), json!("123"));
+}
+
+#[test]
+fn a_versioned_reference_resolves_only_to_that_version() {
+    let b = json!({"resourceType": "Bundle", "type": "collection", "entry": [
+        {"fullUrl": "http://x/fhir/Patient/1",
+         "resource": {"resourceType": "Patient", "id": "1", "meta": {"versionId": "3"}}},
+        {"fullUrl": "http://x/fhir/Observation/o1",
+         "resource": {"resourceType": "Observation", "id": "o1", "status": "final",
+            "subject": {"reference": "http://x/fhir/Patient/1/_history/3"},
+            "focus": [{"reference": "http://x/fhir/Patient/1/_history/2"},
+                      {"reference": "Patient/1/_history/2"}]}}
+    ]});
+    assert_eq!(one("Bundle.entry[1].resource.subject.resolve().id", &b), json!("1"));
+    // Version 2 is not in the Bundle: the entry holds version 3.
+    empty("Bundle.entry[1].resource.focus.resolve()", &b);
+}
+
+#[test]
+fn resolve_finds_a_resource_contained_in_a_bundle_entry() {
+    let b = json!({"resourceType": "Bundle", "type": "collection", "entry": [
+        {"resource": {"resourceType": "Observation", "id": "o1",
+            "contained": [{"resourceType": "Practitioner", "id": "c1", "name": [{"family": "One"}]}],
+            "basedOn": [{"reference": "#c1"}]}},
+        {"resource": {"resourceType": "Observation", "id": "o2",
+            "contained": [{"resourceType": "Practitioner", "id": "c1", "name": [{"family": "Two"}]}],
+            "performer": [{"reference": "#c1"}]}}
+    ]});
+    assert_eq!(one("Bundle.entry[0].resource.basedOn.resolve().name.family", &b), json!("One"));
+    assert_eq!(one("Bundle.entry[1].resource.performer.resolve().name.family", &b), json!("Two"));
+    // A contained resource is not reachable as Practitioner/c1.
+    let r = json!({"resourceType": "Observation",
+        "contained": [{"resourceType": "Practitioner", "id": "c1"}],
+        "performer": [{"reference": "Practitioner/c1"}]});
+    empty("Observation.performer.resolve()", &r);
+}
+
+#[test]
+fn resolve_over_a_large_bundle_indexes_once() {
+    let n = 3000;
+    let entries: Vec<Value> = (0..n)
+        .map(|i| json!({"fullUrl": format!("urn:uuid:e{}", i),
+            "resource": {"resourceType": "Observation", "id": format!("o{}", i), "status": "final",
+                "subject": {"reference": "urn:uuid:e0"}}}))
+        .collect();
+    let b = json!({"resourceType": "Bundle", "type": "collection", "entry": entries});
+    let start = std::time::Instant::now();
+    assert_eq!(one("Bundle.entry.resource.subject.resolve().count()", &b), json!(n));
+    assert!(start.elapsed().as_secs() < 10, "took {:?}", start.elapsed());
 }
 
 #[test]
@@ -744,4 +844,107 @@ fn operators_that_need_one_value_say_so() {
 fn check_validates_without_evaluating() {
     assert!(check("Patient.name.where(use = 'official')").is_ok());
     assert!(check("Patient.name[").is_err());
+}
+
+#[test]
+fn hex_decode_of_non_ascii_text_is_empty_not_a_crash() {
+    // Slicing '0é0' two bytes at a time used to cut 'é' in half and abort
+    // the app.
+    empty("'0é0'.decode('hex')", &patient());
+    assert_eq!(one("'41'.decode('hex')", &patient()), Value::String("A".into()));
+}
+
+#[test]
+fn deeply_nested_expressions_are_refused_not_a_crash() {
+    let p = patient();
+    let parens = format!("{}1{}", "(".repeat(20000), ")".repeat(20000));
+    assert!(err(&parens, &p).contains("nested more than"));
+    let sum = format!("1{}", "+1".repeat(50000));
+    assert!(err(&sum, &p).contains("nested more than"));
+    let minus = format!("{}1", "-(".repeat(20000));
+    assert!(err(&minus, &p).contains("nested more than"));
+    let path = format!("Patient{}", ".name".repeat(20000));
+    assert!(err(&path, &p).contains("nested more than"));
+    let calls = format!("{}true{}", "not(".repeat(20000), ")".repeat(20000));
+    assert!(err(&calls, &p).contains("nested more than"));
+    assert!(super::check(&parens).is_err());
+}
+
+#[test]
+fn expressions_up_to_the_nesting_limit_evaluate_on_a_small_stack() {
+    // 1 MiB is the main thread's stack on Windows.
+    std::thread::Builder::new()
+        .stack_size(1 << 20)
+        .spawn(|| {
+            let p = patient();
+            let n = super::parser::MAX_DEPTH - 8;
+            let sum = format!("1{}", "+1".repeat(n));
+            assert_eq!(one(&sum, &p), json!(n as i64 + 1));
+            let parens = format!("{}1{}", "(".repeat(n), ")".repeat(n));
+            assert_eq!(one(&parens, &p), json!(1));
+            let mixed = format!("{}true{}", "(true and ".repeat(n / 2), ")".repeat(n / 2));
+            assert_eq!(one(&mixed, &p), json!(true));
+            let calls = format!("{}Patient.active{}", "iif(true, ".repeat(n / 2), ", false)".repeat(n / 2));
+            assert_eq!(one(&calls, &p), json!(true));
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn date_arithmetic_stays_on_real_dates() {
+    let p = json!({"resourceType": "Patient", "id": "x", "birthDate": "2008-02-29"});
+    assert_eq!(one("Patient.birthDate + 18 years", &p), json!("2026-02-28"));
+    assert_eq!(one("@2016-02-29 + 1 year", &p), json!("2017-02-28"));
+    assert_eq!(one("@2016-02-29 + 4 years", &p), json!("2020-02-29"));
+    assert_eq!(one("@2016-02-29 + 1 year + 1 day", &p), json!("2017-03-01"));
+    assert!(err("@2015-02-30", &p).contains("not a valid date"));
+    assert!(err("@2015-13", &p).contains("not a valid date"));
+    assert_eq!(one("'2015-02-30'.convertsToDate()", &p), json!(false));
+    assert_eq!(one("'2016-02-29'.convertsToDate()", &p), json!(true));
+    empty("'2015-02-30'.toDate()", &p);
+}
+
+#[test]
+fn extensions_on_primitives_are_read_from_the_underscore_sibling() {
+    let url = "http://hl7.org/fhir/StructureDefinition/patient-birthTime";
+    let p = json!({"resourceType": "Patient", "id": "x", "birthDate": "1970-01-01",
+        "_birthDate": {"id": "bd", "extension": [{"url": url, "valueDateTime": "1970-01-01T10:00:00Z"}]},
+        "name": [{"given": ["A", "B"], "_given": [null, {"extension": [{"url": "u", "valueString": "v"}]}]}]});
+    assert_eq!(one("Patient.birthDate.extension.count()", &p), json!(1));
+    assert_eq!(
+        one(&format!("Patient.birthDate.extension('{}').value", url), &p),
+        json!("1970-01-01T10:00:00Z")
+    );
+    assert_eq!(one("Patient.birthDate.id", &p), json!("bd"));
+    assert_eq!(one("Patient.name.given.extension('u').value", &p), json!("v"));
+    // A resource's own extensions and a primitive without any are unchanged.
+    assert_eq!(one("Patient.id", &p), json!("x"));
+    assert_eq!(one("Patient.name.extension.count()", &p), json!(0));
+}
+
+#[test]
+fn conforms_to_says_it_is_not_implemented_not_that_packages_are_missing() {
+    let e = err("Patient.conformsTo('http://hl7.org/fhir/StructureDefinition/Patient')", &patient());
+    assert!(e.contains("not implemented"), "{e}");
+    assert!(!e.contains("does not load"), "{e}");
+}
+
+#[test]
+fn integer_arithmetic_is_exact_and_overflow_is_empty() {
+    let p = patient();
+    empty("2147483647 + 1", &p);
+    empty("-2147483648 - 1", &p);
+    empty("65536 * 65536", &p);
+    empty("9223372036854775807 + 1", &p);
+    assert_eq!(one("2147483646 + 1", &p), json!(2147483647));
+    assert_eq!(one("7 div 2", &p), json!(3));
+    assert_eq!(one("-7 mod 3", &p), json!(-1));
+    empty("5 div 0", &p);
+    empty("5 mod 0", &p);
+    // Values beyond 32 bits from the data are held to 64 bits, exactly.
+    let big = json!({"resourceType": "Observation", "valueInteger64": 9007199254740993i64});
+    assert_eq!(one("Observation.value + 0", &big), json!(9007199254740993i64));
+    assert_eq!(one("1.5 + 1", &p), json!(2.5));
 }

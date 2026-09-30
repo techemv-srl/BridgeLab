@@ -44,6 +44,18 @@ const KNOWN_VERSIONS = ['2.1', '2.2', '2.3', '2.3.1', '2.4', '2.5', '2.5.1', '2.
 const DEFAULT_VERSION = '2.5';
 
 /**
+ * The catalogue a declared version is described with: the exact one, else
+ * its major.minor (2.7.2 → 2.7), else v2.5 — the order the validator uses,
+ * so hover and validation never quote two different versions' rules.
+ */
+export function catalogueVersion(declared: string | undefined): string {
+	if (!declared) return DEFAULT_VERSION;
+	if (KNOWN_VERSIONS.includes(declared)) return declared;
+	const majorMinor = declared.split('.').slice(0, 2).join('.');
+	return KNOWN_VERSIONS.includes(majorMinor) ? majorMinor : DEFAULT_VERSION;
+}
+
+/**
  * HL7 version of the message currently in the editor, read from MSH-12.
  *
  * The completion and hover providers only get a Monaco model, not the parse
@@ -65,7 +77,7 @@ export function versionFromModel(model: MonacoTypes.editor.ITextModel): string {
 		// leading digits-and-dots of MSH-12, whatever the VID's own
 		// component separator.
 		const declared = content.split(content[3])[11]?.match(/^\s*[\d.]+/)?.[0]?.trim();
-		return declared && KNOWN_VERSIONS.includes(declared) ? declared : DEFAULT_VERSION;
+		return catalogueVersion(declared);
 	}
 	return DEFAULT_VERSION;
 }

@@ -19,6 +19,11 @@
 	let textFilter = $state<string>('');
 	let view = $state<'list' | 'graph'>('list');
 
+	/** "1 entry" / "3 entries": the key with a `.one` variant for 1. */
+	function counted(key: string, count: number): string {
+		return t(count === 1 ? `${key}.one` : key, { count });
+	}
+
 	// --- Reference graph (circular layout, no external deps) ---
 	const GRAPH_SIZE = 640;
 	const MAX_GRAPH_NODES = 150;
@@ -131,13 +136,13 @@
 <div class="bundle-viz">
 	<div class="bv-header">
 		<div class="bv-title">
-			<span class="title-main">FHIR Bundle Visualizer</span>
+			<span class="title-main">{t('bundle.title')}</span>
 			{#if analysis}
 				<span class="title-stats">
 					<span class="stat-badge">{analysis.bundle_type}</span>
-					<span class="stat-badge">{analysis.entry_count} entries</span>
+					<span class="stat-badge">{counted('bundle.entries', analysis.entry_count)}</span>
 					{#if analysis.dangling_references > 0}
-						<span class="stat-badge warn">{analysis.dangling_references} dangling refs</span>
+						<span class="stat-badge warn">{counted('bundle.danglingCount', analysis.dangling_references)}</span>
 					{/if}
 				</span>
 			{/if}
@@ -146,9 +151,9 @@
 	</div>
 
 	{#if loading}
-		<div class="bv-loading">Analyzing bundle...</div>
+		<div class="bv-loading">{t('bundle.analyzing')}</div>
 	{:else if error}
-		<div class="bv-error">Error: {error}</div>
+		<div class="bv-error">{t('bundle.error', { error })}</div>
 	{:else if analysis}
 		<div class="bv-filters">
 			<div class="view-toggle" role="tablist">
@@ -158,12 +163,12 @@
 			<input
 				type="text"
 				bind:value={textFilter}
-				placeholder="Search entries..."
+				placeholder={t('bundle.search')}
 				class="search-input"
 				disabled={view === 'graph'}
 			/>
 			<select bind:value={typeFilter} class="type-filter" disabled={view === 'graph'}>
-				<option value="">All types ({analysis.entry_count})</option>
+				<option value="">{t('bundle.allTypes', { count: analysis.entry_count })}</option>
 				{#each analysis.resource_type_counts as [rt, count]}
 					<option value={rt}>{rt} ({count})</option>
 				{/each}
@@ -233,12 +238,12 @@
 							<div class="entry-summary">{entry.summary}</div>
 						{/if}
 						{#if entry.references.length > 0}
-							<div class="entry-refs">\u2192 {entry.references.length} ref{entry.references.length > 1 ? 's' : ''}</div>
+							<div class="entry-refs">{counted('bundle.refCount', entry.references.length)}</div>
 						{/if}
 					</button>
 				{/each}
 				{#if filteredEntries.length === 0}
-					<div class="bv-empty">No entries match the filter</div>
+					<div class="bv-empty">{t('bundle.noMatch')}</div>
 				{/if}
 			</div>
 			{/if}
@@ -247,47 +252,47 @@
 			<div class="bv-detail">
 				{#if selectedEntry}
 					<div class="detail-section">
-						<div class="detail-label">Resource Type</div>
+						<div class="detail-label">{t('bundle.resourceType')}</div>
 						<div class="detail-value">{selectedEntry.resource_type}</div>
 
-						<div class="detail-label">Display Name</div>
+						<div class="detail-label">{t('bundle.displayName')}</div>
 						<div class="detail-value">{selectedEntry.display_name}</div>
 
 						{#if selectedEntry.full_url}
-							<div class="detail-label">Full URL</div>
+							<div class="detail-label">{t('bundle.fullUrl')}</div>
 							<div class="detail-value mono">{selectedEntry.full_url}</div>
 						{/if}
 
 						{#if selectedEntry.resource_id}
-							<div class="detail-label">Resource ID</div>
+							<div class="detail-label">{t('bundle.resourceId')}</div>
 							<div class="detail-value mono">{selectedEntry.resource_id}</div>
 						{/if}
 
 						{#if selectedEntry.request_method}
-							<div class="detail-label">Request</div>
+							<div class="detail-label">{t('bundle.request')}</div>
 							<div class="detail-value mono">{selectedEntry.request_method} {selectedEntry.request_url ?? ''}</div>
 						{/if}
 
 						{#if selectedEntry.response_status}
-							<div class="detail-label">Response</div>
+							<div class="detail-label">{t('bundle.response')}</div>
 							<div class="detail-value mono">{selectedEntry.response_status}</div>
 						{/if}
 					</div>
 
 					{#if outgoingRefs.length > 0}
 						<div class="detail-section">
-							<div class="detail-label">References out ({outgoingRefs.length})</div>
+							<div class="detail-label">{t('bundle.refsOut', { count: outgoingRefs.length })}</div>
 							{#each outgoingRefs as ref}
 								<button
 									class="ref-link"
 									class:dangling={ref.to_index === null}
 									onclick={() => ref.to_index !== null && selectEntry(ref.to_index)}
 									disabled={ref.to_index === null}
-									title={ref.to_index === null ? 'Dangling reference (target not in bundle)' : 'Click to navigate'}
+									title={ref.to_index === null ? t('bundle.danglingTitle') : t('bundle.navigateTitle')}
 								>
-									\u2192 {ref.reference}
+									→ {ref.reference}
 									{#if ref.to_index === null}
-										<span class="dangling-badge">dangling</span>
+										<span class="dangling-badge">{t('bundle.dangling')}</span>
 									{:else}
 										<span class="target-badge">#{ref.to_index}</span>
 									{/if}
@@ -298,24 +303,24 @@
 
 					{#if incomingRefs.length > 0}
 						<div class="detail-section">
-							<div class="detail-label">Referenced by ({incomingRefs.length})</div>
+							<div class="detail-label">{t('bundle.refsIn', { count: incomingRefs.length })}</div>
 							{#each incomingRefs as ref}
 								<button
 									class="ref-link incoming"
 									onclick={() => selectEntry(ref.from_index)}
 								>
-									\u2190 #{ref.from_index} ({analysis.entries[ref.from_index]?.resource_type})
+									← #{ref.from_index} ({analysis.entries[ref.from_index]?.resource_type})
 								</button>
 							{/each}
 						</div>
 					{/if}
 
 					<div class="detail-section">
-						<div class="detail-label">Resource JSON</div>
+						<div class="detail-label">{t('bundle.json')}</div>
 						<pre class="detail-json">{entryContent}</pre>
 					</div>
 				{:else}
-					<div class="bv-empty">Select an entry to inspect</div>
+					<div class="bv-empty">{t('bundle.selectEntry')}</div>
 				{/if}
 			</div>
 		</div>

@@ -88,12 +88,16 @@ Before running tests:
 | BL-SHORTCUT-04 | P1 | Ctrl+S triggers save | Have modified tab, press Ctrl+S | Save dialog or save to file path | |
 | BL-SHORTCUT-05 | P1 | Ctrl+W closes active tab | Press Ctrl+W | Tab closes, next tab becomes active | |
 | BL-SHORTCUT-06 | P1 | Ctrl+B toggles tree panel | Press Ctrl+B | Tree panel hides/shows | |
-| BL-SHORTCUT-07 | P1 | F5 parses current message | Press F5 | Tree updates with parsed message | |
+| BL-SHORTCUT-07 | P1 | Re-parse has no default key; F5 never reloads the app | Press F5; then bind Re-parse to F5 in Settings → Keyboard Shortcuts and press F5 | Nothing happens (no reload); after binding, the message is re-parsed | |
 | BL-SHORTCUT-08 | P1 | F6 runs validation | Press F6 | Validation panel appears with results | |
 | BL-SHORTCUT-09 | P1 | Ctrl+J toggles validation panel | Press Ctrl+J | Panel shows/hides | |
 | BL-SHORTCUT-10 | P1 | Ctrl+K toggles communication panel | Press Ctrl+K | Panel shows/hides | |
 | BL-SHORTCUT-11 | P1 | Ctrl+P toggles FHIRPath panel | Press Ctrl+P | Panel shows/hides | |
 | BL-SHORTCUT-12 | P1 | Ctrl+, opens settings | Press Ctrl+, | Settings modal opens | |
+| BL-SHORTCUT-13 | P1 | App shortcuts work inside the editor | Click in the editor, press Ctrl+L, then Ctrl+K | Test Case Library opens; Communication panel toggles | |
+| BL-SHORTCUT-14 | P1 | Bare keys and F1 are refused | Settings → Keyboard Shortcuts, rebind Validate, press Q, then F1 | Warning shown, OK disabled; binding unchanged | |
+| BL-SHORTCUT-15 | P1 | Capture works with the editor focused | Click in the editor, open Settings → Keyboard Shortcuts, rebind Validate, press Ctrl+F | Capture shows Ctrl+F; no Find widget opens in the editor | |
+| BL-SHORTCUT-16 | P1 | Browser keys do not reload (Windows) | Press Ctrl+R and Ctrl+Shift+R with a message open | Nothing happens; tabs and panels stay | |
 
 ## 3. HL7 Parser (Core)
 
@@ -118,13 +122,13 @@ Before running tests:
 |----|----------|-------------|-------|-----------------|--------|
 | BL-PERF-01 | P0 | Open 5MB file <2s | Open `oru_r01_with_base64.hl7` | Tree populated within 2 seconds | |
 | BL-PERF-02 | P0 | Open 10MB file <3s | Open larger file | Tree populated within 3 seconds | |
-| BL-PERF-03 | P0 | Editor shows truncated preview | Open 5MB file | Base64 fields show `{...N bytes}` marker | |
-| BL-PERF-04 | P0 | Editor remains responsive | Type/scroll in large message | No lag, 60fps feel | |
-| BL-PERF-05 | P0 | Click `{...}` expands inline | Right-click > Expand Truncated Field | Field expands in editor | |
-| BL-PERF-06 | P0 | Expand All works | Right-click > Expand All Truncated Fields | All fields expanded | |
-| BL-PERF-07 | P0 | Collapse All re-truncates | Right-click > Collapse All Expanded Fields | Text returns to truncated | |
+| BL-PERF-03 | P0 | Editor shows folded fields | Open 5MB file | Base64 fields show as a chip such as `⟨Base64 · 4.7 MB #1⟩` | |
+| BL-PERF-04 | P0 | Editor remains responsive | Type/scroll in a large message, and in one with 20,000 OBX segments (tree visible) | No lag; the tree appears within seconds and scrolls smoothly (only the rows in view are drawn) | |
+| BL-PERF-05 | P0 | A folded field expands inline | Click the chip, or right-click > Expand Folded Field | Field expands in editor | |
+| BL-PERF-06 | P0 | Expand All works | Right-click > Expand All Folded Fields | All fields expanded | |
+| BL-PERF-07 | P0 | Fold All folds again | Right-click > Fold All Long Fields | Long fields show as chips again | |
 | BL-PERF-08 | P1 | Multiple truncated fields per segment | Load message with 2+ truncated in PID | Expand via context menu picks correct field | |
-| BL-PERF-09 | P1 | Memory stays below 300MB | Load 10MB file, monitor RAM | Process memory <300MB | |
+| BL-PERF-09 | P1 | Backend memory stays below 300MB | Load 10MB file, monitor RAM of the `bridgelab` process and of the web view (WebKitWebProcess / msedgewebview2 / WebContent) | `bridgelab` <300MB; record the web view's figure (about 900 MB on Linux, about 1.2 GB for the whole app) | |
 | BL-PERF-10 | P2 | Parser benchmark test passes | `cargo test test_large_message_performance` | Test passes | |
 
 ## 5. Editor (Monaco)
@@ -144,7 +148,7 @@ Before running tests:
 | BL-EDITOR-11 | P1 | Minimap visible by default | Open file | Minimap shown on right side | |
 | BL-EDITOR-12 | P1 | Word wrap works | Toggle in settings | Lines wrap at viewport edge | |
 | BL-EDITOR-13 | P2 | Undo/redo work | Type, Ctrl+Z, Ctrl+Y | Changes undo/redo correctly | |
-| BL-EDITOR-14 | P2 | Find/replace works | Ctrl+F | Monaco find widget opens | |
+| BL-EDITOR-14 | P2 | Find/replace works, folded fields included | Paste an ORU whose long NTE mentions `Smith` twice (folded) and PID-5 = `Smith^John`; Ctrl+H, find `Smith`, Replace All with `Jones`; save | The widget counts 3; the NTE chip opens; after Replace All no `Smith` is left in the editor or the saved file | |
 
 ## 6. Auto-complete (HL7)
 
@@ -168,7 +172,7 @@ Before running tests:
 |----|----------|-------------|-------|-----------------|--------|
 | BL-TREE-01 | P0 | Tree shows segments | Parse message | Segments listed with position | |
 | BL-TREE-02 | P0 | Expand segment shows fields | Click arrow on PID | Fields PID-1 to PID-30 shown | |
-| BL-TREE-03 | P0 | Expand field shows components | Click arrow on field with components | Components 1-N shown | |
+| BL-TREE-03 | P0 | Expand field shows components | Click arrow on field with components; then on PID-3 = `111^^^H^MR~222^^^H^SS` | Components 1-N shown; PID-3 lists PID-3(1) and PID-3(2), each with its components | |
 | BL-TREE-04 | P0 | Lazy loading works | Expand large segment | Children fetched on demand, no freeze | |
 | BL-TREE-05 | P1 | Field names shown | Hover/inspect field | HL7 standard name displayed (e.g. "Patient Name") | |
 | BL-TREE-06 | P1 | Truncated fields have `{...}` button | Load large field | Red `{...}` button visible | |
@@ -181,6 +185,12 @@ Before running tests:
 | BL-TREE-13 | P1 | Coded values explained inline | Expand PID, MSH, PV1 of an ADT^A01 | Rows read `PID-8  M — Male`, `MSH-9  ADT^A01 — ADT message`, `MSH-11  P — Production`, `PV1-2  I — Inpatient`; free-text fields (PID-5) have no suffix | |
 | BL-TREE-14 | P1 | Components explained from their own table | Expand MSH-9, then PID-3 | `MSH-9.2  A01 — ADT/ACK - Admit/visit notification`; `PID-3.5  MR — Medical record number`; `PID-3.1` has no suffix | |
 | BL-TREE-15 | P2 | Unknown code has no suffix; first repetition rules | PID-8 = `Q`; OBX-8 = `H~A` | PID-8 shows just `Q`; OBX-8 reads `H~A — Above high normal` | |
+| BL-TREE-16 | P1 | Segment grid opens on the most repeated segment | Open the sample *Lab results: complete blood count*; View → Segment Grid (Ctrl+Shift+G) | Bottom panel *Segment Grid* shows OBX (12): 12 rows, columns OBX-1…OBX-14 that hold values with their names (e.g. *Observation Value*), OBX-8 cells showing `L — Below low normal` / `H — …` | |
+| BL-TREE-17 | P1 | From the tree, filter, navigate | Right-click the ORC segment in the tree → *Show all ORC in a table*; pick OBX again, filter `L`; click an OBX-5 cell | The grid switches to ORC; the filter keeps only rows with an L; the click selects that OBX-5 in the editor | |
+| BL-TREE-18 | P2 | Follows edits; HL7 v2 only | Delete an OBX line and re-parse; open a FHIR resource | The grid shows 11 rows; with FHIR the panel is not offered | |
+| BL-TREE-19 | P1 | Tree keeps its state across edits | Expand PID and select PID-5; edit PID-5 and wait for the auto-parse | PID stays expanded, PID-5 stays selected and the inspector shows the new value | |
+| BL-TREE-20 | P1 | Keyboard navigation | Click a segment row, then use Down/Up, Right (expand), Left (collapse / go to parent), Home/End, PageDown | Selection moves row by row and the tree scrolls with it, past the rows drawn at first | |
+| BL-TREE-21 | P1 | Insert segment at the standard position | ADT^A01 `MSH, EVN, PID, PV1, ROL`, Show Schema Fields, right-click greyed NK1 → Insert; then Ctrl+Z | NK1 lands between PID and PV1 (not after ROL); in a `#`-delimited message it is `NK1#…`; Ctrl+Z removes it and earlier edits stay undoable | |
 
 ## 8. Multi-Tab Support
 
@@ -193,7 +203,7 @@ Before running tests:
 | BL-TAB-05 | P1 | Modified indicator | Edit without saving | Dot or asterisk shown on tab | |
 | BL-TAB-06 | P1 | New tab button (+) | Click + | Empty tab created | |
 | BL-TAB-07 | P1 | Tab context menu | Right-click tab | Shows Close, Close Others | |
-| BL-TAB-08 | P1 | Opening same file twice | Open file already open | Focuses existing tab, doesn't duplicate | |
+| BL-TAB-08 | P1 | Opening same file twice | Open file already open; also through `./`, `../` and a symlinked folder | Focuses existing tab, doesn't duplicate | |
 
 ## 9. File Operations
 
@@ -201,6 +211,7 @@ Before running tests:
 |----|----------|-------------|-------|-----------------|--------|
 | BL-FILE-01 | P0 | Open .hl7 file | File > Open File, select .hl7 | File loads in new tab | |
 | BL-FILE-02 | P0 | Open .txt file | Open .txt with HL7 content | Parses correctly | |
+| BL-FILE-02b | P1 | Lenient opening | Open files with a leading blank line, a UTF-16 (Notepad "Unicode") encoding, MLLP framing, an FHS/BHS batch header, and one starting `XYZ|` | The first four parse; the last opens as text with a dialog saying why it is not parsed | |
 | BL-FILE-03 | P0 | Open .json FHIR | Open FHIR resource .json | Detected as FHIR, tree shows resource | |
 | BL-FILE-04 | P1 | Save overwrites file | Edit, Ctrl+S | Original file updated | |
 | BL-FILE-05 | P1 | Save As to new file | Ctrl+Shift+S | New file created at chosen path | |
@@ -208,6 +219,8 @@ Before running tests:
 | BL-FILE-07 | P1 | Recent file click | Click entry in Recent | File opens | |
 | BL-FILE-08 | P1 | Clear recent | File > Clear Recent | List emptied | |
 | BL-FILE-09 | P2 | Drag & drop file | Drag .hl7 into window | File opens | |
+| BL-FILE-10 | P0 | Open and save a Latin-1 file in the app | Open `tests/fixtures/hl7/adt_a01_latin1.hl7`; edit PID-8; Save | Opens with accented names intact (no error); the saved file is still ISO-8859-1 (`file` reports ISO-8859 text) | |
+| BL-FILE-11 | P0 | A read-only file is not replaced | Linux/macOS: `chmod 444 m.hl7`; Windows: Properties → Read-only. Open it, edit, Ctrl+S | An error names the file as read-only; the file on disk is unchanged and no `.bridgelab-tmp` file is left; Save As to another name works | |
 
 ## 10. Validation
 
@@ -216,17 +229,22 @@ Before running tests:
 | BL-VALID-01 | P0 | Valid message: no errors | Load `adt_a01_small.hl7`, F6 | 0 errors, maybe warnings | |
 | BL-VALID-02 | P0 | Detect missing MSH | Load invalid file, F6 | Error STRUCT-001/002 reported | |
 | BL-VALID-03 | P0 | Detect missing MSH-9 | Message without MSH-9 | Error MSH-001 or MSH-002 | |
-| BL-VALID-04 | P1 | Detect missing MSH-10 | Message without MSH-10 | Warning MSH-003 | |
+| BL-VALID-04 | P1 | Detect missing MSH-10 | Message without MSH-10 | Error REQ-MSH-10, reported once (no MSH-003 warning beside it) | |
 | BL-VALID-05 | P1 | Detect missing required field | PID without PID-3 or PID-5 | Error REQ-PID-3/5 | |
 | BL-VALID-06 | P1 | Field length validation | Field exceeds max_length | Warning LEN-... | |
 | BL-VALID-07 | P1 | Data type validation (SI) | Non-numeric in SI field | Warning TYPE-SI-... | |
 | BL-VALID-08 | P1 | Validation panel shows results | F6 | Bottom panel shows issues list | |
 | BL-VALID-09 | P1 | Filter by severity | Click error/warning/info badges | List filters to chosen severity | |
 | BL-VALID-10 | P1 | Sort by severity/segment | Use sort dropdown | Issues reorder | |
-| BL-VALID-11 | P2 | Click issue navigates to field | Click issue | Editor jumps to relevant location (when implemented) | |
+| BL-VALID-11 | P2 | Click issue navigates to field | Press F6 on a message with blank lines between segments; click the PID-7 issue | The editor selects PID-7 and the tree selects PID-7; the row shows the segment number | |
+| BL-VALID-12 | P2 | Report follows edits | Press F6, then delete an OBX line | With auto-parse on, the counts and issues update; with it off, the panel says the report is out of date | |
 | BL-VALID-12 | P1 | Close validation panel | Click X or Ctrl+J | Panel hides | |
 | BL-VALID-13 | P1 | Required fields for every standard segment | ORU^R01 with an OBX lacking OBX-11; VXU with RXA lacking RXA-5 | `REQ-OBX-11` and `REQ-RXA-5` errors (neither segment was in the old fixed list); `adt_a01_small.hl7` still validates with no issues | |
 | BL-VALID-14 | P2 | Required fields follow the declared version | Same PID in a message declaring `2.1` and one declaring `2.5` | Findings differ where the standards differ; no crash on a v2.1 message with fields beyond its 20 | |
+| BL-VALID-15 | P1 | Data types: dates, timestamps, numbers | Validate `PID-7 = 19801399`, `MSH-7 = 2024-01-01 12:00`, `EVN-2 = notadate`; an OBX with OBX-2 `NM` and OBX-5 `abc`, then OBX-5 `6.2` | Warnings TYPE-DTM-PID-7, TYPE-DTM-MSH-7, TYPE-DTM-EVN-2, TYPE-NM-OBX-5; `6.2` and `20240229` are accepted, `20230229` is not | |
+| BL-VALID-16 | P2 | Second MSH reported | Paste two messages one after the other and validate | Warning STRUCT-004 on the second MSH | |
+| BL-VALID-17 | P2 | Unknown MSH-12 version named | Validate a message declaring `2.8`, then `2.5` | `2.8`: info MSH-005 naming v2.5 as the catalogue used; `2.5`: no MSH-005 | |
+| BL-VALID-18 | P2 | Lengths in characters | PID-5 of 132 accented characters (262 UTF-8 bytes) in a v2.5 message | No LEN-PID-5 warning (limit 250) | |
 
 ## 11. FHIR Support
 
@@ -249,12 +267,14 @@ Before running tests:
 | BL-FHIR-15 | P1 | Endpoint without scheme | Package installed; `MessageHeader.destination.endpoint` = `https//host/x` | Warning "no scheme" on that element; a `url` elsewhere written relatively is not reported | |
 | BL-FHIR-16 | P2 | Primitive lexical checks | Package installed; `birthDate` `2018-13-40`, a `dateTime` without time zone | Errors naming the type and the expected form | |
 | BL-FHIR-17 | P1 | resolve() over urn:uuid | Message Bundle, FHIRPath `Bundle.entry.resource.ofType(Observation).subject.resolve().name.family` | The Patient's family name | |
+| BL-FHIR-XML-01 | P0 | FHIR XML typed like JSON | Validate `<Patient><active value="true"/><multipleBirthInteger value="2"/>…`; FHIRPath `Patient.active = true`; an Observation with `valueQuantity/value = 6.30`: `Observation.value.value > 6.2` and `Observation.value.ofType(Quantity)` | No type errors; `true`; `true` and one Quantity — the same answers as the JSON encoding | |
+| BL-FHIR-XML-02 | P1 | XML meta.profile applied | A Patient in XML with one `<meta><profile value="…"/></meta>` naming an installed profile that requires birthDate, without birthDate; also as a test case expected valid | The profile's findings appear exactly as for the JSON encoding; the test case fails (no false pass) | |
 
 ## 12. FHIR Bundle Visualizer
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
-| BL-BUNDLE-01 | P0 | Open visualizer | Tools > FHIR Bundle Visualizer | Modal opens with 3-pane layout | |
+| BL-BUNDLE-01 | P0 | Open visualizer | Tools > FHIR Bundle Visualizer | Modal opens with the entry list and the detail pane (details, references out and in, raw JSON) | |
 | BL-BUNDLE-02 | P0 | List shows all entries | Load bundle with 10 entries | 10 entries shown | |
 | BL-BUNDLE-03 | P0 | Click entry shows details | Click any entry | Right pane shows resource JSON | |
 | BL-BUNDLE-04 | P0 | Outgoing references clickable | Entry has refs | References listed, click navigates | |
@@ -357,6 +377,13 @@ Before running tests:
 | BL-ANON-08 | P1 | Anonymized opens in new tab | Click Open in New Tab | New tab with anonymized content | |
 | BL-ANON-09 | P1 | Copy to Clipboard works | Click Copy | Clipboard has anonymized version | |
 | BL-ANON-10 | P2 | Structure preserved | Compare original vs anonymized | Same segments, same positions | |
+| BL-ANON-11 | P0 | Every PHI field of the covered segments is masked | Message with PID-23/29, NK1-5/6/16/30..33/37, GT1-2/7/8/16..19, IN1-18/19/44/49, IN2-2/63, PV1-19 and an `OBX\|1\|TX` free-text result, all filled; Tools > Anonymize > Anonymize; search the output for each original value | Every field is listed in the dialog; none of the values is in the output; a numeric OBX (`NM`) result and the insurer's name are unchanged | |
+| BL-ANON-12 | P1 | No false "no PHI" | Message whose only PHI is IN2-2 and GT1-8 | The dialog lists both fields; a message with no PHI at all says the fields BridgeLab checks hold none and that free text elsewhere is not checked | |
+| BL-ANON-13 | P1 | v2.3 identifiers stay valid | *Lab order* sample (v2.3) → Anonymize → F6 | PID-3 reads `000…^^^HOSP^MR`-style (authority and type kept); no length error | |
+| BL-ANON-14 | P0 | Batch anonymize never replaces a file | A/patient.hl7 (patient NEWPAT) and B/patient.hl7 (another message); Tools → Batch anonymize…, input A/patient.hl7, output folder B; then on Linux/macOS put a symlink and a hard link to a selected source in the output folder and run again | The row says a file of that name already exists; B/patient.hl7 and the sources are unchanged; the output column shows no `\\?\` prefix on Windows | |
+| BL-ANON-15 | P1 | Generator "Save all" never replaces a file | `echo OLD > gen/adt_a01_001.hl7`; generate 3 ADT^A01; *Save all to folder…* → gen | "Saved 2 of 3 files"; adt_a01_001.hl7 listed as not saved and still reads OLD; a seed of `-1`, `1.5` or `1e20` gives the whole-number message | |
+| BL-ANON-17 | P0 | Multi-byte names | Paste a message with PID-5 `李小龍^Jan` and PID-11 city `Västerås`; Tools → Anonymize → Anonymize; then set PID-7 to `1990051年` and press F6; open a Big5 file declaring `BIG-5` | The masked message opens in a new tab and the app keeps running; F6 reports a PID-7 type error; the Big5 file shows the name correctly, with no charset warning | |
+| BL-ANON-16 | P0 | Tools work on the editor text | Settings → Parser: auto-parse off. Paste message A (ALPHA^ANNA), select all and type message B (BRAVO^BORIS); Tools → Anonymize; then Export JSON | The dialog lists BRAVO^BORIS and the output is message B masked; the export is message B; text that does not parse says so instead of using the old parse | |
 
 ## 18. Templates
 
@@ -369,6 +396,10 @@ Before running tests:
 | BL-TMPL-05 | P1 | Double-click creates | Double-click template | Same as Create button | |
 | BL-TMPL-06 | P1 | Timestamps populated | Create ADT^A01 | MSH-7 has current time, MSH-10 unique | |
 | BL-TMPL-07 | P1 | Categories shown | Browse list | Templates grouped by category | |
+| BL-TMPL-08 | P1 | Sample messages open from the welcome screen and File menu | Welcome screen → *Sample messages*; File → *Sample Messages…* | The same dialog: 13 samples grouped by category, a version chip per version (2.3, 2.5, 2.5.1) plus *All versions*, a preview, the note that data are fictional | |
+| BL-TMPL-09 | P0 | A sample opens parsed and clean | Pick *Lab results: complete blood count*, *Open in new tab*, press F6 | A new tab named `ORU^R01 v2.5.1` with the message parsed (12 OBX in the tree) and validation reporting no errors or warnings; the same for any other sample | |
+| BL-TMPL-10 | P1 | Templates validate and are stamped in local time | With TZ Europe/Rome, create SIU^S12 and MDM^T02 from templates, F6; create two ADT^A01 in the same second | No errors; MSH-7 is the local time with `+0200`/`+0100`; the two MSH-10 differ | |
+| BL-TMPL-10 | P2 | Filters | Type "merge"; pick the 2.3 chip | "merge" leaves the ADT^A40 sample; 2.3 leaves the ORM and the metabolic panel; *Open* is disabled when the selected sample is filtered out | |
 
 ## 19. Test Case Library
 
@@ -389,15 +420,17 @@ Before running tests:
 | BL-TCLIB-13 | P0 | Import preview and conflicts | Export a pack, edit one case, delete another, import the pack | Preview lists: the deleted one as *New*, the untouched ones as *Already in the library*, the edited one as *Differs* with a choice; *Keep mine* leaves it, *Replace* restores the exported version (creation date kept), *Keep both* adds "… (imported)"; the summary counts match what is written | |
 | BL-TCLIB-14 | P1 | Import respects the Community cap | Community with 9 cases; import a pack with 3 new cases | The preview warns that there is room for 1; *Import* is disabled; nothing is written. Under Pro the same import adds all 3 | |
 | BL-TCLIB-15 | P2 | Foreign or future files | Import a plugin pack JSON, a non-JSON file, and a pack with `format_version: 2` | Clear error each time ("Not a BridgeLab test case pack", "Not a JSON file", "made by a newer BridgeLab"); the library is unchanged | |
+| BL-TCLIB-16 | P2 | Search, dates and re-import | Search for a control ID that is only in a case's message text; with TZ Europe/Rome note a case's *Updated* time; import a hand-written pack with `"category": ""` twice | The case is found; *Updated* shows the local time of the save; the second import lists the case as already in the library, not *Differs* | |
+| BL-TCLIB-17 | P2 | Pack export keeps its extension | *Export…*, type `cases` with no extension | The file is `cases.bltests.json` | |
 
 ## 20. Export
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
-| BL-EXP-01 | P1 | Export JSON | Tools > Export JSON | File downloads | |
-| BL-EXP-02 | P1 | Export CSV | Tools > Export CSV | File downloads | |
-| BL-EXP-03 | P1 | JSON structure correct | Open exported JSON | Contains message_type, version, segments | |
-| BL-EXP-04 | P1 | CSV structure correct | Open CSV | Header: Segment,Position,Field,Value | |
+| BL-EXP-01 | P1 | Export JSON | Tools > Export JSON | A save dialog proposes `<tab>.json`; the file is written where chosen; typing a name without extension (Linux) saves `name.json`, asking first if that file exists | |
+| BL-EXP-02 | P1 | Export CSV | Tools > Export CSV | A save dialog proposes `<tab>.csv`; the file is written where chosen; a name typed without extension gets `.csv` | |
+| BL-EXP-03 | P1 | JSON structure correct | Open exported JSON (and `bridgelab-cli to-json`) | Contains message_type, version, segments; each segment's fields in message order (MSH-2 before MSH-10) | |
+| BL-EXP-04 | P1 | CSV structure correct | Open CSV in Excel (Windows, Italian or German regional format) with PID-5 `Müller^José` and an OBX-5 of `-2.3` | Header: Segment,Position,Field,Value; accents shown correctly (UTF-8 BOM); `-2.3` is a number, a value starting with `=` gets a leading `'`. With a `;` list separator Excel may still put rows in one column: use Data → From Text/CSV | |
 
 ## 21. Theme & Appearance
 
@@ -420,39 +453,45 @@ Before running tests:
 | BL-I18N-04 | P1 | Switch to German | Select Deutsch | UI in German | |
 | BL-I18N-05 | P0 | Language persists | Restart app | Previous language loaded | |
 | BL-I18N-06 | P1 | About dialog translated | Open About in each language | Copyright and description translated | |
-| BL-I18N-07 | P1 | Status bar translated | Check segments/truncated labels | Translated | |
+| BL-I18N-07 | P1 | Status bar translated | Check the segments and folded-fields labels | Translated | |
 
 ## 23. Settings
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
-| BL-SET-01 | P0 | Open settings | Ctrl+, or Edit > Settings | Modal opens with 4 sections | |
+| BL-SET-01 | P0 | Open settings | Ctrl+, or Edit > Settings | Modal opens with 8 sections: Editor, Display, Keyboard Shortcuts, Parser, Performance, Plugins, Privacy, License Activation | |
 | BL-SET-02 | P0 | Change font size | Set to 16, save | Editor font increases | |
 | BL-SET-03 | P1 | Change font family | Pick different font | Editor font changes | |
 | BL-SET-04 | P1 | Theme switcher inside settings | Display section, click Light | Theme updates after save | |
 | BL-SET-05 | P1 | Language switcher | Display section, pick lang | UI updates after save | |
-| BL-SET-06 | P1 | Truncation threshold | Change to 50 in Parser | New messages truncated at 50 chars | |
+| BL-SET-06 | P1 | Fold threshold | Change *Fold fields longer than* to 50 in Parser; paste a message with a 120-character OBX-5 | OBX-5 shows as a fold chip and the status bar says 1 folded; the text and a saved file keep all 120 characters | |
 | BL-SET-07 | P1 | Settings persist | Close, reopen | Values retained | |
 | BL-SET-08 | P2 | Cancel discards changes | Edit, click Cancel | No changes applied | |
 
 ## 24. Licensing
+
+Cases marked **debug build only** use simple `BL-FREE/PRO/ENT-…` keys, which
+are compiled only into debug builds (`pnpm tauri dev`); a release build
+accepts only signed licenses. Cases marked **maintainer only** need a license
+signed with the private keygen, which is not part of the public repository.
+None of these cases is covered by CI.
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
 | BL-LIC-01 | P0 | Trial starts on first launch | Fresh install | 14 days trial active | |
 | BL-LIC-02 | P0 | Trial banner shows days | Check top of window | Yellow banner with days remaining | |
 | BL-LIC-03 | P1 | Banner urgent ≤3 days | Simulate ≤3 days remaining | Red, non-dismissible banner | |
-| BL-LIC-04 | P0 | Open activation dialog | Click Upgrade | Dialog opens | |
-| BL-LIC-05 | P0 | Activate Free license | Enter `BL-FREE-ABCD1234EFGH` | Free activated | |
-| BL-LIC-06 | P0 | Activate Pro license | Enter `BL-PRO-12345678ABCD` | Pro activated | |
-| BL-LIC-07 | P0 | Activate Enterprise | `BL-ENT-ENTERPRISEKEY` | Enterprise activated | |
+| BL-LIC-04 | P0 | Open activation dialog | Click *Activate* on the trial banner | Dialog opens | |
+| BL-LIC-05 | P0 | Activate Free license (**debug build only**) | Enter `BL-FREE-ABCD1234EFGH` | Free activated | |
+| BL-LIC-06 | P0 | Activate Pro license (**debug build only**) | Enter `BL-PRO-12345678ABCD` | Pro activated | |
+| BL-LIC-07 | P0 | Activate Enterprise (**debug build only**) | `BL-ENT-ENTERPRISEKEY` | Enterprise activated | |
 | BL-LIC-08 | P1 | Invalid key rejected | Enter "INVALID" | Error shown | |
-| BL-LIC-09 | P1 | Short key rejected | `BL-PRO-ab` | Error (too short) | |
+| BL-LIC-09 | P1 | Short key rejected (**debug build only**) | `BL-PRO-ab` | Error (too short) | |
 | BL-LIC-10 | P1 | Hardware ID shown | Open activation | BL-XXXXXXXXXXXXXXXX visible | |
 | BL-LIC-11 | P1 | Feature list correct | After Pro activation | Shows fhir, mllp, http, anonymize, export | |
 | BL-LIC-12 | P1 | Deactivate works | Click Deactivate | Returns to trial | |
 | BL-LIC-13 | P0 | License persists | Activate, close, reopen | Still active | |
-| BL-LIC-14 | P1 | Signed Ed25519 key | Use bridgelab-keygen | Key activates, signature verified | |
+| BL-LIC-14 | P1 | Signed Ed25519 key (**maintainer only**) | Activate a key signed with the maintainers' keygen | Key activates, signature verified | |
 | BL-LIC-15 | P1 | Buy links open the pricing page | Help → Buy a License…; activation dialog → *See prices & buy* on Pro and on Enterprise; trial banner → *Compare plans*; trigger a Pro-only feature on Community → *See prices* | Each opens the browser at `…/BridgeLab/?utm_source=app&utm_medium=…#pricing` (medium: `menu`, `activation`, `trial_banner` or `upgrade_prompt`), scrolled to the pricing cards; *Close* on the prompt opens nothing | |
 
 ## 25. bridgelab-cli
@@ -475,8 +514,22 @@ Before running tests:
 | BL-CLI-14 | P0 | FHIR file validated | `bridgelab-cli validate tests/fixtures/fhir/bundle_patient.json` | Report kind FHIR; entries validated; exit 0 | |
 | BL-CLI-15 | P0 | Same findings as the app | Validate the same HL7 and FHIR files in the app (F6) and in the CLI | Identical findings and counts | |
 | BL-CLI-16 | P1 | Packages directory override | `validate x.json --fhir-packages <dir with a distilled IG>` | The IG's profiles are applied; built-in R4 core still present | |
-| BL-CLI-17 | P1 | Community behaviour without licence | Machine with a Pro licence activated; run the CLI | Plugin cap of the Community edition applies; no licence read | |
+| BL-CLI-17 | P1 | Free, no licence read | Machine with a Pro licence activated, and one without; run `validate`, `batch`, `anonymize`, `fhirpath` | Same results on both; the Community plugin cap applies on both; no licence file is read | |
 | BL-CLI-18 | P1 | Release asset | Download `bridgelab-cli-<target>` from a release | Runs; `--version` prints the CLI version | |
+| BL-CLI-19 | P1 | Standard input | `cat x.hl7 \| bridgelab-cli validate -`, same for `info -`, `to-json -`, `anonymize -` | Same output as with the file name; the report names the input `-` | |
+| BL-CLI-20 | P1 | `fhirpath` | `fhirpath 'Bundle.entry.count()' bundle.json`; `--json`; a broken expression | One value per line; the JSON result with count and trace; the broken expression prints the parser error and exits 1 | |
+| BL-CLI-21 | P1 | `xsd` Community set | `xsd "ADT^A01"`; `xsd SIU_S12`; `xsd FOO_X01` (in Windows `cmd.exe` too: an unquoted `^` is dropped there) | ADT_A01 is a well-formed XSD; SIU_S12 exits 1 naming the Community set and Pro; the unknown code exits 2 | |
+| BL-CLI-22 | P0 | `send` over MLLP | Against a listener answering AA, then AE; then a closed port | AA: ACK printed, exit 0. AE: ACK printed, exit 1. Closed port: "Connection failed", exit 1. A file with LF line endings arrives with CR segment separators | |
+| BL-CLI-23 | P0 | `test` runs packs | Export a pack from the app; `test pack.bltests.json`, then `--format junit`; edit one expectation so it fails | Every case listed ✓/✗ with the reason; valid JUnit with one suite per pack; exit 1 when a case fails | |
+| BL-CLI-24 | P0 | Legacy charset files | `tests/fixtures/hl7/adt_a01_latin1.hl7` (ISO-8859-1, MSH-18 `8859/1`): `validate`, `to-json`, `anonymize -o out.hl7`, `send` to a listener; `send --encoding FOO` | Valid; PID-5 reads `Müller^Jörg`; out.hl7 is ISO-8859-1 with PV1-3 `Lettò 2` intact; the listener receives Latin-1 bytes and the ACK is AA; the unknown encoding exits 2 | |
+| BL-CLI-25 | P0 | Nothing silently skipped | `validate good.hl7 missing.hl7`; `test pack.bltests.json missing.bltests.json`; `batch` on a folder with `BAD.HL7`, with `--extension .hl7`, and on an empty folder | The missing path is reported (NOT FOUND / pack error) and exit 1; BAD.HL7 is found; the empty folder exits 1 | |
+| BL-CLI-26 | P1 | Not checked is not a pass | `validate x.json --fhir-packages /nonexistent --format junit` | Warning on stderr and a FHIR-PACKAGES warning in the result; the JUnit test case is `skipped` with the reason | |
+| BL-CLI-27 | P1 | Multi-message send | A file with two messages, to a listener answering AA; then an ACK whose MSA-2 names another message | Two frames, each acknowledged, exit 0; the mismatched ACK exits 1 | |
+| BL-CLI-29 | P0 | Multi-byte names never crash | An ADT^A01 with PID-5 `李小龍^Jan`, PID-7 `19900515` and PID-11 city `Västerås`; run `anonymize`, then set PID-7 to `1990051年` and run `validate --format junit`; repeat with Lindström | `anonymize` exits 0 with the name and city masked; `validate` exits 1 with a PID-7 type error and a complete JUnit report; never exit 101 | |
+| BL-CLI-30 | P0 | East Asian charsets | The same message with MSH-18 `BIG-5`, encoded in Big5 (陳四明 in PID-5), then GB 18030 and EUC-KR (`GB 18030-2000`, `KS X 1001`); `to-json`, `anonymize -o anon.hl7`; then MSH-18 `CNS 11643-1992` | PID-5 reads 陳四明^Jan and PID-7 is the birth date; anon.hl7 is in Big5 with the birth date masked; the CNS file is refused with the reason, exit 1 | |
+| BL-CLI-31 | P0 | Send refuses what the charset cannot hold; UTF-16 input | `send utf.hl7 --encoding ASCII` with Müller/€ in PID-5, to a listener; then a UTF-16LE file with a BOM, no `--encoding` | The first exits 1 naming the characters and the listener receives nothing; the UTF-16 file arrives as UTF-8 (no BOM) and its AA exits 0 | |
+| BL-CLI-32 | P1 | Anonymize on a terminal | `anonymize tests/fixtures/hl7/adt_a01_latin1.hl7` in cmd.exe and in a Linux terminal, then with `-o out.hl7` | The terminal shows "Lettò" correctly, one segment per line, exit 0; out.hl7 is Latin-1 | |
+| BL-CLI-28 | P1 | Patterns ignore case; read-only output refused | `g/a.hl7`, `g/B.HL7`, `g/c.Hl7`: `validate "g/*.hl7" --no-plugins`; `chmod 444 golden.json` then `to-json in.hl7 --output golden.json` | All three files are validated; the `to-json` exits 1 naming the file as read-only and golden.json is unchanged | |
 
 ## 26. Updater
 
@@ -496,10 +549,10 @@ Before running tests:
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
-| BL-NAV-01 | P0 | Editor → Tree (segment) | Right-click on the segment name (e.g. "PID"), Show in Tree | Tree opens, `seg{N}` node selected, scrolled to view | |
-| BL-NAV-02 | P0 | Editor → Tree (field) | Right-click inside PID-5 content, Show in Tree | Tree opens, segment expanded, `seg{N}.f5` field node selected | |
-| BL-NAV-03 | P0 | Editor → Tree (MSH-1 separator) | Right-click on the first `\|` in MSH, Show in Tree | Tree selects MSH field at position 1 (Field Separator) | |
-| BL-NAV-04 | P0 | Editor → Tree (MSH-2 encoding chars) | Right-click on `^~\&`, Show in Tree | Tree selects MSH-2 node | |
+| BL-NAV-01 | P0 | Editor → Tree (segment) | Right-click on the segment name (e.g. "PID"), Show Segment in Tree; repeat with blank lines between segments | Tree opens, `seg{N}` node selected, scrolled to view; blank lines do not shift it | |
+| BL-NAV-02 | P0 | Editor → Tree (field) | Right-click inside `Doe` of PID-5, Show Segment in Tree; then inside `SEND` of MSH-3 | Tree opens, segment expanded, PID-5.1 selected; then MSH-3 | |
+| BL-NAV-03 | P0 | Editor → Tree (MSH-1 separator) | Right-click on the first `\|` in MSH, Show Segment in Tree | Tree selects MSH field at position 1 (Field Separator) | |
+| BL-NAV-04 | P0 | Editor → Tree (MSH-2 encoding chars) | Right-click on `^~\&`, Show Segment in Tree | Tree selects MSH-2 node | |
 | BL-NAV-05 | P0 | Tree → Editor (segment) | Right-click segment node in tree, Show in Editor | Monaco reveals the segment line, cursor at column 1 | |
 | BL-NAV-06 | P0 | Tree → Editor (field) | Right-click field node (e.g. PID-5) in tree, Show in Editor | Monaco reveals the line, cursor at field start, field text selected | |
 | BL-NAV-07 | P1 | Tree → Editor (component) | Right-click component node (e.g. PID-5.1), Show in Editor | Selection narrows to the component within the field | |
@@ -538,7 +591,7 @@ Before running tests:
 | BL-SCHEMA-02 | P1 | Expanding segment injects placeholders | Enable the flag, expand PID in a minimal message | All PID-1..PID-20 slots shown; missing positions rendered dim/italic | |
 | BL-SCHEMA-03 | P1 | Placeholders dimmed | Inspect placeholder rows | Opacity ~0.5, italic, trailing ` ·` marker | |
 | BL-SCHEMA-04 | P1 | Real fields unaffected | Compare populated vs missing fields in same segment | Real fields full opacity, placeholders dim | |
-| BL-SCHEMA-05 | P1 | Inspector still works on placeholders | Click a placeholder | Inspector shows schema info (no current value section) | |
+| BL-SCHEMA-05 | P1 | Inspector still works on placeholders | Click a placeholder, and OBX-5 of a greyed OBX | Inspector shows schema info and "Not in this message" (no current value) | |
 | BL-SCHEMA-06 | P1 | Show in Editor hidden on placeholders | Right-click a placeholder | Context menu has no "Show in Editor" entry | |
 | BL-SCHEMA-07 | P1 | Toggling re-initializes tree | Expand PID, toggle flag twice | Placeholders appear/disappear consistently | |
 | BL-SCHEMA-08 | P1 | Sort by field position | Expand PID with flag on | Fields ordered by numeric position (1, 2, 3, ... 20) | |
@@ -562,12 +615,14 @@ Before running tests:
 | BL-SESSION-02 | P0 | Unsaved edits survive close | Type changes in Untitled, close app, reopen | Typed text is back, `isModified` flag still set | |
 | BL-SESSION-03 | P0 | Active tab preserved | Switch to 2nd tab, close, reopen | 2nd tab is focused on startup | |
 | BL-SESSION-04 | P0 | Tree/inspector rehydrate | After restore | Auto-parse runs on each restored tab so tree populates | |
-| BL-SESSION-05 | P1 | Toggle off in Settings | Uncheck "Restore open tabs on startup", save, close, reopen | Fresh single Untitled tab, previous session cleared on next save | |
+| BL-SESSION-05 | P1 | Toggle off in Settings | Uncheck "Restore open tabs on startup", save, close, reopen | The welcome screen (no tabs); the saved tabs were deleted when the box was unticked (`session_tabs` is empty) | |
 | BL-SESSION-06 | P1 | Debounced autosave | Type rapidly | Only one save IPC ~800ms after the last keystroke | |
 | BL-SESSION-07 | P1 | Cursor position persists | Move cursor, close, reopen | Cursor returns to same line/column | |
 | BL-SESSION-08 | P1 | File path association | Open a .hl7 file, close, reopen | Tab reopens with filePath intact; Ctrl+S saves back to same file | |
 | BL-SESSION-09 | P2 | Large message session | Session with 10 MB file | Restore completes in <3s | |
-| BL-SESSION-10 | P2 | Empty session fallback | Fresh DB | One empty Untitled tab is created | |
+| BL-SESSION-10 | P2 | Empty session fallback | Fresh DB | The welcome screen shows, with no tab | |
+| BL-SESSION-11 | P0 | macOS: Cmd+Q goes through the close prompt | macOS only. Untick *Restore open tabs on startup*, paste a message, press Cmd+Q; then BridgeLab → Quit BridgeLab; then with restore on, type a character, press Cmd+Q within 0.5 s and relaunch | Cmd+Q and the menu item both ask about the unsaved tab (Cancel keeps the app open, Discard quits); with restore on the last character is back after relaunch; with the manual open, Quit closes it too | |
+| BL-SESSION-12 | P1 | macOS: shortcuts shown with ⌘ | macOS only. Settings → Shortcuts; F1 → Keyboard Shortcuts | Bindings read ⌘O, ⌘⇧S…; the editor rows read Replace ⌘⌥F, Redo ⌘⇧Z, Go to Line ⌃G, and those keys do that in the editor | |
 
 ## 32. Plugin Packs (declarative)
 
@@ -596,13 +651,15 @@ Before running tests:
 | BL-PKG-02 | P1 | NSIS license page shows MIT text | Progress through installer | LICENSE file contents rendered | |
 | BL-PKG-03 | P1 | NSIS install mode: current user | Default flow | App installed under `%LOCALAPPDATA%\Programs\BridgeLab` | |
 | BL-PKG-04 | P1 | NSIS language selector offers 5 langs | Language combo | English, Italian, French, Spanish, German | |
-| BL-PKG-05 | P1 | macOS DMG opens with background | Mount `.dmg` | Window shows app icon + Applications shortcut laid out | |
+| BL-PKG-05 | P1 | macOS DMG layout | Mount `.dmg` | Window shows the app icon and the Applications shortcut side by side (no background image) | |
 | BL-PKG-06 | P1 | Linux .deb lists correct deps | `dpkg -I *.deb` | `Depends:` includes libwebkit2gtk-4.1-0, libgtk-3-0 | |
 | BL-PKG-07 | P1 | Linux .deb section utils | `dpkg -I *.deb` | `Section: utils`, `Priority: optional` | |
-| BL-PKG-08 | P1 | AppImage runs without GStreamer bundled | Run the AppImage on a distro without GStreamer, offline | App starts, parses and validates; about 20 MB | |
+| BL-PKG-08 | P1 | AppImage runs without GStreamer bundled | Run the AppImage on a distro without GStreamer, offline | App starts, parses and validates; the file is about 78 MB | |
 | BL-PKG-09 | P2 | File association `.hl7` | Install, double-click .hl7 | Opens in BridgeLab | |
 | BL-PKG-10 | P2 | About dialog version matches installer | Launch installed build | About shows 0.1.0 (or current) | |
-| BL-PKG-11 | P1 | Windows uninstall with "Delete the application data" | Install, activate a license, use the app (history, test case, a plugin), then uninstall ticking *Delete the application data*; then uninstall once more without the box on a second install; then run the setup over an existing install (update) | Ticked: `%APPDATA%\BridgeLab` keeps only `license.json` and `trial.json`, everything else gone; `%LOCALAPPDATA%\BridgeLab\.bl-state.json` still there; reinstall is licensed and the setup asks the update question again. Unticked or updating: nothing under `%APPDATA%\BridgeLab` is touched | |
+| BL-PKG-11 | P1 | Windows uninstall with "Delete the application data" | Install, activate a license, use the app (history, test case, a plugin), then uninstall ticking *Delete the application data*; then uninstall once more without the box on a second install; then run the setup over an existing install (update) | Ticked: `%APPDATA%\BridgeLab` keeps only `license.json` and `trial.json`, everything else gone; `%APPDATA%\BridgeLab\.bl-state.json` and `%LOCALAPPDATA%\BridgeLab\.bl-state.json` still there; reinstall is licensed and the setup asks the update question again. Unticked or updating: nothing under `%APPDATA%\BridgeLab` is touched | |
+| BL-PKG-12 | P1 | Windows: deleting one folder does not restart the trial | Fresh trial, use it a day (or set the clock), quit; delete `%LOCALAPPDATA%\BridgeLab`, start; then quit, delete `%APPDATA%\BridgeLab\.bl-state.json` only, start. Also upgrade a 1.8.1 install mid-trial | The trial keeps its start date each time (days left unchanged); after the upgrade the days left are the same as before | |
+| BL-PKG-13 | P1 | Windows: hardware ID without reg.exe | Note Settings → License → Hardware ID; enable the policy *Prevent access to registry editing tools* (silent mode blocked), `gpupdate /force`, restart the app | The Hardware ID is unchanged and an activated licence stays valid | |
 
 ## 34. Regression / Bug Verification
 
@@ -641,12 +698,15 @@ requests server-side or with a packet capture.
 | BL-OA-07 | P0 | 1.2.0 license.json untouched | Start with a pre-1.3 `license.json` | Loads and validates unchanged; no new fields added on re-save | |
 | BL-OA-08 | P0 | Deactivate with network down | Deactivate an online-activated license offline | Local license removed regardless; no error blocks the flow | |
 | BL-OA-09 | P1 | Debug simple key unaffected | (debug build) `BL-PRO-ABCD1234EFGH` | Falls through to the simple-key path, not the online path | |
+| BL-OA-10 | P1 | Weekly re-check | Online license expiring in > 14 days, last check 8 days ago; start the app with the server reachable | One activation request; license unchanged or updated; no prompt | |
+| BL-OA-11 | P0 | Revoked code at re-check | Revoke the code server-side (or refund), make the last check older than 7 days, start the app | License set aside as `license.revoked.json`, notice banner shows the server message, status is Community without a restart | |
+| BL-OA-12 | P0 | Server unreachable at re-check | Same as above with the network off (or server HTTP 500 / proxy page) | License and tier unchanged, no error shown | |
 | BL-TEL-01 | P0 | Telemetry off = zero requests | Default install, use the app, watch the endpoint | No telemetry request ever sent | |
 | BL-TEL-02 | P0 | Telemetry on = one POST per 24 h | Enable in Settings → Privacy, restart twice same day | Exactly one POST; `telemetry_last_sent` updated | |
 | BL-TEL-03 | P1 | Send now | Enable, press "Send now" | POST fires; inline confirmation text | |
 | BL-TEL-04 | P0 | Preview matches payload | Open "Show what is sent", compare with captured POST body | Identical JSON (timestamps aside) | |
 | BL-TEL-05 | P0 | No PII in payload | Inspect captured payload | No hostname, username, file names, message content; installation_id is a random UUID | |
-| BL-TEL-06 | P1 | Revoked notice | Mock telemetry response with `revoked: true` | Dismissible banner appears; local license NOT deleted; dismiss clears it | |
+| BL-TEL-06 | P1 | Revoked notice | Mock telemetry response with `revoked: true` | Dismissible banner appears; local license NOT deleted by telemetry; the next start re-checks the code with the license server (BL-OA-11); dismiss clears it | |
 | BL-TEL-07 | P0 | Machine policy forces telemetry off | Enable telemetry. Set `BRIDGELAB_DISABLE_TELEMETRY=1`, start and wait past the 10-min loop; unset it, put `{"disable_telemetry": true}` in the platform `policy.json`, start | No telemetry request in either case, also with *Send now* unavailable; the Settings box is unticked, disabled and the hint names the variable or the file; `disable_update_check` alone leaves telemetry untouched, and vice versa | |
 
 ## Test Matrix by Platform
@@ -656,9 +716,13 @@ Run full suite on each:
 | Platform | Version | Status | Last Tested | Notes |
 |----------|---------|--------|-------------|-------|
 | Windows 11 | - | | | |
+| Windows 10 | 22H2 | | | Oldest Windows the site names |
 | macOS Apple Silicon | 14+ | | | |
 | macOS Intel | 13+ | | | |
+| macOS 11 or 12 | Safari 16.4+ | | | Oldest macOS the DMG installs on (Tailwind 4 needs Safari 16.4) |
 | Ubuntu 22.04 | - | | | |
+| Debian 12 | - | | | Named on the site and in the CLI README |
+| RHEL / Rocky / Alma 9 | - | | | Named on the site and in the CLI README |
 | Fedora 39+ | - | | | |
 
 ## 36. FHIR Validation Rules (builder)
@@ -692,7 +756,7 @@ Packages live in `<config>/BridgeLab/fhir-packages/`. Get
 
 | ID | Priority | Description | Steps | Expected Result | Status |
 |----|----------|-------------|-------|-----------------|--------|
-| BL-PROF-01 | P0 | Manager opens | Tools → FHIR profile packages… | Dialog opens, empty state explains where to get a package | |
+| BL-PROF-01 | P0 | Manager opens | Tools → FHIR profile packages… | Dialog opens and lists the built-in R4 core (not removable) and any installed packages | |
 | BL-PROF-02 | P0 | Install core package | Install `hl7.fhir.r4.core` 4.0.1 `.tgz` | Row appears: name, version, FHIR 4.0.1, ~653 profiles | |
 | BL-PROF-03 | P0 | Survives restart | Restart the app, reopen the manager | Package still listed; no re-read of the archive | |
 | BL-PROF-04 | P0 | Conforming resource stays clean | Load a spec example Patient, F6 | No profile findings; report states profiles were applied | |
@@ -733,7 +797,7 @@ Run before every tag; none of these is a feature test, all three have bitten a r
 | BL-REL-02 | P0 | Comparison table verified | Open every vendor site linked in the footnote of the landing's *Why a new HL7 editor* table; re-check FHIR, platforms, XSD export, list price, latest release per row | Every cell matches the vendor's site today; "Not advertised" / "Quote on request" where the site is silent; footnote date updated; no judgement words ("slow", "struggles", "minimal") anywhere in the table — Directive 2006/114/EC | |
 | BL-REL-03 | P1 | Dependency advisories | `cargo audit` in `src-tauri/`, `tools/bridgelab-cli/`, `tools/hl7-schema-importer/`; `pnpm audit` at the root | No fixable advisory left; unfixable ones (transitive through Tauri) named in the CHANGELOG | |
 | BL-REL-04 | P1 | Release assets | After the release workflow on the mirror: count the assets | 12 assets, no `.app.tar.gz`, one `en-US` MSI, CLI binary per platform | |
-| BL-REL-05 | P2 | Release note footer | Open the published release on the mirror | The note ends with a horizontal rule and *BridgeLab is built by TECHEMV SRL — www.techemv.it · info@techemv.it*, the website linked | |
+| BL-REL-05 | P2 | Release note footer | Open the published release on the mirror | The note ends with a horizontal rule and *BridgeLab is built by TECHEMV SRL · info@techemv.it*, the company name linked to techemvee.eu/en/ | |
 
 ## Test Execution Log
 
@@ -756,7 +820,7 @@ Add observations during testing here:
 
 Separately from this manual plan, the following automated tests run on every commit (see `.github/workflows/feature-tests.yml`):
 
-- **CLI feature tests** (BL-CLI-01..12) - validate, JSON, JUnit, info, anonymize, to-json, batch
+- **CLI feature tests** (BL-CLI-01..12, 19..27) - validate, JSON, JUnit, info, anonymize, to-json, batch, standard input, fhirpath, xsd, MLLP send (against a one-shot ACK server, `tests/tools/mllp_ack_server.py`), test packs
 - **Rust core tests** - `cd src-tauri && cargo test --all` (unit + integration, 335 tests)
 - **Schema lookup** (BL-INSP-05 partial) - `get_segment_info` / `get_field_info` for MSH/PID/PV1
 - **Parser fixtures** (BL-PARSER-01/02/03, BL-PERF-03) - smoke over `tests/fixtures/hl7/` via CLI
@@ -764,7 +828,6 @@ Separately from this manual plan, the following automated tests run on every com
   client side (ACK received) and the server side (decoded message), plus connection-refused path
 - **HTTP roundtrip** (BL-HTTP-01/02/04/06) - in-process HTTP/1.1 server exercises GET and POST
   with custom headers, body echo and connection-refused error reporting
-- **Keygen roundtrip** (BL-LIC-14) - generate keypair, sign a license, verify signature
 - **Frontend check** - `pnpm check` (svelte-check) runs with 0 errors threshold
 - **Frontend build** - `pnpm build` succeeds
 - **Frontend unit tests** - `pnpm test` (vitest: stores, MSH-12 version detection)
@@ -797,8 +860,9 @@ vendored**; both skip cleanly when the data is absent, so a plain
 ### Memory / performance tuning
 
 **BridgeLab does not require manual memory configuration.** The Rust backend
-uses zero-copy parsing + field truncation so peak RAM stays well under 300 MB
-even on 10 MB messages (BL-PERF-09). Monaco's virtual scrolling keeps the
+uses zero-copy parsing + field truncation so its peak RAM stays under 300 MB
+even on 10 MB messages (BL-PERF-09); the web view that draws the window takes
+more (about 900 MB on Linux for a 10 MB message). Monaco's virtual scrolling keeps the
 editor light. The only tunable knob lives in _Settings → Parser → Truncation
 threshold_ and only affects how much text is sent across IPC - not total
 memory consumption.

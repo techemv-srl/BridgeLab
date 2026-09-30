@@ -285,6 +285,10 @@ pub async fn send(app: &tauri::AppHandle) -> Result<(String, serde_json::Value),
             .clone()
             .unwrap_or_else(|| "Your license was revoked. Contact info@techemv.it.".into());
         let _ = db.set_preference(PREF_SERVER_NOTICE, &notice);
+        // Let the next start confirm it with the license server (which is
+        // what actually returns the app to Community) instead of waiting
+        // out the weekly re-check.
+        let _ = db.set_preference(super::online::PREF_REFRESH_LAST, "");
     }
     Ok((body.message.unwrap_or_else(|| "OK".into()), payload))
 }

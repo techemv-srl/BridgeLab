@@ -5,15 +5,10 @@ use crate::anonymization::{self, ExtraPhiField, PhiLocation};
 use crate::licensing::feature_gate;
 use crate::message_store::MessageStore;
 use crate::parser::truncation;
-use crate::plugins::{self, PluginRegistry};
+use crate::plugins::PluginRegistry;
 
 pub(crate) fn plugin_phi_rules(registry: &PluginRegistry) -> Vec<ExtraPhiField> {
-    registry.active_phi_rules(feature_gate::active_plugin_limit()).into_iter().map(|r| ExtraPhiField {
-        segment: r.segment,
-        field: r.field,
-        name: r.name,
-        sensitivity: plugins::parse_sensitivity(&r.sensitivity),
-    }).collect()
+    registry.active_phi_fields(feature_gate::active_plugin_limit())
 }
 
 /// Detect PHI fields in an HL7 message (built-in + plugin rules).
@@ -94,31 +89,7 @@ pub fn export_as_json(
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
-    let mut segments = Vec::new();
-    for seg in &msg.segments {
-        let mut fields_json = serde_json::Map::new();
-        for field in &seg.fields {
-            let value = field.span.as_str(&msg.raw);
-            fields_json.insert(
-                format!("{}-{}", seg.segment_type, field.position),
-                serde_json::Value::String(value.to_string()),
-            );
-        }
-        let mut seg_obj = serde_json::Map::new();
-        seg_obj.insert("segment_type".into(), serde_json::Value::String(seg.segment_type.clone()));
-        seg_obj.insert("position".into(), serde_json::Value::Number(seg.position.into()));
-        seg_obj.insert("fields".into(), serde_json::Value::Object(fields_json));
-        segments.push(serde_json::Value::Object(seg_obj));
-    }
-
-    let root = serde_json::json!({
-        "message_type": msg.message_type,
-        "version": msg.version,
-        "segments": segments,
-    });
-
-    serde_json::to_string_pretty(&root)
-        .map_err(|e| format!("JSON serialization failed: {}", e))
+    crate::parser::hl7::export::to_json(&msg)
 }
 
 /// Export message as CSV (Pro feature).
@@ -133,16 +104,5 @@ pub fn export_as_csv(
     let msg = store.get(&message_id)
         .ok_or_else(|| format!("Message not found: {}", message_id))?;
 
-    let mut csv = String::from("Segment,Position,Field,Value\n");
-    for seg in &msg.segments {
-        for field in &seg.fields {
-            let value = field.span.as_str(&msg.raw).replace('"', "\"\"");
-            csv.push_str(&format!(
-                "{},{},{}-{},\"{}\"\n",
-                seg.segment_type, seg.position, seg.segment_type, field.position, value
-            ));
-        }
-    }
-
-    Ok(csv)
+    Ok(crate::parser::hl7::export::to_csv(&msg))
 }

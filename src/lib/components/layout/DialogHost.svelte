@@ -13,6 +13,8 @@
 	import GenerateDialog from '$lib/components/generator/GenerateDialog.svelte';
 	import ActivationDialog from '$lib/components/licensing/ActivationDialog.svelte';
 	import TemplateDialog from '$lib/components/templates/TemplateDialog.svelte';
+	import SampleLibraryDialog from '$lib/components/samples/SampleLibraryDialog.svelte';
+	import type { Sample } from '$lib/ipc/samples';
 	import BundleVisualizer from '$lib/components/bundle/BundleVisualizer.svelte';
 	import FhirRulesDialog from '$lib/components/fhir/FhirRulesDialog.svelte';
 	import FhirPackagesDialog from '$lib/components/fhir/FhirPackagesDialog.svelte';
@@ -21,6 +23,7 @@
 	import type { LicenseStatus } from '$lib/ipc/licensing';
 	import type { MessageTemplate } from '$lib/ipc/templates';
 	import pkg from '../../../../package.json';
+	import { dialogStore } from '$lib/stores/dialog.svelte';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -44,6 +47,7 @@
 		showBundleVisualizer: boolean;
 		showTestCases: boolean;
 		showTemplates: boolean;
+		showSamples: boolean;
 		showActivation: boolean;
 		showSettings: boolean;
 		showSchemaExport: boolean;
@@ -59,6 +63,7 @@
 		theme: string;
 		onTestCaseLoaded: (tc: TestCase) => void;
 		onTemplateSelected: (template: MessageTemplate) => void;
+		onSampleSelected: (sample: Sample) => void;
 		onAnonymized: (text: string) => void;
 		onSetTheme: (theme: string) => void;
 		onOpenRecentFile: (path: string) => void;
@@ -72,6 +77,7 @@
 		showBundleVisualizer = $bindable(),
 		showTestCases = $bindable(),
 		showTemplates = $bindable(),
+		showSamples = $bindable(),
 		showActivation = $bindable(),
 		showSettings = $bindable(),
 		showSchemaExport = $bindable(),
@@ -87,6 +93,7 @@
 		theme,
 		onTestCaseLoaded,
 		onTemplateSelected,
+		onSampleSelected,
 		onAnonymized,
 		onSetTheme,
 		onOpenRecentFile,
@@ -98,7 +105,21 @@
 	function closeExpandedField() {
 		expandedFieldContent = null;
 	}
+
+	// Escape closes the dialogs that have no key handling of their own, as
+	// it does the others. Settings closes like Cancel. Not when something
+	// inside already used the key (shortcut capture) or a message box is up.
+	function handleEscape(e: KeyboardEvent) {
+		if (e.key !== 'Escape' || e.defaultPrevented || dialogStore.active) return;
+		if (showSettings) showSettings = false;
+		else if (showAbout) showAbout = false;
+		else if (expandedFieldContent !== null) closeExpandedField();
+		else return;
+		e.preventDefault();
+	}
 </script>
+
+<svelte:window onkeydown={handleEscape} />
 
 <!-- Expanded field modal -->
 {#if expandedFieldContent !== null}
@@ -232,6 +253,20 @@
 	</div>
 {/if}
 
+<!-- Sample message library -->
+{#if showSamples}
+	<div class="modal-overlay" onclick={() => { showSamples = false; }} role="presentation">
+		<!-- svelte-ignore a11y_interactive_supports_focus -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
+			<SampleLibraryDialog
+				onOpen={onSampleSelected}
+				onClose={() => { showSamples = false; }}
+			/>
+		</div>
+	</div>
+{/if}
+
 <!-- License Activation modal -->
 {#if showActivation && licenseStatus}
 	<div class="modal-overlay" onclick={() => { showActivation = false; }} role="presentation">
@@ -255,7 +290,7 @@
 		<div class="modal modal-lg" onclick={(e) => e.stopPropagation()} role="dialog">
 			<SettingsModal
 				initialSection={settingsSection}
-				onRestoreSessionChange={(enabled) => { sessionStore.restoreEnabled = enabled; }}
+				onRestoreSessionChange={(enabled) => { void sessionStore.setRestoreEnabled(enabled); }}
 				onEditorOptionsChange={() => { void editorOptionsStore.loadFromPrefs(); }}
 				{theme}
 				onClose={() => { showSettings = false; }}

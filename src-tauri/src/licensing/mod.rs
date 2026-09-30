@@ -63,6 +63,15 @@ pub struct LicenseStatus {
     /// (the trial communicates via days_remaining only).
     #[serde(default)]
     pub expires_at: Option<String>,
+    /// True when a license file is installed, in force or not: the UI then
+    /// offers Deactivate, which is the way back from a license that no
+    /// longer applies.
+    #[serde(default)]
+    pub has_license: bool,
+    /// Why an installed license is not in force: "other_machine",
+    /// "invalid" or "expired". `None` when it is, or when there is none.
+    #[serde(default)]
+    pub problem: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -77,12 +86,13 @@ pub enum LicenseType {
 
 /// Trial tracking data.
 ///
-/// v2 binds the record to the machine (`hw`), carries a monotonic
-/// high-water timestamp (`last_seen`) so rolling the system clock back
-/// cannot extend the trial, and an integrity tag (`sig`) so the file
-/// cannot simply be edited or copied from another machine. The tag is a
-/// salted hash with the salt embedded in the binary — this stops casual
-/// tampering, not a determined reverse engineer (nothing offline can).
+/// v2 binds the record to the machine (`hw`), carries a high-water
+/// timestamp (`last_seen`) so rolling the system clock back does not give
+/// days back, and an integrity tag (`sig`) so the dates cannot simply be
+/// edited. A record copied from another machine keeps its start date. This
+/// is a fair-play deterrent, not a lock: the salt is in public source,
+/// and deleting both copies starts a new trial (nothing offline can stop
+/// a determined user, and the Community edition stays free anyway).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrialData {
     pub started_at: String,
@@ -99,18 +109,114 @@ pub struct TrialData {
 // Hardware ID
 // =============================================================================
 
+/// The hardware ID of this machine, as shown to the user and sent when a
+/// license is activated: a hash of the operating system's own machine
+/// identifier (Windows `MachineGuid`, macOS `IOPlatformUUID`, Linux
+/// `/etc/machine-id`). It does not change when the computer is renamed or
+/// another user logs in, which the pre-1.9 ID did. Where the OS has no
+/// identifier the pre-1.9 ID is used.
 pub fn get_hardware_id() -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| machine_uid().map(|u| hardware_id_from_uid(&u)).unwrap_or_else(legacy_hardware_id))
+        .clone()
+}
 
-    let mut hasher = DefaultHasher::new();
-    if let Ok(hostname) = hostname::get() {
-        hostname.to_string_lossy().hash(&mut hasher);
+/// Every ID this machine answers to: the current one and the pre-1.9 one,
+/// so licenses, offline keys and trials bound before 1.9 keep working.
+pub fn hardware_ids() -> Vec<String> {
+    let mut ids = vec![get_hardware_id()];
+    let legacy = legacy_hardware_id();
+    if !ids.contains(&legacy) {
+        ids.push(legacy);
     }
-    std::env::consts::OS.hash(&mut hasher);
-    std::env::consts::ARCH.hash(&mut hasher);
-    if let Ok(user) = std::env::var("USERNAME").or_else(|_| std::env::var("USER")) {
-        user.hash(&mut hasher);
+    ids
+}
+
+/// True when a license or trial bound to `id` belongs here (an empty ID
+/// binds to no machine).
+pub fn is_this_machine(id: &str) -> bool {
+    id.is_empty() || hardware_ids().iter().any(|h| h == id)
+}
+
+fn hardware_id_from_uid(uid: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"bridgelab-hwid-v2\0");
+    h.update(uid.trim().to_ascii_lowercase().as_bytes());
+    let d = h.finalize();
+    format!("BL-{}", hex::encode(&d[..8]).to_ascii_uppercase())
+}
+
+/// The operating system's identifier for this installation.
+fn machine_uid() -> Option<String> {
+    let found = machine_uid_raw()?;
+    let found = found.trim().to_string();
+    (!found.is_empty() && found.chars().any(|c| c.is_ascii_alphanumeric() && c != '0')).then_some(found)
+}
+
+/// `MachineGuid`, read through the registry API. Up to 1.9.0 it came from
+/// the output of `reg.exe`, which a "Prevent access to registry editing
+/// tools" policy blocks; the silent fallback to the pre-1.9 ID then made
+/// the licence read as bound to another computer. The string is the same
+/// either way (see [`registry_string`]), so the hardware ID does not change.
+#[cfg(target_os = "windows")]
+fn machine_uid_raw() -> Option<String> {
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_WOW64_64KEY};
+    // The 64-bit view: a 32-bit process would otherwise read the WOW64
+    // copy, which does not exist.
+    let key = winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(r"SOFTWARE\Microsoft\Cryptography", KEY_QUERY_VALUE | KEY_WOW64_64KEY)
+        .ok()?;
+    let value: String = key.get_value("MachineGuid").ok()?;
+    Some(registry_string(&value))
+}
+
+/// A REG_SZ value as `reg query` printed it: without the terminating NULs
+/// the API may leave on the string.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn registry_string(value: &str) -> String {
+    value.trim_end_matches('\0').to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn machine_uid_raw() -> Option<String> {
+    let out = std::process::Command::new("/usr/sbin/ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find(|l| l.contains("\"IOPlatformUUID\""))
+        .and_then(|l| l.split('"').nth(3).map(str::to_string))
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn machine_uid_raw() -> Option<String> {
+    ["/etc/machine-id", "/var/lib/dbus/machine-id"]
+        .iter()
+        .find_map(|p| std::fs::read_to_string(p).ok().filter(|s| !s.trim().is_empty()))
+}
+
+/// The pre-1.9 hardware ID: host name, OS, architecture and user name
+/// through SipHash-1-3 with zero keys. That is what std's `DefaultHasher`
+/// computes today, but std documents it may change, so it is spelled out
+/// here: a Rust upgrade must not unbind every existing license.
+pub fn legacy_hardware_id() -> String {
+    let host = hostname::get().ok().map(|h| h.to_string_lossy().into_owned());
+    let user = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).ok();
+    legacy_hash(host.as_deref(), std::env::consts::OS, std::env::consts::ARCH, user.as_deref())
+}
+
+fn legacy_hash(host: Option<&str>, os: &str, arch: &str, user: Option<&str>) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = siphasher::sip::SipHasher13::new_with_keys(0, 0);
+    if let Some(h) = host {
+        h.hash(&mut hasher);
+    }
+    os.hash(&mut hasher);
+    arch.hash(&mut hasher);
+    if let Some(u) = user {
+        u.hash(&mut hasher);
     }
     format!("BL-{:016X}", hasher.finish())
 }
@@ -119,27 +225,82 @@ pub fn get_hardware_id() -> String {
 // File paths
 // =============================================================================
 
-fn data_dir() -> Result<PathBuf, String> {
-    let dir = dirs::data_dir()
-        .ok_or_else(|| "Could not determine data directory".to_string())?;
-    Ok(dir.join("BridgeLab"))
+/// Where license.json and trial.json live. On Windows that is the local
+/// (non-roaming) AppData: a license bound to one machine must not travel
+/// to the next PC with a roaming profile and overwrite that PC's own.
+fn license_dir() -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    let base = dirs::data_local_dir();
+    #[cfg(not(target_os = "windows"))]
+    let base = dirs::data_dir();
+    let dir = base.ok_or_else(|| "Could not determine data directory".to_string())?.join("BridgeLab");
+    #[cfg(target_os = "windows")]
+    migrate_from_roaming(&dir);
+    Ok(dir)
+}
+
+/// Before 1.9 the Windows files were in the roaming AppData. Move them
+/// once, but only when they belong to this machine; a roaming copy from
+/// another PC is left alone (deleting it would delete it there too).
+#[cfg(target_os = "windows")]
+fn migrate_from_roaming(local: &std::path::Path) {
+    static DONE: std::sync::Once = std::sync::Once::new();
+    DONE.call_once(|| {
+        let Some(roaming) = dirs::data_dir().map(|d| d.join("BridgeLab")) else { return };
+        if roaming == local { return; }
+        for name in ["license.json", "trial.json"] {
+            let (from, to) = (roaming.join(name), local.join(name));
+            if to.exists() { continue; }
+            let Ok(text) = std::fs::read_to_string(&from) else { continue };
+            let ours = match name {
+                "license.json" => serde_json::from_str::<LicenseFile>(&text)
+                    .is_ok_and(|l| is_this_machine(&l.payload.hardware_id)),
+                _ => serde_json::from_str::<TrialData>(&text)
+                    .is_ok_and(|t| is_this_machine(&t.hw)),
+            };
+            if ours && std::fs::create_dir_all(local).is_ok() && std::fs::write(&to, &text).is_ok() {
+                let _ = std::fs::remove_file(&from);
+            }
+        }
+    });
 }
 
 fn license_file_path() -> Result<PathBuf, String> {
-    Ok(data_dir()?.join("license.json"))
+    Ok(license_dir()?.join("license.json"))
 }
 
 fn trial_file_path() -> Result<PathBuf, String> {
-    Ok(data_dir()?.join("trial.json"))
+    Ok(license_dir()?.join("trial.json"))
 }
 
-/// Redundant copy of the trial record in a second base directory
-/// (cache dir ≠ data dir on every supported platform), so deleting
-/// `trial.json` alone no longer restarts the trial.
+/// Redundant copy of the trial record in a second base directory, so
+/// deleting `trial.json` (or its whole folder) alone does not restart the
+/// trial. macOS and Linux use the cache dir. On Windows the cache dir *is*
+/// the local AppData that holds trial.json, so the copy goes to the
+/// roaming AppData (where the database already is).
 fn trial_marker_path() -> Result<PathBuf, String> {
-    let dir = dirs::cache_dir()
-        .ok_or_else(|| "Could not determine cache directory".to_string())?;
+    #[cfg(target_os = "windows")]
+    let dir = dirs::data_dir();
+    #[cfg(not(target_os = "windows"))]
+    let dir = dirs::cache_dir();
+    let dir = dir.ok_or_else(|| "Could not determine the trial marker directory".to_string())?;
     Ok(dir.join("BridgeLab").join(".bl-state.json"))
+}
+
+/// Every place the trial record is kept: trial.json, the marker, and on
+/// Windows the marker's place up to 1.8.1 (the cache dir, i.e. the local
+/// AppData), still read and kept so an upgrade never restarts or shortens
+/// a running trial.
+fn trial_paths() -> Vec<PathBuf> {
+    #[allow(unused_mut)]
+    let mut paths: Vec<PathBuf> = [trial_file_path().ok(), trial_marker_path().ok()].into_iter().flatten().collect();
+    #[cfg(target_os = "windows")]
+    if let Some(old) = dirs::cache_dir().map(|d| d.join("BridgeLab").join(".bl-state.json")) {
+        if !paths.contains(&old) {
+            paths.push(old);
+        }
+    }
+    paths
 }
 
 // =============================================================================
@@ -216,6 +377,51 @@ pub fn save_license(license: &LicenseFile) -> Result<(), String> {
     std::fs::write(path, json).map_err(|e| format!("Write failed: {}", e))
 }
 
+/// Put a license the server has revoked aside instead of deleting it: the
+/// app falls back to Community, and the file is still there (as
+/// `license.revoked.json`, replacing an older one) if support needs to
+/// look at it. Only the license activated with `code` is moved — the user
+/// may have activated another one while the check was in flight — and
+/// returns whether it was. The trial is ended too, so a revoked license
+/// does not fall back to the Pro trial of a young installation.
+pub fn set_aside_revoked_license(code: &str) -> Result<bool, String> {
+    let Some(current) = load_license() else { return Ok(false) };
+    if current.activation_code.as_deref() != Some(code) {
+        return Ok(false);
+    }
+    let path = license_file_path()?;
+    let archive = path.with_file_name("license.revoked.json");
+    // rename() does not replace an existing target on Windows.
+    if archive.exists() {
+        std::fs::remove_file(&archive).map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(&path, &archive).map_err(|e| e.to_string())?;
+    end_trial();
+    Ok(true)
+}
+
+/// End the trial now: move its start back so its full length is already
+/// used up. The record stays a valid, signed one, and an earlier start is
+/// what the loader keeps when the two copies disagree.
+fn end_trial() {
+    let trial = expire_trial(load_or_init_trial());
+    persist_trial(&trial);
+}
+
+fn expire_trial(mut trial: TrialData) -> TrialData {
+    let now = chrono::Utc::now();
+    let spent = now - chrono::Duration::days(trial.trial_days.max(1));
+    let started = chrono::DateTime::parse_from_rfc3339(&trial.started_at)
+        .map(|d| d.with_timezone(&chrono::Utc))
+        .unwrap_or(now);
+    if started > spent {
+        trial.started_at = spent.to_rfc3339();
+    }
+    trial.last_seen = now.to_rfc3339();
+    sign_trial(&mut trial);
+    trial
+}
+
 pub fn remove_license() -> Result<(), String> {
     let path = license_file_path()?;
     if path.exists() {
@@ -256,23 +462,22 @@ fn sign_trial(trial: &mut TrialData) {
     trial.sig = trial_sig(&trial.started_at, trial.trial_days, &trial.hw, &trial.last_seen);
 }
 
-/// A trial record is authentic when its tag matches, it is bound to this
-/// machine, its duration was not inflated and its start is not in the future.
+/// A trial record is genuine when its tag matches and its duration was not
+/// inflated. Which machine it is bound to is checked separately: a record
+/// bound to another ID (the pre-1.9 one after a rename, or a profile
+/// copied from another PC) keeps its start date and is rebound, so it
+/// neither gains days nor loses them.
+fn trial_sig_ok(trial: &TrialData) -> bool {
+    !trial.sig.is_empty()
+        && trial.trial_days > 0
+        && trial.trial_days <= TRIAL_DAYS
+        && chrono::DateTime::parse_from_rfc3339(&trial.started_at).is_ok()
+        && trial.sig == trial_sig(&trial.started_at, trial.trial_days, &trial.hw, &trial.last_seen)
+}
+
+#[cfg(test)]
 fn trial_is_authentic(trial: &TrialData, hw: &str) -> bool {
-    if trial.sig.is_empty() || trial.hw != hw {
-        return false;
-    }
-    if trial.trial_days <= 0 || trial.trial_days > TRIAL_DAYS {
-        return false;
-    }
-    let started = match chrono::DateTime::parse_from_rfc3339(&trial.started_at) {
-        Ok(d) => d.with_timezone(&chrono::Utc),
-        Err(_) => return false,
-    };
-    if started > chrono::Utc::now() + chrono::Duration::hours(24) {
-        return false;
-    }
-    trial.sig == trial_sig(&trial.started_at, trial.trial_days, &trial.hw, &trial.last_seen)
+    trial_sig_ok(trial) && trial.hw == hw
 }
 
 /// Pre-hardening `trial.json` files had only `started_at` + `trial_days`.
@@ -297,16 +502,24 @@ pub fn load_or_init_trial() -> TrialData {
     let mut tampered = false;
     let mut migrated = false;
 
-    for path in [trial_file_path().ok(), trial_marker_path().ok()]
-        .into_iter()
-        .flatten()
-    {
+    let mut missing = false;
+    for path in trial_paths() {
         let content = match std::fs::read_to_string(&path) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(_) => {
+                missing = true;
+                continue;
+            }
         };
         match serde_json::from_str::<TrialData>(&content) {
-            Ok(t) if trial_is_authentic(&t, &hw) => candidates.push(t),
+            Ok(mut t) if trial_sig_ok(&t) => {
+                if t.hw != hw {
+                    t.hw = hw.clone();
+                    sign_trial(&mut t);
+                    migrated = true;
+                }
+                candidates.push(t);
+            }
             Ok(mut t) if is_plausible_legacy(&t) => {
                 t.hw = hw.clone();
                 t.last_seen = now.to_rfc3339();
@@ -358,7 +571,12 @@ pub fn load_or_init_trial() -> TrialData {
     // hourly advance rather than on every call — reads always take the
     // earliest surviving copy, so enforcement never depends on an
     // immediate rewrite.
-    if should_advance || tampered || migrated || created {
+    // A copy that is missing (the marker's new place after an upgrade, a
+    // deleted folder) is restored at once, but only once per run: an
+    // unwritable place must not cost a write on every call.
+    static RESTORED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let restore = missing && !created && !RESTORED.swap(true, std::sync::atomic::Ordering::SeqCst);
+    if should_advance || tampered || migrated || created || restore {
         persist_trial(&trial);
     }
     trial
@@ -384,10 +602,7 @@ fn persist_trial(trial: &TrialData) {
         Ok(j) => j,
         Err(_) => return,
     };
-    for path in [trial_file_path().ok(), trial_marker_path().ok()]
-        .into_iter()
-        .flatten()
-    {
+    for path in trial_paths() {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
@@ -450,11 +665,11 @@ pub fn parse_and_verify_key(key: &str) -> Result<LicenseFile, String> {
     }
 
     // Verify hardware
-    let hw_id = get_hardware_id();
-    if !license.payload.hardware_id.is_empty() && license.payload.hardware_id != hw_id {
+    if !is_this_machine(&license.payload.hardware_id) {
         return Err(format!(
             "License is bound to a different machine. Expected: {}, Got: {}",
-            license.payload.hardware_id, hw_id
+            license.payload.hardware_id,
+            get_hardware_id()
         ));
     }
 
@@ -521,11 +736,9 @@ pub fn activate_simple_key(key: &str, licensee: &str, email: &str) -> Result<Lic
 // =============================================================================
 
 pub fn check_license_status() -> LicenseStatus {
-    let hardware_id = get_hardware_id();
-
     if let Some(license) = load_license() {
         // Hardware check
-        if !license.payload.hardware_id.is_empty() && license.payload.hardware_id != hardware_id {
+        if !is_this_machine(&license.payload.hardware_id) {
             return LicenseStatus {
                 is_valid: false,
                 license_type: LicenseType::Expired,
@@ -536,6 +749,8 @@ pub fn check_license_status() -> LicenseStatus {
                 message: "License is bound to a different machine".into(),
                 activation_code: license.activation_code.clone(),
                 expires_at: license.payload.expires_at.clone(),
+                has_license: true,
+                problem: Some("other_machine".into()),
             };
         }
 
@@ -559,6 +774,8 @@ pub fn check_license_status() -> LicenseStatus {
                 message: "License signature is invalid".into(),
                 activation_code: license.activation_code.clone(),
                 expires_at: None,
+                has_license: true,
+                problem: Some("invalid".into()),
             };
         }
 
@@ -580,6 +797,8 @@ pub fn check_license_status() -> LicenseStatus {
                         message: "License has expired".into(),
                         activation_code: license.activation_code.clone(),
                         expires_at: license.payload.expires_at.clone(),
+                        has_license: true,
+                        problem: Some("expired".into()),
                     };
                 }
                 return LicenseStatus {
@@ -592,6 +811,8 @@ pub fn check_license_status() -> LicenseStatus {
                     message: format!("{} days remaining", days),
                     activation_code: license.activation_code.clone(),
                     expires_at: license.payload.expires_at.clone(),
+                    has_license: true,
+                    problem: None,
                 };
             }
         }
@@ -607,6 +828,8 @@ pub fn check_license_status() -> LicenseStatus {
             message: "License is valid".into(),
             activation_code: license.activation_code.clone(),
             expires_at: None,
+            has_license: true,
+            problem: None,
         };
     }
 
@@ -625,6 +848,8 @@ pub fn check_license_status() -> LicenseStatus {
             message: format!("Trial: {} days remaining", days),
             activation_code: None,
             expires_at: None,
+            has_license: false,
+            problem: None,
         }
     } else {
         // Trial expired → fall back to Community (Free) tier, not zero features
@@ -638,6 +863,8 @@ pub fn check_license_status() -> LicenseStatus {
             message: "Trial expired. Community features are still available.".into(),
             activation_code: None,
             expires_at: None,
+            has_license: false,
+            problem: None,
         }
     }
 }
@@ -661,6 +888,10 @@ mod hex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The pre-1.9 ID of host DESKTOP-ABC1234, user mrossi, windows/x86_64,
+    /// computed with the 1.8 binary's hasher.
+    const LEGACY_KAT: &str = "BL-E0B47550E6AF6245";
 
     #[test]
     fn test_hardware_id_stable() {
@@ -694,6 +925,19 @@ mod tests {
         };
         sign_trial(&mut t);
         t
+    }
+
+    #[test]
+    fn an_ended_trial_has_no_days_left_and_stays_authentic() {
+        let t = make_trial(chrono::Utc::now().to_rfc3339(), TRIAL_DAYS);
+        assert!(trial_days_remaining(&t) > 0);
+        let ended = expire_trial(t);
+        assert_eq!(trial_days_remaining(&ended), 0);
+        assert!(trial_sig_ok(&ended), "the ended trial is re-signed, not treated as tampered");
+        // An already expired trial keeps its (earlier) start.
+        let old_start = (chrono::Utc::now() - chrono::Duration::days(40)).to_rfc3339();
+        let old = expire_trial(make_trial(old_start.clone(), TRIAL_DAYS));
+        assert_eq!(old.started_at, old_start);
     }
 
     #[test]
@@ -769,10 +1013,67 @@ mod tests {
     }
 
     #[test]
-    fn test_future_start_rejected() {
+    fn test_future_start_is_genuine_but_recounted_on_load() {
+        // A start in the future is what a clock set ahead on the first
+        // launch leaves behind: the record is genuine and must not be
+        // rewritten as expired. The days left are counted from the
+        // high-water mark (`last_seen`), so turning the clock back gains
+        // nothing.
         let hw = get_hardware_id();
         let trial = make_trial((chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339(), 7);
-        assert!(!trial_is_authentic(&trial, &hw));
+        assert!(trial_is_authentic(&trial, &hw));
+
+        // Clock ahead on the first launch (start = last seen = +2 days),
+        // then corrected: the full trial is still there.
+        let ahead = (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339();
+        let mut first = make_trial(ahead.clone(), 14);
+        first.last_seen = ahead;
+        sign_trial(&mut first);
+        assert_eq!(trial_days_remaining(&first), 14);
+        // A trial well under way does not come back by turning the clock
+        // back before its start: the high-water mark still counts.
+        let mut used = make_trial((chrono::Utc::now() - chrono::Duration::days(10)).to_rfc3339(), 14);
+        used.last_seen = (chrono::Utc::now() + chrono::Duration::days(20)).to_rfc3339();
+        sign_trial(&mut used);
+        assert_eq!(trial_days_remaining(&used), 0);
+    }
+
+    #[test]
+    fn the_legacy_hardware_id_is_frozen() {
+        // Same as std's DefaultHasher today...
+        use std::hash::{Hash, Hasher};
+        let mut std_hasher = std::collections::hash_map::DefaultHasher::new();
+        for part in ["DESKTOP-ABC1234", "windows", "x86_64", "mrossi"] {
+            part.hash(&mut std_hasher);
+        }
+        let ours = legacy_hash(Some("DESKTOP-ABC1234"), "windows", "x86_64", Some("mrossi"));
+        assert_eq!(ours, format!("BL-{:016X}", std_hasher.finish()));
+        // ...and pinned, so a change in std cannot move it.
+        assert_eq!(ours, LEGACY_KAT);
+    }
+
+    #[test]
+    fn this_machine_answers_to_its_current_and_legacy_ids() {
+        assert!(is_this_machine(&get_hardware_id()));
+        assert!(is_this_machine(&legacy_hardware_id()));
+        assert!(is_this_machine(""));
+        assert!(!is_this_machine("BL-0000000000000000"));
+    }
+
+    #[test]
+    fn the_machine_based_id_ignores_case_and_whitespace() {
+        let a = hardware_id_from_uid("4C4C4544-0042-3010-8052-B4C04F4B4E32");
+        assert_eq!(a, hardware_id_from_uid(" 4c4c4544-0042-3010-8052-b4c04f4b4e32\n"));
+        assert!(a.starts_with("BL-") && a.len() == 19);
+    }
+
+    #[test]
+    fn a_genuine_trial_bound_to_another_id_is_rebound_not_burned() {
+        let mut t = make_trial((chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339(), 14);
+        t.hw = "BL-0123456789ABCDEF".into();
+        sign_trial(&mut t);
+        assert!(trial_sig_ok(&t), "a foreign binding is still a genuine record");
+        assert!(!trial_is_authentic(&t, &get_hardware_id()));
     }
 
     #[test]
@@ -889,5 +1190,30 @@ mod tests {
         let out = serde_json::to_string(&online).unwrap();
         let back: LicenseFile = serde_json::from_str(&out).unwrap();
         assert_eq!(back.activation_code.as_deref(), Some("BL-PRO-2345-ABCD-WXYZ"));
+    }
+
+    /// The Windows hardware ID must not change with the move from `reg.exe`
+    /// to the registry API: the same MachineGuid gives the same ID, pinned
+    /// here, whichever way it was read.
+    #[test]
+    fn machine_guid_gives_the_same_id_read_either_way() {
+        const GUID: &str = "3f2c8a51-7d4e-4b6a-9e0f-1a2b3c4d5e6f";
+        // What 1.9.0 parsed: the last word of the `reg query` line.
+        let reg_exe = "\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography\r\n    MachineGuid    REG_SZ    3f2c8a51-7d4e-4b6a-9e0f-1a2b3c4d5e6f\r\n\r\n";
+        let old = reg_exe.lines().find(|l| l.contains("MachineGuid")).and_then(|l| l.split_whitespace().last()).unwrap();
+        let api = registry_string(&format!("{GUID}\0"));
+        assert_eq!(old, api);
+        let id = hardware_id_from_uid(&api);
+        assert_eq!(id, hardware_id_from_uid(old));
+        assert_eq!(id, hardware_id_from_uid(&GUID.to_ascii_uppercase()), "case does not matter");
+        assert_eq!(id, "BL-D62E79225FA0B2F8", "the ID 1.9.0 derives from this GUID");
+    }
+
+    #[test]
+    fn the_trial_marker_is_not_next_to_trial_json() {
+        let marker = trial_marker_path().unwrap();
+        let trial = trial_file_path().unwrap();
+        assert_ne!(marker.parent(), trial.parent());
+        assert!(trial_paths().contains(&marker) && trial_paths().contains(&trial));
     }
 }

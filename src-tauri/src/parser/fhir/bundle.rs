@@ -98,10 +98,18 @@ pub fn analyze_bundle(bundle_json: &Value) -> Result<BundleAnalysis, String> {
         let response = entry.get("response");
         let response_status = response.and_then(|r| r.get("status")).and_then(|v| v.as_str()).map(String::from);
 
-        // Extract references
+        // Extract references. `#id` names a resource contained in this
+        // one: it is not a link to another entry, and it dangles only when
+        // nothing here is contained under that id.
         let mut refs: Vec<String> = Vec::new();
         if let Some(r) = resource {
             extract_references(r, "", &mut refs);
+            let contained: Vec<&str> = r
+                .get("contained")
+                .and_then(|c| c.as_array())
+                .map(|c| c.iter().filter_map(|x| x.get("id").and_then(|v| v.as_str())).collect())
+                .unwrap_or_default();
+            refs.retain(|x| x.strip_prefix('#').map_or(true, |id| !contained.contains(&id)));
         }
 
         entries.push(BundleEntry {
@@ -122,9 +130,34 @@ pub fn analyze_bundle(bundle_json: &Value) -> Result<BundleAnalysis, String> {
     let mut edges: Vec<ReferenceEdge> = Vec::new();
     let mut dangling = 0usize;
 
+    // A relative reference ("Patient/1") also names the entry whose
+    // fullUrl ends in it; a version suffix names the same resource.
+    let mut by_url_tail: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for e in &entries {
+        if let Some(url) = e.full_url.as_deref().filter(|u| !u.starts_with("urn:")) {
+            let mut parts = url.rsplit('/');
+            if let (Some(id), Some(rt)) = (parts.next(), parts.next()) {
+                by_url_tail.entry(format!("{}/{}", rt, id)).or_insert(e.index);
+            }
+        }
+    }
+    let lookup = |r: &str| -> Option<usize> {
+        if let Some(i) = full_url_to_index.get(r) {
+            return Some(*i);
+        }
+        let r = r.find("/_history/").map_or(r, |i| &r[..i]);
+        if let Some(i) = full_url_to_index.get(r) {
+            return Some(*i);
+        }
+        if r.starts_with("urn:") || r.contains("://") || r.starts_with('#') {
+            return None;
+        }
+        by_url_tail.get(r).copied()
+    };
+
     for entry in &entries {
         for r in &entry.references {
-            let target = full_url_to_index.get(r).copied();
+            let target = lookup(r);
             if target.is_none() {
                 dangling += 1;
             }
@@ -318,6 +351,28 @@ mod tests {
         let analysis = analyze_bundle(&bundle).unwrap();
         assert_eq!(analysis.dangling_references, 1);
         assert_eq!(analysis.references[0].to_index, None);
+    }
+
+    #[test]
+    fn contained_and_versioned_references_are_not_dangling() {
+        let bundle = serde_json::json!({
+            "resourceType": "Bundle", "type": "collection",
+            "entry": [
+                {"fullUrl": "http://x/fhir/Patient/p2", "resource": {"resourceType": "Patient"}},
+                {"resource": {"resourceType": "Observation",
+                    "contained": [{"resourceType": "Practitioner", "id": "c1"}],
+                    "basedOn": [{"reference": "#c1"}],
+                    "performer": [{"reference": "#nope"}],
+                    "subject": {"reference": "Patient/p2/_history/3"}}}
+            ]
+        });
+        let analysis = analyze_bundle(&bundle).unwrap();
+        let refs: Vec<(&str, Option<usize>)> =
+            analysis.references.iter().map(|r| (r.reference.as_str(), r.to_index)).collect();
+        assert!(!refs.iter().any(|(r, _)| *r == "#c1"), "{:?}", refs);
+        assert!(refs.contains(&("Patient/p2/_history/3", Some(0))), "{:?}", refs);
+        assert!(refs.contains(&("#nope", None)), "{:?}", refs);
+        assert_eq!(analysis.dangling_references, 1);
     }
 
     #[test]

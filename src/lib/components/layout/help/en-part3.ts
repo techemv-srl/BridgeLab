@@ -11,8 +11,12 @@ HL7 version and a message type, preview the generated schema and save
 it with one click.</p>
 
 <h3>What you get</h3>
-<p>A self-contained XSD using the standard HL7 v2.xml encoding
-convention:</p>
+<p>A self-contained XSD that follows the HL7 v2.xml element layout
+(segments, fields and components named as v2.xml names them), in the
+namespace-less form Astraia and similar tools use: the schema declares
+no <code>targetNamespace</code>, so an instance must not carry the
+v2.xml namespace (<code>urn:hl7-org:v2xml</code>) to validate against
+it.</p>
 <ul>
 	<li>One root element per message (e.g. <code>ADT_A01</code>) with an
 		inline complex type listing the segments and segment groups in
@@ -69,10 +73,10 @@ BridgeLab shows an upgrade prompt pointing to
 
 <h3>Licensing note</h3>
 <p>BridgeLab does not redistribute any HL7-copyrighted XSD file.
-Schema metadata is rebuilt from public HL7 v2 specifications; every
-generated file carries a header acknowledging HL7® as the source
-standard and flagging the output as a derivative work for
-interoperability purposes.</p>
+Schema metadata is rebuilt from public HL7 v2 specifications. HL7® is the
+source standard and the output is a derivative work for
+interoperability purposes. The generated files carry no comment
+header; add your own notice if your policy asks for one.</p>
 
 <div class="info">Ideal target: Astraia and similar integration
 applications that accept hand-authored XSD definitions for message
@@ -93,26 +97,29 @@ showing the resource hierarchy as JSON paths.</p>
 <h3>Supported formats</h3>
 <ul>
 	<li><strong>JSON</strong> - Patient, Observation, Bundle, DiagnosticReport,
-		MedicationRequest and any other FHIR R4/R5 resource.</li>
+		MedicationRequest and any other FHIR R4/R5 resource. Validation
+		checks against FHIR R4: an R5 resource opens, navigates and runs
+		FHIRPath, but elements that changed in R5 are reported as R4
+		findings.</li>
 	<li><strong>XML</strong> - the same resources in XML encoding
 		(<code>&lt;Patient xmlns="http://hl7.org/fhir"&gt;</code>).</li>
 </ul>
 
 <h3>Bundle Visualizer (Pro)</h3>
-<p><strong>Tools → FHIR Bundle Visualizer</strong> opens a three-pane
+<p><strong>Tools → FHIR Bundle Visualizer</strong> opens a two-pane
 view when the active message is a Bundle:</p>
 <ul>
 	<li><strong>Left pane:</strong> list of entries with resource type,
-		display name (e.g. Patient name, Observation code), and an
-		inbound-reference count.</li>
-	<li><strong>Center pane:</strong> outgoing references from the selected
-		entry - every <code>reference</code> field becomes a clickable
-		link that navigates to the target entry.</li>
-	<li><strong>Right pane:</strong> the raw JSON of the selected
-		resource, with syntax highlighting.</li>
+		display name (e.g. Patient name, Observation code), request method
+		and the number of references the entry makes.</li>
+	<li><strong>Right pane:</strong> the selected entry — its details, the
+		references it makes (each a link that navigates to the target
+		entry), the entries that refer to it, and its raw JSON.</li>
 </ul>
 <p><strong>Dangling references</strong> (pointing to entries not present
-in the Bundle) are flagged with a red badge.</p>
+in the Bundle) carry a <em>dangling</em> badge and are counted in the
+header. A <code>#id</code> reference to a resource the entry contains is
+not one.</p>
 <p>The <strong>List / Graph</strong> toggle switches to a reference
 graph: every entry is a node (colored by resource type), every
 <code>reference</code> a directed arrow. Click a node to select it — the
@@ -130,7 +137,11 @@ around seventy functions.</p>
 	<li><strong>Navigation:</strong> <code>Patient.name.family</code>,
 		<code>Bundle.entry.resource</code>, with choice elements reached by
 		their base name — <code>Observation.value</code> finds
-		<code>valueQuantity</code></li>
+		<code>valueQuantity</code>. <code>ofType()</code>, <code>is</code> and
+		<code>as</code> on a choice element go by the type in its name:
+		<code>Observation.effective.ofType(dateTime)</code> finds
+		<code>effectiveDateTime</code> even when it holds only a day.
+		Elsewhere the type is inferred from the JSON value</li>
 	<li><strong>Indexing:</strong> <code>Patient.name[0].given</code></li>
 	<li><strong>Filters and projection:</strong>
 		<code>where()</code>, <code>select()</code>, <code>repeat()</code>,
@@ -166,15 +177,18 @@ around seventy functions.</p>
 rather than a guess: <code>@2015-02-04 = @2015-02</code> is neither true
 nor false, because the second value could be that day or another one in
 the same month.</p>
-<p>Recent expressions are kept in a history dropdown for quick replay.</p>
+<p>The expressions you evaluated last appear as <em>Recent</em> chips next to
+the examples (up to four, until the app is closed). When the text in the
+editor no longer parses, the panel and the status bar say so: the results
+then come from the last version of the resource that did.</p>
 
 <h3>FHIR validation</h3>
 <p>F6 also works for FHIR resources. Errors highlight missing required
-fields (e.g. <code>Patient.identifier</code>), invalid data types
-(gender not in the value set), and structural issues. Declared
-<code>meta.profile</code> canonical URLs are listed as info findings
-(profile conformance itself is not checked); malformed entries are
-flagged as warnings.</p>
+elements (e.g. <code>Observation.status</code>), invalid data types
+(gender not one of male, female, other, unknown), and structural issues.
+Profiles declared in <code>meta.profile</code> are applied when their
+definitions are available (see <em>Profile validation</em> below);
+malformed entries are flagged as warnings.</p>
 
 <h3>Profile validation (Pro)</h3>
 <p>By default a FHIR resource is checked structurally: is there a
@@ -248,9 +262,18 @@ the editor says so rather than reporting a pass.</p>
 <p>Rules you already have keep working in every tier; the editor itself
 requires a Professional license. Hand-written packs are documented in
 <code>docs/PLUGINS.md</code>.</p>
+<p>Save rewrites only the rules: anything else you wrote in the file (a
+<code>$schema</code>, an owner, a comment on a rule) is kept. If the file
+changed on disk while the editor was open — a colleague's rule, a
+<code>git pull</code> — Save refuses instead of overwriting it; close and
+reopen the editor to see the current rules. Two rules with the same id, or a
+pattern that does not compile, are refused too. When the pack is switched
+off in <strong>Settings → Plugins</strong>, or left out by the Community
+limit on active packs, the editor says so: <em>Test</em> still shows what a
+rule would do, but F6 does not run it.</p>
 
 <h3>FHIR templates</h3>
-<p><strong>File → New from template</strong> includes a FHIR category: a
+<p><strong>File → New Message from Template...</strong> includes a FHIR category: a
 minimal Patient, a blood-pressure Observation with components, and a
 transaction Bundle whose entries reference each other via
 <code>urn:uuid</code> — open it and try the Bundle visualizer's graph
@@ -339,8 +362,8 @@ component (e.g. family name inside PID-5.1).</p>
   "name": "EU extra PHI fields",
   "enabled": true,
   "phi_rules": [
-    { "segment": "PID", "field": 25, "sensitivity": "high",
-      "name": "EU National ID" }
+    { "segment": "ZPI", "field": 2,  "sensitivity": "high",
+      "name": "National ID" }
   ]
 }</code></pre>
 
@@ -394,6 +417,8 @@ hospitals.</p>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>Export JSON/CSV</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
+	<tr><td>Batch validation</td>
+		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIR profile packages &amp; rules builder</td>
 		<td>—</td><td>✓</td><td>✓</td></tr>
 	<tr><td>FHIRPath Evaluator + Bundle Visualizer</td>
@@ -404,11 +429,19 @@ hospitals.</p>
 		<td>—</td><td>—</td><td>✓</td></tr>
 </table>
 
+<p class="note">The table is about the desktop app. The free
+<code>bridgelab-cli</code> reads no licence: its <code>anonymize</code>,
+<code>batch</code>, <code>to-json</code>, <code>fhirpath</code> and
+FHIR package checks work in every edition; only its XSD export is limited
+to the Community set, and it applies the 3-pack plugin cap.</p>
+
 <p class="note">Community keeps up to <strong>3 active plugin packs</strong>
 and <strong>10 saved test cases</strong>. Nothing is ever locked or
-deleted: items saved beyond the cap (e.g. during a trial) stay visible,
-editable and runnable — only new saves and activations beyond the limit
-ask for an upgrade, and freeing a slot re-enables them immediately.</p>
+deleted: test cases saved beyond the cap (e.g. during a trial) stay
+visible, editable and runnable; plugin packs beyond the 3-pack cap stay
+installed and visible but show as inactive and contribute no rules
+until a slot frees up or the license is upgraded. Only new saves and
+activations beyond the limit ask for an upgrade.</p>
 
 <h3>Trial</h3>
 <p>First launch starts a <strong>14-day Pro trial</strong> with every Pro
@@ -422,7 +455,7 @@ upgrade. Your messages, settings, plugins and test cases remain intact.</p>
 <h3>Updates</h3>
 <p>Nothing is requested until you decide. The first time BridgeLab
 starts it asks, in a banner at the top of the window, whether it may
-look for new versions (the Windows installer asks during setup instead,
+look for new versions (the Windows setup program, the <code>.exe</code>, asks during setup instead,
 and then the app does not ask again). <em>Yes, check</em> and
 <em>No</em> are remembered in Settings → Privacy; closing the banner
 without answering asks again at the next start.</p>
@@ -435,8 +468,9 @@ your files, and without internet access it is skipped silently. Turn it
 off under <strong>Settings → Privacy → Check for new versions at
 startup</strong>; <strong>Help → Check for Updates</strong> always works
 on demand.</p>
-<p>The Windows installer asks the same question the first time
-(<em>Yes</em> is the default; a silent install does not ask). For
+<p>The Windows setup program (<code>.exe</code>) asks the same question the first time
+(<em>Yes</em> is the default; a silent install does not ask, and neither
+does the <code>.msi</code> package: the app then asks in its banner). For
 managed machines an administrator can turn the check off for every user,
 and the Settings checkbox then shows as locked: set the environment
 variable <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>, or create
@@ -452,17 +486,16 @@ the BridgeLab website in your browser, where Professional and
 Enterprise are bought online by card; the activation code arrives by
 e-mail. The same page is one click away from the <em>See prices &amp;
 buy</em> buttons in the activation dialog, the <em>Compare plans</em>
-button on the trial banner, and the <em>See prices</em> button of every
-"requires a Professional license" prompt. Need an invoice, a purchase
+button on the trial banner. Need an invoice, a purchase
 order or a quote instead? Write to
 <a href="mailto:info@techemv.it">info@techemv.it</a>.</p>
 
 <h3>Activation</h3>
 <p>Open the activation dialog from:</p>
 <ul>
-	<li><strong>Settings → License → Activate</strong></li>
+	<li><strong>Settings → License Activation</strong></li>
 	<li><strong>Help → Activate License</strong></li>
-	<li>The <em>Upgrade</em> button on the trial banner</li>
+	<li>The <em>Activate</em> button on the trial banner</li>
 </ul>
 
 <p><strong>Online activation (default):</strong> after purchase you
@@ -480,7 +513,7 @@ within 14 days of expiry the app fetches it silently at startup
 <p><strong>Offline key (isolated / air-gapped sites):</strong> email
 <a href="mailto:info@techemv.it">info@techemv.it</a> with your
 <strong>Hardware ID</strong> (shown under "Need an offline key?" in
-the activation dialog, also visible under Settings → License).
+the activation dialog, also visible under Settings → License Activation).
 TECHEMV SRL emails back a signed license bound to your machine — no
 internet access is ever required. The dialog previews the licensee
 name and entitlements before activation.</p>
@@ -488,9 +521,13 @@ name and entitlements before activation.</p>
 <h3>Offline verification</h3>
 <p>Whichever flow you used, routine license verification is purely
 local - the app never needs to contact the license server to keep
-working. Server calls happen only when you explicitly trigger them:
-activating with a code, freeing a seat via <em>Deactivate</em>, or
-opt-in usage statistics. The key carries an Ed25519 signature that the
+working. The server is contacted only for: activating with a code;
+the automatic check at startup for licenses activated online - once a
+week, and once a day within 14 days of expiry and after it - which
+picks up a renewal and, if the code has been revoked (for example after
+a refund), returns the app to Community; freeing a seat with
+<em>Deactivate</em>; and opt-in usage statistics. If the server cannot
+be reached, the check changes nothing. The key carries an Ed25519 signature that the
 app verifies against an embedded public key.</p>
 
 <h3>Privacy &amp; usage statistics</h3>
@@ -498,9 +535,12 @@ app verifies against an embedded public key.</p>
 disabled by default, opt-in under <strong>Settings → Privacy</strong>.
 When enabled, automatic sending happens at most once a day; the
 <em>Send now</em> button transmits immediately. Each report contains
-usage counters, app version, OS, license tier, a <strong>random
-installation ID</strong> and — only for licenses activated online —
-the <strong>activation code</strong> (used to flag a revoked license).
+the product name, app version, operating system and processor
+architecture, interface language, license tier, days since
+installation, number of active plugin packs, usage counters, a
+timestamp, a <strong>random installation ID</strong> and — only for
+licenses activated online — the <strong>activation code</strong> (used
+to flag a revoked license).
 The data is therefore <strong>pseudonymous</strong>, not fully
 anonymous: no message content, file names, host names, user names or
 patient data are ever sent, and the exact JSON payload can be
@@ -521,7 +561,7 @@ export const shortcutsSection: ManualSection = {
 	heading: 'Keyboard Shortcuts',
 	body: `
 <p>BridgeLab shortcuts are user-configurable under
-<strong>Settings → Shortcuts</strong>. Click any binding, press a new
+<strong>Settings → Keyboard Shortcuts</strong>. Click any binding, press a new
 key combination, confirm with OK.</p>
 
 <h3>Defaults</h3>
@@ -533,22 +573,32 @@ key combination, confirm with OK.</p>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td><td>Save As</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>W</kbd></td><td>Close tab</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Toggle tree panel</td></tr>
-	<tr><td><kbd>F5</kbd></td><td>Re-parse message</td></tr>
 	<tr><td><kbd>F6</kbd></td><td>Validate</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Communication panel</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>FHIRPath panel</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>Validation panel</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Segment grid</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>Settings</td></tr>
 	<tr><td><kbd>F1</kbd></td><td>This user manual</td></tr>
-	<tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Show in Tree (editor context menu)</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td>Editor command palette (all of Monaco's commands: go to line, fold, change case, sort lines…; also in the editor's context menu)</td></tr>
+	<tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Show Segment in Tree (editor context menu)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>C</kbd></td><td>Copy Segment (editor context menu)</td></tr>
 </table>
+
+<p>On macOS, <kbd>Ctrl</kbd> in these shortcuts is <kbd>⌘</kbd> (Command) and <kbd>Alt</kbd> is <kbd>⌥</kbd> (Option), and the list in Settings shows them that way. There the editor's own Replace is <kbd>⌘⌥F</kbd>, Redo <kbd>⌘⇧Z</kbd> and Go to Line <kbd>⌃G</kbd> (Control).</p>
 
 <h3>Conflict detection</h3>
 <p>If you pick a key combination already assigned to another action, the
 editor warns you - confirm to transfer the binding, or choose a
-different key. Monaco's own shortcuts
-(<kbd>Ctrl</kbd>+<kbd>F</kbd>, <kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) take
-precedence when the editor has focus.</p>
+different key. BridgeLab's shortcuts work in the editor too: if you give
+one a key the editor also uses (<kbd>Ctrl</kbd>+<kbd>G</kbd>, say), the
+warning tells you, and inside the editor BridgeLab's action wins. The
+editor's own keys (<kbd>Ctrl</kbd>+<kbd>F</kbd>,
+<kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) are listed for reference and cannot be
+rebound. A shortcut needs <kbd>Ctrl</kbd> or <kbd>Alt</kbd>, or is one
+of <kbd>F2</kbd>-<kbd>F12</kbd>: a plain letter would fire while you
+type. <kbd>F1</kbd> always opens this manual. <em>Re-parse message</em>
+has no default key; give it one if you want one.</p>
 
 <h3>Reset</h3>
 <p>Click <em>Reset All</em> to restore every shortcut to its default, or

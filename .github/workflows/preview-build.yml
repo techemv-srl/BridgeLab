@@ -1,0 +1,90 @@
+name: Preview build
+
+# Builds the Windows and macOS installers of any branch or commit WITHOUT
+# creating a tag or a release: the installers are kept as workflow
+# artifacts for 7 days, for testing before a release is published. The
+# platform-specific tests (Windows registry, macOS menu) run on the same
+# runner first. macOS is opt-in: on a private repository its runner
+# minutes count ten times.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag or commit to build'
+        required: true
+        default: 'main'
+      macos:
+        description: 'Also build macOS (macOS minutes cost 10x on a private repo)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.platform.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows always; macOS only when asked (see the input).
+        platform: ${{ fromJSON(github.event.inputs.macos == 'true' && '[{"name":"Windows-x64","os":"windows-latest","target":"x86_64-pc-windows-msvc"},{"name":"macOS-arm64","os":"macos-latest","target":"aarch64-apple-darwin"}]' || '[{"name":"Windows-x64","os":"windows-latest","target":"x86_64-pc-windows-msvc"}]') }}
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check the bundled licence is up to date
+        run: node scripts/gen-license-bundle.mjs --check
+
+      - name: Rust tests on this platform
+        working-directory: src-tauri
+        run: cargo test --all
+
+      # Unsigned, no updater artifacts: a preview, never published.
+      - name: Build installers
+        run: pnpm tauri build --target ${{ matrix.platform.target }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Build CLI
+        shell: bash
+        run: |
+          cargo build --release --manifest-path tools/bridgelab-cli/Cargo.toml --target ${{ matrix.platform.target }}
+          mkdir -p dist
+          bin=tools/bridgelab-cli/target/${{ matrix.platform.target }}/release
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "$bin/bridgelab-cli.exe" dist/
+          else
+            # upload-artifact drops the executable bit; a tarball keeps it.
+            tar -czf dist/bridgelab-cli-${{ matrix.platform.target }}.tar.gz -C "$bin" bridgelab-cli
+          fi
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridgelab-preview-${{ matrix.platform.name }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            src-tauri/target/${{ matrix.platform.target }}/release/bundle/nsis/*.exe
+            src-tauri/target/${{ matrix.platform.target }}/release/bundle/msi/*.msi
+            src-tauri/target/${{ matrix.platform.target }}/release/bundle/dmg/*.dmg
+            dist/*

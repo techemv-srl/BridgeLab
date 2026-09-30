@@ -12,7 +12,7 @@ interface it tests.
 {
   "format": "bridgelab-test-cases",
   "format_version": 1,
-  "app_version": "1.9.0",
+  "app_version": "2.0.0",
   "exported_at": "2026-09-29T10:00:00Z",
   "test_cases": [
     {
@@ -40,8 +40,8 @@ interface it tests.
 | `id` | no | Keeps a case recognisable across imports; a case without one always imports as new |
 | `category` | no | Default `general` |
 | `tags` | no | Comma-separated |
-| `expected_message_type` | no | `ADT` matches any ADT event, `ADT^A01` is exact; for FHIR, the `resourceType` |
-| `expected_validation_result` | no | `valid` (default) or `invalid` |
+| `expected_message_type` | no | Only the components given are compared, case-insensitively: `ADT` matches any ADT event, `ADT^A01` matches `ADT^A01` and `ADT^A01^ADT_A01` (not `ADT^A04`), `ADT^A01^ADT_A01` needs all three; for FHIR, the `resourceType` |
+| `expected_validation_result` | no | `valid` (default) or `invalid`, any case; any other value is refused when the pack is read |
 | `created_at`, `updated_at` | no | RFC 3339 |
 
 A hand-written pack needs only `format`, `format_version` and, per case,
@@ -75,3 +75,11 @@ checked field by field. With Pro, *Mask personal data* anonymizes the
 HL7 v2 messages in the exported file only; the library keeps the
 originals. FHIR content is never changed on export: review it before
 sharing.
+
+Masking changes values. Dates keep a valid shape and all-digit values
+become zeros of the same length; other text is replaced (`REDACTED`, or
+its first character and `***`, by sensitivity). A plugin rule that checks the format of a PHI
+field (a social security number pattern on PID-19, say) can therefore
+pass in the library and fail on the masked pack. Run the exported pack
+once with `bridgelab-cli test` before relying on it in CI, or export
+that case unmasked if its data may be shared.

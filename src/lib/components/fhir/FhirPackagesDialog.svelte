@@ -125,7 +125,7 @@
 		</div>
 
 		<div class="modal-footer">
-			<button class="btn" onclick={onClose}>{t('common.close')}</button>
+			<button class="btn" onclick={onClose}>{t('modal.close')}</button>
 			<button class="btn btn-primary" onclick={install} disabled={installing}>
 				{installing ? t('fhirPackages.installing') : t('fhirPackages.install')}
 			</button>

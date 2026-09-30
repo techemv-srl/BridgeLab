@@ -20,11 +20,31 @@ jobs:
     runs-on: ${{ fromJSON(vars.CI_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fail if dev-only files are anywhere in the history
+        # The checks below look at the tip only; a file added and removed
+        # later stays readable in every clone of a public repo.
+        run: |
+          hits=$(git log --format= --name-only HEAD | grep -E '^(INTERNAL[-.]|tools/bridgelab-keygen/|private/)' | sort -u || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Dev-only paths in the history of this branch (rewrite it with git filter-repo before publishing):"
+            echo "$hits"
+            exit 1
+          fi
 
       - name: Fail if INTERNAL.md is present
         run: |
           if [ -f "INTERNAL.md" ]; then
             echo "::error file=INTERNAL.md::INTERNAL.md must never be on release/public (contains keygen + security notes). Run 'git rm INTERNAL.md' and recommit before pushing."
+            exit 1
+          fi
+
+      - name: Fail if private/ is present
+        run: |
+          if [ -e "private" ]; then
+            echo "::error::private/ belongs to the private repository only. Remove it before pushing release/public."
             exit 1
           fi
 

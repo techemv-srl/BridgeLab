@@ -32,7 +32,7 @@ which uploads the folder to GitHub Pages. The first time, enable Pages in
 
 Custom domain: add a `CNAME` file in `docs/site/` with the FQDN (e.g.
 `bridgelab.dev`) and configure the DNS `CNAME` record to
-`1warpengine.github.io`.
+`techemv-srl.github.io`.
 
 ## Editing copy
 
@@ -40,7 +40,7 @@ All text lives in `index.html` - search for the section heading and edit in
 place. Feature list is inside `<section id="features">`, the comparison
 table inside `<section id="compare">`, etc.
 
-Download links point at `https://github.com/1warpengine/HL7_editor/releases/latest`
+Download links point at `https://github.com/techemv-srl/BridgeLab/releases/latest`
 - they resolve to the current release automatically once tags exist.
 
 ## OG image

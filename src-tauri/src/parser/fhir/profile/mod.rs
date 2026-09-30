@@ -107,6 +107,20 @@ impl ProfileRegistry {
         }
         validate::validate_declared(resource, &index)
     }
+
+    /// As [`validate`](Self::validate), with whether any definition was
+    /// applied (see [`validate::validate_declared_status`]): `(issues,
+    /// false)` for a resource whose only findings are profiles declared but
+    /// not installed.
+    pub fn validate_with_status(&self, resource: &Value) -> (Vec<FhirValidationIssue>, bool) {
+        let Ok(index) = self.index.read() else {
+            return (vec![], false);
+        };
+        if index.is_empty() {
+            return (vec![], false);
+        }
+        validate::validate_declared_status(resource, &index).unwrap_or((vec![], false))
+    }
 }
 
 impl Default for ProfileRegistry {

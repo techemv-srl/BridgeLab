@@ -1,6 +1,6 @@
 [package]
 name = "bridgelab-cli"
-version = "1.8.1"
+version = "2.0.0"
 edition = "2021"
 description = "BridgeLab CLI - the desktop app's HL7 v2 and FHIR validators, headless, for CI/CD"
 license = "MIT"
@@ -12,14 +12,16 @@ path = "src/main.rs"
 [dependencies]
 # The same parsers, validators, anonymiser, plugin packs and FHIR profile
 # engine the desktop app runs — without the desktop shell (no Tauri, no
-# WebKit) and without the BUSL `pro` directory: the CLI is the Community
-# behaviour, by construction.
+# WebKit) and without the BUSL `pro` directory. Free to use, no licence
+# read; only the XSD export is limited to the Community set.
 bridgelab = { path = "../../src-tauri", default-features = false }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 glob = "0.3"
 walkdir = "2"
+# Only to drive the library's async MLLP client for `send`.
+tokio = { version = "1", features = ["rt", "net", "time"] }
 
 [profile.release]
 strip = true

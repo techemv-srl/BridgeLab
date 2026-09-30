@@ -12,6 +12,10 @@ export interface LicenseStatus {
 	activation_code: string | null;
 	/** License expiry (RFC-3339); null for perpetual licenses and trials. */
 	expires_at: string | null;
+	/** A license file is installed, in force or not: Deactivate is offered. */
+	has_license?: boolean;
+	/** Why an installed license is not in force. */
+	problem?: 'other_machine' | 'invalid' | 'expired' | null;
 }
 
 export interface TelemetrySettings {

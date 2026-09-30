@@ -72,7 +72,7 @@ function makeAppShell(l: MockupLabels): string {
 	<text x="248" y="142" fill="#6c7086" font-family="monospace" font-size="11">|1||MRN12345||DOE^JOHN||19800101|M</text>
 	<text x="220" y="162" fill="#cba6f7" font-family="monospace" font-size="11">OBX</text>
 	<text x="248" y="162" fill="#6c7086" font-family="monospace" font-size="11">|1|ED|^^PDF^Base64|| </text>
-	<text x="430" y="162" fill="#f38ba8" font-family="monospace" font-size="11" font-style="italic">{...256000 bytes}</text>
+	<text x="430" y="162" fill="#f38ba8" font-family="monospace" font-size="11" font-style="italic">⟨Base64 · 250.0 KB⟩</text>
 	<!-- Field Inspector -->
 	<rect x="0" y="260" width="200" height="114" fill="#24253a"/>
 	<text x="12" y="278" fill="#89b4fa" font-family="sans-serif" font-size="11" font-weight="700">${l.inspectorTitle}</text>
@@ -184,9 +184,9 @@ const EN_LABELS: MockupLabels = {
 	inspMaxLen: 'Max length: 250',
 	statusBar: 'ADT^A01 · v2.5 · 4 segments · Ln 3, Col 22',
 	showInTree: 'Show Segment in Tree',
-	expandField: 'Expand Truncated Field',
-	expandAll: 'Expand All Truncated Fields',
-	collapseAll: 'Collapse All Expanded Fields',
+	expandField: 'Expand Folded Field',
+	expandAll: 'Expand All Folded Fields',
+	collapseAll: 'Fold All Long Fields',
 	copyFull: 'Copy Full Message',
 	copyTruncated: 'Copy Truncated Message',
 	copySegment: 'Copy Segment',
@@ -213,9 +213,9 @@ const IT_LABELS: MockupLabels = {
 	inspMaxLen: 'Lunghezza max: 250',
 	statusBar: 'ADT^A01 · v2.5 · 4 segmenti · Ln 3, Col 22',
 	showInTree: 'Mostra Segmento nel Tree',
-	expandField: 'Espandi Campo Troncato',
-	expandAll: 'Espandi Tutti i Campi Troncati',
-	collapseAll: 'Comprimi Tutti i Campi Espansi',
+	expandField: 'Espandi campo compattato',
+	expandAll: 'Espandi tutti i campi compattati',
+	collapseAll: 'Compatta tutti i campi lunghi',
 	copyFull: 'Copia Messaggio Completo',
 	copyTruncated: 'Copia Messaggio Troncato',
 	copySegment: 'Copia Segmento',
@@ -242,9 +242,9 @@ const FR_LABELS: MockupLabels = {
 	inspMaxLen: 'Longueur max : 250',
 	statusBar: 'ADT^A01 · v2.5 · 4 segments · Ln 3, Col 22',
 	showInTree: 'Afficher le segment dans l\'arbre',
-	expandField: 'Développer le champ tronqué',
-	expandAll: 'Développer tous les champs tronqués',
-	collapseAll: 'Réduire tous les champs développés',
+	expandField: 'Développer le champ replié',
+	expandAll: 'Développer tous les champs repliés',
+	collapseAll: 'Replier tous les champs longs',
 	copyFull: 'Copier le message complet',
 	copyTruncated: 'Copier le message tronqué',
 	copySegment: 'Copier le segment',
@@ -271,9 +271,9 @@ const ES_LABELS: MockupLabels = {
 	inspMaxLen: 'Longitud máx: 250',
 	statusBar: 'ADT^A01 · v2.5 · 4 segmentos · Ln 3, Col 22',
 	showInTree: 'Mostrar segmento en el árbol',
-	expandField: 'Expandir campo truncado',
-	expandAll: 'Expandir todos los campos truncados',
-	collapseAll: 'Contraer todos los campos expandidos',
+	expandField: 'Expandir campo plegado',
+	expandAll: 'Expandir todos los campos plegados',
+	collapseAll: 'Plegar todos los campos largos',
 	copyFull: 'Copiar mensaje completo',
 	copyTruncated: 'Copiar mensaje truncado',
 	copySegment: 'Copiar segmento',
@@ -300,9 +300,9 @@ const DE_LABELS: MockupLabels = {
 	inspMaxLen: 'Max. Länge: 250',
 	statusBar: 'ADT^A01 · v2.5 · 4 Segmente · Ln 3, Col 22',
 	showInTree: 'Segment im Baum anzeigen',
-	expandField: 'Gekürztes Feld erweitern',
-	expandAll: 'Alle gekürzten Felder erweitern',
-	collapseAll: 'Alle erweiterten Felder kürzen',
+	expandField: 'Gefaltetes Feld aufklappen',
+	expandAll: 'Alle gefalteten Felder aufklappen',
+	collapseAll: 'Alle langen Felder falten',
 	copyFull: 'Vollständige Nachricht kopieren',
 	copyTruncated: 'Gekürzte Nachricht kopieren',
 	copySegment: 'Segment kopieren',

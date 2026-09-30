@@ -31,14 +31,14 @@ seat per year, EUR 199 for the first year on licenses bought by 31 December 2026
   of v2.7 and shares its definitions, so it is offered as an alias. HL7 v2.8+ is not covered:
   [hl7-dictionary](https://github.com/Ensighten/hl7-dictionary), the MIT-licensed source behind these, stops at v2.7
 - **FHIR support** - Parse and validate JSON/XML FHIR resources (Patient, Observation, Bundle, ...), with profile validation against the built-in FHIR R4 core and any installed FHIR NPM package (cardinality, element types, choice elements, fixed values, unknown elements, primitive formats, Bundle references) — offline, nothing to download
-- **FHIRPath 2.0** - Full operator set and ~70 functions, verified against the official HL7 FHIRPath test suite
-- **Smart truncation** - Large fields auto-truncated to `{...N bytes}`, expandable inline or all at once
+- **FHIRPath 2.0** - Full operator set and ~70 functions, checked against the official HL7 FHIRPath test suite (838 of 922 cases pass; the gaps are listed in [ROADMAP.md](ROADMAP.md))
+- **Folded long fields** - Large fields show as a chip such as `⟨Base64 · 4.7 MB⟩`, expandable inline or all at once; the file keeps the full text
 - **Validation** - Structural, field-level, data-type validation with 5 rule categories
 - **MLLP transport** - Client & server with custom framing, auto-ACK, encoding selection
 - **HTTP client** - GET/POST/PUT/DELETE/PATCH with Basic/Bearer auth, headers, timeout
-- **Anonymization** - 21 known PHI field definitions across PID/NK1/IN1/GT1
+- **Anonymization** - 89 built-in PHI fields across PID/PV1/MRG/NK1/GT1/IN1/IN2, plus NTE comments and free-text OBX results
 - **Export** - JSON, CSV, structured representations
-- **XSD schema export** - Generate HL7 v2.xml compatible XSD files for any supported message type (4 common messages in v2.5 free, full catalogue in Pro). Useful for integration engines that accept hand-authored schemas (Astraia, BizTalk, XMLSpy…).
+- **XSD schema export** - Generate XSD files that follow the HL7 v2.xml element layout, without the v2.xml namespace (no `targetNamespace`, as Astraia expects), for any supported message type (4 common messages in v2.5 free, full catalogue in Pro). Useful for integration engines that accept hand-authored schemas (Astraia, BizTalk, XMLSpy…).
 - **5 Languages** - English, Italian, French, Spanish, German
 - **Licensing** - Ed25519-signed offline license verification, hardware binding, 14-day trial
 - **Field Inspector** - Side panel showing HL7 standard metadata (name, type, required, max length, description) for the selected tree node
@@ -93,7 +93,9 @@ node scripts/manual-to-docx.mjs        # -> docs/BridgeLab-User-Manual-EN.docx (
 BL_FHIRPATH_SUITE=.fhirpath-suite cargo test --manifest-path src-tauri/Cargo.toml \
     --test fhirpath_suite -- --nocapture
 
-# FHIR profile validation against the HL7 R4 core package's 4578 examples
+# FHIR profile validation against the 4578 conformance resources of the HL7 R4 core
+# package (StructureDefinitions, ValueSets, CodeSystems, SearchParameters…; no
+# clinical examples such as Patient or Bundle)
 ./scripts/fetch-fhir-core-package.sh
 BL_FHIR_PACKAGE=.fhir-packages/hl7.fhir.r4.core.tgz \
 BL_FHIR_EXAMPLES=.fhir-packages/examples \
@@ -136,14 +138,14 @@ itself) and checks the package too — version agreement, dependencies, the
 version catalogue, the FHIRPath engine, the FHIR rules builder and profile
 validation. Exits non-zero on any failure. See [`e2e/README.md`](e2e/README.md).
 
-Full manual test catalogue lives in [`TEST_PLAN.md`](TEST_PLAN.md) (~300 cases
+Full manual test catalogue lives in [`TEST_PLAN.md`](TEST_PLAN.md) (about 500 cases
 organized by feature area). CI automates the automatable slice:
 
 - [`ci.yml`](.github/workflows/ci.yml) - `cargo check`/`cargo test --all`,
   `svelte-check` (0 errors), `pnpm build`
 - [`feature-tests.yml`](.github/workflows/feature-tests.yml) - CLI feature
   tests, HL7 fixtures (parser/info/validate/anonymize/batch/JUnit), FHIR
-  fixture integrity, schema-lookup Rust tests, license keygen roundtrip
+  fixture integrity, schema-lookup Rust tests
 
 More checks belong to every release, none of them automatable:
 
@@ -168,7 +170,7 @@ More checks belong to every release, none of them automatable:
   ```markdown
   ---
 
-  *BridgeLab is built by TECHEMV SRL — [www.techemv.it](https://www.techemv.it) · info@techemv.it*
+  *BridgeLab is built by [TECHEMV SRL](https://techemvee.eu/en/) · info@techemv.it*
   ```
 
 ## Plugin packs (declarative rules)
@@ -193,7 +195,7 @@ the full schema and examples; ready-to-copy reference packs live under
 [`examples/plugins/`](examples/plugins).
 
 **Tiers.** The whole mechanism is in every tier — all three pack kinds,
-every check type, live reload, per-pack toggles. The only difference is
+every check type, reload from Settings without a restart, per-pack toggles. The only difference is
 how many packs can be **active at the same time**: up to **3** in
 Community, unlimited in Pro and Enterprise (the same split applies to
 saved test cases: 10 in Community). Nothing is ever locked or deleted:
@@ -208,15 +210,17 @@ of this declarative baseline.
 ## Resource usage
 
 BridgeLab does **not** require memory tuning - the Rust backend uses zero-copy
-parsing plus on-demand field truncation, and peak RAM stays below ~300 MB even
-on 10 MB messages. If you want to trade display fidelity for IPC size on
-unusually large files, adjust **Settings → Parser → Truncation threshold**.
+parsing, and its peak RAM stays below ~300 MB
+even on 10 MB messages. The system web view that draws the window needs more:
+on Linux the whole app uses about 1.2 GB while a 10 MB message is open. Long fields (base64 payloads) are shown folded in the
+editor; set the length under **Settings → Parser → Fold fields longer than**
+(folding is on screen only: the file keeps the full text).
 
 ## Installer options
 
 Per-platform installer configuration lives in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json).
 
-- **Windows NSIS**: shows the license page (the root `LICENSE`: MIT, plus BUSL-1.1 for the `pro/` directories), a language selector (EN/IT/FR/ES/DE),
+- **Windows NSIS**: shows the license page (the root `LICENSE`, MIT, followed by the BUSL-1.1 text of the `pro/` directories), a language selector (EN/IT/FR/ES/DE),
   installs to `%LOCALAPPDATA%\Programs\BridgeLab` by default (current user), LZMA compression
 - **Windows MSI (WiX)**: one `en-US` package for managed deployment (GPO, Intune, silent
   install). The installer language only affects the installer's own dialogs — the app is
@@ -231,16 +235,29 @@ Per-platform installer configuration lives in [`src-tauri/tauri.conf.json`](src-
   ([`src-tauri/linux/bridgelab-hl7.xml`](src-tauri/linux/bridgelab-hl7.xml)) declaring
   `application/hl7-v2` with a `*.hl7` glob and an `MSH|` magic rule — without it the
   desktop entry's `MimeType=` claim has no type to match and the association never fires
+  (the AppImage registers nothing: an AppImage cannot install a file association itself)
 
-The root `LICENSE` file is referenced from the bundle `licenseFile` field
-and included in the installer payload. It states the split: MIT for the
-repository, Business Source License 1.1 for `src-tauri/src/pro/` and
-`src/lib/pro/` (official builds may be run in every edition, with the
-features unlocked only where the edition includes them; any other
-production use needs an active Enterprise subscription; each version
-turns MIT four years after publication). The bundle's
-`license` field, which ends up in the Linux package metadata, says
-`MIT AND BUSL-1.1` accordingly.
+The root `LICENSE` states the split: MIT for the repository, Business
+Source License 1.1 for `src-tauri/src/pro/` and `src/lib/pro/` (official
+builds may be run in every edition, with the features unlocked only where
+the edition includes them; any other production use needs an active
+Enterprise subscription; each version turns MIT four years after
+publication). The packages carry both texts:
+[`src-tauri/LICENSE-bundle.txt`](src-tauri/LICENSE-bundle.txt) is the root
+`LICENSE` followed by the two `pro/` licences, a bundle resource installed
+as `LICENSE.txt` next to the app (the install folder on
+Windows, `Contents/Resources` on macOS, `/usr/lib/BridgeLab` in the
+`.deb`/`.rpm` and inside the AppImage). The NSIS and MSI licence page
+(`licenseFile`) shows [`src-tauri/LICENSE-installer.txt`](src-tauri/LICENSE-installer.txt):
+the same words with one line per paragraph, since that page wraps lines
+itself. The `.deb` and `.rpm` also put the
+root `LICENSE` in `/usr/share/doc/bridgelab/copyright` and the pro licences
+in `LICENSE-pro` (`src-tauri/src/pro/`) and `LICENSE-pro-ui`
+(`src/lib/pro/`) next to it. The file is generated: after changing a
+licence run `node scripts/gen-license-bundle.mjs`; a test
+(`src-tauri/tests/license_bundle.rs`) and the release workflow fail when it
+is out of date. The bundle's `license` field, which ends up in the Linux
+package metadata, says `MIT AND BUSL-1.1` accordingly.
 
 ## Building a Release
 
@@ -250,7 +267,12 @@ Binaries are published to [GitHub Releases](https://github.com/TECHEMV-SRL/Bridg
 ## License Keys
 
 BridgeLab uses Ed25519-signed license keys with hardware binding, verified
-locally — there is no license server dependency at runtime.
+locally — routine verification never needs the license server. The server
+is contacted only when you activate with a code, by the automatic check at
+startup for licenses activated online (once a week, once a day within 14
+days of expiry and after it; it picks up renewals and returns a revoked
+code to Community; an unreachable server changes nothing), when you free a
+seat with *Deactivate*, and by the opt-in usage statistics.
 
 **Online activation (default)** — buy a license and receive an activation
 code (`BL-PRO-XXXX-XXXX-XXXX`) by e-mail. Paste it in *Settings → License →
@@ -328,7 +350,7 @@ The choice is remembered for in-place upgrades.
 
 **TECHEMV SRL**
 - Email: [info@techemv.it](mailto:info@techemv.it)
-- Web: [www.techemv.it](https://www.techemv.it)
+- Web: [TECHEMV](https://techemvee.eu/en/)
 
 Licenses are bought from the [website](https://techemv-srl.github.io/BridgeLab/).
 For invoices, purchase orders, multi-seat quotes, enterprise inquiries,
@@ -338,15 +360,22 @@ email above.
 ## License
 
 Open Core — the core is MIT-licensed and free for commercial use.
-Paid-tier feature implementations live in two clearly marked
-directories — `src-tauri/src/pro/` and `src/lib/pro/` — licensed under
-the Business Source License 1.1 (production use requires an active
-subscription; each converts to MIT four years after publication). See
-the root `LICENSE` file for the exact carve-out; everything published
-before those directories existed remains MIT. Building the Rust backend
-with `--no-default-features --features desktop` produces a Community-only
-binary that compiles without the BUSL directories; `--no-default-features`
-alone builds the headless core library, which is what `bridgelab-cli`
-sits on — no Tauri, no WebKit, no BUSL code.
+Two clearly marked directories — `src-tauri/src/pro/` and
+`src/lib/pro/` — are licensed under the Business Source License 1.1;
+today they hold the SOAP client (an Enterprise feature). The other paid
+features are MIT code that the licence check unlocks at run time. The
+Additional Use Grant in those directories' `LICENSE` files lets official
+TECHEMV builds be used in production in every edition (the features are
+unlocked only for the editions that include them); any other production
+use of the BUSL code, such as a build compiled from source, needs an
+active Enterprise subscription. Each version converts to MIT four years
+after publication. See the root `LICENSE` file for the exact carve-out;
+everything published before those directories existed remains MIT.
+Building the Rust backend with `--no-default-features --features desktop`
+compiles without the BUSL directories, so without the SOAP client; it is
+not a Community-only build, since the licence check unlocks the other
+paid features as in an official build. `--no-default-features` alone
+builds the headless core library, which is what `bridgelab-cli` sits on —
+no Tauri, no WebKit, no BUSL code.
 
 Copyright (c) 2026 TECHEMV SRL

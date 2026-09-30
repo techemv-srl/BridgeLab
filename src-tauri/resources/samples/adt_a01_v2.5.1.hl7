@@ -1,0 +1,8 @@
+MSH|^~\&|HIS|RIVERSIDE_GH|LIS|RIVERSIDE_LAB|20260915083012||ADT^A01^ADT_A01|RGH0001|P|2.5.1|||AL|NE
+EVN|A01|20260915083012|||NURSE01^Rossi^Anna
+PID|1||MRN100245^^^RGH^MR||Bianchi^Laura^Maria||19740322|F|||Via Roma 12^^Milano^MI^20121^IT^H||^PRN^PH^^^02^5550142|||M^Married^HL70002|||||||N^Not Hispanic or Latino^HL70189
+NK1|1|Bianchi^Paolo|SPO^Spouse^HL70063||^PRN^PH^^^02^5550143
+PV1|1|I|CARD^204^B^RIVERSIDE_GH|E|||DOC4410^Verdi^Marco^^^Dr.|||CAR||||1|||DOC4410^Verdi^Marco^^^Dr.|IN|VIS20260915001|||||||||||||||||||||||||20260915083000
+PV2|||^Chest pain on exertion
+AL1|1|DA|^Penicillin|MO^Moderate^HL70128|Rash
+DG1|1||I20.0^Unstable angina^I10||20260915|A

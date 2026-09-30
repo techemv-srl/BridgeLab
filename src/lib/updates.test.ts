@@ -8,6 +8,18 @@ describe('isNewerVersion', () => {
 		expect(isNewerVersion('1.6.9', '1.7.0')).toBe(false);
 		expect(isNewerVersion('2.0', '1.99.99')).toBe(true);
 	});
+	it('sees a major release as newer than every 1.x', () => {
+		expect(isNewerVersion('2.0.0', '1.8.1')).toBe(true);
+		expect(isNewerVersion('2.0.0', '1.8.0')).toBe(true);
+		expect(isNewerVersion('v2.0.0', '1.8.9')).toBe(true);
+		expect(isNewerVersion('1.8.1', '2.0.0')).toBe(false);
+		expect(isNewerVersion('2.0.0', '2.0.0')).toBe(false);
+	});
+	it('does not compare as strings', () => {
+		expect(isNewerVersion('1.10.0', '1.9.0')).toBe(true);
+		expect(isNewerVersion('1.9.0', '1.10.0')).toBe(false);
+		expect(isNewerVersion('2.0.10', '2.0.9')).toBe(true);
+	});
 	it('ignores a leading v', () => {
 		expect(isNewerVersion('v1.8.0', '1.7.0')).toBe(true);
 	});
@@ -39,6 +51,9 @@ describe('shouldNotify', () => {
 		expect(shouldNotify('1.9.0', '1.7.0', '1.8.0')).toBe(true);
 		expect(shouldNotify('1.7.0', '1.7.0', null)).toBe(false);
 		expect(shouldNotify('1.8.0', '', null)).toBe(false);
+		expect(shouldNotify('2.0.0', '1.8.1', null)).toBe(true);
+		expect(shouldNotify('1.10.0', '1.9.0', null)).toBe(true);
+		expect(shouldNotify('2.0.0', '1.8.1', '2.0.0')).toBe(false);
 	});
 });
 

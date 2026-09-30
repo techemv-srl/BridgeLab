@@ -7,7 +7,8 @@ use crate::parser::hl7::schema::{self, Hl7Version};
 
 /// Free-tier whitelist: these four messages in v2.5 stay exportable in
 /// the Community tier. Everything else is gated behind `xsd_export_full`.
-const FREE_MESSAGE_WHITELIST_V2_5: &[&str] = &["ADT_A01", "ADT_A40", "ORM_O01", "ORU_R01"];
+#[cfg(test)]
+use crate::parser::hl7::schema::COMMUNITY_XSD_MESSAGES_V2_5 as FREE_MESSAGE_WHITELIST_V2_5;
 
 /// A version as exposed to the frontend dropdown.
 #[derive(Debug, Clone, Serialize)]
@@ -121,10 +122,7 @@ fn parse_version(key: &str) -> Result<Hl7Version, String> {
 }
 
 fn tier_for(version: Hl7Version, message_code: &str) -> &'static str {
-    match version {
-        Hl7Version::V2_5 if FREE_MESSAGE_WHITELIST_V2_5.contains(&message_code) => "free",
-        _ => "pro",
-    }
+    if crate::parser::hl7::schema::xsd_in_community(version, message_code) { "free" } else { "pro" }
 }
 
 #[cfg(test)]

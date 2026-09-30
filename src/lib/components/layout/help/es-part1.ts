@@ -7,8 +7,8 @@ export const getStarted: ManualSection = {
 	body: `
 <p>BridgeLab es un editor moderno de mensajes HL7 v2.x y FHIR, diseñado
 para ingenieros de integración sanitaria. Está construido sobre un
-backend en Rust para un análisis rápido (procesa mensajes de 10 MB en
-menos de 2 segundos) y un frontend en Svelte 5 con el editor Monaco.</p>
+backend en Rust para un análisis rápido (un mensaje de 10 MB con un adjunto base64
+se abre en unos 2 segundos) y un frontend en Svelte 5 con el editor Monaco.</p>
 
 <p>La ventana principal se divide en cuatro regiones:</p>
 ${mockupAppShell}
@@ -38,15 +38,31 @@ ${mockupAppShell}
 		área del editor.</li>
 	<li><strong>Pegar</strong> - haz clic en el editor y pega
 		(<kbd>Ctrl</kbd>+<kbd>V</kbd>). El auto-análisis se ejecuta 500 ms
-		después de la última pulsación de tecla.</li>
-	<li><strong>Archivo → Nuevo desde plantilla</strong> (<kbd>Ctrl</kbd>+<kbd>N</kbd>) -
+		después de la última pulsación de tecla (retraso, o desactivación,
+		en <strong>Configuración → Analizador</strong>).</li>
+	<li><strong>Qué se abre:</strong> líneas vacías, espacios, un BOM o el
+		marco MLLP antes de <code>MSH</code>, los archivos UTF-16 (el
+		«Unicode» del Bloc de notas) y los archivos por lotes FHS/BHS se
+		leen tal cual. Un archivo que BridgeLab no puede analizar se abre
+		igualmente, como texto para corregir, con una nota que explica por
+		qué.</li>
+	<li><strong>Archivo → Nuevo Mensaje desde Plantilla...</strong> (<kbd>Ctrl</kbd>+<kbd>N</kbd>) -
 		plantillas ADT, ORM, ORU, SIU y más, ya rellenadas. Campos como
 		MSH-7 y MSH-10 se completan con la fecha y hora actuales y un
-		GUID nuevo.</li>
+		identificador de mensaje único.</li>
+	<li><strong>Archivo → Mensajes de ejemplo</strong> (también desde la
+		pantalla de inicio) - mensajes completos y realistas en lugar de
+		esqueletos: ADT de ingreso, registro, actualización, alta y fusión,
+		ORU con resultados (un hemograma de doce valores, un panel
+		metabólico), ORM, SIU, MDM, DFT, VXU y un ACK, en las versiones 2.3,
+		2.5 y 2.5.1. Filtra por versión, mira la vista previa y abre uno en
+		una pestaña nueva. Cada ejemplo supera la validación; pacientes y
+		datos son ficticios.</li>
 </ul>
 
 <div class="note">En el primer arranque obtienes una <strong>prueba Pro
-de 14 días</strong> con todas las funcionalidades habilitadas. Al
+de 14 días</strong> con todas las funcionalidades Pro habilitadas (SOAP y
+el soporte prioritario son de Enterprise). Al
 expirar, BridgeLab sigue funcionando con el conjunto de funciones
 Community - nunca pierdes tus mensajes.</div>
 
@@ -63,9 +79,9 @@ export const editorSection: ManualSection = {
 	body: `
 <p>El área del editor es una instancia de <strong>Monaco</strong> con
 una gramática específica para HL7. Los códigos de segmento se colorean
-en morado, los separadores de campo en gris, y las cargas ED/base64 se
-truncan automáticamente para mantener el editor rápido con mensajes
-grandes.</p>
+en morado, los separadores de campo en gris, y las cargas ED/base64 y otros valores
+largos se muestran plegados, para mantener el editor rápido con mensajes
+grandes (ver más abajo).</p>
 
 <h3>Autocompletado y hover</h3>
 <p>Empieza a escribir <code>P</code> en una línea nueva - Monaco sugiere
@@ -75,12 +91,45 @@ de campo (códigos de sexo, códigos ACK, clase de paciente...). Al pasar
 el cursor sobre cualquier campo se muestran su nombre, su tipo de dato y
 su marca de obligatoriedad, extraídos del estándar HL7.</p>
 
-<h3>Truncamiento de campos grandes</h3>
-<p>Los campos que superan el umbral de truncamiento (100 bytes por
-defecto, ajustable en <strong>Configuración → Analizador</strong>)
-aparecen como <code>{...N bytes}</code>. El contenido completo nunca se
-pierde - expándelo bajo demanda desde el menú contextual o el
-<em>Inspector de Campo</em>.</p>
+<h3>Campos largos plegados</h3>
+<p>Los campos más largos que el umbral de plegado (100 caracteres por
+defecto, en <strong>Configuración → Analizador</strong>) se muestran
+<em>plegados</em>: un adjunto base64 en OBX-5, una nota larga o una cadena
+JSON <code>data</code> aparece como una etiqueta compacta, por ejemplo
+<code>⟨Base64 · 5.1 KB⟩</code>, mientras los separadores y los demás
+componentes siguen visibles. El plegado es solo una vista: el mensaje
+siempre está completo, y guardar, la sesión, la validación, el árbol y
+copiar usan el texto entero.</p>
+<ul>
+	<li><strong>Expandir:</strong> clic en la etiqueta, o cursor al lado y
+		<kbd>Alt</kbd>+<kbd>Intro</kbd>. Al pasar el ratón se ven los
+		primeros caracteres.</li>
+	<li><strong>Volver a plegar:</strong> clic derecho → <em>Plegar este
+		campo</em> sobre un valor largo, o <em>Plegar todos los campos
+		largos</em>.</li>
+	<li><strong>Todo a la vez:</strong> la insignia <em>N plegados</em> de
+		la barra de estado lo expande todo; el menú contextual tiene ambos
+		comandos.</li>
+	<li>Una etiqueta se mueve como una unidad: las flechas la saltan y
+		Retroceso/Supr la seleccionan primero, así nunca se borra a medias.
+		Copiar una selección copia el contenido completo.</li>
+	<li><strong>Buscar y Reemplazar</strong> (<kbd>Ctrl</kbd>+<kbd>F</kbd>,
+		<kbd>Ctrl</kbd>+<kbd>H</kbd>) trabajan sobre el texto completo: un
+		campo plegado que contiene una coincidencia se despliega, y esta se
+		cuenta, se muestra y se reemplaza como las demás.</li>
+</ul>
+
+<h3>Configuración del editor</h3>
+<p><strong>Editar → Configuración → Editor</strong> (Ctrl+,) cambia el aspecto y el
+comportamiento del editor: fuente y tamaño, ancho de tabulación, ajuste de
+línea, espacios visibles, minimapa, números de línea, desplazamiento suave,
+colores de paréntesis, resaltado de las demás apariciones de la palabra bajo
+el cursor, enlaces clicables, cabecera fija al desplazarse (sticky scroll) y
+origen de las sugerencias de palabras (este mensaje, todos los mensajes
+abiertos o ninguno; las sugerencias de campos y valores HL7 funcionan en
+todos los modos). Los cambios se aplican al instante. Cada pestaña conserva
+su propio historial de deshacer y rehacer (Ctrl+Z, Ctrl+Y) al pasar de una
+pestaña a otra.</p>
 
 <h3>Menú contextual (clic derecho)</h3>
 ${mockupContextMenu}
@@ -88,12 +137,13 @@ ${mockupContextMenu}
 <ul>
 	<li><strong>Navegación:</strong> Mostrar segmento en el árbol
 		(<kbd>Alt</kbd>+<kbd>T</kbd>) - abre el árbol y resalta el campo
-		exacto bajo el cursor; Expandir / Contraer para valores
-		truncados.</li>
+		exacto bajo el cursor; Expandir / Plegar para valores
+		largos.</li>
 	<li><strong>Portapapeles:</strong> Copiar segmento
 		(<kbd>Alt</kbd>+<kbd>C</kbd>), Copiar mensaje completo (con los
-		campos expandidos), Copiar mensaje truncado (seguro para
-		email).</li>
+		campos expandidos), Copiar mensaje truncado (campos largos
+		acortados, para caber en un email; los datos del paciente se copian
+		tal cual: anonimiza primero).</li>
 </ul>
 
 <div class="note">Los atajos nativos de Monaco (<kbd>Ctrl</kbd>+<kbd>F</kbd>
@@ -109,7 +159,8 @@ export const treeSection: ManualSection = {
 	body: `
 <p>El árbol de la izquierda refleja la jerarquía del mensaje HL7:
 <strong>segmentos</strong> → <strong>campos</strong> →
-<strong>componentes</strong>. Muéstralo u ocúltalo con
+<strong>componentes</strong>; un campo repetido lista cada repetición
+(<code>PID-3(1)</code>, <code>PID-3(2)</code>) con sus componentes. Muéstralo u ocúltalo con
 <kbd>Ctrl</kbd>+<kbd>B</kbd> o <strong>Ver → Estructura del
 mensaje</strong>.</p>
 
@@ -125,6 +176,13 @@ mensaje</strong>.</p>
 		rango del campo.</li>
 </ul>
 
+<p>Las líneas vacías entre segmentos no desvían los saltos. En el
+árbol, <kbd>↑</kbd>/<kbd>↓</kbd> mueven la selección, <kbd>→</kbd>
+expande un nodo y <kbd>←</kbd> lo contrae o sube al padre;
+<kbd>Inicio</kbd>/<kbd>Fin</kbd> y <kbd>RePág</kbd>/<kbd>AvPág</kbd>
+saltan. Mientras editas, el árbol conserva lo que has expandido y
+seleccionado, y el Inspector de Campo muestra el valor actual.</p>
+
 <h3>Panel Inspector de Campo</h3>
 <p>Haz clic en el icono <strong>ⓘ</strong> de la cabecera del panel de
 árbol (o <strong>Ver → Inspector de Campo</strong>) para mostrar los
@@ -135,7 +193,7 @@ metadatos derivados del esquema para el nodo seleccionado:</p>
 	<li>Tipo de dato (XPN, CX, ST, ...), longitud máxima, marcas de
 		requerido/repetible, descripción</li>
 	<li>Valor actual y longitud; un botón <em>Ver valor completo</em>
-		para los campos truncados</li>
+		para los campos largos que el editor muestra plegados</li>
 </ul>
 <p>Los segmentos desconocidos (Z-segments o códigos personalizados fuera
 del estándar) muestran <em>Fuera del estándar HL7</em> pero siguen
@@ -154,6 +212,22 @@ se selecciona y se desplaza hasta quedar visible.</p>
 <p class="note">La búsqueda del árbol funciona con mensajes HL7 v2. Para
 recursos FHIR usa el filtro propio del visualizador de Bundle o el
 <kbd>Ctrl</kbd>+<kbd>F</kbd> del editor.</p>
+
+<h3>Cuadrícula de segmentos</h3>
+<p>Un mensaje de resultados puede traer decenas de OBX, y el árbol los
+muestra de uno en uno. <strong>Ver → Cuadrícula de segmentos</strong>
+(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>), o <em>Mostrar todos los
+OBX en una tabla</em> desde el menú contextual de un segmento, abre un
+panel inferior con todas las apariciones de un tipo de segmento en forma
+de tabla: una fila por aparición y una columna por cada campo que tenga
+valor en al menos una de ellas, con la posición y el nombre del campo en
+la versión HL7 del mensaje. Los valores codificados muestran su
+significado bajo el código, como en el árbol; los valores largos se
+recortan con puntos suspensivos. Elige otro segmento de la lista (cada
+uno indica cuántas veces aparece), escribe en <em>Filtrar filas</em> para
+quedarte con las filas que contienen un texto y haz clic en una celda
+para seleccionar ese campo en el editor. La cuadrícula es de solo lectura
+y sigue al mensaje mientras lo editas.</p>
 
 <h3>Comparar dos mensajes</h3>
 <p><strong>Herramientas → Comparar mensajes…</strong> abre un diff lado
@@ -210,6 +284,7 @@ con grupo, cardinalidad y estado de elección. Expándelas para recorrer la
 lista completa de campos hasta los componentes de los tipos compuestos (p.
 ej. OBX-16 → componentes XCN). <strong>Clic derecho en un segmento gris →
 Insertar segmento</strong> para añadir su esqueleto al mensaje en la posición
-estándar, con separadores hasta el último campo obligatorio.</p>
+estándar, con separadores hasta el último campo obligatorio. El esqueleto usa los separadores
+del mensaje, y <kbd>Ctrl</kbd>+<kbd>Z</kbd> lo quita de nuevo.</p>
 `,
 };
