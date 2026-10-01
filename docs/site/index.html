@@ -434,7 +434,7 @@
 					<li>Unlimited plugins &amp; test cases</li>
 					<li>E-mail support</li>
 				</ul>
-				<a class="btn btn-primary" data-buy="PRO" data-quote="mailto:info@techemv.it?subject=BridgeLab%20Pro%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Pro.%0A%0ACompany%3A%20%0ASeats%3A%201%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks" href="https://techemv.onfastspring.com/bridgelab-pro">Buy now</a>
+				<a class="btn btn-primary" data-buy="PRO" href="https://techemv.onfastspring.com/bridgelab-pro">Buy now</a>
 				<a class="quote-alt sub tiny" href="mailto:info@techemv.it?subject=BridgeLab%20quote%20request">Prefer an invoice? Request a quote</a>
 			</div>
 			<div class="price-card">
@@ -448,7 +448,7 @@
 					<li>Multi-seat: &minus;10% from 3, &minus;15% from 5</li>
 					<li>PO / wire-transfer invoicing</li>
 				</ul>
-				<a class="btn" data-buy="ENT" data-quote="mailto:info@techemv.it?subject=BridgeLab%20Enterprise%20%E2%80%94%20quote%20request&amp;body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Enterprise.%0A%0ACompany%3A%20%0ASeats%3A%20%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks" href="https://techemv.onfastspring.com/bridgelab-ent">Buy now</a>
+				<a class="btn" data-buy="ENT" href="https://techemv.onfastspring.com/bridgelab-ent">Buy now</a>
 				<a class="quote-alt sub tiny" href="mailto:info@techemv.it?subject=BridgeLab%20quote%20request">Prefer an invoice? Request a quote</a>
 			</div>
 		</div>
@@ -763,6 +763,12 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 		},
 		products: { PRO: 'bridgelab-pro', ENT: 'bridgelab-ent' }   // FastSpring product paths
 	};
+	// Quote e-mails per tier, kept here rather than read back from
+	// the page (quote-only mode, below).
+	var QUOTE_MAILTO = {
+		PRO: 'mailto:info@techemv.it?subject=BridgeLab%20Pro%20%E2%80%94%20quote%20request&body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Pro.%0A%0ACompany%3A%20%0ASeats%3A%201%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks',
+		ENT: 'mailto:info@techemv.it?subject=BridgeLab%20Enterprise%20%E2%80%94%20quote%20request&body=Hi%2C%0A%0AI%27d%20like%20a%20quote%20for%20BridgeLab%20Enterprise.%0A%0ACompany%3A%20%0ASeats%3A%20%0ACountry%20%2F%20VAT%20ID%3A%20%0A%0AThanks'
+	};
 	// Launch offer: valid for orders placed by 31 December 2026, Italian
 	// time. After that the page shows the full price by itself and the
 	// code is no longer applied; the FastSpring coupon must carry the same
@@ -861,8 +867,10 @@ fetch('https://api.github.com/repos/techemv-srl/BridgeLab/releases/latest')
 	// into the quote-only page.
 	function quoteOnly() {
 		document.querySelectorAll('[data-buy]').forEach(function (a) {
+			var mailto = QUOTE_MAILTO[a.getAttribute('data-buy')];
+			if (!mailto) return;
 			a.textContent = 'Request a quote';
-			a.setAttribute('href', a.getAttribute('data-quote'));
+			a.setAttribute('href', mailto);
 			var q = a.parentElement.querySelector('.quote-alt');
 			if (q) q.hidden = true;
 		});
