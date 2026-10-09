@@ -17,7 +17,8 @@ Please report vulnerabilities **privately** — do not open a public issue.
 
 - Preferred: GitHub private vulnerability reporting — *Security* tab →
   *Report a vulnerability* on this repository.
-- Alternatively: e-mail **info@techemv.it** with subject `[SECURITY] BridgeLab`.
+- Alternatively: e-mail **security@techemvee.eu** with subject `[SECURITY] BridgeLab`
+  (see https://techemvee.eu/en/vulnerability-disclosure/).
 
 Include what you can: affected version, platform, reproduction steps or a
 proof of concept, and the impact you see. If you want credit in the release

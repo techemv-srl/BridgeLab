@@ -36,7 +36,7 @@ seat per year, EUR 199 for the first year on licenses bought by 31 December 2026
 - **Validation** - Structural, field-level, data-type validation with 5 rule categories
 - **MLLP transport** - Client & server with custom framing, auto-ACK, encoding selection
 - **HTTP client** - GET/POST/PUT/DELETE/PATCH with Basic/Bearer auth, headers, timeout
-- **Anonymization** - 89 built-in PHI fields across PID/PV1/MRG/NK1/GT1/IN1/IN2, plus NTE comments and free-text OBX results
+- **Anonymization** - 89 built-in PHI fields across PID/PV1/MRG/NK1/GT1/IN1/IN2, plus NTE comments and free-text OBX results. Masking is an aid, not a guarantee of anonymity: review the result before sharing a message.
 - **Export** - JSON, CSV, structured representations
 - **XSD schema export** - Generate XSD files that follow the HL7 v2.xml element layout, without the v2.xml namespace (no `targetNamespace`, as Astraia expects), for any supported message type (4 common messages in v2.5 free, full catalogue in Pro). Useful for integration engines that accept hand-authored schemas (Astraia, BizTalk, XMLSpy…).
 - **5 Languages** - English, Italian, French, Spanish, German

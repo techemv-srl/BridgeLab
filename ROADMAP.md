@@ -204,6 +204,9 @@ runs on your machine, offline, and stays that way. It is not:
 - **A DICOM viewer.** DICOM is a different standard with a different
   set of tools. BridgeLab covers HL7 v2 and FHIR, the messages that
   carry orders and results between systems.
+- **A clinical application.** BridgeLab is for the people who build and debug
+  interfaces, not for clinicians or patients: it shows message structure, not
+  patient records.
 
 Have a need that is not listed? Open an issue on GitHub or write to
 info@techemv.it.
