@@ -109,11 +109,75 @@ use bridgelab_lib::plugins::{self, PluginRegistry};
 use bridgelab_lib::utils::atomic_write::write_atomic;
 use bridgelab_lib::validation::{self, Severity};
 
+// Examples printed at the end of `--help`, so the usual invocations are
+// there without opening the README.
+const EXAMPLES: &str = "\
+Examples:
+  bridgelab-cli validate \"messages/*.hl7\" bundle.json
+  bridgelab-cli validate \"**/*.hl7\" --format junit > results.xml
+  bridgelab-cli test \"packs/*.bltests.json\" --format junit > tests.xml
+  cat message.hl7 | bridgelab-cli anonymize - > message-safe.hl7
+
+Each command has its own examples: bridgelab-cli <command> --help";
+
+const EXAMPLES_VALIDATE: &str = "\
+Examples:
+  bridgelab-cli validate message.hl7
+  bridgelab-cli validate \"messages/*.hl7\" bundle.json
+  bridgelab-cli validate message.hl7 --format json
+  bridgelab-cli validate \"**/*.hl7\" --format junit > results.xml
+  bridgelab-cli validate \"inbox/*.hl7\" --no-strict";
+
+const EXAMPLES_INFO: &str = "\
+Examples:
+  bridgelab-cli info \"messages/*.hl7\" bundle.json
+  bridgelab-cli info message.hl7 --json";
+
+const EXAMPLES_ANONYMIZE: &str = "\
+Examples:
+  bridgelab-cli anonymize patient.hl7
+  bridgelab-cli anonymize patient.hl7 --output patient-safe.hl7
+  cat patient.hl7 | bridgelab-cli anonymize - > patient-safe.hl7";
+
+const EXAMPLES_TO_JSON: &str = "\
+Examples:
+  bridgelab-cli to-json message.hl7
+  bridgelab-cli to-json message.hl7 --output message.json";
+
+const EXAMPLES_FHIRPATH: &str = "\
+Examples:
+  bridgelab-cli fhirpath \"Patient.name.family\" patient.json
+  cat bundle.json | bridgelab-cli fhirpath \"Bundle.entry.count()\"
+  bridgelab-cli fhirpath \"Observation.value.ofType(Quantity)\" obs.xml --json";
+
+const EXAMPLES_XSD: &str = "\
+Examples:
+  bridgelab-cli xsd ADT_A01 > ADT_A01.xsd
+  bridgelab-cli xsd \"ORU^R01\" --hl7-version 2.5 --output ORU_R01.xsd";
+
+const EXAMPLES_SEND: &str = "\
+Examples:
+  bridgelab-cli send message.hl7 --host 10.0.0.5 --port 2575
+  bridgelab-cli send message.hl7 --host 10.0.0.5 --port 2575 --encoding ISO-8859-1
+  cat message.hl7 | bridgelab-cli send - --host 10.0.0.5 --port 2575 --json";
+
+const EXAMPLES_TEST: &str = "\
+Examples:
+  bridgelab-cli test regression.bltests.json
+  bridgelab-cli test \"packs/*.bltests.json\" --format junit > tests.xml";
+
+const EXAMPLES_BATCH: &str = "\
+Examples:
+  bridgelab-cli batch ./messages
+  bridgelab-cli batch ./messages --extension hl7,txt,dat
+  bridgelab-cli batch ./fhir --extension json --json > batch-report.json";
+
 #[derive(Parser)]
 #[command(
     name = "bridgelab-cli",
     version,
-    about = "HL7 v2 and FHIR validation, anonymization and conversion for CI/CD — the BridgeLab validators, headless"
+    about = "HL7 v2 and FHIR validation, anonymization and conversion for CI/CD — the BridgeLab validators, headless",
+    after_help = EXAMPLES
 )]
 struct Cli {
     #[command(subcommand)]
@@ -123,6 +187,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Validate HL7 v2 or FHIR files (format detected per file)
+    #[command(after_help = EXAMPLES_VALIDATE)]
     Validate {
         /// Files or glob patterns to validate (- for standard input)
         #[arg(required = true)]
@@ -155,6 +220,7 @@ enum Commands {
         no_plugins: bool,
     },
     /// Show info about messages (type, version, segment count)
+    #[command(after_help = EXAMPLES_INFO)]
     Info {
         /// Files or glob patterns (- for standard input)
         #[arg(required = true)]
@@ -164,6 +230,7 @@ enum Commands {
         json: bool,
     },
     /// Anonymize an HL7 v2 message (mask PHI fields)
+    #[command(after_help = EXAMPLES_ANONYMIZE)]
     Anonymize {
         /// Input file, or - for standard input
         input: PathBuf,
@@ -175,6 +242,7 @@ enum Commands {
         no_plugins: bool,
     },
     /// Convert an HL7 v2 message to a JSON representation
+    #[command(after_help = EXAMPLES_TO_JSON)]
     ToJson {
         /// Input HL7 file, or - for standard input
         input: PathBuf,
@@ -183,6 +251,7 @@ enum Commands {
         output: Option<PathBuf>,
     },
     /// Evaluate a FHIRPath expression against a FHIR resource (JSON or XML)
+    #[command(after_help = EXAMPLES_FHIRPATH)]
     Fhirpath {
         /// The expression, e.g. "Patient.name.family"
         expression: String,
@@ -195,6 +264,7 @@ enum Commands {
     },
     /// Export the XSD of an HL7 v2 message structure (Community set: ADT_A01,
     /// ADT_A40, ORM_O01, ORU_R01 in v2.5; the full catalogue is in BridgeLab Pro)
+    #[command(after_help = EXAMPLES_XSD)]
     Xsd {
         /// Message structure, e.g. ADT_A01 (ADT^A01 is accepted too)
         message: String,
@@ -206,6 +276,7 @@ enum Commands {
         output: Option<PathBuf>,
     },
     /// Send an HL7 v2 message over MLLP and print the ACK
+    #[command(after_help = EXAMPLES_SEND)]
     Send {
         /// Message file, or - for standard input
         input: PathBuf,
@@ -231,6 +302,7 @@ enum Commands {
         json: bool,
     },
     /// Run test case packs (.bltests.json, exported from the Test Case Library)
+    #[command(after_help = EXAMPLES_TEST)]
     Test {
         /// Pack files or glob patterns
         #[arg(required = true)]
@@ -246,6 +318,7 @@ enum Commands {
         no_plugins: bool,
     },
     /// Validate every message in a directory and its subdirectories
+    #[command(after_help = EXAMPLES_BATCH)]
     Batch {
         /// Directory path
         dir: PathBuf,
@@ -1881,6 +1954,50 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// Splits an example command line into arguments: whitespace-separated,
+    /// double quotes group (the shell would strip them).
+    fn shell_words(line: &str) -> Vec<String> {
+        let (mut words, mut word, mut quoted) = (Vec::new(), String::new(), false);
+        for c in line.chars() {
+            match c {
+                '"' => quoted = !quoted,
+                c if c.is_whitespace() && !quoted => {
+                    if !word.is_empty() {
+                        words.push(std::mem::take(&mut word));
+                    }
+                }
+                c => word.push(c),
+            }
+        }
+        if !word.is_empty() {
+            words.push(word);
+        }
+        words
+    }
+
+    #[test]
+    fn help_examples_are_valid_command_lines() {
+        let all = [
+            EXAMPLES, EXAMPLES_VALIDATE, EXAMPLES_INFO, EXAMPLES_ANONYMIZE, EXAMPLES_TO_JSON,
+            EXAMPLES_FHIRPATH, EXAMPLES_XSD, EXAMPLES_SEND, EXAMPLES_TEST, EXAMPLES_BATCH,
+        ];
+        let mut checked = 0;
+        for line in all.iter().flat_map(|t| t.lines()) {
+            // The command after any `cat ... |`, without the `> file` redirection.
+            let Some(cmd) = line.split("bridgelab-cli ").nth(1) else { continue };
+            if cmd.contains('<') {
+                continue; // the "bridgelab-cli <command> --help" pointer
+            }
+            let cmd = cmd.split(" > ").next().unwrap();
+            let args = std::iter::once("bridgelab-cli".to_string()).chain(shell_words(cmd));
+            if let Err(e) = Cli::try_parse_from(args) {
+                panic!("help example does not parse: {line}\n{e}");
+            }
+            checked += 1;
+        }
+        assert!(checked >= 25, "only {checked} examples checked");
     }
 
     #[test]

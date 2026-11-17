@@ -4,6 +4,12 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **Examples in the CLI help.** `bridgelab-cli --help` and each command's
+  `--help` now end with a few ready-to-use examples (validating a folder
+  with a JUnit report, anonymizing from standard input, sending over
+  MLLP…), so the usual invocations are there without opening the README.
+
 ## [2.0.0] — 2026-09-30
 
 A summary of the fixes, grouped by area, is in [docs/releases/2.0.0.md](docs/releases/2.0.0.md).

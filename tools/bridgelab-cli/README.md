@@ -70,6 +70,9 @@ cargo build --release          # → target/release/bridgelab-cli
 
 ## Commands
 
+`bridgelab-cli --help` lists the commands; `bridgelab-cli <command> --help`
+shows a command's options and ends with examples like the ones below.
+
 Input files may be UTF-8 (with or without a byte-order mark), UTF-16 with a
 byte-order mark, or a legacy charset: a file that is not UTF-8 is read in
 the charset its MSH-18 declares, or as Windows-1252 when MSH-18 is empty,
