@@ -71,7 +71,12 @@ jobs:
       matrix:
         platform:
           - name: macOS-ARM
-            os: macos-14
+            # macos-14 was retired on 2026-11-02 (jobs on it are cancelled
+            # at once: "The configuration 'macos-14-arm64-us-default' is not
+            # supported"). macos-15 ships Xcode 16, which still builds for
+            # the macOS 11 minimum in tauri.conf.json. Pin a version rather
+            # than macos-latest, and move on before GitHub retires it.
+            os: macos-15
             target: aarch64-apple-darwin
           - name: macOS-Intel
             # macos-13 was the last Intel hosted runner. GitHub deprecated
@@ -81,7 +86,7 @@ jobs:
             # Apple Silicon runner: the Rust toolchain installs the
             # target (matrix.platform.target) and Tauri picks it up via
             # --target on the build command.
-            os: macos-14
+            os: macos-15
             target: x86_64-apple-darwin
           - name: Windows-x64
             os: windows-latest
