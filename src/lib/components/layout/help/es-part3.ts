@@ -178,7 +178,10 @@ la especificación, y unas setenta funciones.</p>
 		<code>@2015-02-04T14:34:28+10:00</code>), aritmética con
 		duraciones (<code>Patient.birthDate + 18 years</code>) y
 		conversión de unidades dentro de una dimensión
-		(<code>4 'g' = 4000 'mg'</code>)</li>
+		(<code>4 'g' = 4000 'mg'</code>); <code>lowBoundary()</code>,
+		<code>highBoundary()</code> y <code>precision()</code> dan el
+		intervalo que representa una fecha o un decimal y la precisión con
+		que está escrito</li>
 	<li><strong>Extras FHIR:</strong> <code>extension(url)</code>,
 		<code>hasValue()</code> y <code>resolve()</code>, que sigue una
 		Reference hacia un recurso contained o del Bundle</li>
@@ -195,6 +198,16 @@ junto a los ejemplos (hasta cuatro, mientras la aplicación siga abierta).
 Cuando el texto del editor deja de analizarse, el panel y la barra de estado
 lo indican: los resultados proceden entonces de la última versión válida del
 recurso.</p>
+<p><strong>Límites.</strong> Para que una expresión mal escrita no pueda
+bloquear BridgeLab ni agotar su memoria, cada evaluación tiene límites: la
+expresión se anida como máximo 64 niveles, una cadena que construye ocupa
+como máximo 16 MB, todo lo que construye suma como máximo unos 512 MB, y
+hace como máximo 50 millones de pasos de trabajo en como máximo 60
+segundos. Al superar un límite, el panel muestra un error que lo nombra.
+Las expresiones reales quedan muy por debajo; la forma habitual de
+alcanzarlos son criterios anidados en criterios, como
+<code>where(… .where(…).exists())</code>, donde cada nivel multiplica el
+trabajo por la longitud de la lista.</p>
 
 <h3>Validación FHIR</h3>
 <p>F6 también funciona con los recursos FHIR. Los errores resaltan
@@ -218,11 +231,20 @@ conexión, en todas las ediciones, nada que descargar. <strong>Herramientas
 <code>.tgz</code>, las guías de implementación nacionales o propias de tu
 centro; un paquete instalado con las mismas definiciones sustituye a las
 integradas, una versión más reciente las supera.</p>
+<p>Un archivo de paquete puede ocupar como máximo 256 MB y descomprimirse
+en como máximo 1 GB, sin ningún archivo interno de más de 64 MB. Una
+carpeta, una tubería o un dispositivo elegidos como paquete se rechazan
+enseguida, igual que un archivo que supere estos límites, con un mensaje
+que dice cuál.</p>
 <p>Cada validación FHIR comprueba, contra el núcleo integrado y lo que esté
 instalado encima:</p>
 <ul>
 	<li><strong>Cardinalidad</strong> — un elemento obligatorio ausente, o un
-		elemento <code>0..1</code> que se repite.</li>
+		elemento <code>0..1</code> que se repite. En JSON también cuenta la
+		forma: un elemento que puede repetirse es un array incluso con un solo
+		valor (<code>"name": [{…}]</code>), y uno que no puede no lo es nunca
+		(<code>"gender": "male"</code>). Los servidores rechazan la otra
+		forma.</li>
 	<li><strong>Tipos de elementos</strong> — un booleano escrito como
 		cadena, un número donde corresponde un objeto.</li>
 	<li><strong>Elementos choice</strong> — <code>value[x]</code> debe
@@ -270,11 +292,19 @@ versionar.</p>
 Observation, etc., o déjalo vacío para aplicarla a todo. Una regla limitada
 a un tipo también se dispara para los recursos correspondientes dentro de un
 Bundle, informando el hallazgo en <code>entry[n].resource.…</code>.</p>
+<p>Cada regla tiene los límites del Evaluador FHIRPath, y todas las
+reglas de una validación comparten el doble: 100 millones de pasos y 120
+segundos para el recurso y, en un Bundle, para cada entrada. Agotado ese
+presupuesto, las reglas restantes no se ejecutan y un error indica cuántas
+comprobaciones quedaron fuera, de modo que un resultado nunca parece
+completo cuando no lo es.</p>
 <p><strong>Probar en el recurso abierto</strong> ejecuta la regla que estás
 editando sobre el recurso de la pestaña activa antes de guardarla, y muestra
 qué valores seleccionó realmente — la forma más rápida de distinguir una
 regla que pasa de una que nunca se ejecutó. Si el recurso abierto es de otro
-tipo, el editor lo dice en lugar de informar un éxito.</p>
+tipo, el editor lo dice en lugar de informar un éxito. Si el presupuesto se
+agota antes de listar todos los valores seleccionados, la prueba lo indica y
+no se da por superada.</p>
 <p>Las reglas ya escritas funcionan en todos los niveles; el editor requiere
 una licencia Professional. Los packs escritos a mano están documentados en
 <code>docs/PLUGINS.md</code>.</p>
@@ -501,12 +531,35 @@ instalación (<em>Sí</em> por defecto; una instalación silenciosa no
 pregunta, ni tampoco el paquete <code>.msi</code>: entonces pregunta la
 aplicación en su banner). En equipos gestionados el administrador puede desactivar la
 comprobación para todos los usuarios, y la casilla de Configuración
-aparece bloqueada: variable de entorno
-<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>, o un archivo
+aparece bloqueada: un archivo
 <code>policy.json</code> con <code>{"disable_update_check": true}</code> en
 <code>%ProgramData%\\BridgeLab\\</code> (Windows),
 <code>/Library/Application Support/BridgeLab/</code> (macOS) o
-<code>/etc/bridgelab/</code> (Linux).</p>
+<code>/etc/bridgelab/</code> (Linux). En Windows el archivo y su carpeta
+deben pertenecer a Administrators o a SYSTEM, como ocurre cuando los crea
+un administrador o una herramienta de despliegue, y solo Administrators,
+SYSTEM y TrustedInstaller deben poder modificar el archivo (escribirlo, o
+borrarlo o sustituirlo en la carpeta; el permiso predeterminado de la
+carpeta que deja a los usuarios crear archivos no es un problema). Si no,
+se ignora, y <strong>Configuración → Privacidad</strong> indica por qué.
+Un archivo que no es JSON válido también se
+ignora, y <strong>Configuración → Privacidad</strong> lo indica, con el
+archivo y el motivo.</p>
+<p>La variable de entorno <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>
+hace lo mismo, pero solo para un BridgeLab iniciado con ella en su
+entorno, así que para todo el equipo solo donde se define a nivel de
+sistema: en Windows como variable del sistema (llega a cada usuario en su
+siguiente inicio de sesión); en Linux en <code>/etc/environment</code>,
+que se lee al iniciar sesión (un perfil de la shell como
+<code>~/.bashrc</code> no llega a una aplicación abierta desde el menú).
+En macOS una aplicación abierta desde el Finder, el Dock o Spotlight no
+ve las variables definidas en los perfiles de la shell: usa allí
+<code>policy.json</code>.</p>
+<p><strong>Ayuda → Acerca de BridgeLab</strong> muestra la versión y su
+código de compilación (por ejemplo <em>Compilación 20261120.1ea84f3</em>,
+la fecha y la revisión del código fuente). Indica ambos cuando contactes
+con el soporte, para que sepamos exactamente qué compilación usas;
+<code>bridgelab-cli --version</code> muestra el mismo código.</p>
 
 <h3>Comprar una licencia</h3>
 <p><strong>Ayuda → Comprar una licencia…</strong> abre en el navegador
@@ -582,10 +635,12 @@ el interruptor apagado (el valor por defecto) no se transmite nada, y
 los problemas de red nunca producen errores: una instalación
 totalmente sin conexión es un escenario normal y soportado.</p>
 <p>En equipos gestionados, el administrador puede forzar la
-desactivación de las estadísticas de uso para todos los usuarios: define
-<code>BRIDGELAB_DISABLE_TELEMETRY=1</code>, o añade
+desactivación de las estadísticas de uso para todos los usuarios: añade
 <code>"disable_telemetry": true</code> al mismo <code>policy.json</code>
-que se usa para la comprobación de versiones. Entonces no se envía nada,
+que se usa para la comprobación de versiones, o define
+<code>BRIDGELAB_DISABLE_TELEMETRY=1</code> donde BridgeLab la vea (con las
+mismas reglas que la variable de la comprobación de versiones, arriba).
+Entonces no se envía nada,
 elija lo que elija el usuario, y la casilla de Ajustes aparece
 bloqueada.</p>
 `,
@@ -614,14 +669,15 @@ con OK.</p>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>Panel FHIRPath</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>Panel de validación</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Cuadrícula de segmentos</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>Panel de interpretación</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>Configuración</td></tr>
-	<tr><td><kbd>F1</kbd></td><td>Este manual de usuario</td></tr>
+	<tr><td><kbd>F1</kbd></td><td>Este manual de usuario, en su propia ventana: pulsar F1 otra vez la trae al frente, y cerrar la ventana principal también la cierra</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td>Paleta de comandos del editor (todos los comandos de Monaco: ir a la línea, plegar, mayúsculas/minúsculas, ordenar líneas…; también en el menú contextual del editor)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Mostrar segmento en el árbol (menú contextual del editor)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>C</kbd></td><td>Copiar segmento (menú contextual del editor)</td></tr>
 </table>
 
-<p>En macOS, <kbd>Ctrl</kbd> en estos atajos es <kbd>⌘</kbd> (Comando) y <kbd>Alt</kbd> es <kbd>⌥</kbd> (Opción), y la lista de Configuración los muestra así. Allí el editor usa <kbd>⌘⌥F</kbd> para Reemplazar, <kbd>⌘⇧Z</kbd> para Rehacer y <kbd>⌃G</kbd> (Control) para Ir a la línea.</p>
+<p>En macOS, <kbd>Ctrl</kbd> en estos atajos es <kbd>⌘</kbd> (Comando) y <kbd>Alt</kbd> es <kbd>⌥</kbd> (Opción), y la lista de Configuración los muestra así. Allí el editor usa <kbd>⌘⌥F</kbd> para Reemplazar, <kbd>⌘⇧Z</kbd> para Rehacer y <kbd>⌃G</kbd> (Control) para Ir a la línea, y Mostrar segmento en el árbol y Copiar segmento son <kbd>⌘⌥T</kbd> y <kbd>⌘⌥C</kbd>: <kbd>⌥T</kbd> y <kbd>⌥C</kbd> escriben † y ç. La tecla Control no es Comando: <kbd>⌃K</kbd> sigue siendo una tecla del editor. En Windows y Linux la tecla Windows (Super) tampoco cuenta como Ctrl.</p>
 
 <h3>Detección de conflictos</h3>
 <p>Si eliges una combinación de teclas ya asignada a otra acción, el
@@ -633,13 +689,19 @@ editor, gana la acción de BridgeLab. Las teclas propias del editor
 (<kbd>Ctrl</kbd>+<kbd>F</kbd>, <kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) se
 muestran como referencia y no se pueden reasignar. Un atajo necesita
 <kbd>Ctrl</kbd> o <kbd>Alt</kbd>, o es una de <kbd>F2</kbd>-<kbd>F12</kbd>:
-una letra sola se activaría mientras escribes. <kbd>F1</kbd> abre
-siempre este manual. <em>Re-analizar mensaje</em> no tiene tecla
-predeterminada; asígnale una si la necesitas.</p>
+una letra sola se activaría mientras escribes (en macOS <kbd>⌘</kbd> o
+<kbd>⌃</kbd>, porque <kbd>⌥</kbd> con una letra escribe un carácter).
+Mientras hay un cuadro de diálogo abierto, los atajos esperan a que se
+cierre; <kbd>F1</kbd> funciona igualmente. <kbd>F1</kbd> abre
+siempre este manual, o lo trae al frente. <em>Re-analizar mensaje</em> no
+tiene tecla predeterminada; asígnale una si la necesitas.</p>
 
 <h3>Restablecer</h3>
 <p>Haz clic en <em>Restablecer todo</em> para devolver cada atajo a su
 valor predeterminado, o en el pequeño botón ↺ junto a cada entrada para
-restablecer solo esa.</p>
+restablecer solo esa. Si entretanto la tecla predeterminada de esa entrada
+ha pasado a otra acción, aparece el mismo aviso que al elegir una tecla:
+<em>Reasignar</em> la devuelve, <em>Cancelar</em> lo deja todo como
+está.</p>
 `,
 };

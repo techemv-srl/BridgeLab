@@ -3,7 +3,8 @@
 	import { registerHL7Language } from './HL7MonarchLanguage';
 	import { registerHL7AutoComplete } from './HL7AutoComplete';
 	import { t, subscribeLocale } from '$lib/i18n';
-	import { collapseText, expandText, tokensIn, describe, fullToDisplayCol, displayToFullCol, tokenFor, retainIds, tokensMatching, searchMatcher, type FoldMode } from './fold';
+	import { collapseText, expandText, tokensIn, describe, fullToDisplayCol, displayToFullCol, tokenFor, retainIds, tokensMatching, searchMatcher, tokenNearCaret, type FoldMode } from './fold';
+	import { defaultEol, firstEol, joinLines, LineEndings, mixedEols, withEol, type Eol } from './eol';
 	// Monaco web workers, bundled by Vite. The JSON language service needs
 	// its own worker: handing it the generic editor worker makes that worker
 	// try to AMD-load the JSON module ("undefined is not an object
@@ -17,7 +18,11 @@
 
 	/** User-tunable editor options, loaded from preferences by the host.
 	 *  Every field optional — absent fields keep the built-in default. */
-	import { toMonacoOptions, type EditorOptions } from './monaco-options';
+	import { toMonacoOptions, routeEditorLinks, type EditorOptions } from './monaco-options';
+	import { openExternal } from '$lib/page-guard';
+	import { isMacPlatform, displayKeys } from '$lib/stores/shortcuts.svelte';
+	import { dialogStore } from '$lib/stores/dialog.svelte';
+	import { ASK_ABOVE_BYTES, mayExceed, mayLoadPastedText, pasteCopies, utf8Length } from '$lib/large-content';
 
 	interface Props {
 		content?: string;
@@ -88,18 +93,34 @@
 
 	// Monaco knows only LF and CRLF line ends: a bare CR (the HL7 segment
 	// terminator) comes back as CRLF. Remember what the document used and
-	// give the text back that way, so saving never rewrites terminators.
-	let docEol: '\r' | '\n' | '\r\n' = '\n';
+	// give the text back that way, so saving never rewrites terminators
+	// (see eol.ts). `docEol` is null for a document that had no line break
+	// when it was loaded: its new lines then end as its text calls for (CR
+	// for HL7 v2), never as the tab shown before or the OS default would.
+	// `docEnds` holds every line's own ending when the document mixes them,
+	// for each version of the model so that undo and redo restore them.
+	let docEol: Eol | null = null;
+	let docEnds: LineEndings | null = null;
 
-	function eolOf(text: string): '\r' | '\n' | '\r\n' {
-		const i = text.search(/\r\n|\r|\n/);
-		if (i < 0) return docEol;
-		return text[i] === '\n' ? '\n' : text[i + 1] === '\n' ? '\r\n' : '\r';
+	/** Take `val` as the document's text: its line endings, and the display
+	 *  text (long runs folded) to show for it. The caller puts the display
+	 *  in the model, then records its version (see setDisplay). */
+	function loadText(val: string, mode: FoldMode, threshold: number): string {
+		const display = collapseText(val, mode, threshold);
+		docEol = firstEol(val);
+		// From the display: a folded run is one line there, whatever it holds.
+		const ends = mixedEols(display);
+		docEnds = ends ? new LineEndings(ends) : null;
+		return display;
 	}
 
 	function outward(modelText: string): string {
-		const full = expandText(modelText);
-		return docEol === '\r' ? full.replace(/\r\n|\n/g, '\r') : full;
+		if (docEnds) {
+			const joined = joinLines(modelText, docEnds.ends);
+			if (joined !== null) return expandText(joined);
+		}
+		const eol = docEol ?? defaultEol(modelText);
+		return expandText(withEol(modelText, eol, editor?.getModel()?.getEOL() ?? '\n'));
 	}
 
 	function fullText(): string {
@@ -113,7 +134,8 @@
 	interface DocState {
 		model: import('monaco-editor').editor.ITextModel;
 		view: import('monaco-editor').editor.ICodeEditorViewState | null;
-		eol: '\r' | '\n' | '\r\n';
+		eol: Eol | null;
+		ends: LineEndings | null;
 		/** Fold tokens this document has shown: its undo history may bring
 		 *  any of them back, so their payloads live as long as the document. */
 		used: Set<number>;
@@ -136,11 +158,12 @@
 		if (prev) {
 			prev.view = editor.saveViewState();
 			prev.eol = docEol;
+			prev.ends = docEnds;
 		}
 		let doc = docs.get(key);
 		const fresh = !doc;
 		if (!doc) {
-			doc = { model: monacoMod.editor.createModel('', language), view: null, eol: eolOf(val), used: new Set() };
+			doc = { model: monacoMod.editor.createModel('', language), view: null, eol: firstEol(val), ends: null, used: new Set() };
 			docs.set(key, doc);
 		}
 		appliedDocKey = key;
@@ -151,10 +174,10 @@
 			isUpdatingFromProp = false;
 		}
 		docEol = doc.eol;
+		docEnds = doc.ends;
 		const refold = appliedThreshold !== undefined && (threshold !== appliedThreshold || mode !== appliedMode);
 		if (fresh || refold || fullText() !== val) {
-			docEol = eolOf(val);
-			setDisplay(collapseText(val, mode, threshold));
+			setDisplay(loadText(val, mode, threshold));
 			placeCaret(line, col);
 		} else {
 			if (doc.view) editor.restoreViewState(doc.view);
@@ -186,7 +209,11 @@
 		if (open && editor) untrack(() => pruneDocs(open));
 	});
 
+	/** Removes the window's listener for large pastes into this editor. */
+	let removeLargePaste: (() => void) | null = null;
+
 	onDestroy(() => {
+		removeLargePaste?.();
 		for (const doc of docs.values()) doc.model.dispose();
 		docs.clear();
 	});
@@ -201,6 +228,10 @@
 		} finally {
 			isUpdatingFromProp = false;
 		}
+		// The version the loaded line endings belong to: undoing back to it
+		// brings them back.
+		const version = editor.getModel()?.getAlternativeVersionId();
+		if (version !== undefined) docEnds?.at(version);
 		refreshFolds();
 	}
 
@@ -241,7 +272,7 @@
 				range: new monacoMod!.Range(start.lineNumber, start.column, end.lineNumber, end.column),
 				options: {
 					inlineClassName: 'bl-fold',
-					hoverMessage: { value: `**${describe(f.payload)}** — ${t('fold.hint')}
+					hoverMessage: { value: `**${describe(f.payload)}** — ${t('fold.hint', { alt: displayKeys('Alt') })}
 
 \`${preview}${f.payload.length > 120 ? '…' : ''}\`` },
 					stickiness: monacoMod!.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
@@ -289,22 +320,54 @@
 		if (model) replaceAllUndoable(collapseText(expandText(model.getValue()), foldMode, foldThreshold));
 	}
 
-	/** Keep selections from cutting a token in half: grow them to whole tokens. */
-	function snapSelectionToTokens() {
+	/** Where the primary caret last rested, to tell which way it moved. */
+	let lastCaret = 0;
+
+	/**
+	 * A folded run behaves as one unit for every cursor, not only the
+	 * primary one: a caret never rests inside a token (it jumps over it in
+	 * the direction it was moving; an added cursor goes past it) and a
+	 * selection never cuts one (it grows to the whole token). A cursor left
+	 * inside a token let typing turn `#2` into `#12`, which then expanded
+	 * to another field's content or to nothing on save.
+	 */
+	function guardSelections() {
 		const model = editor?.getModel();
-		const sel = editor?.getSelection();
-		if (!editor || !model || !sel || sel.isEmpty() || !monacoMod) return;
-		let a = model.getOffsetAt(sel.getStartPosition());
-		let b = model.getOffsetAt(sel.getEndPosition());
-		for (const f of tokensIn(model.getValue())) {
-			if (a > f.index && a < f.index + f.length) a = f.index;
-			if (b > f.index && b < f.index + f.length) b = f.index + f.length;
-		}
-		const s = model.getPositionAt(a);
-		const e = model.getPositionAt(b);
-		if (!sel.getStartPosition().equals(s) || !sel.getEndPosition().equals(e)) {
-			editor.setSelection(new monacoMod.Selection(s.lineNumber, s.column, e.lineNumber, e.column));
-		}
+		const sels = editor?.getSelections();
+		if (!editor || !model || !sels?.length || !monacoMod) return;
+		const tokens = tokensIn(model.getValue());
+		const inside = (off: number) => tokens.find((f) => off > f.index && off < f.index + f.length);
+		let changed = false;
+		const out = sels.map((sel, i) => {
+			if (sel.isEmpty()) {
+				const off = model.getOffsetAt(sel.getPosition());
+				const tok = inside(off);
+				if (!tok) {
+					if (i === 0) lastCaret = off;
+					return sel;
+				}
+				const target = i > 0 || off >= lastCaret ? tok.index + tok.length : tok.index;
+				if (i === 0) lastCaret = target;
+				changed = true;
+				const p = model.getPositionAt(target);
+				return new monacoMod!.Selection(p.lineNumber, p.column, p.lineNumber, p.column);
+			}
+			let a = model.getOffsetAt(sel.getStartPosition());
+			let b = model.getOffsetAt(sel.getEndPosition());
+			const ta = inside(a);
+			const tb = inside(b);
+			if (ta) a = ta.index;
+			if (tb) b = tb.index + tb.length;
+			if (!ta && !tb) return sel;
+			changed = true;
+			const s = model.getPositionAt(a);
+			const e = model.getPositionAt(b);
+			// Keep the selection's direction (Shift+arrows extend from its anchor).
+			return sel.getDirection() === monacoMod!.SelectionDirection.RTL
+				? new monacoMod!.Selection(e.lineNumber, e.column, s.lineNumber, s.column)
+				: new monacoMod!.Selection(s.lineNumber, s.column, e.lineNumber, e.column);
+		});
+		if (changed) editor.setSelections(out);
 	}
 
 	/** The find widget's state (Monaco's FindReplaceState, not in its public types). */
@@ -377,6 +440,9 @@
 
 			registerHL7Language(mod);
 			registerHL7AutoComplete(mod);
+			// Ctrl+click on a URL and the hover's "Follow link" open the
+			// browser or mail client, as links elsewhere in the app do.
+			routeEditorLinks(mod, openExternal);
 			// F1 is BridgeLab's manual everywhere, editor included. Monaco's own
 			// command palette moves to Ctrl/Cmd+Shift+P (as in VS Code) and stays
 			// in the editor's context menu.
@@ -388,8 +454,8 @@
 			// The first model is ours, like every later one: a model the editor
 			// creates itself (the `value` option) is disposed by Monaco as soon
 			// as the editor shows another, and switching back would fail.
-			docEol = eolOf(content || '');
-			const firstModel = mod.editor.createModel(collapseText(content || '', foldMode, foldThreshold), language);
+			const firstModel = mod.editor.createModel(loadText(content || '', foldMode, foldThreshold), language);
+			docEnds?.at(firstModel.getAlternativeVersionId());
 			const ed = mod.editor.create(containerEl!, {
 				// The first document is folded like every later one.
 				model: firstModel,
@@ -425,29 +491,24 @@
 				...toMonacoOptions(options),
 			});
 
-			ed.onDidChangeModelContent(() => {
+			ed.onDidChangeModelContent((e) => {
 				scheduleFoldRefresh();
+				// A document that mixes line endings keeps each line's own
+				// through every edit, undo and redo; new lines get the
+				// document's first ending, and an undo or redo gets back the
+				// endings of the version it returns to. A setValue (flush)
+				// sets them anew (setDisplay).
+				const model = ed.getModel();
+				if (docEnds && model && !e.isFlush) {
+					const edits = e.changes.map((c) => ({ startLine: c.range.startLineNumber, endLine: c.range.endLineNumber, text: c.text }));
+					docEnds.edit(model.getAlternativeVersionId(), edits, docEol ?? '\n', e.isUndoing || e.isRedoing);
+				}
 				if (isUpdatingFromProp) return;
 				onContentChange?.(outward(ed.getValue()));
 			});
 
-			// A folded run behaves as one unit: the caret never rests inside
-			// a token (arrow keys jump over it) and a selection never cuts one.
-			let lastCaret = 0;
-			ed.onDidChangeCursorSelection((e) => {
-				const model = ed.getModel();
-				if (!model) return;
-				if (!e.selection.isEmpty()) { snapSelectionToTokens(); return; }
-				const off = model.getOffsetAt(e.selection.getPosition());
-				const tok = tokenAt(off);
-				if (tok) {
-					const target = off >= lastCaret ? tok.index + tok.length : tok.index;
-					lastCaret = target;
-					ed.setPosition(model.getPositionAt(target));
-					return;
-				}
-				lastCaret = off;
-			});
+			// A folded run behaves as one unit, for every cursor.
+			ed.onDidChangeCursorSelection(() => guardSelections());
 
 			ed.onDidChangeCursorPosition((e) => {
 				// setValue moves the caret to 1:1: that is not where the user
@@ -473,25 +534,38 @@
 			});
 			ed.onKeyDown((e) => {
 				const model = ed.getModel();
-				const sel = ed.getSelection();
-				if (!model || !sel) return;
-				if (!sel.isEmpty()) { snapSelectionToTokens(); return; }
-				const off = model.getOffsetAt(sel.getPosition());
-				const tokens = tokensIn(model.getValue());
-				const after = tokens.find((f) => off === f.index);           // caret before a chip
-				const before = tokens.find((f) => off === f.index + f.length); // caret after a chip
+				const sels = ed.getSelections();
+				if (!model || !sels?.length) return;
+				guardSelections();
 				const K = mod.KeyCode;
-				const select = (f: { index: number; length: number }) => {
-					const s = model.getPositionAt(f.index);
-					const en = model.getPositionAt(f.index + f.length);
-					ed.setSelection(new mod.Selection(s.lineNumber, s.column, en.lineNumber, en.column));
-					e.preventDefault(); e.stopPropagation();
-				};
-				if (e.keyCode === K.Backspace && before) select(before);
-				else if (e.keyCode === K.Delete && after) select(after);
-				else if (e.keyCode === K.Enter && (after || before) && !e.shiftKey && e.altKey) {
-					expandToken((after ?? before)!); e.preventDefault(); e.stopPropagation();
+				const back = e.keyCode === K.Backspace;
+				const del = e.keyCode === K.Delete;
+				const expand = e.keyCode === K.Enter && e.altKey && !e.shiftKey;
+				if (!back && !del && !expand) return;
+				const tokens = tokensIn(model.getValue());
+				if (!tokens.length) return;
+				const caretOf = (sel: { isEmpty(): boolean; getPosition(): { lineNumber: number; column: number } }) =>
+					sel.isEmpty() ? model.getOffsetAt(sel.getPosition()) : -1;
+				if (expand) {
+					const off = caretOf(ed.getSelection()!);
+					const tok = tokens.find((f) => off === f.index || off === f.index + f.length);
+					if (tok) { expandToken(tok); e.preventDefault(); e.stopPropagation(); }
+					return;
 				}
+				// Every cursor against a chip (not only the primary one) selects
+				// it instead of deleting its last or first character; the next
+				// key press deletes the whole chip.
+				let hit = false;
+				const out = (ed.getSelections() ?? []).map((sel) => {
+					const off = caretOf(sel);
+					const tok = off < 0 ? undefined : tokens.find((f) => back ? off === f.index + f.length : off === f.index);
+					if (!tok) return sel;
+					hit = true;
+					const s = model.getPositionAt(tok.index);
+					const en = model.getPositionAt(tok.index + tok.length);
+					return new mod.Selection(s.lineNumber, s.column, en.lineNumber, en.column);
+				});
+				if (hit) { ed.setSelections(out); e.preventDefault(); e.stopPropagation(); }
 			});
 
 			// Pasted long runs fold like opened ones.
@@ -522,6 +596,56 @@
 			containerEl!.addEventListener('copy', onClipboard);
 			containerEl!.addEventListener('cut', onClipboard);
 
+			// Tens of MB pasted take the window seconds and GB of memory:
+			// asked first, as for a large file, counting the text once per
+			// cursor as Monaco writes it. Monaco's own paste is stopped before
+			// it starts and, once the user agrees, run with the same text. The
+			// window's capture phase, because Monaco's paste controller listens
+			// in the capture phase on the editor's container and stops the
+			// event there.
+			const pasteCount = (text: string) => pasteCopies(text, ed.getSelections()?.length ?? 1);
+			const isLargePaste = (text: string, copies: number) =>
+				mayExceed(text, ASK_ABOVE_BYTES, copies) && utf8Length(text) * copies > ASK_ABOVE_BYTES;
+			// Ask, then run Monaco's own paste with the same text. The document
+			// pasted into is kept: a tab the listener opens during the question
+			// switches the editor to another one, and then nothing is pasted
+			// (the user can paste again).
+			const runTrigger = ed.trigger.bind(ed);
+			const askThenPaste = (text: string, copies: number, paste: () => void) => {
+				const target = ed.getModel();
+				void mayLoadPastedText(text, copies).then((ok) => {
+					if (!ok || ed.getModel() !== target) return;
+					ed.focus();
+					paste();
+				});
+			};
+			const onLargePaste = (ev: ClipboardEvent) => {
+				if (readonly || !(ev.target instanceof Node) || !containerEl?.contains(ev.target)) return;
+				const text = ev.clipboardData?.getData('text/plain');
+				if (!text) return;
+				const copies = pasteCount(text);
+				if (!isLargePaste(text, copies)) return;
+				ev.preventDefault();
+				ev.stopImmediatePropagation();
+				askThenPaste(text, copies, () => runTrigger('keyboard', 'paste', { text }));
+			};
+			// Monaco's own Paste (its context menu) reads the clipboard and runs
+			// the paste command with no DOM paste event: asked there too.
+			ed.trigger = (source, handlerId, payload) => {
+				const text = handlerId === 'paste' && typeof payload?.text === 'string' ? (payload.text as string) : '';
+				if (text && !readonly) {
+					const copies = pasteCount(text);
+					if (isLargePaste(text, copies)) {
+						askThenPaste(text, copies, () => runTrigger(source, handlerId, payload));
+						return;
+					}
+				}
+				runTrigger(source, handlerId, payload);
+			};
+			removeLargePaste?.();
+			window.addEventListener('paste', onLargePaste, true);
+			removeLargePaste = () => window.removeEventListener('paste', onLargePaste, true);
+
 			// Add custom context menu actions
 			addContextMenuActions(ed, mod);
 			hookFindWidget(ed);
@@ -530,7 +654,7 @@
 			appliedThreshold = foldThreshold;
 			appliedMode = foldMode;
 			appliedDocKey = docKey;
-			docs.set(docKey, { model: firstModel, view: null, eol: docEol, used: new Set() });
+			docs.set(docKey, { model: firstModel, view: null, eol: docEol, ends: docEnds, used: new Set() });
 			refreshFolds();
 			placeCaret(cursorLine, cursorColumn);
 			initError = '';
@@ -558,13 +682,19 @@
 	}
 
 	function addContextMenuActions(ed: IStandaloneCodeEditor, mod: MonacoModule) {
+		// Alt+letter for Show in Tree and Copy Segment; ⌘⌥letter on macOS,
+		// where Option with a letter types a character (Option+T is †,
+		// Option+C is ç) and the action took it. Settings lists them so
+		// (SHORTCUTS: editor.showInTree, editor.copySegment).
+		const segmentKey = (key: number) => (isMacPlatform() ? mod.KeyMod.CtrlCmd | mod.KeyMod.Alt : mod.KeyMod.Alt) | key;
+
 		// "Show in Tree" action
 		actionDisposables.push(ed.addAction({
 			id: 'bridgelab.showInTree',
 			label: t('ctx.showInTree'),
 			contextMenuGroupId: 'navigation',
 			contextMenuOrder: 1,
-			keybindings: [mod.KeyMod.Alt | mod.KeyCode.KeyT],
+			keybindings: [segmentKey(mod.KeyCode.KeyT)],
 			run: (editor) => {
 				const pos = editor.getPosition();
 				const model = editor.getModel();
@@ -592,9 +722,8 @@
 				const lineEnd = model.getOffsetAt({ lineNumber: pos.lineNumber, column: model.getLineMaxColumn(pos.lineNumber) });
 				const caret = model.getOffsetAt(pos);
 				const onLine = tokensIn(model.getValue()).filter((f) => f.index >= lineStart && f.index < lineEnd);
-				if (!onLine.length) return;
-				onLine.sort((a, b) => Math.abs(a.index - caret) - Math.abs(b.index - caret));
-				expandToken(onLine[0]);
+				const i = tokenNearCaret(onLine, caret);
+				if (i >= 0) expandToken(onLine[i]);
 			}
 		}));
 
@@ -670,13 +799,15 @@
 			label: t('ctx.copySegment'),
 			contextMenuGroupId: '9_cutcopypaste',
 			contextMenuOrder: 10,
-			keybindings: [mod.KeyMod.Alt | mod.KeyCode.KeyC],
+			keybindings: [segmentKey(mod.KeyCode.KeyC)],
 			run: (editor) => {
 				const line = editor.getPosition()?.lineNumber;
 				if (!line) return;
 				// The full segment, never a fold chip.
 				const lineContent = expandText(editor.getModel()?.getLineContent(line) ?? '');
-				navigator.clipboard.writeText(lineContent).catch(() => { /* non-secure context */ });
+				// Said, not swallowed: the clipboard would still hold
+				// whatever was there before, and the next paste would show it.
+				navigator.clipboard.writeText(lineContent).catch(() => dialogStore.warning(t('dialog.copyFailed')));
 			}
 		}));
 	}
@@ -706,8 +837,7 @@
 				// (tab switch, reload), read without making every caret move
 				// re-run this.
 				const [line, col] = untrack(() => [cursorLine, cursorColumn]);
-				docEol = eolOf(val);
-				setDisplay(collapseText(val, mode, threshold));
+				setDisplay(loadText(val, mode, threshold));
 				placeCaret(line, col);
 			}
 			appliedThreshold = threshold;
@@ -779,8 +909,7 @@
 	});
 
 	export function setValue(value: string) {
-		docEol = eolOf(value);
-		setDisplay(collapseText(value, foldMode, foldThreshold));
+		setDisplay(loadText(value, foldMode, foldThreshold));
 	}
 
 	/** The full text (folded runs expanded). */
@@ -864,10 +993,21 @@
 			return false;
 		}
 		if (readonly || !text) return true;
+		if (!(await mayLoadPastedText(text)) || editor.getModel() !== model) return true;
+		insertPasted(text);
+		return true;
+	}
+
+	/** Put `text` in place of the selection, as a paste: one undo step, and
+	 *  long runs folded like a Ctrl+V paste. */
+	function insertPasted(text: string): void {
+		const model = editor?.getModel();
+		const sel = editor?.getSelection();
+		if (!editor || !model || !sel || !monacoMod || readonly) return;
+		editor.focus();
 		const start = sel.getStartPosition();
 		editor.executeEdits('menu', [{ range: sel, text }]);
 		editor.pushUndoStop();
-		// Long runs pasted from the menu fold like a Ctrl+V paste.
 		const end = editor.getPosition() ?? start;
 		if (foldMode !== 'none' && foldThreshold > 0) {
 			const range = new monacoMod.Range(start.lineNumber, 1, end.lineNumber, model.getLineMaxColumn(end.lineNumber));
@@ -878,7 +1018,6 @@
 				model.pushStackElement();
 			}
 		}
-		return true;
 	}
 
 	export function revealLine(line: number) {

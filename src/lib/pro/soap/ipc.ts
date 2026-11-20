@@ -6,6 +6,7 @@
 // gate it behind the Enterprise feature check server-side.
 
 import { invoke } from '@tauri-apps/api/core';
+import type { SendFailure } from '$lib/ipc/communication';
 
 export interface WsSecurity {
 	username: string;
@@ -44,8 +45,16 @@ export interface SoapResult {
 	body: string | null;
 	response_time_ms: number;
 	error: string | null;
+	/** Why no answer came, when the backend could tell. */
+	failure?: SendFailure | null;
 }
 
 export async function soapSend(req: SoapRequest, profileName?: string): Promise<SoapResult> {
 	return invoke('soap_send', { req, profileName });
+}
+
+/** Bytes of the envelope `soapSend` would send for `req`, built by the
+ *  backend's own function; nothing is sent. */
+export async function soapEnvelopeSize(req: SoapRequest): Promise<number> {
+	return invoke('soap_envelope_size', { req });
 }

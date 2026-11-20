@@ -13,10 +13,10 @@
 //! No code execution - plugins are pure data. JS / WASM plugins are a
 //! separate future layer.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{Arc, Condvar, LazyLock, Mutex, MutexGuard, RwLock, Weak};
 
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +60,13 @@ pub struct PluginPack {
 
 fn default_version() -> String { "1.0".into() }
 fn default_enabled() -> bool { true }
+
+impl PluginPack {
+    /// Rules of every kind the pack holds, whichever folder it sits in.
+    pub fn rule_count(&self) -> usize {
+        self.validation_rules.len() + self.fhir_rules.len() + self.phi_rules.len()
+    }
+}
 
 /// A single user-defined validation rule.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -208,11 +215,67 @@ struct RegistryState {
     seen: Vec<String>,
 }
 
-fn read_state(root: &Path) -> RegistryState {
-    fs::read_to_string(root.join(STATE_FILE))
-        .ok()
-        .and_then(|t| serde_json::from_str(strip_bom(&t)).ok())
-        .unwrap_or_default()
+/// Where an unreadable state file is kept when new choices are saved.
+const BROKEN_STATE_FILE: &str = ".state.json.broken";
+
+/// Why the state file could not be used.
+#[derive(Debug, Clone)]
+enum StateProblem {
+    /// The file is there but is not the JSON BridgeLab writes (a hand edit
+    /// gone wrong, a merge conflict): its choices cannot be read.
+    Malformed(String),
+    /// The file could not be read as text at all (permissions, a folder
+    /// there, UTF-16 or other bytes that are not UTF-8).
+    Unreadable(String),
+}
+
+impl StateProblem {
+    fn reason(&self) -> &str {
+        match self {
+            StateProblem::Malformed(e) | StateProblem::Unreadable(e) => e,
+        }
+    }
+}
+
+/// The saved choices; an empty state when there is no file yet. A file
+/// that cannot be read is an error, not an empty state: read as empty, it
+/// turned every pack switched off back on, and the next save wrote over
+/// it, so the choices were lost for good without a word.
+fn read_state(root: &Path) -> Result<RegistryState, StateProblem> {
+    let text = match fs::read_to_string(root.join(STATE_FILE)) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(RegistryState::default()),
+        Err(e) => return Err(StateProblem::Unreadable(e.to_string())),
+    };
+    serde_json::from_str(strip_bom(&text)).map_err(|e| StateProblem::Malformed(e.to_string()))
+}
+
+/// Keep an unreadable state file under a name no earlier one holds
+/// (`.state.json.broken`, then `.state.json.broken.1`, `.2`, …) before new
+/// choices are saved over it. With one fixed name, a second recovery made
+/// the rename fail on Windows, and every switch with it, and on Unix
+/// replaced the first backup. Keeping the file is a courtesy: when it
+/// cannot be moved or copied, the user's new choice is saved anyway.
+fn set_aside_broken_state(root: &Path) {
+    let free = |name: String| fs::symlink_metadata(root.join(&name)).is_err().then(|| root.join(name));
+    let Some(backup) = std::iter::once(BROKEN_STATE_FILE.to_string())
+        .chain((1..1000).map(|n| format!("{}.{}", BROKEN_STATE_FILE, n)))
+        .find_map(free)
+    else {
+        return;
+    };
+    let state = root.join(STATE_FILE);
+    if fs::rename(&state, &backup).is_err() {
+        let _ = fs::copy(&state, &backup);
+    }
+}
+
+/// When a pack file appeared in the folder: its creation time where the
+/// file system records one (a pack copied in with an old modification
+/// date is still new here), else its last modification.
+fn appeared(path: &Path) -> Option<std::time::SystemTime> {
+    let meta = fs::metadata(path).ok()?;
+    meta.created().or_else(|_| meta.modified()).ok()
 }
 
 fn write_state(root: &Path, state: &RegistryState) -> Result<(), String> {
@@ -250,6 +313,105 @@ pub struct PluginInfo {
     /// Problems that do not stop the pack loading: a misspelt severity, a
     /// pattern that does not compile, a PHI field that cannot be masked.
     pub warnings: Vec<String>,
+    /// `error` and `warnings` as notices Settings words in the user's
+    /// language (the two above are the English the CLI prints).
+    pub error_notice: Option<PluginNotice>,
+    pub notices: Vec<PluginNotice>,
+}
+
+/// A problem with a pack, as Settings shows it in the user's language:
+/// `code` names the sentence, `args` fill it in, and `rule` or
+/// `phi_field` is what it is about. Settings showed the English text in
+/// every language; [`PluginNotice::english`] is that text, which the CLI
+/// prints and the app falls back to for a code it has no words for.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct PluginNotice {
+    pub code: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phi_field: Option<String>,
+    pub args: BTreeMap<&'static str, String>,
+}
+
+/// What a pattern that compiles large can be written as instead.
+const SMALLER: &str = "a shorter repetition, or an ASCII class such as [A-Za-z0-9_] for \\w, is far smaller";
+
+impl PluginNotice {
+    fn new(code: &'static str) -> Self {
+        Self { code, rule: None, phi_field: None, args: BTreeMap::new() }
+    }
+
+    fn arg(mut self, name: &'static str, value: impl ToString) -> Self {
+        self.args.insert(name, value.to_string());
+        self
+    }
+
+    /// About rule `id`.
+    fn on_rule(mut self, id: &str) -> Self {
+        self.rule = Some(id.to_string());
+        self
+    }
+
+    /// About the PHI field `field` ("PID-5").
+    fn on_phi_field(mut self, field: String) -> Self {
+        self.phi_field = Some(field);
+        self
+    }
+
+    /// The notice in English: "rule R1: field 0 is the segment name...".
+    pub fn english(&self) -> String {
+        let a = |name: &str| self.args.get(name).map(String::as_str).unwrap_or("");
+        let body = match self.code {
+            "duplicate_id" => format!(
+                "another pack in {}/ already uses the id \"{}\" ({}); give each pack its own id",
+                a("dir"), a("id"), a("file")
+            ),
+            "not_regular_file" => "not a regular file".to_string(),
+            "too_large" => format!("{} KB is too large for a pack (limit {} KB)", a("size_kb"), a("limit_kb")),
+            // The system's or the JSON reader's own words.
+            "read_error" | "parse_error" => a("reason").to_string(),
+            "no_rules" => format!("the pack has no \"{}\": it checks nothing", a("key")),
+            "no_rules_unknown_key" => format!(
+                "the pack has no \"{}\": it checks nothing (unknown key {}: a misspelling?)",
+                a("key"), a("unknown")
+            ),
+            "empty_id" => "the pack has an empty \"id\": give it one, the pack's on/off switch is saved under it".to_string(),
+            "empty_name" => "the pack has an empty \"name\": Settings shows it as the pack's title".to_string(),
+            "unknown_severity" => format!("unknown severity \"{}\", reported as a warning", a("value")),
+            "field_zero" => "field 0 is the segment name, not a field (fields count from 1); the rule checks an empty value".to_string(),
+            "component_zero" => "component 0 does not exist (components count from 1); component 1 is checked".to_string(),
+            "fhirpath_invalid" => format!(
+                "the FHIRPath does not parse ({}); the rule reports this on every validation",
+                a("reason")
+            ),
+            "unknown_sensitivity" => format!("unknown sensitivity \"{}\", masked as high", a("value")),
+            "not_maskable" => "not a maskable field (segment name or delimiters); ignored".to_string(),
+            "segment_malformed" => format!(
+                "\"{}\" is not a segment name (three letters or digits, such as PID or ZPI); it matches no segment of a well-formed message",
+                a("segment")
+            ),
+            "segment_case" => format!("segment \"{}\" is read as {}; write it as {}", a("segment"), a("key"), a("key")),
+            "pattern_too_big" => format!(
+                "the pattern is too large to compile (over {} MB, as a long repetition of \\w or \\p{{L}} becomes), so the rule reports this on every validation; {}",
+                a("mb"), SMALLER
+            ),
+            "pattern_invalid" => format!(
+                "the pattern does not compile ({}); the rule reports this on every validation",
+                a("reason")
+            ),
+            "pattern_heavy" => format!(
+                "the pattern compiles to over {} MB, which slows every load of the pack and takes as much memory; {}",
+                a("mb"), SMALLER
+            ),
+            other => other.to_string(),
+        };
+        match (&self.rule, &self.phi_field) {
+            (Some(rule), _) => format!("rule {}: {}", rule, body),
+            (None, Some(field)) => format!("PHI field {}: {}", field, body),
+            (None, None) => body,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -257,8 +419,13 @@ pub struct LoadedPlugin {
     pub pack: PluginPack,
     pub kind: PluginKind,
     pub path: PathBuf,
-    pub error: Option<String>,
-    pub warnings: Vec<String>,
+    pub error: Option<PluginNotice>,
+    pub warnings: Vec<PluginNotice>,
+    /// The pack's `regex` patterns, compiled when it loaded. While the pack
+    /// holds them, the validators find them in [`PATTERNS`] instead of
+    /// compiling them again: held, never read.
+    #[allow(dead_code)]
+    patterns: Vec<Arc<CompiledPattern>>,
 }
 
 impl LoadedPlugin {
@@ -284,16 +451,58 @@ impl PluginKind {
     }
 }
 
+/// Which rules a report is about, for the cap note it carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleKind {
+    /// HL7 v2 validation rules.
+    Hl7,
+    /// FHIR validation rules.
+    Fhir,
+    /// PHI fields for detection and anonymization.
+    Phi,
+}
+
+/// Rule id of the note a report carries when packs are left out by the cap.
+pub const CAP_RULE_ID: &str = "PLUGIN-CAP";
+
 /// Global plugin registry (refreshed on `reload`).
 pub struct PluginRegistry {
     plugins: RwLock<Vec<LoadedPlugin>>,
     state: RwLock<RegistryState>,
+    /// Set when the state file could not be read at the last load: the
+    /// packs then follow their own `enabled`, and the file is not written
+    /// over until the user saves a new choice.
+    state_problem: RwLock<Option<StateProblem>>,
     /// Choices saved before 1.9.0 as `plugin_enabled:<id>` preferences,
     /// keyed by bare id. Used only for packs with no choice in the state
     /// file, and copied into it on first use.
     legacy: RwLock<HashMap<String, bool>>,
     /// Plugins directory; `None` = the standard one under the config dir.
     root: Option<PathBuf>,
+    /// Held for the whole of a load, so that two loads (the one at startup
+    /// and a Reload in Settings) never interleave.
+    load_lock: Mutex<()>,
+    /// True from [`begin_background_load`](Self::begin_background_load)
+    /// until a load has finished; `loaded` wakes whoever waits for it.
+    loading: Mutex<bool>,
+    loaded: Condvar,
+}
+
+/// A lock whose holder panicked is still usable here: every value behind
+/// one is replaced whole, never left half-written.
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Marks the end of a load when dropped, however the load ended: an error
+/// must leave the registry without packs, not every reader waiting.
+struct LoadDone<'a>(&'a PluginRegistry);
+
+impl Drop for LoadDone<'_> {
+    fn drop(&mut self) {
+        *lock(&self.0.loading) = false;
+        self.0.loaded.notify_all();
+    }
 }
 
 impl PluginRegistry {
@@ -310,13 +519,34 @@ impl PluginRegistry {
         Self {
             plugins: RwLock::new(Vec::new()),
             state: RwLock::new(RegistryState::default()),
+            state_problem: RwLock::new(None),
             legacy: RwLock::new(HashMap::new()),
             root,
+            load_lock: Mutex::new(()),
+            loading: Mutex::new(false),
+            loaded: Condvar::new(),
         }
     }
 
     fn root(&self) -> Option<PathBuf> {
         self.root.clone().or_else(plugins_root)
+    }
+
+    /// Announce a load that another thread is about to run. Until a load
+    /// finishes, everything that reads the packs waits for it. The app
+    /// opens its window without waiting for the packs (compiling a pack's
+    /// patterns can take seconds), but a validation in its first moments
+    /// must still run them: no packs would read as no findings.
+    pub fn begin_background_load(&self) {
+        *lock(&self.loading) = true;
+    }
+
+    /// Wait for a load announced by `begin_background_load` to finish.
+    fn wait_for_load(&self) {
+        let mut loading = lock(&self.loading);
+        while *loading {
+            loading = self.loaded.wait(loading).unwrap_or_else(|e| e.into_inner());
+        }
     }
 
     /// Replace the in-memory plugins from disk. Never errors hard -
@@ -335,6 +565,8 @@ impl PluginRegistry {
     }
 
     fn load(&self, write: bool) -> Result<usize, String> {
+        let _one_at_a_time = lock(&self.load_lock);
+        let _done = LoadDone(self);
         let root = self.root().ok_or("Could not determine config directory")?;
         if write {
             let _ = ensure_plugins_dirs(&root);
@@ -362,31 +594,41 @@ impl PluginRegistry {
                         .iter()
                         .find(|o| o.error.is_none() && o.kind == kind && o.pack.id == lp.pack.id)
                     {
-                        lp.error = Some(format!(
-                            "another pack in {}/ already uses the id \"{}\" ({}); give each pack its own id",
-                            sub,
-                            lp.pack.id,
-                            first.path.file_name().and_then(|n| n.to_str()).unwrap_or("?"),
-                        ));
+                        lp.error = Some(
+                            PluginNotice::new("duplicate_id")
+                                .arg("dir", sub)
+                                .arg("id", &lp.pack.id)
+                                .arg("file", first.path.file_name().and_then(|n| n.to_str()).unwrap_or("?")),
+                        );
                     }
                 }
                 loaded.push(lp);
             }
         }
 
-        // Remember new packs after the known ones (a first run orders them
-        // by id, as before), so the Community cap keeps the packs in use.
-        let mut state = read_state(&root);
-        let mut fresh: Vec<(String, String)> = loaded
+        // Remember new packs after the known ones, in the order their files
+        // appeared (then by id), so the Community cap keeps the packs in
+        // use. A read-only load (the CLI) records nothing, so without the
+        // app every pack is new on every run: ordered by id, a file added
+        // later took the place of a pack in use.
+        let (mut state, problem) = match read_state(&root) {
+            Ok(s) => (s, None),
+            Err(p) => (RegistryState::default(), Some(p)),
+        };
+        let mut fresh: Vec<(bool, Option<std::time::SystemTime>, String, String)> = loaded
             .iter()
-            .filter(|l| l.error.is_none())
-            .map(|l| (l.pack.id.clone(), l.key()))
-            .filter(|(_, k)| !state.seen.contains(k))
+            .filter(|l| l.error.is_none() && !state.seen.contains(&l.key()))
+            .map(|l| {
+                let at = appeared(&l.path);
+                (at.is_none(), at, l.pack.id.clone(), l.key())
+            })
             .collect();
         fresh.sort();
         if !fresh.is_empty() {
-            state.seen.extend(fresh.into_iter().map(|(_, k)| k));
-            if write {
+            state.seen.extend(fresh.into_iter().map(|(_, _, _, k)| k));
+            // An unreadable file stays as it is: it may hold choices the
+            // user can still recover.
+            if write && problem.is_none() {
                 let _ = write_state(&root, &state);
             }
         }
@@ -394,6 +636,7 @@ impl PluginRegistry {
         let count = loaded.len();
         *self.plugins.write().map_err(|e| e.to_string())? = loaded;
         *self.state.write().map_err(|e| e.to_string())? = state;
+        *self.state_problem.write().map_err(|e| e.to_string())? = problem;
         self.migrate_legacy();
         Ok(count)
     }
@@ -422,7 +665,7 @@ impl PluginRegistry {
                     changed = true;
                 }
             }
-            if changed {
+            if changed && self.state_problem().is_none() {
                 if let Some(root) = self.root() {
                     let _ = write_state(&root, &st);
                 }
@@ -433,15 +676,40 @@ impl PluginRegistry {
     /// Switch the pack with this key (`<kind>/<id>`) on or off and save the
     /// choice where both the app and the CLI read it.
     pub fn set_enabled(&self, key: &str, enabled: bool) -> Result<(), String> {
+        // The load would overwrite the choice with the state it read.
+        self.wait_for_load();
         let root = self.root().ok_or("Could not determine config directory")?;
         let mut st = self.state.write().map_err(|e| e.to_string())?;
+        let mut problem = self.state_problem.write().map_err(|e| e.to_string())?;
         // Saved first, applied after: a choice that could not be saved must
         // not take effect here while the CLI and the next launch miss it.
         let mut next = st.clone();
         next.enabled.insert(key.to_string(), enabled);
+        // A file that could not be read is kept beside the new one, not
+        // written over: the user saw the warning and chose to start again,
+        // but the old choices can still be read back by hand. That holds
+        // for one that is not text BridgeLab reads (saved as UTF-16 by an
+        // editor) as much as for one with a JSON error.
+        if problem.is_some() {
+            set_aside_broken_state(&root);
+        }
         write_state(&root, &next)?;
         *st = next;
+        *problem = None;
         Ok(())
+    }
+
+    /// Why the saved on/off choices could not be read at the last load, if
+    /// they could not: until the file is fixed (or a new choice is saved)
+    /// each pack follows its own `enabled`, so a pack switched off may run.
+    /// The app shows it in Settings → Plugins, the CLI on standard error.
+    pub fn state_problem(&self) -> Option<String> {
+        self.state_problem.read().ok()?.as_ref().map(|p| p.reason().to_string())
+    }
+
+    /// The file the on/off choices are saved in.
+    pub fn state_file_path(&self) -> Option<PathBuf> {
+        self.root().map(|r| r.join(STATE_FILE))
     }
 
     fn is_enabled(&self, lp: &LoadedPlugin) -> bool {
@@ -456,40 +724,79 @@ impl PluginRegistry {
 
     /// Keys of the packs that actually contribute rules under the given cap:
     /// the enabled, error-free packs in the order they first appeared (then
-    /// by id), cut to `limit`. `None` = no cap.
+    /// by id), the first `limit` of them that hold rules. `None` = no cap.
+    /// A pack that holds no rules (a misspelt key, an empty draft) checks
+    /// nothing, so it takes no slot: counted, it left a working pack
+    /// inactive in its place.
     fn active_keys(&self, limit: Option<usize>) -> Vec<String> {
+        // Every reader of the packs comes through here (the rules, the
+        // list, the counts), so this is where they wait for a load.
+        self.wait_for_load();
         let guard = match self.plugins.read() { Ok(g) => g, Err(_) => return vec![] };
         let seen = self.state.read().map(|s| s.seen.clone()).unwrap_or_default();
         let rank = |k: &str| seen.iter().position(|s| s == k).unwrap_or(usize::MAX);
-        let mut packs: Vec<(usize, String, String)> = guard
+        let mut packs: Vec<(usize, String, String, bool)> = guard
             .iter()
             .filter(|lp| lp.error.is_none() && self.is_enabled(lp))
-            .map(|lp| (rank(&lp.key()), lp.pack.id.clone(), lp.key()))
+            .map(|lp| (rank(&lp.key()), lp.pack.id.clone(), lp.key(), lp.pack.rule_count() > 0))
             .collect();
         packs.sort();
-        if let Some(max) = limit {
-            packs.truncate(max);
-        }
-        packs.into_iter().map(|(_, _, k)| k).collect()
+        let mut slots = 0;
+        packs
+            .into_iter()
+            .filter(|(_, _, _, holds_rules)| {
+                if !holds_rules {
+                    return true;
+                }
+                slots += 1;
+                limit.is_none_or(|max| slots <= max)
+            })
+            .map(|(_, _, k, _)| k)
+            .collect()
     }
 
-    /// A note for validation reports when packs the user switched on are
-    /// left out by the cap: fewer findings must not look like a cleaner
-    /// message.
-    pub fn cap_notice(&self, limit: Option<usize>) -> Option<ValidationIssue> {
-        let gated = self.list(limit).into_iter().filter(|p| p.gated && p.rule_count > 0).count();
-        (gated > 0).then(|| ValidationIssue {
-            severity: Severity::Info,
-            message: format!(
+    /// How many packs the user switched on hold rules of `kind` but are
+    /// left out by the cap.
+    pub fn gated_count(&self, limit: Option<usize>, kind: RuleKind) -> usize {
+        let active = self.active_keys(limit);
+        let Ok(guard) = self.plugins.read() else { return 0 };
+        guard
+            .iter()
+            .filter(|lp| lp.error.is_none() && self.is_enabled(lp) && !active.contains(&lp.key()))
+            .filter(|lp| match kind {
+                RuleKind::Hl7 => !lp.pack.validation_rules.is_empty(),
+                RuleKind::Fhir => !lp.pack.fhir_rules.is_empty(),
+                RuleKind::Phi => !lp.pack.phi_rules.is_empty(),
+            })
+            .count()
+    }
+
+    /// The note a report carries when packs with rules of its `kind` are
+    /// left out by the cap: fewer findings (or fewer masked fields) must
+    /// not look like a cleaner message. Each report counts only the packs
+    /// that would have added to it: an anonymization pack left out does
+    /// not change an HL7 v2 validation.
+    pub fn cap_message(&self, limit: Option<usize>, kind: RuleKind) -> Option<String> {
+        let gated = self.gated_count(limit, kind);
+        (gated > 0).then(|| {
+            format!(
                 "{} plugin pack{} not applied: the Community edition runs {} packs at a time (Settings → Plugins)",
                 gated,
                 if gated == 1 { "" } else { "s" },
                 limit.unwrap_or(0),
-            ),
+            )
+        })
+    }
+
+    /// [`cap_message`](Self::cap_message) for an HL7 v2 validation report.
+    pub fn cap_notice(&self, limit: Option<usize>) -> Option<ValidationIssue> {
+        self.cap_message(limit, RuleKind::Hl7).map(|message| ValidationIssue {
+            severity: Severity::Info,
+            message,
             segment_idx: None,
             segment_type: None,
             field_position: None,
-            rule_id: "PLUGIN-CAP".into(),
+            rule_id: CAP_RULE_ID.into(),
         })
     }
 
@@ -504,9 +811,7 @@ impl PluginRegistry {
         let mut out = Vec::new();
         if let Some(p) = plugins {
             for lp in p.iter() {
-                let rule_count = lp.pack.validation_rules.len()
-                    + lp.pack.fhir_rules.len()
-                    + lp.pack.phi_rules.len();
+                let rule_count = lp.pack.rule_count();
                 let enabled = self.is_enabled(lp) && lp.error.is_none();
                 let key = lp.key();
                 out.push(PluginInfo {
@@ -521,8 +826,10 @@ impl PluginRegistry {
                     kind: lp.kind.as_str().to_string(),
                     path: lp.path.display().to_string(),
                     rule_count,
-                    error: lp.error.clone(),
-                    warnings: lp.warnings.clone(),
+                    error: lp.error.as_ref().map(PluginNotice::english),
+                    warnings: lp.warnings.iter().map(PluginNotice::english).collect(),
+                    error_notice: lp.error.clone(),
+                    notices: lp.warnings.clone(),
                 });
             }
         }
@@ -584,7 +891,7 @@ impl Default for PluginRegistry {
 /// size (a named pipe would block the read forever, at startup) is
 /// reported instead of read.
 fn load_pack(path: &Path, kind: PluginKind) -> LoadedPlugin {
-    let failed = |label: &str, error: String| LoadedPlugin {
+    let failed = |label: &str, error: PluginNotice| LoadedPlugin {
         pack: PluginPack {
             id: path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
             name: label.into(),
@@ -601,28 +908,33 @@ fn load_pack(path: &Path, kind: PluginKind) -> LoadedPlugin {
         path: path.to_path_buf(),
         error: Some(error),
         warnings: vec![],
+        patterns: vec![],
     };
     // metadata() follows symlinks: a link to a pack is fine, a link to a
     // device or a pipe is not.
+    let read_error = |e: std::io::Error| PluginNotice::new("read_error").arg("reason", e);
     let meta = match fs::metadata(path) {
         Ok(m) => m,
-        Err(e) => return failed("(read error)", e.to_string()),
+        Err(e) => return failed("(read error)", read_error(e)),
     };
     if !meta.is_file() {
-        return failed("(read error)", "not a regular file".into());
+        return failed("(read error)", PluginNotice::new("not_regular_file"));
     }
     if meta.len() > MAX_PACK_BYTES {
         return failed(
             "(read error)",
-            format!("{} KB is too large for a pack (limit {} KB)", meta.len() / 1024, MAX_PACK_BYTES / 1024),
+            PluginNotice::new("too_large").arg("size_kb", meta.len() / 1024).arg("limit_kb", MAX_PACK_BYTES / 1024),
         );
     }
     let text = match fs::read_to_string(path) {
         Ok(t) => t,
-        Err(e) => return failed("(read error)", e.to_string()),
+        Err(e) => return failed("(read error)", read_error(e)),
     };
     match serde_json::from_str::<PluginPack>(strip_bom(&text)) {
         Ok(pack) => {
+            // Compiled here, once for all the rules that spell a pattern,
+            // and kept with the pack for every validation that follows.
+            let patterns = compile_patterns(&pack);
             let mut warnings = lint(&pack);
             // A misspelt key ("rules") loads as an empty pack: say so, or a
             // CI run with the pack looks like a run where every rule passed.
@@ -637,87 +949,216 @@ fn load_pack(path: &Path, kind: PluginKind) -> LoadedPlugin {
                 warnings.insert(
                     0,
                     if unknown.is_empty() {
-                        format!("the pack has no \"{}\": it checks nothing", key)
+                        PluginNotice::new("no_rules").arg("key", key)
                     } else {
-                        format!("the pack has no \"{}\": it checks nothing (unknown key {}: a misspelling?)", key, unknown.join(", "))
+                        PluginNotice::new("no_rules_unknown_key").arg("key", key).arg("unknown", unknown.join(", "))
                     },
                 );
             }
-            LoadedPlugin { warnings, pack, kind, path: path.to_path_buf(), error: None }
+            LoadedPlugin { warnings, pack, kind, path: path.to_path_buf(), error: None, patterns }
         }
-        Err(e) => failed("(parse error)", e.to_string()),
+        Err(e) => failed("(parse error)", PluginNotice::new("parse_error").arg("reason", e)),
     }
 }
 
 /// Values a pack spells in a way the engine does not know, and rules that
 /// cannot do anything. The pack still loads; Settings shows the list.
-fn lint(pack: &PluginPack) -> Vec<String> {
+fn lint(pack: &PluginPack) -> Vec<PluginNotice> {
     let mut out = Vec::new();
-    let severity = |out: &mut Vec<String>, id: &str, s: &str| {
+    // Without an id the pack still loads, but its on/off switch is saved
+    // under "validation/", and a second such pack is refused as a clash.
+    if pack.id.trim().is_empty() {
+        out.push(PluginNotice::new("empty_id"));
+    }
+    if pack.name.trim().is_empty() {
+        out.push(PluginNotice::new("empty_name"));
+    }
+    let severity = |out: &mut Vec<PluginNotice>, id: &str, s: &str| {
         if !matches!(s.trim().to_ascii_lowercase().as_str(), "error" | "warning" | "info") {
-            out.push(format!("rule {}: unknown severity \"{}\", reported as a warning", id, s));
+            out.push(PluginNotice::new("unknown_severity").arg("value", s).on_rule(id));
         }
     };
     for r in &pack.validation_rules {
+        let rule = |n: PluginNotice| n.on_rule(&r.rule_id);
         severity(&mut out, &r.rule_id, &r.severity);
+        out.extend(segment_warning(&r.segment).map(rule));
+        if r.field == 0 {
+            out.push(rule(PluginNotice::new("field_zero")));
+        }
+        if r.component == Some(0) {
+            out.push(rule(PluginNotice::new("component_zero")));
+        }
         if let CheckKind::Regex { pattern } = &r.check {
-            if let Err(e) = regex::Regex::new(pattern) {
-                out.push(format!("rule {}: the pattern does not compile ({}); the rule reports this on every validation", r.rule_id, regex_reason(&e.to_string())));
-            }
+            out.extend(pattern_warning(pattern).map(rule));
         }
     }
     for r in &pack.fhir_rules {
         severity(&mut out, &r.rule_id, &r.severity);
         for fp in [&r.expression, &r.path].into_iter().flatten() {
             if let Err(e) = crate::parser::fhir::fhirpath::check(fp) {
-                out.push(format!("rule {}: the FHIRPath does not parse ({}); the rule reports this on every validation", r.rule_id, e));
+                out.push(PluginNotice::new("fhirpath_invalid").arg("reason", e).on_rule(&r.rule_id));
             }
         }
         if let Some(FhirCheck::Regex { pattern }) = &r.check {
-            if let Err(e) = regex::Regex::new(pattern) {
-                out.push(format!("rule {}: the pattern does not compile ({}); the rule reports this on every validation", r.rule_id, regex_reason(&e.to_string())));
-            }
+            out.extend(pattern_warning(pattern).map(|n| n.on_rule(&r.rule_id)));
         }
     }
     for r in &pack.phi_rules {
+        let field = |n: PluginNotice| n.on_phi_field(format!("{}-{}", r.segment, r.field));
+        out.extend(segment_warning(&r.segment).map(field));
         if !matches!(r.sensitivity.trim().to_ascii_lowercase().as_str(), "high" | "medium" | "low") {
-            out.push(format!("PHI field {}-{}: unknown sensitivity \"{}\", masked as high", r.segment, r.field, r.sensitivity));
+            out.push(field(PluginNotice::new("unknown_sensitivity").arg("value", &r.sensitivity)));
         }
-        if r.field == 0 || (r.segment == "MSH" && r.field <= 2) {
-            out.push(format!("PHI field {}-{}: not a maskable field (segment name or delimiters); ignored", r.segment, r.field));
+        if r.field == 0 || (segment_key(&r.segment) == "MSH" && r.field <= 2) {
+            out.push(field(PluginNotice::new("not_maskable")));
         }
     }
     out
 }
 
+/// A segment name as rules and messages are matched by it: trimmed and in
+/// capitals. The anonymizer reads names the same way, so a rule on "pid"
+/// checks PID, also in a message that indents its lines or writes "pid".
+fn segment_key(name: &str) -> String {
+    name.trim().to_ascii_uppercase()
+}
+
+/// A warning for a segment name not written as HL7 writes one: three
+/// capital letters or digits, the first a letter. A name in lower case or
+/// with spaces still works, but the author should know it was read so.
+fn segment_warning(segment: &str) -> Option<PluginNotice> {
+    let key = segment_key(segment);
+    let well_formed = key.len() == 3
+        && key.starts_with(|c: char| c.is_ascii_uppercase())
+        && key.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
+    if !well_formed {
+        Some(PluginNotice::new("segment_malformed").arg("segment", segment))
+    } else if key != segment {
+        Some(PluginNotice::new("segment_case").arg("segment", segment).arg("key", key))
+    } else {
+        None
+    }
+}
+
+/// The warning for a rule whose pattern does not compile, or compiles to
+/// something large enough to slow every load of the pack.
+fn pattern_warning(pattern: &str) -> Option<PluginNotice> {
+    let compiled = compiled(pattern);
+    match &compiled.regex {
+        Err(regex::Error::CompiledTooBig(limit)) => Some(PluginNotice::new("pattern_too_big").arg("mb", limit >> 20)),
+        Err(e) => Some(PluginNotice::new("pattern_invalid").arg("reason", regex_reason(&e.to_string()))),
+        Ok(_) if compiled.heavy => Some(PluginNotice::new("pattern_heavy").arg("mb", HEAVY_PATTERN_BYTES >> 20)),
+        Ok(_) => None,
+    }
+}
+
 /// The reason in a `regex` error. Its message spans several lines (a
 /// header, the pattern, a caret, then `error: …`): the reason is the last.
-fn regex_reason(s: &str) -> &str {
+pub(crate) fn regex_reason(s: &str) -> &str {
     let mut lines = s.lines().map(str::trim).filter(|l| !l.is_empty());
     let first = lines.clone().next().unwrap_or(s);
     lines.find_map(|l| l.strip_prefix("error:").map(str::trim)).unwrap_or(first)
 }
 
-/// A rule's check, with its pattern compiled once per run instead of once
-/// per segment.
+// --- Patterns ----------------------------------------------------------------
+//
+// A pattern used to be compiled when its pack loaded (to lint it) and then
+// again for every rule on every validation. Everyday patterns compile in
+// well under a millisecond, but a Unicode class repeated many times does
+// not: `\w{300}` takes about 50 ms just to fail, so a 55 KB pack of 400
+// such rules held startup back by 20 seconds and every validation by as
+// long again. Each pattern is now compiled once per load.
+
+/// Compiled size over which a pattern is reported as slow to compile.
+/// Everyday patterns (`^\d{4}-\d{2}-\d{2}$`, `^[A-Z0-9]{1,20}$`) stay in
+/// the tens of KB; `^[\p{L} .-]{1,100}$` takes about 4 MB and 20 ms.
+const HEAVY_PATTERN_BYTES: usize = 2 << 20;
+
+/// A `regex` check's pattern, compiled.
+#[derive(Debug)]
+struct CompiledPattern {
+    regex: Result<regex::Regex, regex::Error>,
+    /// Compiled to more than [`HEAVY_PATTERN_BYTES`].
+    heavy: bool,
+}
+
+impl CompiledPattern {
+    fn compile(pattern: &str) -> Self {
+        // Built within the lower limit first: almost every pattern fits,
+        // and that build is the regex used. A pattern that does not is
+        // built again under the regex crate's own limit (10 MB).
+        match regex::RegexBuilder::new(pattern).size_limit(HEAVY_PATTERN_BYTES).build() {
+            Err(regex::Error::CompiledTooBig(_)) => Self { regex: regex::Regex::new(pattern), heavy: true },
+            regex => Self { regex, heavy: false },
+        }
+    }
+}
+
+/// Every compiled pattern still in use, by its text. The packs hold theirs
+/// ([`LoadedPlugin::patterns`]); the validators, which receive plain rules
+/// cloned out of the registry, find them here. A reload finds the patterns
+/// of the packs it replaces, so only new or changed ones are compiled, and
+/// a pattern no pack uses any more is freed with the last pack holding it.
+static PATTERNS: LazyLock<Mutex<HashMap<String, Weak<CompiledPattern>>>> = LazyLock::new(Default::default);
+
+/// `pattern` compiled: the copy in use when there is one, a new one
+/// otherwise (a rule being tried in the editor, or one whose pack is gone).
+fn compiled(pattern: &str) -> Arc<CompiledPattern> {
+    if let Some(p) = lock(&PATTERNS).get(pattern).and_then(Weak::upgrade) {
+        return p;
+    }
+    // Compiled without the lock: a slow pattern must not hold up the
+    // lookups of a validation running meanwhile.
+    let p = Arc::new(CompiledPattern::compile(pattern));
+    let mut patterns = lock(&PATTERNS);
+    // Another thread may have compiled it meanwhile: keep the copy already
+    // listed, which a pack may hold, rather than list one about to go.
+    if let Some(listed) = patterns.get(pattern).and_then(Weak::upgrade) {
+        return listed;
+    }
+    patterns.retain(|_, w| w.strong_count() > 0);
+    patterns.insert(pattern.to_string(), Arc::downgrade(&p));
+    p
+}
+
+/// The pack's `regex` patterns, compiled, each once however many of its
+/// rules spell it.
+fn compile_patterns(pack: &PluginPack) -> Vec<Arc<CompiledPattern>> {
+    let validation = pack.validation_rules.iter().filter_map(|r| match &r.check {
+        CheckKind::Regex { pattern } => Some(pattern),
+        _ => None,
+    });
+    let fhir = pack.fhir_rules.iter().filter_map(|r| match &r.check {
+        Some(FhirCheck::Regex { pattern }) => Some(pattern),
+        _ => None,
+    });
+    let mut seen = HashSet::new();
+    validation.chain(fhir).filter(|p| seen.insert(p.as_str())).map(|p| compiled(p)).collect()
+}
+
+/// A rule's check, its pattern compiled.
 enum Compiled<'a> {
-    Regex(regex::Regex),
+    Regex(Arc<CompiledPattern>),
     Plain(&'a CheckKind),
 }
 
 impl<'a> Compiled<'a> {
     fn new(check: &'a CheckKind) -> Result<Self, String> {
         match check {
-            CheckKind::Regex { pattern } => regex::Regex::new(pattern)
-                .map(Compiled::Regex)
-                .map_err(|e| format!("invalid pattern: {}", regex_reason(&e.to_string()))),
+            CheckKind::Regex { pattern } => {
+                let p = compiled(pattern);
+                match &p.regex {
+                    Ok(_) => Ok(Compiled::Regex(p)),
+                    Err(e) => Err(format!("invalid pattern: {}", regex_reason(&e.to_string()))),
+                }
+            }
             other => Ok(Compiled::Plain(other)),
         }
     }
 
     fn passes(&self, value: &str) -> bool {
         match self {
-            Compiled::Regex(re) => re.is_match(value),
+            Compiled::Regex(p) => p.regex.as_ref().is_ok_and(|re| re.is_match(value)),
             Compiled::Plain(check) => apply_check(check, value),
         }
     }
@@ -733,8 +1174,10 @@ pub fn run_custom_validations(
     rules: &[ValidationRule],
 ) -> Vec<ValidationIssue> {
     let (rep, comp) = (msg.delimiters.repetition as char, msg.delimiters.component as char);
+    let names: Vec<String> = msg.segments.iter().map(|s| segment_key(&s.segment_type)).collect();
     let mut issues = Vec::new();
     for rule in rules {
+        let segment = segment_key(&rule.segment);
         let check = match Compiled::new(&rule.check) {
             Ok(c) => c,
             Err(e) => {
@@ -752,8 +1195,25 @@ pub fn run_custom_validations(
                 continue;
             }
         };
+        // A field that must not be empty is empty when its segment is not
+        // there at all: "PID-3 is required" fires on a message with no PID.
+        // Every other check has no value to disagree with then, as with a
+        // FHIR rule whose path selects nothing.
+        if !names.contains(&segment) {
+            if matches!(rule.check, CheckKind::NotEmpty) {
+                issues.push(ValidationIssue {
+                    severity: parse_severity(&rule.severity),
+                    message: rule.message.clone(),
+                    segment_idx: None,
+                    segment_type: Some(segment.clone()),
+                    field_position: Some(rule.field),
+                    rule_id: rule.rule_id.clone(),
+                });
+            }
+            continue;
+        }
         for (seg_idx, seg) in msg.segments.iter().enumerate() {
-            if seg.segment_type != rule.segment { continue; }
+            if names[seg_idx] != segment { continue; }
 
             let raw_value = seg
                 .fields
@@ -762,14 +1222,21 @@ pub fn run_custom_validations(
                 .map(|f| f.span.as_str(&msg.raw))
                 .unwrap_or("");
             // MSH-1 and MSH-2 are the delimiters themselves.
-            let delimiters = seg.segment_type == "MSH" && rule.field <= 2;
+            let delimiters = segment == "MSH" && rule.field <= 2;
             let repetitions: Vec<&str> = if delimiters { vec![raw_value] } else { raw_value.split(rep).collect() };
             let passed = repetitions.iter().all(|r| {
                 let value = match rule.component {
                     Some(c) if !delimiters => r.split(comp).nth(c.saturating_sub(1)).unwrap_or(""),
                     _ => r,
                 };
-                check.passes(value)
+                // The check sees the value as it reads, its escapes
+                // resolved: O\T\BRIEN is O&BRIEN, so "contains &" holds
+                // and a length counts the "&" once.
+                if delimiters {
+                    check.passes(value)
+                } else {
+                    check.passes(&crate::parser::hl7::interpret::unescape(value, &msg.delimiters))
+                }
             });
             if !passed {
                 issues.push(ValidationIssue {
@@ -795,7 +1262,22 @@ pub fn run_fhir_validations(
     root: &serde_json::Value,
     rules: &[FhirRule],
 ) -> Vec<crate::parser::fhir::FhirValidationIssue> {
+    run_fhir_validations_within(root, rules, &mut crate::parser::fhir::fhirpath::Budget::for_validation())
+}
+
+/// [`run_fhir_validations`] under `budget`, which all the rules share
+/// with each other and with whatever else the caller evaluates under it.
+/// Once it runs out, the rules left are not run, and one finding says how
+/// many: a validation that stops must not look complete.
+pub fn run_fhir_validations_within(
+    root: &serde_json::Value,
+    rules: &[FhirRule],
+    budget: &mut crate::parser::fhir::fhirpath::Budget,
+) -> Vec<crate::parser::fhir::FhirValidationIssue> {
     let mut issues = Vec::new();
+    let mut not_run = 0usize;
+    // Every rule resolves in `root`: its index is built once.
+    let mut references = crate::parser::fhir::fhirpath::References::default();
     for (target, prefix) in fhir_targets(root) {
         for rule in rules {
             if let Some(required) = &rule.resource {
@@ -803,12 +1285,51 @@ pub fn run_fhir_validations(
                     continue;
                 }
             }
-            if let Some(issue) = apply_fhir_rule(rule, target, root, &prefix) {
-                issues.push(issue);
+            if budget.exhausted() {
+                not_run += 1;
+                continue;
+            }
+            match apply_fhir_rule(rule, target, root, &prefix, budget, &mut references) {
+                RuleOutcome::Holds => {}
+                RuleOutcome::Fails(issue) => issues.push(issue),
+                RuleOutcome::Stopped => not_run += 1,
             }
         }
     }
+    if not_run > 0 {
+        issues.push(rules_stopped(not_run, budget));
+    }
     issues
+}
+
+/// The finding for rules a validation did not run because its budget ran
+/// out. An error, so a CI run fails rather than passing unchecked.
+fn rules_stopped(
+    not_run: usize,
+    budget: &crate::parser::fhir::fhirpath::Budget,
+) -> crate::parser::fhir::FhirValidationIssue {
+    crate::parser::fhir::FhirValidationIssue {
+        severity: "error".into(),
+        message: format!(
+            "The FHIR rules were stopped: on this resource they take too long to evaluate \
+             (more than {} in all), so {} rule {} not run. Narrow the slow rules down, \
+             or switch their pack off in Settings → Plugins.",
+            budget.limits(),
+            not_run,
+            if not_run == 1 { "check was" } else { "checks were" },
+        ),
+        path: "resourceType".into(),
+        rule_id: None,
+    }
+}
+
+/// What one rule found on one resource.
+enum RuleOutcome {
+    Holds,
+    Fails(crate::parser::fhir::FhirValidationIssue),
+    /// Cut short because the validation's shared budget ran out: the rule
+    /// is not to blame, and is counted with the ones not run.
+    Stopped,
 }
 
 /// The resource itself plus, for a Bundle, every entry resource — each with
@@ -827,16 +1348,18 @@ pub fn fhir_targets(root: &serde_json::Value) -> Vec<(&serde_json::Value, String
     out
 }
 
-fn apply_fhir_rule(
+fn apply_fhir_rule<'a>(
     rule: &FhirRule,
-    target: &serde_json::Value,
-    scope: &serde_json::Value,
+    target: &'a serde_json::Value,
+    scope: &'a serde_json::Value,
     prefix: &str,
-) -> Option<crate::parser::fhir::FhirValidationIssue> {
+    budget: &mut crate::parser::fhir::fhirpath::Budget,
+    references: &mut crate::parser::fhir::fhirpath::References<'a>,
+) -> RuleOutcome {
     use crate::parser::fhir::fhirpath;
 
     let fail = |detail: Option<String>, path: String| {
-        Some(crate::parser::fhir::FhirValidationIssue {
+        RuleOutcome::Fails(crate::parser::fhir::FhirValidationIssue {
             // Normalised as for HL7 rules: "Error" or a typo must still be
             // counted, not dropped from the totals.
             severity: match parse_severity(&rule.severity) {
@@ -856,8 +1379,11 @@ fn apply_fhir_rule(
 
     // Invariant form: the expression must come back true.
     if let Some(expression) = &rule.expression {
-        let result = fhirpath::evaluate_within(expression, target, scope);
+        let result = fhirpath::evaluate_keeping(expression, target, scope, budget, references);
         if let Some(e) = result.error {
+            if budget.exhausted() {
+                return RuleOutcome::Stopped;
+            }
             // A broken rule is worth reporting: silently passing would hide
             // the fact that the check never ran.
             return fail(
@@ -867,17 +1393,21 @@ fn apply_fhir_rule(
         }
         let holds = matches!(result.results.as_slice(), [serde_json::Value::Bool(true)]);
         return if holds {
-            None
+            RuleOutcome::Holds
         } else {
             fail(None, format!("{}{}", prefix, expression))
         };
     }
 
     // Selector form: evaluate the path, then apply the check to the result.
-    let path = rule.path.as_deref()?;
-    let check = rule.check.as_ref()?;
-    let result = fhirpath::evaluate_within(path, target, scope);
+    let (Some(path), Some(check)) = (rule.path.as_deref(), rule.check.as_ref()) else {
+        return RuleOutcome::Holds;
+    };
+    let result = fhirpath::evaluate_keeping(path, target, scope, budget, references);
     if let Some(e) = result.error {
+        if budget.exhausted() {
+            return RuleOutcome::Stopped;
+        }
         return fail(
             Some(format!("rule {} failed to evaluate: {}", rule.rule_id, e)),
             format!("{}{}", prefix, path),
@@ -895,7 +1425,7 @@ fn apply_fhir_rule(
 
     let failure = apply_fhir_check(check, &values);
     match failure {
-        None => None,
+        None => RuleOutcome::Holds,
         Some(detail) => fail(detail, format!("{}{}", prefix, path)),
     }
 }
@@ -935,7 +1465,7 @@ fn apply_fhir_check(check: &FhirCheck, values: &[String]) -> Option<Option<Strin
         }
         // Every other check is vacuously satisfied by nothing to check; a
         // rule that also wants the value present pairs it with cardinality.
-        FhirCheck::Regex { pattern } => match regex::Regex::new(pattern) {
+        FhirCheck::Regex { pattern } => match &compiled(pattern).regex {
             Err(e) => Some(Some(format!("invalid pattern: {}", e))),
             Ok(re) => {
                 let bad: Vec<&String> = values.iter().filter(|v| !re.is_match(v)).collect();
@@ -966,7 +1496,7 @@ fn apply_fhir_check(check: &FhirCheck, values: &[String]) -> Option<Option<Strin
 fn apply_check(check: &CheckKind, value: &str) -> bool {
     match check {
         CheckKind::NotEmpty => !value.trim().is_empty(),
-        CheckKind::Regex { pattern } => regex::Regex::new(pattern).is_ok_and(|re| re.is_match(value)),
+        CheckKind::Regex { pattern } => compiled(pattern).regex.as_ref().is_ok_and(|re| re.is_match(value)),
         CheckKind::MaxLength { max } => value.chars().count() <= *max,
         CheckKind::MinLength { min } => value.chars().count() >= *min,
         CheckKind::OneOf { values } => values.iter().any(|v| v == value),
@@ -1019,6 +1549,54 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].rule_id, "TEST-01");
         assert_eq!(issues[0].severity, Severity::Error);
+    }
+
+    /// A required field is missing when its segment is: the rule fires once.
+    /// Checks on a value have nothing to check then and pass.
+    #[test]
+    fn a_missing_segment_fails_not_empty_only() {
+        let msg = sample_msg();
+        let rule = |check: CheckKind| ValidationRule {
+            rule_id: "OBX-REQ".into(),
+            severity: "error".into(),
+            segment: "obx".into(),
+            field: 5,
+            component: None,
+            check,
+            message: "OBX-5 is required".into(),
+        };
+        let issues = run_custom_validations(&msg, &[rule(CheckKind::NotEmpty)]);
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].segment_idx, None);
+        assert_eq!(issues[0].segment_type.as_deref(), Some("OBX"));
+        assert!(run_custom_validations(&msg, &[rule(CheckKind::MaxLength { max: 1 })]).is_empty());
+        assert!(run_custom_validations(&msg, &[rule(CheckKind::OneOf { values: vec!["X".into()] })]).is_empty());
+    }
+
+    /// Checks read values with their escapes resolved, as the message means
+    /// them: O\T\BRIEN is O&BRIEN.
+    #[test]
+    fn checks_see_escapes_resolved() {
+        let msg = Hl7Lexer::new()
+            .parse(b"MSH|^~\\&|A|B|C|D|20260415120000||ADT^A01|CTRL1|P|2.5\rPID|1||MRN001||O\\T\\BRIEN^JOHN\r".to_vec())
+            .unwrap();
+        let rule = |check: CheckKind| ValidationRule {
+            rule_id: "NAME".into(),
+            severity: "warning".into(),
+            segment: "PID".into(),
+            field: 5,
+            component: Some(1),
+            check,
+            message: "m".into(),
+        };
+        // "contains &" holds: the value is O&BRIEN.
+        assert!(run_custom_validations(&msg, &[rule(CheckKind::Contains { value: "&".into() })]).is_empty());
+        // Seven characters, not the nine written.
+        assert!(run_custom_validations(&msg, &[rule(CheckKind::MaxLength { max: 7 })]).is_empty());
+        assert_eq!(run_custom_validations(&msg, &[rule(CheckKind::Contains { value: "\\T\\".into() })]).len(), 1);
+        // MSH-2 is the delimiters themselves, never unescaped.
+        let msh2 = ValidationRule { segment: "MSH".into(), field: 2, component: None, ..rule(CheckKind::OneOf { values: vec!["^~\\&".into()] }) };
+        assert!(run_custom_validations(&msg, &[msh2]).is_empty());
     }
 
     #[test]
@@ -1251,6 +1829,90 @@ mod tests {
         assert!(issues.iter().any(|i| i.message.contains("failed to evaluate")), "{:?}", issues);
     }
 
+    /// A rule that is slow on each entry of a large Bundle must not take a
+    /// whole evaluation's budget for every one of them: the rules of one
+    /// validation share one budget. A rule past its own limit is reported;
+    /// once the shared one is spent the rest are not run, and one finding
+    /// says how many, so the validation does not look complete.
+    #[test]
+    fn a_validation_stops_once_its_rules_have_spent_its_budget() {
+        use crate::parser::fhir::fhirpath::Budget;
+        let names: Vec<serde_json::Value> = (0..10).map(|i| serde_json::json!({"family": format!("F{i}")})).collect();
+        let entries: Vec<serde_json::Value> = (0..50)
+            .map(|i| serde_json::json!({"resource": {"resourceType": "Patient", "id": format!("p{i}"), "name": names}}))
+            .collect();
+        let bundle = serde_json::json!({"resourceType": "Bundle", "type": "collection", "entry": entries});
+        // About 15 000 steps on each Patient.
+        let mut nested = "%resource.name".to_string();
+        for _ in 0..3 {
+            nested = format!("%resource.name.where({nested}.exists())");
+        }
+        let slow = FhirRule {
+            expression: Some(format!("{nested}.count() > 5")),
+            ..fhir_rule("slow")
+        };
+        let hour = std::time::Duration::from_secs(3600);
+
+        // Each evaluation may take 10 000 steps, the validation 25 000: two
+        // entries break their own limit, the third the shared one.
+        let mut budget = Budget::with_limits(25_000, hour).each_at_most(10_000, hour);
+        let issues = run_fhir_validations_within(&bundle, std::slice::from_ref(&slow), &mut budget);
+        assert_eq!(issues.len(), 3, "{issues:#?}");
+        for (i, issue) in issues[..2].iter().enumerate() {
+            assert_eq!(issue.rule_id.as_deref(), Some("slow"));
+            assert!(issue.path.starts_with(&format!("entry[{i}].resource.")), "{}", issue.path);
+            assert!(issue.message.contains("failed to evaluate"), "{}", issue.message);
+            assert!(issue.message.contains("more than 10000 steps"), "{}", issue.message);
+        }
+        let stopped = &issues[2];
+        assert_eq!(stopped.rule_id, None);
+        assert_eq!(stopped.severity, "error");
+        assert!(stopped.message.contains("The FHIR rules were stopped"), "{}", stopped.message);
+        assert!(stopped.message.contains("more than 25000 steps or 3600 seconds in all"), "{}", stopped.message);
+        assert!(stopped.message.contains("48 rule checks were not run"), "{}", stopped.message);
+
+        // With room for all of them, every entry is checked.
+        let mut budget = Budget::with_limits(10_000_000, hour);
+        let issues = run_fhir_validations_within(&bundle, std::slice::from_ref(&slow), &mut budget);
+        assert!(issues.is_empty(), "{issues:#?}");
+        // A validation's own budget holds about two evaluations.
+        assert_eq!(
+            Budget::for_validation().steps_left(),
+            2 * crate::parser::fhir::fhirpath::MAX_EVAL_STEPS
+        );
+    }
+
+    /// A rule that resolves a reference on every entry walks the Bundle
+    /// once for the whole validation, not once per entry: on a large Bundle
+    /// that was most of the time, and would now be most of the budget.
+    #[test]
+    fn rules_on_each_entry_share_one_reference_index() {
+        use crate::parser::fhir::fhirpath::Budget;
+        let observations = |n: usize| {
+            let mut entries = vec![serde_json::json!({"fullUrl": "urn:uuid:p",
+                "resource": {"resourceType": "Patient", "name": [{"family": "Y"}]}})];
+            entries.extend((0..n).map(|i| serde_json::json!({"fullUrl": format!("urn:uuid:o{i}"),
+                "resource": {"resourceType": "Observation", "status": "final", "code": {"text": "x"},
+                    "subject": {"reference": "urn:uuid:p"}}})));
+            serde_json::json!({"resourceType": "Bundle", "type": "collection", "entry": entries})
+        };
+        let rule = FhirRule {
+            resource: Some("Observation".into()),
+            expression: Some("subject.resolve().exists()".into()),
+            ..fhir_rule("subject-resolves")
+        };
+        let steps = |n: usize| {
+            let mut budget = Budget::with_limits(1_000_000_000, std::time::Duration::from_secs(3600));
+            let issues = run_fhir_validations_within(&observations(n), std::slice::from_ref(&rule), &mut budget);
+            assert!(issues.is_empty(), "{issues:?}");
+            1_000_000_000 - budget.steps_left()
+        };
+        // Ten times the entries, about ten times the work: built for each
+        // entry, the index made it a hundred.
+        let (small, large) = (steps(100), steps(1000));
+        assert!(large < 15 * small, "{small} steps for 100 entries, {large} for 1000");
+    }
+
     #[test]
     fn a_rule_whose_expression_breaks_is_reported_not_silently_passed() {
         let rule = FhirRule {
@@ -1311,6 +1973,7 @@ mod tests {
             path: PathBuf::from(format!("{id}.json")),
             error: None,
             warnings: vec![],
+            patterns: vec![],
         }).collect();
         *reg.plugins.write().unwrap() = loaded;
         reg
@@ -1490,14 +2153,184 @@ mod tests {
     fn a_new_pack_does_not_displace_one_already_active_under_the_cap() {
         let root = temp_root();
         for id in ["pack-b", "pack-c", "pack-d"] {
-            write_pack(&root, "validation", &format!("{id}.json"), &format!(r#"{{"id":"{id}","name":"{id}"}}"#));
+            write_pack(&root, "validation", &format!("{id}.json"), &pack_with_a_rule(id));
         }
         let reg = PluginRegistry::with_root(root.clone());
         reg.reload().unwrap();
-        write_pack(&root, "validation", "aa-new.json", r#"{"id":"aa-new","name":"aa-new"}"#);
+        write_pack(&root, "validation", "aa-new.json", &pack_with_a_rule("aa-new"));
         reg.reload().unwrap();
         let gated: Vec<String> = reg.list(Some(3)).into_iter().filter(|p| p.gated).map(|p| p.id).collect();
         assert_eq!(gated, vec!["aa-new"]);
+    }
+
+    /// A pack of one validation rule, `<id>-01` on PID-3.
+    fn pack_with_a_rule(id: &str) -> String {
+        serde_json::json!({
+            "id": id, "name": id,
+            "validation_rules": [{"rule_id": format!("{id}-01"), "segment": "PID", "field": 3,
+                "check": {"type": "not_empty"}, "message": "m"}]
+        })
+        .to_string()
+    }
+
+    /// The CLI records nothing in the state file, so without the app every
+    /// pack was new on every run and the cap kept the first three by id: a
+    /// pack added later ("aa-new") switched off one in use. The order the
+    /// files appeared in decides, as it does in the app.
+    #[test]
+    fn without_the_app_a_new_pack_does_not_displace_one_in_use() {
+        let root = temp_root();
+        for id in ["pack-b", "pack-c", "pack-d"] {
+            write_pack(&root, "validation", &format!("{id}.json"), &pack_with_a_rule(id));
+        }
+        // Creation times one apart, whatever the file system's resolution.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        write_pack(&root, "validation", "aa-new.json", &pack_with_a_rule("aa-new"));
+        let cli = PluginRegistry::with_root(root.clone());
+        cli.reload_read_only().unwrap();
+        let gated: Vec<String> = cli.list(Some(3)).into_iter().filter(|p| p.gated).map(|p| p.id).collect();
+        assert_eq!(gated, vec!["aa-new"]);
+        assert!(!root.join(STATE_FILE).exists(), "still read only");
+        // The app, starting on the same folder, keeps the same packs.
+        let app = PluginRegistry::with_root(root.clone());
+        app.reload().unwrap();
+        let gated: Vec<String> = app.list(Some(3)).into_iter().filter(|p| p.gated).map(|p| p.id).collect();
+        assert_eq!(gated, vec!["aa-new"]);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// A pack that holds no rules (here a misspelt "rules" key) checks
+    /// nothing: it took one of the three slots and left a working pack
+    /// inactive.
+    #[test]
+    fn a_pack_without_rules_takes_no_slot_under_the_cap() {
+        let root = temp_root();
+        write_pack(&root, "validation", "a-empty.json", r#"{"id":"a-empty","name":"Empty","rules":[{"rule_id":"X"}]}"#);
+        for id in ["b", "c", "d"] {
+            write_pack(&root, "validation", &format!("{id}.json"), &pack_with_a_rule(id));
+        }
+        let reg = PluginRegistry::with_root(root.clone());
+        reg.reload().unwrap();
+        let list = reg.list(Some(3));
+        assert!(list.iter().all(|p| !p.gated), "{:?}", list.iter().map(|p| (&p.id, p.gated)).collect::<Vec<_>>());
+        assert_eq!(reg.active_validation_rules(Some(3)).len(), 3);
+        assert!(reg.cap_notice(Some(3)).is_none());
+        // A fourth pack with rules is over the cap.
+        write_pack(&root, "validation", "e.json", &pack_with_a_rule("e"));
+        reg.reload().unwrap();
+        let gated: Vec<String> = reg.list(Some(3)).into_iter().filter(|p| p.gated).map(|p| p.id).collect();
+        assert_eq!(gated, vec!["e"]);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// A .state.json that does not parse was read as empty, so every pack
+    /// switched off ran again, and the app's next start wrote an empty
+    /// state over it. It is now reported, left as it is, and set aside
+    /// only when the user saves a new choice.
+    #[test]
+    fn a_malformed_state_file_is_reported_and_not_written_over() {
+        let root = temp_root();
+        write_pack(&root, "validation", "a.json", &pack_with_a_rule("a"));
+        write_pack(&root, "validation", "b.json", &pack_with_a_rule("b"));
+        let broken = "{\"enabled\": {\"validation/a\": false,}}";
+        fs::write(root.join(STATE_FILE), broken).unwrap();
+
+        let cli = PluginRegistry::with_root(root.clone());
+        cli.reload_read_only().unwrap();
+        assert!(cli.state_problem().is_some_and(|e| e.contains("line 1")), "{:?}", cli.state_problem());
+
+        let app = PluginRegistry::with_root(root.clone());
+        app.reload().unwrap();
+        assert!(app.state_problem().is_some());
+        assert_eq!(fs::read_to_string(root.join(STATE_FILE)).unwrap(), broken, "the start did not write over it");
+
+        // A new choice is saved; the unreadable file is kept beside it.
+        app.set_enabled("validation/b", false).unwrap();
+        assert!(app.state_problem().is_none());
+        assert_eq!(fs::read_to_string(root.join(BROKEN_STATE_FILE)).unwrap(), broken);
+        let again = PluginRegistry::with_root(root.clone());
+        again.reload().unwrap();
+        assert!(again.state_problem().is_none());
+        let rules: Vec<String> = again.active_validation_rules(None).into_iter().map(|r| r.rule_id).collect();
+        assert_eq!(rules, vec!["a-01"]);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// The unreadable file went to one fixed name: a second recovery made
+    /// the rename fail on Windows (and so every switch), and on Unix wrote
+    /// over the first backup. Each backup now gets a name of its own.
+    #[test]
+    fn a_second_unreadable_state_file_keeps_the_first_backup() {
+        let root = temp_root();
+        write_pack(&root, "validation", "a.json", &pack_with_a_rule("a"));
+        fs::write(root.join(BROKEN_STATE_FILE), "first backup").unwrap();
+        for (round, broken) in ["{not json", "{\"enabled\": oops}"].into_iter().enumerate() {
+            fs::write(root.join(STATE_FILE), broken).unwrap();
+            let reg = PluginRegistry::with_root(root.clone());
+            reg.reload().unwrap();
+            assert!(reg.state_problem().is_some());
+            reg.set_enabled("validation/a", round == 1).expect("the switch is saved");
+            assert!(reg.state_problem().is_none());
+            let backup = root.join(format!("{}.{}", BROKEN_STATE_FILE, round + 1));
+            assert_eq!(fs::read_to_string(&backup).unwrap(), broken);
+        }
+        assert_eq!(fs::read_to_string(root.join(BROKEN_STATE_FILE)).unwrap(), "first backup");
+        let again = PluginRegistry::with_root(root.clone());
+        again.reload().unwrap();
+        assert!(again.state_problem().is_none());
+        assert_eq!(again.active_validation_rules(None).len(), 1, "the last choice (on) was saved");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// Only a state file with a JSON error was kept; one that is not UTF-8
+    /// (an editor that saved it as UTF-16) was written over by the next
+    /// switch. Both are kept, under the same numbered names.
+    #[test]
+    fn a_state_file_that_is_not_utf8_is_kept_too() {
+        let root = temp_root();
+        write_pack(&root, "validation", "a.json", &pack_with_a_rule("a"));
+        let utf16: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain("{\"enabled\": {\"validation/a\": false}}".encode_utf16().flat_map(u16::to_le_bytes))
+            .collect();
+        let latin1 = b"{\"enabled\": {\"validation/caf\xe9\": false}}".to_vec();
+        for (round, bytes) in [utf16, latin1].into_iter().enumerate() {
+            fs::write(root.join(STATE_FILE), &bytes).unwrap();
+            let reg = PluginRegistry::with_root(root.clone());
+            reg.reload().unwrap();
+            assert!(reg.state_problem().is_some(), "round {round}");
+            reg.set_enabled("validation/a", false).expect("the switch is saved");
+            let backup = if round == 0 { root.join(BROKEN_STATE_FILE) } else { root.join(format!("{}.1", BROKEN_STATE_FILE)) };
+            assert_eq!(fs::read(&backup).unwrap(), bytes, "round {round}: kept byte for byte");
+            let again = PluginRegistry::with_root(root.clone());
+            again.reload().unwrap();
+            assert!(again.state_problem().is_none());
+            assert!(again.active_validation_rules(None).is_empty(), "the new choice (off) was saved");
+        }
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// Each report counts the packs left out that would have added to it:
+    /// FHIR and PHI results had no note at all, and the HL7 v2 note
+    /// counted packs of every kind.
+    #[test]
+    fn each_kind_of_result_counts_its_own_packs_left_out() {
+        let root = temp_root();
+        for id in ["a", "b", "c"] {
+            write_pack(&root, "validation", &format!("{id}.json"), &pack_with_a_rule(id));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        write_pack(&root, "fhir", "f.json", r#"{"id":"f","name":"F","fhir_rules":[{"rule_id":"F1","expression":"true","message":"m"}]}"#);
+        write_pack(&root, "anonymization", "p.json", r#"{"id":"p","name":"P","phi_rules":[{"segment":"ZPI","field":2,"sensitivity":"high"}]}"#);
+        let reg = PluginRegistry::with_root(root.clone());
+        reg.reload().unwrap();
+        assert!(reg.cap_notice(Some(3)).is_none(), "no validation pack is left out");
+        assert_eq!(reg.gated_count(Some(3), RuleKind::Fhir), 1);
+        assert_eq!(reg.gated_count(Some(3), RuleKind::Phi), 1);
+        let fhir = reg.cap_message(Some(3), RuleKind::Fhir).unwrap();
+        assert!(fhir.starts_with("1 plugin pack not applied"), "{fhir}");
+        assert!(reg.cap_message(None, RuleKind::Phi).is_none());
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -1514,6 +2347,37 @@ mod tests {
         assert!(w.iter().any(|m| m.contains("unknown severity")), "{w:?}");
         assert!(w.iter().any(|m| m.contains("does not compile")), "{w:?}");
         assert!(w.iter().any(|m| m.contains("MSH-2")), "{w:?}");
+    }
+
+    #[test]
+    fn problems_come_as_notices_the_app_can_translate_and_as_english() {
+        let root = temp_root();
+        write_pack(&root, "validation", "n.json", r#"{"id":"n","name":"N","phi_rules":[{"segment":"pid","field":0,"sensitivity":"high"}],"validation_rules":[{"rule_id":"F0","severity":"error","segment":"PID","field":0,"check":{"type":"not_empty"},"message":"m"}]}"#);
+        write_pack(&root, "validation", "broken.json", "{ not json");
+        let reg = PluginRegistry::with_root(root.clone());
+        reg.reload().unwrap();
+        let list = reg.list(None);
+        let n = list.iter().find(|p| p.id == "n").unwrap();
+        assert_eq!(n.notices.len(), n.warnings.len());
+        for (notice, text) in n.notices.iter().zip(&n.warnings) {
+            assert_eq!(&notice.english(), text);
+        }
+        let field0 = n.notices.iter().find(|x| x.code == "field_zero").expect("field 0 flagged");
+        assert_eq!(field0.rule.as_deref(), Some("F0"));
+        assert!(n.warnings.contains(&"rule F0: field 0 is the segment name, not a field (fields count from 1); the rule checks an empty value".to_string()));
+        let case = n.notices.iter().find(|x| x.code == "segment_case").expect("lower-case segment flagged");
+        assert_eq!(case.phi_field.as_deref(), Some("pid-0"));
+        assert_eq!(case.args.get("key").map(String::as_str), Some("PID"));
+        assert!(n.warnings.iter().any(|w| w == "PHI field pid-0: segment \"pid\" is read as PID; write it as PID"), "{:?}", n.warnings);
+
+        let broken = list.iter().find(|p| p.path.ends_with("broken.json")).unwrap();
+        let err = broken.error_notice.as_ref().unwrap();
+        assert_eq!(err.code, "parse_error");
+        assert_eq!(broken.error.as_deref(), err.args.get("reason").map(String::as_str));
+        // What the frontend reads.
+        let json = serde_json::to_value(field0).unwrap();
+        assert_eq!(json, serde_json::json!({ "code": "field_zero", "rule": "F0", "args": {} }));
+        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -1560,6 +2424,24 @@ mod tests {
     }
 
     #[test]
+    fn numbers_survive_the_flattened_and_tagged_parts_of_a_pack() {
+        // JSON numbers keep their text (serde_json's arbitrary_precision),
+        // and serde reads `flatten` and `tag` fields through a buffer that
+        // sees such a number as a map: the round trip must still hold.
+        let text = r#"{"id": "p", "name": "P", "threshold": 6.30, "limits": {"ratio": 1.250},
+            "fhir_rules": [{"rule_id": "R1", "path": "name.family", "message": "m",
+                "check": {"type": "max_length", "max": 10}, "weight": 0.50}]}"#;
+        let pack: PluginPack = serde_json::from_str(text).unwrap();
+        assert_eq!(pack.extra["threshold"].to_string(), "6.30");
+        assert_eq!(pack.extra["limits"]["ratio"].to_string(), "1.250");
+        let rule = &pack.fhir_rules[0];
+        assert!(matches!(rule.check, Some(FhirCheck::MaxLength { max: 10 })), "{:?}", rule.check);
+        assert_eq!(rule.extra["weight"].to_string(), "0.50");
+        let again = serde_json::to_string(&pack).unwrap();
+        assert!(again.contains(r#""threshold":6.30"#) && again.contains(r#""weight":0.50"#), "{again}");
+    }
+
+    #[test]
     fn a_regex_warning_keeps_its_reason() {
         let e = regex::Regex::new("([").unwrap_err().to_string();
         assert!(regex_reason(&e).contains("unclosed"), "{}", regex_reason(&e));
@@ -1577,6 +2459,155 @@ mod tests {
         reg.reload().unwrap();
         assert!(root.join(STATE_FILE).exists());
         fs::remove_dir_all(&root).ok();
+    }
+
+    /// Each pattern was compiled when its pack loaded and again
+    /// for every rule on every validation (400 `\w{300}` rules: 20 s at
+    /// startup, 40 s per CLI run). Now once per load, shared by the rules
+    /// that spell it, and reused by a reload and by every validation.
+    #[test]
+    fn a_pattern_is_compiled_once_per_load_and_reused() {
+        // A pattern no other test uses, so the shared table is ours alone.
+        let pattern = "^M14-ONCE-[0-9]{3}$";
+        let root = temp_root();
+        let rule = |id: &str| serde_json::json!({
+            "rule_id": id, "segment": "PID", "field": 3,
+            "check": {"type": "regex", "pattern": pattern}, "message": "m"
+        });
+        write_pack(&root, "validation", "p.json", &serde_json::json!({
+            "id": "p", "name": "P", "validation_rules": [rule("R1"), rule("R2")]
+        }).to_string());
+        let reg = PluginRegistry::with_root(root.clone());
+        reg.reload().unwrap();
+        let held = |reg: &PluginRegistry| reg.plugins.read().unwrap()[0].patterns.clone();
+        let first = held(&reg);
+        assert_eq!(first.len(), 1, "two rules, one pattern, one compile");
+        assert!(Arc::ptr_eq(&first[0], &compiled(pattern)), "validation finds the pack's copy");
+
+        // A validation runs on the copy compiled at load.
+        let msg = Hl7Lexer::new().parse(b"MSH|^~\\&|A|B|C|D|20260415120000||ADT^A01|C1|P|2.5\rPID|1||M14-ONCE-123\r".to_vec()).unwrap();
+        assert!(run_custom_validations(&msg, &reg.active_validation_rules(None)).is_empty());
+
+        reg.reload().unwrap();
+        assert!(Arc::ptr_eq(&first[0], &held(&reg)[0]), "a reload compiles only new patterns");
+
+        // Freed with the last pack that uses it.
+        drop((first, reg));
+        assert!(lock(&PATTERNS).get(pattern).and_then(Weak::upgrade).is_none());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// A pattern that is too large, or large enough to make
+    /// every load slow, is named under its pack instead of costing time
+    /// without a word.
+    #[test]
+    fn a_pattern_too_large_or_slow_to_compile_is_listed() {
+        let rule = |id: &str, pattern: &str| ValidationRule {
+            rule_id: id.into(),
+            severity: "error".into(),
+            segment: "PID".into(),
+            field: 5,
+            component: Some(1),
+            check: CheckKind::Regex { pattern: pattern.into() },
+            message: "m".into(),
+        };
+        let pack: PluginPack = serde_json::from_value(serde_json::json!({"id": "p", "name": "P"})).unwrap();
+        let pack = PluginPack {
+            validation_rules: vec![
+                rule("BIG", r"\w{300}"),
+                rule("HEAVY", r"^[\p{L} .-]{1,100}$"),
+                rule("LIGHT", r"^[A-Z][A-Z -]*$"),
+            ],
+            ..pack
+        };
+        let w: Vec<String> = lint(&pack).iter().map(PluginNotice::english).collect();
+        assert!(w.iter().any(|m| m.starts_with("rule BIG: the pattern is too large to compile (over 10 MB")), "{w:?}");
+        assert!(w.iter().any(|m| m.starts_with("rule HEAVY: the pattern compiles to over 2 MB")), "{w:?}");
+        assert!(!w.iter().any(|m| m.contains("LIGHT")), "{w:?}");
+        assert_eq!(w.len(), 2, "{w:?}");
+
+        // A heavy pattern still works; the one that does not compile says so.
+        let msg = sample_msg();
+        let issues = run_custom_validations(&msg, &pack.validation_rules);
+        assert!(issues.iter().any(|i| i.rule_id == "BIG" && i.message.contains("cannot run")), "{issues:?}");
+        assert!(!issues.iter().any(|i| i.rule_id == "HEAVY" || i.rule_id == "LIGHT"), "{issues:?}");
+    }
+
+    /// The app loads the packs on another thread so the window
+    /// does not wait; a validation that comes first must wait for them, not
+    /// run without them.
+    #[test]
+    fn a_reader_waits_for_a_background_load() {
+        let root = temp_root();
+        write_pack(&root, "validation", "p.json", r#"{"id":"p","name":"P","validation_rules":[{"rule_id":"R","segment":"PID","field":3,"check":{"type":"not_empty"},"message":"m"}]}"#);
+        let reg = PluginRegistry::with_root(root.clone());
+        reg.begin_background_load();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                reg.reload().unwrap();
+            });
+            assert_eq!(reg.active_validation_rules(None).len(), 1, "the rules of a load still running");
+        });
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// Rules on "pid", on field 0 or on component 0 loaded
+    /// without a word and never worked, a PHI rule on "zpi" included; an
+    /// empty id loaded as a pack with a blank title. Each is now listed.
+    #[test]
+    fn rules_written_in_ways_that_never_match_are_listed() {
+        let root = temp_root();
+        write_pack(&root, "validation", "x.json", &serde_json::json!({
+            "id": " ", "name": "", "validation_rules": [
+                {"rule_id": "LOWER", "segment": "pid", "field": 3, "check": {"type": "not_empty"}, "message": "m"},
+                {"rule_id": "BAD", "segment": "PIDX", "field": 3, "check": {"type": "not_empty"}, "message": "m"},
+                {"rule_id": "FIELD0", "segment": "PID", "field": 0, "check": {"type": "not_empty"}, "message": "m"},
+                {"rule_id": "COMP0", "segment": "PID", "field": 5, "component": 0, "check": {"type": "not_empty"}, "message": "m"},
+                {"rule_id": "FINE", "segment": "PID", "field": 5, "component": 1, "check": {"type": "not_empty"}, "message": "m"}
+            ],
+            "phi_rules": [
+                {"segment": "zpi", "field": 3, "sensitivity": "high"},
+                {"segment": "msh", "field": 2, "sensitivity": "high"}
+            ]
+        }).to_string());
+        let reg = PluginRegistry::with_root(root.clone());
+        reg.reload().unwrap();
+        let w = reg.list(None).remove(0).warnings;
+        let has = |needle: &str| w.iter().any(|m| m.contains(needle));
+        assert!(has("empty \"id\""), "{w:?}");
+        assert!(has("empty \"name\""), "{w:?}");
+        assert!(has("rule LOWER: segment \"pid\" is read as PID"), "{w:?}");
+        assert!(has("rule BAD: \"PIDX\" is not a segment name"), "{w:?}");
+        assert!(has("rule FIELD0: field 0 is the segment name"), "{w:?}");
+        assert!(has("rule COMP0: component 0 does not exist"), "{w:?}");
+        assert!(has("PHI field zpi-3: segment \"zpi\" is read as ZPI"), "{w:?}");
+        assert!(has("PHI field msh-2: not a maskable field"), "{w:?}");
+        assert!(!has("FINE"), "{w:?}");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// Segment names match as the anonymizer matches them,
+    /// trimmed and in capitals, on both sides.
+    #[test]
+    fn segment_names_match_in_any_case() {
+        let rule = |segment: &str| ValidationRule {
+            rule_id: format!("R-{segment}"),
+            severity: "error".into(),
+            segment: segment.into(),
+            field: 3,
+            component: None,
+            check: CheckKind::NotEmpty,
+            message: "PID-3 is required".into(),
+        };
+        let empty_pid3 = Hl7Lexer::new().parse(b"MSH|^~\\&|A|B|C|D|20260415120000||ADT^A01|C1|P|2.5\rPID|1||\r".to_vec()).unwrap();
+        for segment in ["PID", "pid", " Pid "] {
+            let issues = run_custom_validations(&empty_pid3, &[rule(segment)]);
+            assert_eq!(issues.len(), 1, "a rule on {segment:?}: {issues:?}");
+            assert_eq!(issues[0].segment_idx, Some(1));
+        }
+        let lower_segment = Hl7Lexer::new().parse(b"MSH|^~\\&|A|B|C|D|20260415120000||ADT^A01|C1|P|2.5\rpid|1||\r".to_vec()).unwrap();
+        assert_eq!(run_custom_validations(&lower_segment, &[rule("PID")]).len(), 1, "a message that writes \"pid\"");
     }
 }
 

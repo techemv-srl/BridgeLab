@@ -22,6 +22,63 @@ pub fn acknowledged_control_id(response: &str) -> Option<String> {
     msa_field(response, 2)
 }
 
+/// Why a reply does not acknowledge the message it answers.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReplyProblem {
+    /// No MSA segment with an acknowledgement code: the peer answered with
+    /// something that is not an HL7 acknowledgement (an HTTP error page, a
+    /// banner, free text), so nothing says the message was accepted.
+    NotAnAck,
+    /// MSA-2 names another message than the MSH-10 of the one sent: the
+    /// peer acknowledged a different message (a stale reply on a shared
+    /// connection, a peer answering with a fixed ACK).
+    OtherMessage { acknowledged: String, sent: String },
+    /// An acceptance (AA or CA) whose MSA-2 is empty, for a message sent
+    /// with an MSH-10: it names no message, so nothing ties it to this one.
+    /// MSA-2 is required in every HL7 v2 version; a peer that leaves it out
+    /// may be answering anything.
+    Unmatched { sent: String },
+}
+
+impl std::fmt::Display for ReplyProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotAnAck => {
+                write!(f, "the reply is not an HL7 acknowledgement (no MSA segment with an acknowledgement code)")
+            }
+            Self::OtherMessage { acknowledged, sent } => write!(
+                f,
+                "the ACK acknowledges message control ID {}, not {} (MSA-2 does not match MSH-10)",
+                acknowledged, sent
+            ),
+            Self::Unmatched { sent } => write!(
+                f,
+                "the ACK names no message (MSA-2 is empty), so it cannot be matched to message control ID {}; MSA-2 must repeat the MSH-10 of the message acknowledged",
+                sent
+            ),
+        }
+    }
+}
+
+/// Whether `reply` acknowledges `sent`: None when it does, whatever its
+/// code (an AE for this message is an answer about it). An acceptance
+/// that names no message (MSA-2 empty) is not taken as one of this
+/// message; a rejection naming none is still a rejection. A message sent
+/// without MSH-10 cannot be matched, and its reply is taken at its word.
+pub fn reply_problem(sent: &str, reply: &str) -> Option<ReplyProblem> {
+    let Some(code) = ack_code_of(reply) else {
+        return Some(ReplyProblem::NotAnAck);
+    };
+    let sent_id = extract_message_control_id(sent)?;
+    match acknowledged_control_id(reply) {
+        Some(acknowledged) => {
+            (acknowledged != sent_id).then(|| ReplyProblem::OtherMessage { acknowledged, sent: sent_id })
+        }
+        None => matches!(code.to_ascii_uppercase().as_str(), "AA" | "CA").then(|| ReplyProblem::Unmatched { sent: sent_id }),
+    }
+}
+
 fn msa_field(response: &str, n: usize) -> Option<String> {
     let segments: Vec<&str> = response.split(['\r', '\n']).collect();
     let sep = segments
@@ -163,6 +220,36 @@ pub fn ack_for(message: &str, ack_code: &str, text_message: Option<&str>) -> Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reply_for_another_message_or_not_hl7_is_not_an_acknowledgement() {
+        let sent = "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|MSG1|P|2.5\rPID|1\r";
+        assert_eq!(reply_problem(sent, "MSH|^~\\&|C|D|A|B|20260101||ACK|X|P|2.5\rMSA|AA|MSG1\r"), None);
+        // An AE about this message is an answer about it.
+        assert_eq!(reply_problem(sent, "MSH|^~\\&|C|D|A|B|20260101||ACK|X|P|2.5\rMSA|AE|MSG1\r"), None);
+        assert_eq!(
+            reply_problem(sent, "MSH|^~\\&|C|D|A|B|20260101||ACK|X|P|2.5\rMSA|AA|SOMEONE_ELSE\r"),
+            Some(ReplyProblem::OtherMessage { acknowledged: "SOMEONE_ELSE".into(), sent: "MSG1".into() })
+        );
+        assert_eq!(reply_problem(sent, "HTTP/1.1 400 Bad Request\r\n\r\n"), Some(ReplyProblem::NotAnAck));
+        // Read with the reply's own separators.
+        assert_eq!(reply_problem(sent, "MSH#^~\\&#C#D#A#B#20260101##ACK#X#P#2.5\rMSA#AA#MSG1\r"), None);
+        // An acceptance that names no message cannot be matched to this one.
+        let unmatched = Some(ReplyProblem::Unmatched { sent: "MSG1".into() });
+        assert_eq!(reply_problem(sent, "MSH|^~\\&|C|D|A|B|20260101||ACK|X|P|2.5\rMSA|AA\r"), unmatched);
+        assert_eq!(reply_problem(sent, "MSH|^~\\&|C|D|A|B|20260101||ACK|X|P|2.5\rMSA|CA||\r"), unmatched);
+        assert!(unmatched.unwrap().to_string().starts_with("the ACK names no message (MSA-2 is empty)"));
+        // A rejection naming no message is still a rejection.
+        assert_eq!(reply_problem(sent, "MSH|^~\\&|C|D|A|B|20260101||ACK|X|P|2.5\rMSA|AE\r"), None);
+        // Sent without MSH-10: nothing to match against, taken at its word.
+        let no_id = "MSH|^~\\&|A|B|C|D|20260101||ADT^A01||P|2.5\r";
+        assert_eq!(reply_problem(no_id, "MSA|AA|Z\r"), None);
+        assert_eq!(reply_problem(no_id, "MSH|^~\\&|C|D|A|B|20260101||ACK|X|P|2.5\rMSA|AA\r"), None);
+        assert_eq!(
+            ReplyProblem::OtherMessage { acknowledged: "Z".into(), sent: "MSG1".into() }.to_string(),
+            "the ACK acknowledges message control ID Z, not MSG1 (MSA-2 does not match MSH-10)"
+        );
+    }
 
     #[test]
     fn acknowledged_control_id_reads_msa2() {

@@ -84,7 +84,7 @@
 <div class="smp-dialog">
 	<div class="smp-header">
 		<span>{tr('samples.title')}</span>
-		<button class="close-btn" onclick={onClose} aria-label="Close">&times;</button>
+		<button class="close-btn" onclick={onClose} aria-label={tr('modal.close')}>&times;</button>
 	</div>
 	<div class="smp-intro">{tr('samples.intro')}</div>
 

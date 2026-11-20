@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collapseText, expandText, tokensIn, fullToDisplayCol, displayToFullCol, describe as label, retainOnly, registrySize, searchMatcher, tokensMatching } from './fold';
+import { collapseText, expandText, tokensIn, fullToDisplayCol, displayToFullCol, describe as label, retainOnly, registrySize, searchMatcher, tokensMatching, tokenNearCaret } from './fold';
 
 const b64 = 'QUJD'.repeat(300); // 1200 chars of base64
 const oru = [
@@ -49,6 +49,21 @@ describe('fold', () => {
 
 	it('leaves text that merely looks like a token alone', () => {
 		expect(expandText('NTE|1||⟨Text · 1 B #999999⟩')).toBe('NTE|1||⟨Text · 1 B #999999⟩');
+	});
+
+	it('keeps token-shaped text of the message as written, even with a registered id', () => {
+		// A note that happens to read like a chip, next to a folded OBX-5:
+		// its id is that of the fold, its label is not the fold's.
+		const display = collapseText(oru, 'hl7v2', 100);
+		const fold = tokensIn(display)[0];
+		const note = `NTE|1||see attachment ⟨scan #${fold.id}⟩ for details`;
+		const full = `${oru}\r${note}`;
+		const shown = collapseText(full, 'hl7v2', 100);
+		expect(shown.endsWith(note)).toBe(true);
+		expect(tokensIn(shown)).toHaveLength(1);
+		// Saving (expanding) gives the note back as it was, not OBX-5's payload.
+		expect(expandText(shown)).toBe(full);
+		expect(expandText(shown.replace('details', 'detail'))).toBe(full.replace('details', 'detail'));
 	});
 
 	it('folds long JSON strings and XML values', () => {
@@ -111,5 +126,28 @@ describe('fold', () => {
 		expect(searchMatcher('', { isRegex: false, matchCase: false })).toBeNull();
 		expect(searchMatcher('(', { isRegex: true, matchCase: false })).toBeNull();
 		expect(searchMatcher('a.b', { isRegex: false, matchCase: false })!('axb')).toBe(false);
+	});
+});
+
+describe('tokenNearCaret', () => {
+	// 'PID|1||⟨A #1⟩|⟨B #2⟩|⟨C #3⟩|X': three folded fields side by side.
+	const line = 'PID|1||⟨A #1⟩|⟨B #2⟩|⟨C #3⟩|X';
+	const tokens = [...line.matchAll(/⟨[^⟩]*⟩/g)].map((m) => ({ index: m.index!, length: m[0].length }));
+
+	it('picks the chip the caret is against, not the next one (right-click leaves the caret at the chip end)', () => {
+		expect(tokenNearCaret(tokens, tokens[0].index + tokens[0].length)).toBe(0);
+		expect(tokenNearCaret(tokens, tokens[1].index + tokens[1].length)).toBe(1);
+		expect(tokenNearCaret(tokens, tokens[2].index + tokens[2].length)).toBe(2);
+	});
+
+	it('picks the chip the caret is before or inside', () => {
+		expect(tokenNearCaret(tokens, tokens[1].index)).toBe(1);
+		expect(tokenNearCaret(tokens, tokens[1].index + 2)).toBe(1);
+	});
+
+	it('else the nearest chip, measured to its nearer edge', () => {
+		expect(tokenNearCaret(tokens, 0)).toBe(0);
+		expect(tokenNearCaret(tokens, line.length)).toBe(2);
+		expect(tokenNearCaret([], 3)).toBe(-1);
 	});
 });

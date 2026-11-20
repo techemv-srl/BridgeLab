@@ -16,6 +16,9 @@ pub struct HttpResult {
     /// when it is the one requested.
     #[serde(default)]
     pub final_url: Option<String>,
+    /// Why no answer came, for the frontend to say in the user's language;
+    /// `None` when one came or the reason is not known.
+    pub failure: Option<super::send_error::Failure>,
 }
 
 /// Largest response body kept: bigger ones are cut here and reported,
@@ -45,6 +48,47 @@ fn decode_body(bytes: &[u8], content_type: Option<&str>) -> String {
     match declared.and_then(|c| encoding_rs::Encoding::for_label(c.as_bytes())) {
         Some(enc) if enc != encoding_rs::UTF_8 => enc.decode_with_bom_removal(bytes).0.into_owned(),
         _ => String::from_utf8_lossy(bytes).into_owned(),
+    }
+}
+
+/// Why a request with this URL and these headers cannot be sent, if it
+/// cannot. A header's value is not repeated: it may be a key.
+fn invalid_request(url: &str, headers: &HashMap<String, String>) -> Option<String> {
+    match reqwest::Url::parse(url.trim()) {
+        Err(e) => return Some(format!("Invalid URL: {}", e)),
+        Ok(u) if !matches!(u.scheme(), "http" | "https") => {
+            return Some(format!("Invalid URL: the scheme is '{}', and only http and https are supported", u.scheme()))
+        }
+        Ok(_) => {}
+    }
+    let mut names: Vec<&String> = headers.keys().collect();
+    names.sort();
+    for name in names {
+        if reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_err() {
+            return Some(format!(
+                "Invalid header name '{}': a header name is letters, digits and - (no spaces, colons or accented letters)",
+                name
+            ));
+        }
+        if reqwest::header::HeaderValue::from_str(&headers[name]).is_err() {
+            return Some(format!("Invalid value for header '{}': it holds a line break or another control character", name));
+        }
+    }
+    None
+}
+
+/// A request that was not sent, with the reason.
+fn not_sent(start: Instant, error: String) -> HttpResult {
+    HttpResult {
+        success: false,
+        status_code: 0,
+        status_text: String::new(),
+        headers: HashMap::new(),
+        body: String::new(),
+        response_time_ms: start.elapsed().as_millis() as u64,
+        error: Some(error),
+        final_url: None,
+        failure: None,
     }
 }
 
@@ -99,7 +143,16 @@ pub async fn send_request(
         reqwest::redirect::Policy::none()
     };
 
-    let client = match reqwest::Client::builder()
+    // Checked before anything is built: for a URL or a header it cannot
+    // use, reqwest says only "builder error", with the reason further down
+    // its sources and never which header.
+    if let Some(reason) = invalid_request(url, headers) {
+        return not_sent(start, reason);
+    }
+
+    // Redirects are followed on the same host only, so the proxy decision
+    // made for this URL holds for every hop.
+    let client = match super::proxy::client_builder(url)
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .redirect(redirect_policy)
         .danger_accept_invalid_certs(false)
@@ -107,16 +160,7 @@ pub async fn send_request(
     {
         Ok(c) => c,
         Err(e) => {
-            return HttpResult {
-                success: false,
-                status_code: 0,
-                status_text: String::new(),
-                headers: HashMap::new(),
-                body: String::new(),
-                response_time_ms: start.elapsed().as_millis() as u64,
-                error: Some(format!("Failed to create HTTP client: {}", e)),
-                final_url: None,
-            };
+            return not_sent(start, format!("Failed to create HTTP client: {}", super::send_error::full_message(&e)));
         }
     };
 
@@ -142,13 +186,9 @@ pub async fn send_request(
     let response = match request.send().await {
         Ok(r) => r,
         Err(e) => {
-            let error_msg = if e.is_timeout() {
-                "Request timed out".to_string()
-            } else if e.is_connect() {
-                format!("Connection failed: {}", e)
-            } else {
-                format!("Request failed: {}", e)
-            };
+            // The reason from the error's sources: reqwest's own message
+            // is the same for a refused certificate and a closed port.
+            let (error_msg, failure) = super::send_error::message(&e);
             return HttpResult {
                 success: false,
                 status_code: 0,
@@ -158,6 +198,7 @@ pub async fn send_request(
                 response_time_ms: start.elapsed().as_millis() as u64,
                 error: Some(error_msg),
                 final_url: None,
+                failure,
             };
         }
     };
@@ -219,6 +260,7 @@ pub async fn send_request(
         response_time_ms: start.elapsed().as_millis() as u64,
         error,
         final_url,
+        failure: None,
     }
 }
 
@@ -307,9 +349,14 @@ mod tests {
         let port = listen_free().await.1;
         let headers = HashMap::new();
         let url = format!("http://127.0.0.1:{}/nobody-home", port);
-        let res = send_request(&url, HttpMethod::Get, &headers, None, 2, true).await;
+        // Windows retries the SYN before it reports a refused loopback
+        // port (about two seconds): the timeout must outlast that, or the
+        // test sees a timeout instead of the refusal it checks for.
+        let res = send_request(&url, HttpMethod::Get, &headers, None, 10, true).await;
         assert!(!res.success);
-        assert!(res.error.is_some());
+        // Said as such, not as "error sending request for url".
+        assert!(res.error.as_deref().is_some_and(|e| e.starts_with("Connection refused")), "{:?}", res.error);
+        assert_eq!(res.failure.map(|f| f.kind), Some("refused"));
     }
 
     #[test]
@@ -330,6 +377,28 @@ mod tests {
         server.await.unwrap();
         assert!(res.success, "{:?}", res.error);
         assert_eq!(res.final_url, None);
+    }
+
+    /// A header or a URL reqwest cannot use is named, with the reason, not
+    /// reported as "builder error".
+    #[tokio::test]
+    async fn a_request_that_cannot_be_built_says_why() {
+        let send = |url: &'static str, name: &'static str, value: &'static str| async move {
+            let headers = HashMap::from([(name.to_string(), value.to_string())]);
+            send_request(url, HttpMethod::Get, &headers, None, 5, true).await
+        };
+        let res = send("http://127.0.0.1:9/x", "Bad Header", "v").await;
+        assert!(!res.success);
+        assert!(res.error.as_deref().is_some_and(|e| e.starts_with("Invalid header name 'Bad Header'")), "{:?}", res.error);
+        let res = send("http://127.0.0.1:9/x", "X-Key", "secret\nvalue").await;
+        let error = res.error.unwrap_or_default();
+        assert!(error.starts_with("Invalid value for header 'X-Key'") && !error.contains("secret"), "{error}");
+        let res = send("http://127.0.0.1:99999/x", "Accept", "*/*").await;
+        assert_eq!(res.error.as_deref(), Some("Invalid URL: invalid port number"));
+        let res = send("ftp://127.0.0.1/x", "Accept", "*/*").await;
+        assert!(res.error.as_deref().is_some_and(|e| e.contains("'ftp'")), "{:?}", res.error);
+        // A value with accented letters is sent as its UTF-8 bytes.
+        assert_eq!(invalid_request("http://h/x", &HashMap::from([("X-Name".into(), "Müller".into())])), None);
     }
 
     #[test]

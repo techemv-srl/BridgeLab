@@ -187,6 +187,8 @@ mod tests {
             <valueQuantity><value value="6.30"/><unit value="mmol/L"/></valueQuantity>
             <component><code><text value="y"/></code><valueBoolean value="false"/></component></Observation>"#);
         assert_eq!(o["valueQuantity"]["value"].as_f64(), Some(6.3));
+        // The number keeps the digits written in the XML, trailing zero too.
+        assert_eq!(o["valueQuantity"]["value"].to_string(), "6.30");
         assert_eq!(o["component"][0]["valueBoolean"], Value::Bool(false));
         assert_eq!(o["status"], "final");
     }

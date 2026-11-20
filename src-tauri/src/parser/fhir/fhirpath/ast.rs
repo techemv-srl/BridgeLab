@@ -1,17 +1,22 @@
 //! FHIRPath abstract syntax tree.
 
+use serde_json::Number;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Null,
     Bool(bool),
     Integer(i64),
-    Decimal(f64),
+    /// The number as written: it keeps its text (`12.500`), and with it the
+    /// digits `precision()` and the boundaries count, exactly as a decimal
+    /// read from a resource does.
+    Decimal(Number),
     Str(String),
     /// `@`-literal text without the `@`. Precision is interpreted at
     /// evaluation time.
     DateTime(String),
-    /// `4 'mg'` / `1 year` — value plus unit.
-    Quantity(f64, String),
+    /// `4 'mg'` / `1 year` — value, as written, plus unit.
+    Quantity(Number, String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,10 +94,14 @@ pub enum Expr {
         op: UnaryOp,
         operand: Box<Expr>,
     },
+    /// `first` followed by operators and their right operands, folded left
+    /// to right: `a + b - c` is `(a + b) - c`. A list (`'a' | 'b' | …`,
+    /// `x or y or …`) is one node however long it is, not a tree as deep as
+    /// the list, so evaluating or dropping it does not recurse once per
+    /// term.
     Binary {
-        op: BinOp,
-        left: Box<Expr>,
-        right: Box<Expr>,
+        first: Box<Expr>,
+        rest: Vec<(BinOp, Expr)>,
     },
     /// `x is Type` / `x as Type`. The type is kept as written, including any
     /// `System.`/`FHIR.` namespace prefix.

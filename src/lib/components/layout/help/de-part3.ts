@@ -180,7 +180,10 @@ Spezifikation sowie rund siebzig Funktionen.</p>
 		(<code>@2015</code>, <code>@2015-02-04T14:34:28+10:00</code>),
 		Dauer-Arithmetik (<code>Patient.birthDate + 18 years</code>) und
 		Einheitenumrechnung innerhalb einer Dimension
-		(<code>4 'g' = 4000 'mg'</code>)</li>
+		(<code>4 'g' = 4000 'mg'</code>); <code>lowBoundary()</code>,
+		<code>highBoundary()</code> und <code>precision()</code> liefern
+		den Bereich, für den ein Datum oder eine Dezimalzahl steht, und die
+		Präzision, mit der der Wert geschrieben ist</li>
 	<li><strong>FHIR-Ergänzungen:</strong> <code>extension(url)</code>,
 		<code>hasValue()</code> und <code>resolve()</code>, das einer
 		Reference zu einer contained- oder Bundle-Ressource folgt</li>
@@ -198,6 +201,16 @@ anderer desselben Monats sein.</p>
 ist). Lässt sich der Text im Editor nicht mehr parsen, sagen das Panel und
 die Statusleiste es: Die Ergebnisse stammen dann aus der letzten gültigen
 Fassung der Ressource.</p>
+<p><strong>Grenzen.</strong> Damit ein vertippter Ausdruck BridgeLab
+weder einfrieren noch seinen Speicher aufbrauchen kann, hat jede Auswertung
+Grenzen: Der Ausdruck ist höchstens 64 Ebenen tief verschachtelt, eine
+Zeichenkette, die er erzeugt, fasst höchstens 16 MB, alles, was er
+erzeugt, kommt auf höchstens etwa 512 MB, und er leistet höchstens
+50 Millionen Arbeitsschritte in höchstens 60 Sekunden. Wird eine Grenze
+überschritten, zeigt das Panel einen Fehler, der sie nennt. Reale
+Ausdrücke bleiben weit darunter; erreicht werden die Grenzen meist durch
+Kriterien in Kriterien, etwa <code>where(… .where(…).exists())</code>, wo
+jede Ebene die Arbeit mit der Länge der Liste vervielfacht.</p>
 
 <h3>FHIR-Validierung</h3>
 <p>F6 funktioniert auch für FHIR-Ressourcen. Fehler markieren fehlende
@@ -221,11 +234,19 @@ FHIR-Profilpakete…</strong> installiert darüber aus einer
 <code>.tgz</code>-Datei nationale oder hauseigene
 Implementierungsleitfäden; ein installiertes Paket mit denselben
 Definitionen ersetzt die integrierten, eine neuere Version überstimmt sie.</p>
+<p>Eine Paketdatei darf höchstens 256 MB groß sein und sich auf höchstens
+1 GB entpacken, ohne eine einzelne Datei über 64 MB. Ein Ordner, eine Pipe
+oder ein Gerät, als Paket gewählt, wird sofort abgelehnt, ebenso ein Archiv
+jenseits dieser Grenzen, mit einer Meldung, welche es ist.</p>
 <p>Jede FHIR-Validierung prüft, gegen den integrierten Kern und alles, was
 darüber installiert ist:</p>
 <ul>
 	<li><strong>Kardinalität</strong> — ein fehlendes Pflichtelement oder ein
-		<code>0..1</code>-Element, das sich wiederholt.</li>
+		<code>0..1</code>-Element, das sich wiederholt. In JSON zählt auch die
+		Form: Ein Element, das sich wiederholen kann, ist auch mit nur einem
+		Wert ein Array (<code>"name": [{…}]</code>), eines, das das nicht kann,
+		ist nie eines (<code>"gender": "male"</code>). Server lehnen die andere
+		Form ab.</li>
 	<li><strong>Elementtypen</strong> — ein Boolean als Zeichenkette, eine
 		Zahl, wo ein Objekt hingehört.</li>
 	<li><strong>Choice-Elemente</strong> — <code>value[x]</code> muss als
@@ -273,12 +294,19 @@ Observation usw. zu begrenzen, oder lassen Sie das Feld leer, damit sie für
 alles gilt. Eine auf einen Typ begrenzte Regel greift auch für die
 passenden Ressourcen in einem Bundle; der Befund wird dann unter
 <code>entry[n].resource.…</code> gemeldet.</p>
+<p>Jede Regel hat die Grenzen des FHIRPath-Evaluators, und alle Regeln
+einer Validierung teilen sich das Doppelte: 100 Millionen Schritte und
+120 Sekunden für die Ressource und, in einem Bundle, für jeden Eintrag. Ist
+das aufgebraucht, laufen die übrigen Regeln nicht mehr, und ein Fehler
+sagt, wie viele Prüfungen ausgelassen wurden, damit ein Ergebnis nie
+vollständig aussieht, wenn es das nicht ist.</p>
 <p><strong>An offener Ressource testen</strong> führt die bearbeitete Regel
 vor dem Speichern auf der Ressource des aktiven Tabs aus und zeigt, welche
 Werte der Selektor tatsächlich erfasst hat — der schnellste Weg, eine Regel
 die zutrifft von einer zu unterscheiden, die nie lief. Hat die offene
 Ressource einen anderen Typ, sagt der Editor das, statt einen Erfolg zu
-melden.</p>
+melden. Reicht das Budget nicht, um alle erfassten Werte aufzulisten, sagt
+der Test das und gilt nicht als bestanden.</p>
 <p>Bereits geschriebene Regeln funktionieren in jeder Stufe; der Editor
 erfordert eine Professional-Lizenz. Von Hand geschriebene Packs sind in
 <code>docs/PLUGINS.md</code> dokumentiert.</p>
@@ -509,12 +537,37 @@ jederzeit auf Anfrage.</p>
 ebenso wenig das <code>.msi</code>-Paket: Dann fragt die App im Banner).
 Auf verwalteten Rechnern kann der Administrator die Prüfung für alle
 Benutzer abschalten, das Kontrollkästchen in den Einstellungen erscheint
-dann gesperrt: Umgebungsvariable
-<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code> oder eine Datei
+dann gesperrt: eine Datei
 <code>policy.json</code> mit <code>{"disable_update_check": true}</code> in
 <code>%ProgramData%\\BridgeLab\\</code> (Windows),
 <code>/Library/Application Support/BridgeLab/</code> (macOS) bzw.
-<code>/etc/bridgelab/</code> (Linux).</p>
+<code>/etc/bridgelab/</code> (Linux). Unter Windows müssen die Datei und
+ihr Ordner Administrators oder SYSTEM gehören, wie es der Fall ist, wenn
+ein Administrator oder ein Verteilungswerkzeug sie anlegt, und nur
+Administrators, SYSTEM und TrustedInstaller dürfen die Datei ändern können
+(sie schreiben oder sie im Ordner löschen oder ersetzen; das
+voreingestellte Recht der Benutzer, im Ordner Dateien anzulegen, ist
+unschädlich). Andernfalls wird sie ignoriert, und
+<strong>Einstellungen → Datenschutz</strong> nennt den Grund. Eine Datei,
+die kein
+gültiges JSON ist, wird ebenfalls ignoriert, und
+<strong>Einstellungen → Datenschutz</strong> weist darauf hin, mit der
+Datei und dem Grund.</p>
+<p>Die Umgebungsvariable <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>
+bewirkt dasselbe, aber nur für ein BridgeLab, das mit ihr in seiner
+Umgebung gestartet wird, für den ganzen Rechner also nur dort, wo sie
+systemweit gesetzt ist: unter Windows als Systemvariable (sie erreicht
+jeden Benutzer bei seiner nächsten Anmeldung); unter Linux in
+<code>/etc/environment</code>, das bei der Anmeldung gelesen wird (ein
+Shell-Profil wie <code>~/.bashrc</code> erreicht keine aus dem Menü
+gestartete App). Unter macOS sieht eine aus dem Finder, dem Dock oder
+Spotlight geöffnete App keine Variablen aus Shell-Profilen: Verwenden Sie
+dort <code>policy.json</code>.</p>
+<p><strong>Hilfe → Über BridgeLab</strong> zeigt die Version und ihren
+Build-Code (z. B. <em>Build 20261120.1ea84f3</em>: das Datum und die
+Revision des Quellcodes). Nennen Sie beides, wenn Sie sich an den Support
+wenden, damit wir genau wissen, welchen Build Sie verwenden;
+<code>bridgelab-cli --version</code> gibt denselben Code aus.</p>
 
 <h3>Eine Lizenz kaufen</h3>
 <p><strong>Hilfe → Lizenz kaufen…</strong> öffnet im Browser den
@@ -593,10 +646,12 @@ Schalter (Standard) wird nichts übertragen, und Netzwerkprobleme
 erzeugen niemals Fehlermeldungen: Eine vollständig offline betriebene
 Installation ist ein normales, unterstütztes Szenario.</p>
 <p>Auf verwalteten Rechnern kann der Administrator die
-Nutzungsstatistik für alle Benutzer abschalten: Setzen Sie
-<code>BRIDGELAB_DISABLE_TELEMETRY=1</code> oder ergänzen Sie
+Nutzungsstatistik für alle Benutzer abschalten: Ergänzen Sie
 <code>"disable_telemetry": true</code> in derselben
-<code>policy.json</code> wie für die Versionsprüfung. Dann wird nichts
+<code>policy.json</code> wie für die Versionsprüfung, oder setzen Sie
+<code>BRIDGELAB_DISABLE_TELEMETRY=1</code> dort, wo BridgeLab sie sieht
+(es gelten dieselben Regeln wie für die Variable der Versionsprüfung,
+oben). Dann wird nichts
 gesendet, unabhängig von der Wahl des Benutzers, und das Kontrollkästchen
 in den Einstellungen ist gesperrt.</p>
 `,
@@ -625,14 +680,15 @@ Tastenkombination und bestätigen Sie mit OK.</p>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>FHIRPath-Panel</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>Validierungspanel</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Segmentraster</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>Interpretationspanel</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>Einstellungen</td></tr>
-	<tr><td><kbd>F1</kbd></td><td>Dieses Benutzerhandbuch</td></tr>
+	<tr><td><kbd>F1</kbd></td><td>Dieses Benutzerhandbuch, in einem eigenen Fenster: Ein erneutes F1 holt es in den Vordergrund, und es wird zusammen mit dem Hauptfenster geschlossen</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td>Befehlspalette des Editors (alle Monaco-Befehle: Gehe zu Zeile, Falten, Groß-/Kleinschreibung, Zeilen sortieren…; auch im Kontextmenü des Editors)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Segment im Baum anzeigen (Kontextmenü des Editors)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>C</kbd></td><td>Segment kopieren (Kontextmenü des Editors)</td></tr>
 </table>
 
-<p>Unter macOS ist <kbd>Ctrl</kbd> in diesen Tastenkürzeln <kbd>⌘</kbd> (Befehl) und <kbd>Alt</kbd> ist <kbd>⌥</kbd> (Wahl); die Liste in den Einstellungen zeigt sie so. Dort verwendet der Editor <kbd>⌘⌥F</kbd> für Ersetzen, <kbd>⌘⇧Z</kbd> für Wiederholen und <kbd>⌃G</kbd> (Control) für Gehe zu Zeile.</p>
+<p>Unter macOS ist <kbd>Ctrl</kbd> in diesen Tastenkürzeln <kbd>⌘</kbd> (Befehl) und <kbd>Alt</kbd> ist <kbd>⌥</kbd> (Wahl); die Liste in den Einstellungen zeigt sie so. Dort verwendet der Editor <kbd>⌘⌥F</kbd> für Ersetzen, <kbd>⌘⇧Z</kbd> für Wiederholen und <kbd>⌃G</kbd> (Control) für Gehe zu Zeile, und Segment im Baum anzeigen und Segment kopieren sind <kbd>⌘⌥T</kbd> und <kbd>⌘⌥C</kbd>: <kbd>⌥T</kbd> und <kbd>⌥C</kbd> geben † und ç ein. Die Control-Taste ist nicht Befehl: <kbd>⌃K</kbd> bleibt eine Taste des Editors. Unter Windows und Linux zählt auch die Windows-Taste (Super) nicht als Ctrl.</p>
 
 <h3>Konflikterkennung</h3>
 <p>Wählen Sie eine Tastenkombination, die bereits einer anderen Aktion
@@ -645,14 +701,22 @@ eigenen Tasten des Editors (<kbd>Ctrl</kbd>+<kbd>F</kbd>,
 <kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) werden zur Information angezeigt und
 lassen sich nicht neu belegen. Ein Tastenkürzel braucht <kbd>Ctrl</kbd>
 oder <kbd>Alt</kbd>, oder ist eine von <kbd>F2</kbd>-<kbd>F12</kbd>: ein
-einzelner Buchstabe würde beim Tippen auslösen. <kbd>F1</kbd> öffnet
-immer dieses Handbuch. <em>Nachricht erneut analysieren</em> hat keine
-Standardtaste; vergeben Sie bei Bedarf eine.</p>
+einzelner Buchstabe würde beim Tippen auslösen (unter macOS <kbd>⌘</kbd>
+oder <kbd>⌃</kbd>, denn <kbd>⌥</kbd> mit einem Buchstaben gibt ein
+Zeichen ein). Solange ein Dialog geöffnet ist, warten die Tastenkürzel,
+bis er geschlossen ist; <kbd>F1</kbd> funktioniert trotzdem.
+<kbd>F1</kbd> öffnet
+immer dieses Handbuch oder holt es in den Vordergrund. <em>Nachricht
+erneut analysieren</em> hat keine Standardtaste; vergeben Sie bei Bedarf
+eine.</p>
 
 <h3>Zurücksetzen</h3>
 <p>Klicken Sie auf <em>Alle zurücksetzen</em>, um jede
 Tastenkombination auf ihren Standard zurückzusetzen, oder auf die
 kleine ↺-Schaltfläche neben einem Eintrag, um nur diesen
-zurückzusetzen.</p>
+zurückzusetzen. Hat inzwischen eine andere Aktion die Standardtaste dieses
+Eintrags, erscheint dieselbe Warnung wie bei der Wahl einer Taste:
+<em>Neu zuweisen</em> holt die Taste zurück, <em>Abbrechen</em> lässt
+alles, wie es ist.</p>
 `,
 };

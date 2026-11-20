@@ -165,7 +165,10 @@ around seventy functions.</p>
 		(<code>@2015</code>, <code>@2015-02-04T14:34:28+10:00</code>),
 		duration arithmetic (<code>Patient.birthDate + 18 years</code>) and
 		unit conversion within a dimension
-		(<code>4 'g' = 4000 'mg'</code>)</li>
+		(<code>4 'g' = 4000 'mg'</code>); <code>lowBoundary()</code>,
+		<code>highBoundary()</code> and <code>precision()</code> give the
+		range a date or decimal stands for and the precision it is written
+		with</li>
 	<li><strong>FHIR extras:</strong> <code>extension(url)</code>,
 		<code>hasValue()</code>, and <code>resolve()</code>, which follows
 		a Reference to a contained or bundled resource</li>
@@ -181,6 +184,15 @@ the same month.</p>
 the examples (up to four, until the app is closed). When the text in the
 editor no longer parses, the panel and the status bar say so: the results
 then come from the last version of the resource that did.</p>
+<p><strong>Limits.</strong> So that a mistyped expression cannot freeze
+BridgeLab or use up its memory, one evaluation has limits: the expression
+nests at most 64 levels deep, a string it builds holds at most 16 MB,
+everything it builds comes to at most about 512 MB, and it does at most
+50 million steps of work in at most 60 seconds. Past a limit the panel
+shows an error that names it. Real expressions stay far below these; the
+usual way to reach them is criteria nested in criteria, such as
+<code>where(… .where(…).exists())</code>, where each level multiplies the
+work by the length of the list.</p>
 
 <h3>FHIR validation</h3>
 <p>F6 also works for FHIR resources. Errors highlight missing required
@@ -202,11 +214,18 @@ tier, nothing to download. <strong>Tools → FHIR profile packages…</strong>
 installs national or site-specific implementation guides on top from a
 <code>.tgz</code>; a package you install that carries the same definitions
 replaces the built-in ones, a newer version outranks them.</p>
+<p>A package file may be at most 256 MB and unpack to at most 1 GB, with
+no single file in it over 64 MB. A folder, a pipe or a device chosen as a
+package is refused at once, and so is an archive past these limits, with
+a message that says which.</p>
 <p>Every FHIR validation checks, against the built-in core and whatever
 is installed on top:</p>
 <ul>
 	<li><strong>Cardinality</strong> — a required element that is missing, or
-		a <code>0..1</code> element that repeats.</li>
+		a <code>0..1</code> element that repeats. In JSON the shape goes with
+		it: an element that can repeat is an array even with one item
+		(<code>"name": [{…}]</code>), and one that cannot is never an array
+		(<code>"gender": "male"</code>). Servers refuse the other shape.</li>
 	<li><strong>Element types</strong> — a boolean written as a string, a
 		number where an object belongs.</li>
 	<li><strong>Choice elements</strong> — <code>value[x]</code> must appear
@@ -254,11 +273,17 @@ machines or commit to a repository.</p>
 Observation and so on, or leave it empty to apply it to everything. A rule
 scoped to a type also fires for the matching resources inside a Bundle,
 with the finding reported against <code>entry[n].resource.…</code>.</p>
+<p>Each rule has the limits of the FHIRPath Evaluator, and all the rules of
+one validation share twice that: 100 million steps and 120 seconds for the
+resource and, in a Bundle, every entry. Once that is spent the remaining
+rules are not run, and one error says how many checks were left out, so a
+result never looks complete when it is not.</p>
 <p><strong>Test on open resource</strong> runs the rule you are editing
 against the resource in the active tab before you save it, and shows which
 values the selector actually picked up — the fastest way to tell a rule that
 passes from one that never ran. If the open resource is of a different type,
-the editor says so rather than reporting a pass.</p>
+the editor says so rather than reporting a pass. If the budget runs out before
+every selected value is listed, the Test says so and does not pass.</p>
 <p>Rules you already have keep working in every tier; the editor itself
 requires a Professional license. Hand-written packs are documented in
 <code>docs/PLUGINS.md</code>.</p>
@@ -472,13 +497,35 @@ on demand.</p>
 (<em>Yes</em> is the default; a silent install does not ask, and neither
 does the <code>.msi</code> package: the app then asks in its banner). For
 managed machines an administrator can turn the check off for every user,
-and the Settings checkbox then shows as locked: set the environment
-variable <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>, or create
+and the Settings checkbox then shows as locked: create
 <code>policy.json</code> containing
 <code>{"disable_update_check": true}</code> in
 <code>%ProgramData%\\BridgeLab\\</code> (Windows),
 <code>/Library/Application Support/BridgeLab/</code> (macOS) or
-<code>/etc/bridgelab/</code> (Linux).</p>
+<code>/etc/bridgelab/</code> (Linux). On Windows the file and its folder
+must belong to Administrators or SYSTEM, as they do when an administrator
+or a deployment tool creates them, and only Administrators, SYSTEM and
+TrustedInstaller may be able to change the file (write it, or delete or
+replace it in the folder; the folder's default right for users to create
+files is fine). Otherwise it is ignored, and
+<strong>Settings → Privacy</strong> says why. A file that is not valid
+JSON is ignored too, and
+<strong>Settings → Privacy</strong> says so, with the file and the
+reason.</p>
+<p>The environment variable <code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code>
+does the same, but only for a BridgeLab started with it in its
+environment, so for the whole machine only where it is set system-wide:
+on Windows as a system variable (it reaches each user at their next
+sign-in); on Linux in <code>/etc/environment</code>, read at login (a
+shell profile such as <code>~/.bashrc</code> does not reach an app
+started from the menu). On macOS an app opened from the Finder, the Dock
+or Spotlight does not see variables set in shell profiles: use
+<code>policy.json</code> there.</p>
+<p><strong>Help → About</strong> shows the version and its build code
+(for example <em>Build 20261120.1ea84f3</em>, the date and the source
+revision). Quote both when you contact support, so we know exactly which
+build you run; <code>bridgelab-cli --version</code> prints the same
+code.</p>
 
 <h3>Buying a license</h3>
 <p><strong>Help → Buy a License…</strong> opens the pricing section of
@@ -549,10 +596,12 @@ default) nothing is transmitted at all, and network problems never
 produce errors — a fully offline installation is a normal, supported
 setup.</p>
 <p>On managed machines an administrator can force the usage statistics
-off for every user: set <code>BRIDGELAB_DISABLE_TELEMETRY=1</code>, or add
-<code>"disable_telemetry": true</code> to the same <code>policy.json</code>
-used for the update check. Nothing is sent then, whatever the user
-ticked, and the Settings checkbox shows as locked.</p>
+off for every user: add <code>"disable_telemetry": true</code> to the
+same <code>policy.json</code> used for the update check, or set
+<code>BRIDGELAB_DISABLE_TELEMETRY=1</code> where BridgeLab sees it (the
+same rules as for the update check variable above). Nothing is sent
+then, whatever the user ticked, and the Settings checkbox shows as
+locked.</p>
 `,
 };
 
@@ -578,14 +627,15 @@ key combination, confirm with OK.</p>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>FHIRPath panel</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>Validation panel</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd></td><td>Segment grid</td></tr>
+	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>Interpretation panel</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>Settings</td></tr>
-	<tr><td><kbd>F1</kbd></td><td>This user manual</td></tr>
+	<tr><td><kbd>F1</kbd></td><td>This user manual, in its own window: F1 again brings it to the front, and closing the main window closes it too</td></tr>
 	<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></td><td>Editor command palette (all of Monaco's commands: go to line, fold, change case, sort lines…; also in the editor's context menu)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Show Segment in Tree (editor context menu)</td></tr>
 	<tr><td><kbd>Alt</kbd>+<kbd>C</kbd></td><td>Copy Segment (editor context menu)</td></tr>
 </table>
 
-<p>On macOS, <kbd>Ctrl</kbd> in these shortcuts is <kbd>⌘</kbd> (Command) and <kbd>Alt</kbd> is <kbd>⌥</kbd> (Option), and the list in Settings shows them that way. There the editor's own Replace is <kbd>⌘⌥F</kbd>, Redo <kbd>⌘⇧Z</kbd> and Go to Line <kbd>⌃G</kbd> (Control).</p>
+<p>On macOS, <kbd>Ctrl</kbd> in these shortcuts is <kbd>⌘</kbd> (Command) and <kbd>Alt</kbd> is <kbd>⌥</kbd> (Option), and the list in Settings shows them that way. There the editor's own Replace is <kbd>⌘⌥F</kbd>, Redo <kbd>⌘⇧Z</kbd> and Go to Line <kbd>⌃G</kbd> (Control), and Show Segment in Tree and Copy Segment are <kbd>⌘⌥T</kbd> and <kbd>⌘⌥C</kbd>: <kbd>⌥T</kbd> and <kbd>⌥C</kbd> type † and ç. The Control key is not Command: <kbd>⌃K</kbd> stays the editor's key. On Windows and Linux the Windows (Super) key is not Ctrl either.</p>
 
 <h3>Conflict detection</h3>
 <p>If you pick a key combination already assigned to another action, the
@@ -597,11 +647,16 @@ editor's own keys (<kbd>Ctrl</kbd>+<kbd>F</kbd>,
 <kbd>Ctrl</kbd>+<kbd>D</kbd>, ...) are listed for reference and cannot be
 rebound. A shortcut needs <kbd>Ctrl</kbd> or <kbd>Alt</kbd>, or is one
 of <kbd>F2</kbd>-<kbd>F12</kbd>: a plain letter would fire while you
-type. <kbd>F1</kbd> always opens this manual. <em>Re-parse message</em>
+type (on macOS <kbd>⌘</kbd> or <kbd>⌃</kbd>, since <kbd>⌥</kbd> with a
+letter types a character). While a dialog is open, the shortcuts wait
+until it is closed; <kbd>F1</kbd> still works. <kbd>F1</kbd> always opens this manual, or brings it to the front. <em>Re-parse message</em>
 has no default key; give it one if you want one.</p>
 
 <h3>Reset</h3>
 <p>Click <em>Reset All</em> to restore every shortcut to its default, or
-the small ↺ button next to each entry to reset just that one.</p>
+the small ↺ button next to each entry to reset just that one. If another
+action has that entry's default key by then, you get the same warning as
+when you pick a key: <em>Reassign</em> moves the key back, <em>Cancel</em>
+leaves both as they are.</p>
 `,
 };

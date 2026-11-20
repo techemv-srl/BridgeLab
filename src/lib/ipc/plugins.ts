@@ -17,6 +17,19 @@ export interface PluginInfo {
 	error: string | null;
 	/** Problems that did not stop the pack loading (typos, broken patterns). */
 	warnings: string[];
+	/** `error` and `warnings` as notices to word in the user's language
+	 *  (absent from an older backend). */
+	error_notice?: PluginNotice | null;
+	notices?: PluginNotice[];
+}
+
+/** A problem with a pack: `code` names the sentence, `args` fill it in,
+ *  and `rule` or `phi_field` is what it is about (see plugin-notices.ts). */
+export interface PluginNotice {
+	code: string;
+	rule?: string;
+	phi_field?: string;
+	args: Record<string, string>;
 }
 
 export async function listPlugins(): Promise<PluginInfo[]> {
@@ -30,6 +43,16 @@ export async function reloadPlugins(): Promise<PluginInfo[]> {
 /** Switch a pack on or off; the backend saves the choice where the CLI reads it too. */
 export async function setPluginEnabled(key: string, enabled: boolean): Promise<void> {
 	return invoke('set_plugin_enabled', { key, enabled });
+}
+
+/** Why the saved on/off choices (.state.json) could not be read, or null. */
+export async function pluginStateProblem(): Promise<string | null> {
+	return invoke('plugin_state_problem');
+}
+
+/** Packs switched on, with rules of this kind, that the Community cap leaves out. */
+export async function pluginsNotApplied(kind: 'hl7' | 'fhir' | 'phi'): Promise<number> {
+	return invoke('plugins_not_applied', { kind });
 }
 
 export async function applyPluginOverrides(overrides: Record<string, boolean>): Promise<void> {

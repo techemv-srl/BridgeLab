@@ -1,9 +1,12 @@
 {
   "name": "bridgelab",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "BridgeLab - HL7 made simple. A modern HL7/FHIR message editor.",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.17"
+  },
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
@@ -16,19 +19,19 @@
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
-    "@sveltejs/adapter-static": "^3.0.11",
-    "@sveltejs/kit": "^2.70.4",
-    "@sveltejs/vite-plugin-svelte": "^5.1.1",
-    "@tailwindcss/vite": "^4.0.0",
+    "@sveltejs/adapter-static": "^4.0.1",
+    "@sveltejs/kit": "^3.3.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tailwindcss/vite": "^4.3.5",
     "@tauri-apps/cli": "^2.12.4",
     "docx": "^9.7.1",
     "node-html-parser": "^9.0.4",
     "selenium-webdriver": "^4.27.0",
-    "svelte": "^5.56.10",
-    "svelte-check": "^4.0.0",
-    "tailwindcss": "^4.0.0",
-    "typescript": "^5.5.0",
-    "vite": "^6.4.4",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.8",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.8",
     "vitest": "^4.1.12"
   },
   "dependencies": {
@@ -45,7 +48,6 @@
       "esbuild"
     ],
     "overrides": {
-      "cookie": ">=0.7.2 <2",
       "postcss": "^8.5.26",
       "launch-editor": "^2.14.1"
     }

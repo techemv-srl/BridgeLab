@@ -38,6 +38,13 @@ pub struct MllpSendResult {
     /// send got one.
     #[serde(default)]
     pub ack_code: Option<String>,
+    /// Why the reply is not an acknowledgement of the message sent: it is
+    /// not HL7, or its MSA-2 names another message. A reply reaching the
+    /// peer is a success at the transport level whatever it says, so
+    /// without this an ACK for another message read as "ACK (Accept)".
+    /// None when no reply came.
+    #[serde(default)]
+    pub reply_problem: Option<crate::parser::hl7::ack::ReplyProblem>,
 }
 
 /// Options for an MLLP send. `Default` gives standard MLLP framing
@@ -217,6 +224,118 @@ pub fn resolve_send_encoding(message: &str, requested: &str, source_charset: Opt
         .unwrap_or_else(|| "UTF-8".into())
 }
 
+/// A message whose MSH-18 names a character set BridgeLab does not write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnwrittenCharset {
+    /// Which message of the text it is, from 1 (one per MSH).
+    pub message: usize,
+    /// Its MSH-10, when it has one.
+    pub control_id: Option<String>,
+    /// The charset its MSH-18 names.
+    pub charset: String,
+}
+
+impl std::fmt::Display for UnwrittenCharset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "message {}", self.message)?;
+        if let Some(id) = &self.control_id {
+            write!(f, " (MSH-10 {})", id)?;
+        }
+        write!(f, " declares the character set '{}' in MSH-18, which BridgeLab cannot send in", self.charset)
+    }
+}
+
+/// The first message of `text` whose MSH-18 names a character set
+/// BridgeLab does not write: the ISO 2022 Japanese sets, CNS 11643-1992,
+/// UTF-16 and UTF-32 (see [`resolve_send_encoding`]), or a name it does not
+/// know. [`AUTO`] would send it as UTF-8 bytes under a header that names
+/// another charset. Every message is checked, not only the first: a file
+/// or a tab can hold several, each with its own MSH-18.
+pub fn msh18_charset_not_written(text: &str) -> Option<UnwrittenCharset> {
+    let bytes = text.as_bytes();
+    message_starts(text).into_iter().enumerate().find_map(|(n, start)| {
+        let declared = crate::parser::hl7::charset::declared_charset(&bytes[start..])?;
+        label_for_msh18(&declared).is_none().then(|| UnwrittenCharset {
+            message: n + 1,
+            control_id: crate::parser::hl7::ack::extract_message_control_id(&text[start..]),
+            charset: declared,
+        })
+    })
+}
+
+/// Where each message of `text` begins: its MSH at the start of a line, as
+/// declared_charset reads headers ("MSH" inside a field is none).
+fn message_starts(text: &str) -> Vec<usize> {
+    let bytes = text.as_bytes();
+    (0..bytes.len())
+        .filter(|&i| bytes[i..].starts_with(b"MSH") && (i == 0 || matches!(bytes[i - 1], b'\r' | b'\n')))
+        .collect()
+}
+
+/// A message that would reach the receiver in another charset than the
+/// one its MSH-18 names, because it is sent with the messages before it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MixedCharsets {
+    /// Which message it is, from 1 (one per MSH).
+    pub message: usize,
+    /// Its MSH-10, when it has one.
+    pub control_id: Option<String>,
+    /// Its MSH-18 (None when empty) and the charset that means.
+    pub declared: Option<String>,
+    pub charset: String,
+    /// The charset the whole send uses.
+    pub sent_in: String,
+    /// The first message's MSH-18 (None when empty).
+    pub first_declared: Option<String>,
+}
+
+impl std::fmt::Display for MixedCharsets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "message {}", self.message)?;
+        if let Some(id) = &self.control_id {
+            write!(f, " (MSH-10 {})", id)?;
+        }
+        match &self.declared {
+            Some(d) => write!(f, " declares the character set '{}' ({}) in MSH-18", d, self.charset)?,
+            None => write!(f, " leaves MSH-18 empty (so {})", self.charset)?,
+        }
+        write!(f, ", but would go out in {}, as message 1 (", self.sent_in)?;
+        match &self.first_declared {
+            Some(d) => write!(f, "'{}')", d),
+            None => write!(f, "MSH-18 empty)"),
+        }
+    }
+}
+
+/// The first message of `text` that sending the whole text in `wire` (the
+/// charset of one MLLP frame, or of a file sent with one encoding: the
+/// first message's) would put in other bytes than its own charset gives,
+/// each message's charset read as [`AUTO`] reads one message alone: its
+/// MSH-18, else `source_charset` (the file's), else UTF-8. A message whose
+/// charset differs but whose text has the same bytes in both (plain ASCII
+/// under 8859/1 and under UTF-8, common in batches whose later messages
+/// leave MSH-18 empty) is no reason to refuse: the receiver reads it right.
+pub fn mixed_declared_charsets(text: &str, source_charset: Option<&str>, wire: &str) -> Option<MixedCharsets> {
+    let starts = message_starts(text);
+    let first = *starts.first()?;
+    let first_declared = crate::parser::hl7::charset::declared_charset(&text.as_bytes()[first..]);
+    starts.iter().enumerate().skip(1).find_map(|(n, &start)| {
+        let end = starts.get(n + 1).copied().unwrap_or(text.len());
+        let message = &text[start..end];
+        let charset = resolve_send_encoding(message, AUTO, source_charset);
+        let changed = !charset.eq_ignore_ascii_case(wire)
+            && encode_with_label(message, wire) != encode_with_label(message, &charset);
+        changed.then(|| MixedCharsets {
+            message: n + 1,
+            control_id: crate::parser::hl7::ack::extract_message_control_id(message),
+            declared: crate::parser::hl7::charset::declared_charset(message.as_bytes()),
+            charset,
+            sent_in: wire.to_string(),
+            first_declared: first_declared.clone(),
+        })
+    })
+}
+
 /// The characters of `text` that `label` cannot represent (each once, in
 /// order of appearance): they would go out as `?`.
 pub fn unencodable_chars(text: &str, label: &str) -> Vec<char> {
@@ -277,6 +396,7 @@ pub async fn send_with_options(
                 response_time_ms: start.elapsed().as_millis() as u64,
                 encoding: wire.clone(),
             ack_code: None,
+            reply_problem: None,
             error: Some(format!("Connection failed: {}", e)),
             };
         }
@@ -287,6 +407,7 @@ pub async fn send_with_options(
                 response_time_ms: start.elapsed().as_millis() as u64,
                 encoding: wire.clone(),
             ack_code: None,
+            reply_problem: None,
             error: Some("Connection timed out".into()),
             };
         }
@@ -326,6 +447,7 @@ pub async fn send_with_options(
             response_time_ms: start.elapsed().as_millis() as u64,
             encoding: wire.clone(),
             ack_code: None,
+            reply_problem: None,
             error: Some(error),
         };
     }
@@ -391,6 +513,7 @@ pub async fn send_with_options(
         Ok(Ok(ReadOutcome::Terminator)) => MllpSendResult {
             success: true,
             ack_code: crate::parser::hl7::ack::ack_code_of(&response),
+            reply_problem: crate::parser::hl7::ack::reply_problem(message, &response),
             response,
             response_time_ms,
             error: None,
@@ -399,6 +522,7 @@ pub async fn send_with_options(
         Ok(Ok(ReadOutcome::Eof)) if !response_bytes.is_empty() => MllpSendResult {
             success: true,
             ack_code: crate::parser::hl7::ack::ack_code_of(&response),
+            reply_problem: crate::parser::hl7::ack::reply_problem(message, &response),
             response,
             response_time_ms,
             error: None,
@@ -410,6 +534,7 @@ pub async fn send_with_options(
             response_time_ms,
             encoding: wire.clone(),
             ack_code: None,
+            reply_problem: None,
             error: Some("Empty response (connection closed by peer)".into()),
         },
         Ok(Ok(ReadOutcome::CapExceeded)) => MllpSendResult {
@@ -418,6 +543,7 @@ pub async fn send_with_options(
             response_time_ms,
             encoding: wire.clone(),
             ack_code: None,
+            reply_problem: None,
             error: Some(format!(
                 "Response exceeded {} bytes without MLLP terminator; aborted",
                 MAX_ACK_BYTES
@@ -429,6 +555,7 @@ pub async fn send_with_options(
             response_time_ms,
             encoding: wire.clone(),
             ack_code: None,
+            reply_problem: None,
             error: Some(format!("Read failed: {}", e)),
         },
         Err(_) => MllpSendResult {
@@ -437,6 +564,7 @@ pub async fn send_with_options(
             response_time_ms,
             encoding: wire.clone(),
             ack_code: None,
+            reply_problem: None,
             error: Some("Response timed out".into()),
         },
     }
@@ -574,6 +702,66 @@ mod tests {
     }
 
     #[test]
+    fn a_declared_charset_bridgelab_does_not_write_is_named() {
+        let with = |cs: &str| format!("MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5|||||JPN|{cs}\rPID|1\r");
+        for cs in ["ISO IR87", "UNICODE UTF-16", "UNICODE UTF-32", "CNS 11643-1992", "NOT-A-CHARSET"] {
+            assert_eq!(msh18_charset_not_written(&with(cs)).map(|u| u.charset).as_deref(), Some(cs), "{cs}");
+        }
+        for cs in ["8859/1", "UNICODE UTF-8", "ASCII", "BIG-5"] {
+            assert_eq!(msh18_charset_not_written(&with(cs)), None, "{cs}");
+        }
+        assert_eq!(msh18_charset_not_written("MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1\r"), None);
+    }
+
+    /// Messages that declare different charsets, even ones BridgeLab can
+    /// write, cannot share one when that changes their bytes: an empty
+    /// MSH-18 means the file's charset, else UTF-8.
+    #[test]
+    fn messages_declaring_different_charsets_are_found() {
+        let msg = |id: &str, cs: &str, name: &str| {
+            format!("MSH|^~\\&|A|B|C|D|20240101||ADT^A01|{id}|P|2.5|||||ITA|{cs}\rPID|1||1||{name}\r")
+        };
+        let mixed = format!("{}{}{}", msg("M1", "8859/1", "Rossi"), msg("M2", "8859/1", "Bianchi"), msg("M3", "UNICODE UTF-8", "Müller"));
+        let found = mixed_declared_charsets(&mixed, None, "ISO-8859-1").expect("the third message");
+        assert_eq!((found.message, found.control_id.as_deref(), found.charset.as_str()), (3, Some("M3"), "UTF-8"));
+        assert_eq!(
+            found.to_string(),
+            "message 3 (MSH-10 M3) declares the character set 'UNICODE UTF-8' (UTF-8) in MSH-18, but would go out in ISO-8859-1, as message 1 ('8859/1')"
+        );
+        // An empty MSH-18 is the default: the file's charset, else UTF-8.
+        let plain = |name: &str| format!("MSH|^~\\&|A|B|C|D|20240101||ADT^A01|M2|P|2.5\rPID|1||1||{name}\r");
+        let with_default = format!("{}{}", msg("M1", "8859/1", "Rossi"), plain("Müller"));
+        let found = mixed_declared_charsets(&with_default, None, "ISO-8859-1").expect("the empty MSH-18");
+        assert!(found.declared.is_none() && found.charset == "UTF-8", "{found:?}");
+        assert!(found.to_string().contains("leaves MSH-18 empty (so UTF-8)"), "{found}");
+        assert_eq!(mixed_declared_charsets(&with_default, Some("ISO-8859-1"), "ISO-8859-1"), None);
+        // The same bytes either way: plain ASCII under 8859/1 and UTF-8.
+        let ascii = format!("{}{}{}", msg("M1", "8859/1", "Müller"), plain("Rossi"), msg("M3", "UNICODE UTF-8", "Bianchi"));
+        assert_eq!(mixed_declared_charsets(&ascii, None, "ISO-8859-1"), None);
+        // Every differing message is checked: the first that would change.
+        let later = format!("{}{}{}", msg("M1", "8859/1", "Rossi"), plain("Rossi"), msg("M3", "UNICODE UTF-8", "Zoë"));
+        assert_eq!(mixed_declared_charsets(&later, None, "ISO-8859-1").map(|m| m.message), Some(3));
+        // The same charset under two names, one message, or none: nothing.
+        assert_eq!(mixed_declared_charsets(&format!("{}{}", msg("M1", "UNICODE UTF-8", "Zoë"), plain("Zoë")), None, "UTF-8"), None);
+        assert_eq!(mixed_declared_charsets(&msg("M1", "8859/1", "Zoë"), None, "ISO-8859-1"), None);
+        assert_eq!(mixed_declared_charsets("not HL7", None, "UTF-8"), None);
+    }
+
+    /// A later message of a file or a tab is checked too: only the first
+    /// header used to be read.
+    #[test]
+    fn every_message_s_declared_charset_is_checked() {
+        let text = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|M1|P|2.5|||||ITA|8859/1\rPID|1\r\
+                    MSH|^~\\&|A|B|C|D|20240101||ADT^A01|M2|P|2.5\rPID|1\r\
+                    MSH|^~\\&|A|B|C|D|20240101||ADT^A01|M3|P|2.5|||||JPN|ISO IR87\rPID|1\r";
+        let found = msh18_charset_not_written(text).expect("the third message");
+        assert_eq!(found, UnwrittenCharset { message: 3, control_id: Some("M3".into()), charset: "ISO IR87".into() });
+        assert_eq!(found.to_string(), "message 3 (MSH-10 M3) declares the character set 'ISO IR87' in MSH-18, which BridgeLab cannot send in");
+        // "MSH" inside a field is no header.
+        assert_eq!(msh18_charset_not_written("MSH|^~\\&|A|B|C|D|20240101||ADT^A01|M1|P|2.5\rNTE|1||MSH|^~\\&|||||||||||||||ISO IR87\r"), None);
+    }
+
+    #[test]
     fn characters_a_charset_cannot_hold_are_named() {
         assert!(unencodable_chars("Müller Zoë", "ISO-8859-1").is_empty());
         assert_eq!(unencodable_chars("Łódź Łukasz", "ISO-8859-1"), vec!['Ł', 'ź']);
@@ -695,8 +883,43 @@ mod tests {
         let result = send("127.0.0.1", port, msg, 5, "").await;
         assert!(result.success);
         assert!(result.response.contains("MSA|AA|MSG001"));
+        assert_eq!(result.reply_problem, None);
 
         _handle.await.unwrap();
+    }
+
+    /// A peer that answers with the ACK of another message, or with
+    /// something that is not HL7, delivered the reply but accepted nothing
+    /// sent: the result says why, as the CLI's send does.
+    #[tokio::test]
+    async fn a_reply_that_does_not_acknowledge_the_message_says_why() {
+        use crate::parser::hl7::ack::ReplyProblem;
+        let msg = "MSH|^~\\&|Send|SF|Recv|RF|20230101||ADT^A01|MSG001|P|2.5\rPID|||12345\r";
+        for (reply, expected) in [
+            (
+                "MSH|^~\\&|Recv||Send||20230101||ACK|ACK001|P|2.5\rMSA|AA|SOMEONE_ELSE",
+                Some(ReplyProblem::OtherMessage { acknowledged: "SOMEONE_ELSE".into(), sent: "MSG001".into() }),
+            ),
+            ("HTTP/1.1 400 Bad Request\r\n\r\n", Some(ReplyProblem::NotAnAck)),
+            // An AA that names no message (MSA-2 empty).
+            (
+                "MSH|^~\\&|Recv||Send||20230101||ACK|ACK001|P|2.5\rMSA|AA",
+                Some(ReplyProblem::Unmatched { sent: "MSG001".into() }),
+            ),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let peer = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut buf = vec![0u8; 4096];
+                let _ = stream.read(&mut buf).await.unwrap();
+                stream.write_all(&mllp_frame(reply)).await.unwrap();
+            });
+            let result = send("127.0.0.1", port, msg, 5, "").await;
+            peer.await.unwrap();
+            assert!(result.success, "{:?}", result.error);
+            assert_eq!(result.reply_problem, expected, "{reply}");
+        }
     }
 
     /// BL-MLLP-09/10/11 (backend slice): start the real `receive_one` listener,
@@ -926,7 +1149,12 @@ mod tests {
         let started = Instant::now();
         let result = send_with_options("127.0.0.1", port, &message, &opts).await;
         assert!(!result.success);
-        assert!(result.error.as_deref().unwrap_or("").starts_with("Send timed out"), "{:?}", result.error);
+        // Where the write stops depends on the OS: Linux fills the loopback
+        // buffers and the write times out; Windows' auto-tuned buffers can
+        // take the whole frame, and the wait for the ACK times out instead.
+        // Either way the send ends, and soon: that is what this checks.
+        let err = result.error.as_deref().unwrap_or("");
+        assert!(err.starts_with("Send timed out") || err.starts_with("Response timed out"), "{:?}", result.error);
         assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
     }
 }

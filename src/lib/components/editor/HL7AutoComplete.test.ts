@@ -1,6 +1,47 @@
 import { describe, it, expect } from 'vitest';
 import type * as MonacoTypes from 'monaco-editor';
-import { catalogueVersion, versionFromModel } from './HL7AutoComplete';
+import { catalogueVersion, codeSpan, messageTypeCompletion, versionFromModel } from './HL7AutoComplete';
+
+describe('codeSpan (field values in the hover)', () => {
+	/** What the hover's Markdown renderer (marked, inside Monaco) reads as
+	 *  one code span at the start of `md`, and the text it shows for it:
+	 *  its code-span rule, then one space dropped from each end when both
+	 *  ends have one. Null when `md` does not open with a code span. */
+	const shownAsCode = (md: string): { length: number; text: string } | null => {
+		const m = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/.exec(md);
+		if (!m) return null;
+		const text = /[^ ]/.test(m[2]) && /^ /.test(m[2]) && / $/.test(m[2]) ? m[2].slice(1, -1) : m[2];
+		return { length: m[0].length, text };
+	};
+
+	it('shows a value exactly, as code, whatever it holds', () => {
+		for (const value of [
+			'AL',
+			'x`[CLICK-ME](http://127.0.0.1:23400/md-hover-link)',
+			'y`![IMGALT](data:image/gif;base64,R0lGODlhAQABAAAAACw=)',
+			'z`[MAILME](mailto:a@example.invalid)',
+			'``double`` and `single`',
+			'`edge`',
+			' padded ',
+			'<b>html</b> **bold** _em_',
+		]) {
+			const md = `${codeSpan(value)} is not in HL7 table 0003 (Event type)`;
+			// One span, ending where the value does: nothing after it is
+			// part of the value, nothing of the value is Markdown.
+			expect(shownAsCode(md), value).toEqual({ length: codeSpan(value).length, text: value });
+		}
+	});
+
+	it('closes too early with the old plain span', () => {
+		const value = 'x`[CLICK-ME](http://127.0.0.1:23400/md-hover-link)';
+		expect(shownAsCode(`\`${value}\``)?.text).toBe('x');
+	});
+
+	it('is a plain span for an ordinary code', () => {
+		expect(codeSpan('AA')).toBe('`AA`');
+		expect(codeSpan('a`b')).toBe('``a`b``');
+	});
+});
 
 /**
  * Minimal stand-in for a Monaco text model: `versionFromModel` only reads
@@ -58,5 +99,33 @@ describe('catalogueVersion', () => {
 		expect(catalogueVersion('2.8')).toBe('2.5');
 		expect(catalogueVersion('2.3.1')).toBe('2.3.1');
 		expect(catalogueVersion(undefined)).toBe('2.5');
+	});
+});
+
+describe('messageTypeCompletion (MSH-9)', () => {
+	const std = { field: '|', component: '^' };
+
+	it('replaces the whole field typed so far, so ADT^ never becomes ADT^ADT^A04', () => {
+		const before = 'MSH|^~\\&|A|B|C|D|20240101||ADT^';
+		const { startColumn, values } = messageTypeCompletion(before, std);
+		// The column of the "A" of ADT: what the suggestion replaces.
+		expect(before.slice(startColumn - 1)).toBe('ADT^');
+		expect(values).toContain('ADT^A04');
+		const line = before.slice(0, startColumn - 1) + 'ADT^A04';
+		expect(line.endsWith('||ADT^A04')).toBe(true);
+	});
+
+	it('starts at the cursor when the field is still empty', () => {
+		const before = 'MSH|^~\\&|A|B|C|D|20240101||';
+		expect(messageTypeCompletion(before, std).startColumn).toBe(before.length + 1);
+	});
+
+	it("writes the pairs with the message's own separators", () => {
+		const before = 'MSH#@!\\$#A#B#C#D#20240101##ADT@';
+		const { startColumn, values } = messageTypeCompletion(before, { field: '#', component: '@' });
+		expect(before.slice(startColumn - 1)).toBe('ADT@');
+		expect(values).toContain('ORU@R01');
+		expect(values).toContain('ACK');
+		expect(values.some((v) => v.includes('^'))).toBe(false);
 	});
 });

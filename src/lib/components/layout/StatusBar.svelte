@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatSize } from '$lib/large-content';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -14,6 +15,12 @@
 		cursorLine?: number;
 		cursorColumn?: number;
 		isModified?: boolean;
+		/** The tab's text is still being read or parsed (a restored tab):
+		 *  not "Not parsed", which asked for F6 while it was on its way. */
+		loading?: boolean;
+		/** False with no tab open: nothing to describe, so the parse state and
+		 *  the cursor position are left out. */
+		hasTab?: boolean;
 		/** Why the current text did not parse, when what is shown comes
 		 *  from an earlier version of it. */
 		parseStale?: string | null;
@@ -36,6 +43,8 @@
 		cursorLine = 1,
 		cursorColumn = 1,
 		isModified = false,
+		loading = false,
+		hasTab = true,
 		parseStale = null,
 		errorCount = null,
 		warningCount = null,
@@ -48,18 +57,17 @@
 		return tr(count === 1 ? `${key}.one` : key, { count });
 	}
 
-	function formatFileSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-	}
+	// Decimals in the interface language ("1,5 MB" in Italian).
+	const formatFileSize = formatSize;
 </script>
 
 <div class="status-bar">
 	<div class="status-left">
 		{#if format}
 			<span class="status-item format">{format}</span>
-		{:else}
+		{:else if loading}
+			<span class="status-item hint">{tr('status.loading')}</span>
+		{:else if hasTab}
 			<span class="status-item hint">{tr('status.notParsed')}</span>
 		{/if}
 		{#if parseStale}
@@ -102,7 +110,9 @@
 		{#if fileSize > 0}
 			<span class="status-item">{formatFileSize(fileSize)}</span>
 		{/if}
-		<span class="status-item">{tr('status.line', { line: cursorLine })}, {tr('status.column', { col: cursorColumn })}</span>
+		{#if hasTab}
+			<span class="status-item">{tr('status.line', { line: cursorLine })}, {tr('status.column', { col: cursorColumn })}</span>
+		{/if}
 	</div>
 </div>
 

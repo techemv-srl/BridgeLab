@@ -6,16 +6,42 @@
 
 use chrono::{Local, Utc};
 use regex::Regex;
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
 
 use super::ast::Expr;
 use super::eval::{
-    as_condition, as_tri, children_of, dedup, descendants_of, equal, eval, eval_per_item,
-    singleton, string_of, Env,
+    approx_size, approx_size_of, as_condition, as_tri, children_of, contains, dedup, descendants_of,
+    eval, eval_per_item, singleton, string_of, Env,
 };
 use super::types;
 
 pub fn call(
+    name: &str,
+    args: &[Expr],
+    focus: &[Value],
+    env: &mut Env,
+) -> Result<Vec<Value>, String> {
+    // The functions that run an expression on each item, or choose which
+    // to run, are where expressions nest: each level of `iif(c, iif(…))`
+    // or `where(… .where(…))` comes back through here. They are dispatched
+    // before the large match of `call_other`, whose stack frame in a debug
+    // build holds the locals of all its arms (about 30 KB, more on
+    // Windows), so a nesting level does not keep that frame on the stack.
+    match name {
+        "exists" => exists(name, args, focus, env),
+        "all" => all(name, args, focus, env),
+        "where" => filter(one_arg(name, args)?, focus, env),
+        "select" => select(one_arg(name, args)?, focus, env),
+        "repeat" => repeat(one_arg(name, args)?, focus, env),
+        "sort" => sort(name, args, focus, env),
+        "iif" => iif(name, args, focus, env),
+        "aggregate" => aggregate(name, args, focus, env),
+        _ => call_other(name, args, focus, env),
+    }
+}
+
+#[inline(never)]
+fn call_other(
     name: &str,
     args: &[Expr],
     focus: &[Value],
@@ -27,34 +53,17 @@ pub fn call(
             no_args(name, args)?;
             Ok(vec![Value::Bool(focus.is_empty())])
         }
-        "exists" => match args {
-            [] => Ok(vec![Value::Bool(!focus.is_empty())]),
-            [criteria] => {
-                let kept = filter(criteria, focus, env)?;
-                Ok(vec![Value::Bool(!kept.is_empty())])
-            }
-            _ => Err(arity(name, "0 or 1", args.len())),
-        },
-        "all" => {
-            let criteria = one_arg(name, args)?;
-            for (_, res) in eval_per_item(criteria, focus, env)? {
-                if !as_condition(&res)? {
-                    return Ok(vec![Value::Bool(false)]);
-                }
-            }
-            Ok(vec![Value::Bool(true)])
-        }
         "allTrue" | "anyTrue" | "allFalse" | "anyFalse" => {
             no_args(name, args)?;
             boolean_aggregate(name, focus)
         }
         "subsetOf" => {
             let other = eval_arg(one_arg(name, args)?, env)?;
-            Ok(vec![Value::Bool(focus.iter().all(|a| contains(&other, a)))])
+            Ok(vec![Value::Bool(contains_all(&other, focus, env)?)])
         }
         "supersetOf" => {
             let other = eval_arg(one_arg(name, args)?, env)?;
-            Ok(vec![Value::Bool(other.iter().all(|a| contains(focus, a)))])
+            Ok(vec![Value::Bool(contains_all(focus, &other, env)?)])
         }
         "count" => {
             no_args(name, args)?;
@@ -62,24 +71,15 @@ pub fn call(
         }
         "distinct" => {
             no_args(name, args)?;
-            Ok(dedup(focus.to_vec()))
+            dedup(focus.to_vec(), env)
         }
         "isDistinct" => {
             no_args(name, args)?;
-            Ok(vec![Value::Bool(dedup(focus.to_vec()).len() == focus.len())])
+            Ok(vec![Value::Bool(dedup(focus.to_vec(), env)?.len() == focus.len())])
         }
 
         // ---- filtering and projection ---------------------------------
-        "where" => filter(one_arg(name, args)?, focus, env),
-        "select" => {
-            let projection = one_arg(name, args)?;
-            let mut out = Vec::new();
-            for (_, mut res) in eval_per_item(projection, focus, env)? {
-                out.append(&mut res);
-            }
-            Ok(out)
-        }
-        "repeat" => repeat(one_arg(name, args)?, focus, env),
+        // where(), select() and repeat() are dispatched by `call`.
         "ofType" => {
             let type_name = type_arg(name, args)?;
             Ok(focus
@@ -123,29 +123,40 @@ pub fn call(
         }
         "intersect" => {
             let other = eval_arg(one_arg(name, args)?, env)?;
-            Ok(dedup(
-                focus.iter().filter(|v| contains(&other, v)).cloned().collect(),
-            ))
+            let mut both = Vec::new();
+            for v in focus {
+                if contains(&other, v, env)? {
+                    both.push(v.clone());
+                }
+            }
+            dedup(both, env)
         }
         "exclude" => {
             let other = eval_arg(one_arg(name, args)?, env)?;
-            Ok(focus.iter().filter(|v| !contains(&other, v)).cloned().collect())
+            let mut kept = Vec::new();
+            for v in focus {
+                if !contains(&other, v, env)? {
+                    kept.push(v.clone());
+                }
+            }
+            Ok(kept)
         }
-
-        "sort" => sort(name, args, focus, env),
 
         // ---- combining ------------------------------------------------
         "union" => {
             let other = eval_arg(one_arg(name, args)?, env)?;
-            Ok(dedup(focus.iter().cloned().chain(other).collect()))
+            env.spend(approx_size_of(focus).saturating_add(approx_size_of(&other)))?;
+            dedup(focus.iter().cloned().chain(other).collect(), env)
         }
         "combine" => {
+            // Both halves are copied into the result: a chain of these on
+            // the resource grows by a resource each time.
             let other = eval_arg(one_arg(name, args)?, env)?;
+            env.spend(approx_size_of(focus).saturating_add(approx_size_of(&other)))?;
             Ok(focus.iter().cloned().chain(other).collect())
         }
 
         // ---- conversion -----------------------------------------------
-        "iif" => iif(name, args, focus, env),
         "toBoolean" => convert(focus, to_boolean),
         "toInteger" => convert(focus, to_integer),
         "toDecimal" => convert(focus, to_decimal),
@@ -167,6 +178,9 @@ pub fn call(
             let Some(s) = opt_string(focus)? else {
                 return Ok(vec![]);
             };
+            // One value per character: dozens of bytes each.
+            let chars = s.chars().count();
+            env.spend(chars.saturating_mul(std::mem::size_of::<Value>()).saturating_add(s.len()))?;
             Ok(s.chars().map(|c| Value::from(c.to_string())).collect())
         }
 
@@ -200,6 +214,7 @@ pub fn call(
                 return Ok(vec![]);
             };
             let out = if name == "encode" {
+                env.build_string(&format!("{}()", name), encoded_len(&s, &format))?;
                 encode(&s, &format)
             } else {
                 decode(&s, &format)
@@ -212,23 +227,31 @@ pub fn call(
                 return Ok(vec![]);
             };
             let out = if name == "escape" {
+                env.build_string(&format!("{}()", name), escaped_len(&s, &format))?;
                 escape(&s, &format)
             } else {
                 unescape(&s, &format)
             };
             Ok(out.map(Value::from).into_iter().collect())
         }
-        "upper" => map_string(name, args, focus, |s| s.to_uppercase()),
-        "lower" => map_string(name, args, focus, |s| s.to_lowercase()),
-        "trim" => map_string(name, args, focus, |s| s.trim().to_string()),
+        "upper" => map_string(name, args, focus, env, |s| s.to_uppercase()),
+        "lower" => map_string(name, args, focus, env, |s| s.to_lowercase()),
+        "trim" => map_string(name, args, focus, env, |s| s.trim().to_string()),
         "replace" => {
             let (pattern, replacement) = two_string_args(name, args, focus, env)?;
             let (Some(s), Some(p), Some(r)) = (opt_string(focus)?, pattern, replacement) else {
                 return Ok(vec![]);
             };
+            // Each result is measured before it is built: a chain of these
+            // grows ten times per step with `replace('a', 'aaaaaaaaaa')`.
             // Replacing the empty string surrounds every character, which is
             // what the spec's "insert between each character" rule means.
             if p.is_empty() {
+                let len = r
+                    .len()
+                    .checked_mul(s.chars().count() + 1)
+                    .and_then(|n| n.checked_add(s.len()));
+                env.build_string(&format!("{}()", name), len.unwrap_or(usize::MAX))?;
                 let mut out = String::from(&r);
                 for c in s.chars() {
                     out.push(c);
@@ -236,6 +259,11 @@ pub fn call(
                 }
                 return Ok(vec![Value::from(out)]);
             }
+            let hits = s.matches(p.as_str()).count();
+            let len = hits
+                .checked_mul(r.len())
+                .and_then(|grown| (s.len() - hits * p.len()).checked_add(grown));
+            env.build_string(&format!("{}()", name), len.unwrap_or(usize::MAX))?;
             Ok(vec![Value::from(s.replace(&p, &r))])
         }
         "replaceMatches" => {
@@ -249,7 +277,7 @@ pub fn call(
                 return Ok(vec![Value::from(s)]);
             }
             let re = compile(&p)?;
-            Ok(vec![Value::from(re.replace_all(&s, r.as_str()).to_string())])
+            replace_matches(&re, &s, &r, env).map(|out| vec![Value::from(out)])
         }
         "split" => {
             let sep = string_arg(name, args, focus, env)?;
@@ -259,6 +287,8 @@ pub fn call(
             if sep.is_empty() {
                 return Err("split() needs a non-empty separator".into());
             }
+            let pieces = s.matches(sep.as_str()).count() + 1;
+            env.spend(pieces.saturating_mul(std::mem::size_of::<Value>()).saturating_add(s.len()))?;
             Ok(s.split(&sep).map(|p| Value::from(p.to_string())).collect())
         }
         "join" => {
@@ -271,6 +301,10 @@ pub fn call(
                 _ => return Err(arity(name, "0 or 1", args.len())),
             };
             let parts: Vec<String> = focus.iter().map(string_of).collect();
+            let len = parts
+                .iter()
+                .fold(sep.len().saturating_mul(parts.len().saturating_sub(1)), |n, p| n.saturating_add(p.len()));
+            env.build_string(&format!("{}()", name), len)?;
             Ok(vec![Value::from(parts.join(&sep))])
         }
 
@@ -332,11 +366,17 @@ pub fn call(
         // ---- tree navigation -------------------------------------------
         "children" => {
             no_args(name, args)?;
-            Ok(focus.iter().flat_map(children_of).collect())
+            let out: Vec<Value> = focus.iter().flat_map(children_of).collect();
+            env.step(out.len())?;
+            Ok(out)
         }
         "descendants" => {
             no_args(name, args)?;
-            Ok(focus.iter().flat_map(descendants_of).collect())
+            let mut out = Vec::new();
+            for item in focus {
+                out.extend(descendants_of(item, env)?);
+            }
+            Ok(out)
         }
 
         // ---- types ------------------------------------------------------
@@ -378,7 +418,6 @@ pub fn call(
         }
 
         // ---- aggregates --------------------------------------------------
-        "aggregate" => aggregate(name, args, focus, env),
 
         // ---- utilities ----------------------------------------------------
         "trace" => {
@@ -399,6 +438,8 @@ pub fn call(
                 }
                 None => focus.to_vec(),
             };
+            // Kept until the evaluation ends, even inside a loop.
+            env.spend(approx_size_of(&logged))?;
             env.trace.push((label, logged));
             Ok(focus.to_vec())
         }
@@ -428,6 +469,7 @@ pub fn call(
                 let Some(exts) = item.get("extension").and_then(|e| e.as_array()) else {
                     continue;
                 };
+                env.step(exts.len())?;
                 out.extend(
                     exts.iter()
                         .filter(|e| e.get("url").and_then(|u| u.as_str()) == Some(url.as_str()))
@@ -451,12 +493,15 @@ pub fn call(
             no_args(name, args)?;
             let mut out = Vec::new();
             for item in focus {
+                env.step(1)?;
                 let reference = item
                     .get("reference")
                     .and_then(|r| r.as_str())
                     .or_else(|| item.as_str());
                 if let Some(r) = reference {
-                    if let Some(found) = env.resolve(r, item, None) {
+                    // Each is a copy of a whole resource.
+                    if let Some((found, _)) = env.resolve(r, item, None, None)? {
+                        env.spend(approx_size(&found))?;
                         out.push(found);
                     }
                 }
@@ -471,13 +516,12 @@ pub fn call(
             if let Some(t) = v.as_str().and_then(types::as_temporal) {
                 return Ok(vec![Value::from(t.precision())]);
             }
-            // Significant digits of a decimal. The JSON encoding has already
-            // dropped trailing zeros, so `1.58700` reports 3, not 5.
+            // The digits after the point a decimal was written with,
+            // trailing zeros included (`1.58700`: 5), whether it is a literal
+            // or a value read from the resource.
             match v {
-                Value::Number(n) if n.is_f64() => {
-                    let text = n.to_string();
-                    let digits = text.split_once('.').map(|(_, f)| f.len()).unwrap_or(0);
-                    Ok(vec![Value::from(digits as i64)])
+                Value::Number(n) if !(n.is_i64() || n.is_u64()) => {
+                    Ok(vec![Value::from(types::written_scale(n).max(0) as i64)])
                 }
                 _ => Ok(vec![]),
             }
@@ -495,10 +539,15 @@ pub fn call(
             };
             Ok(vec![Value::Bool(comparable)])
         }
-        "lowBoundary" | "highBoundary" => Err(format!(
-            "{}() needs exact decimal arithmetic, which this engine does not implement",
-            name
-        )),
+        "lowBoundary" | "highBoundary" => {
+            let Some(precision) = boundary_precision(name, args, env)? else {
+                return Ok(vec![]);
+            };
+            let Some(v) = singleton(focus)? else {
+                return Ok(vec![]);
+            };
+            Ok(boundary(v, name == "highBoundary", precision).into_iter().collect())
+        }
         // The validator checks profiles (F6, `bridgelab-cli validate`);
         // the FHIRPath engine does not call into it.
         "conformsTo" => Err(
@@ -519,7 +568,7 @@ fn arity(name: &str, expected: &str, got: usize) -> String {
     format!("{}() takes {} arguments but got {}", name, expected, got)
 }
 
-fn no_args(name: &str, args: &[Expr]) -> Result<(), String> {
+pub(super) fn no_args(name: &str, args: &[Expr]) -> Result<(), String> {
     if args.is_empty() {
         Ok(())
     } else {
@@ -547,7 +596,7 @@ pub fn type_call(
     }
 }
 
-fn one_arg<'a>(name: &str, args: &'a [Expr]) -> Result<&'a Expr, String> {
+pub(super) fn one_arg<'a>(name: &str, args: &'a [Expr]) -> Result<&'a Expr, String> {
     match args {
         [a] => Ok(a),
         _ => Err(arity(name, "1", args.len())),
@@ -555,7 +604,7 @@ fn one_arg<'a>(name: &str, args: &'a [Expr]) -> Result<&'a Expr, String> {
 }
 
 /// A type name given as a bare identifier rather than an evaluated argument.
-fn type_arg(name: &str, args: &[Expr]) -> Result<String, String> {
+pub(super) fn type_arg(name: &str, args: &[Expr]) -> Result<String, String> {
     match one_arg(name, args)? {
         Expr::Member { base: None, name } => Ok(name.clone()),
         Expr::Member {
@@ -569,14 +618,135 @@ fn type_arg(name: &str, args: &[Expr]) -> Result<String, String> {
     }
 }
 
+/// The precision argument of the boundary functions: `Some(None)` when it is
+/// left out (each type has its default), `None` when it evaluates to
+/// nothing, which makes the result empty too.
+fn boundary_precision(name: &str, args: &[Expr], env: &mut Env) -> Result<Option<Option<i64>>, String> {
+    match args {
+        [] => Ok(Some(None)),
+        [a] => {
+            let v = eval_arg(a, env)?;
+            match singleton(&v)? {
+                None => Ok(None),
+                Some(p) => p
+                    .as_i64()
+                    .map(|p| Some(Some(p)))
+                    .ok_or_else(|| format!("{}() expects an integer precision", name)),
+            }
+        }
+        _ => Err(arity(name, "0 or 1", args.len())),
+    }
+}
+
+/// The least (`high` false) or greatest value `v` can stand for, to
+/// `precision` digits: a decimal (default 8 digits after the point), a
+/// quantity's value, or a date (default 8), dateTime (17) or time (9).
+/// A decimal's own precision is the digits it was written with. Empty for
+/// a precision the type does not have.
+fn boundary(v: &Value, high: bool, precision: Option<i64>) -> Option<Value> {
+    if let Some(t) = v.as_str().and_then(types::as_temporal) {
+        let default = match t.kind {
+            types::TemporalKind::Date => 8,
+            types::TemporalKind::DateTime => 17,
+            types::TemporalKind::Time => 9,
+        };
+        let b = t.boundary(precision.unwrap_or(default), high)?;
+        let text = b.to_literal();
+        // A time reads back as one with its leading `T`, as literals write it.
+        return Some(Value::from(if b.kind == types::TemporalKind::Time { format!("T{}", text) } else { text }));
+    }
+    let precision = u32::try_from(precision.unwrap_or(8)).ok().filter(|p| *p <= MAX_DECIMAL_PRECISION)?;
+    if let Some(obj) = v.as_object() {
+        let exact = Exact::of_number(obj.get("value")?.as_number()?)?;
+        let mut q = obj.clone();
+        q.insert("value".into(), exact.boundary(precision, high)?.to_value());
+        return Some(Value::Object(q));
+    }
+    Some(Exact::of_number(v.as_number()?)?.boundary(precision, high)?.to_value())
+}
+
+/// Most digits after the point a boundary can ask for; beyond it the result
+/// is empty, as the specification allows.
+const MAX_DECIMAL_PRECISION: u32 = 28;
+
+/// A decimal held exactly, as `mantissa / 10^scale`, for the arithmetic the
+/// boundary functions need without a double's rounding. `scale` is below
+/// zero for a number whose last digit sits left of the point (`9.5e2` is
+/// 95 at scale -1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Exact {
+    mantissa: i128,
+    scale: i32,
+}
+
+impl Exact {
+    /// A JSON number, digit for digit as it was written: `6.30` is 630 at
+    /// scale 2 and `1.5e-3` is 15 at scale 4. Nothing goes through a
+    /// double, so a value with more digits than one holds stays exact.
+    fn of_number(n: &Number) -> Option<Exact> {
+        let text = n.to_string();
+        let mantissa_text = text.split(['e', 'E']).next().unwrap_or("");
+        let (negative, digits) = match mantissa_text.strip_prefix('-') {
+            Some(d) => (true, d),
+            None => (false, mantissa_text),
+        };
+        let (int, frac) = digits.split_once('.').unwrap_or((digits, ""));
+        let mut mantissa: i128 = 0;
+        for c in int.chars().chain(frac.chars()) {
+            mantissa = mantissa.checked_mul(10)?.checked_add(c.to_digit(10)? as i128)?;
+        }
+        Some(Exact { mantissa: if negative { -mantissa } else { mantissa }, scale: types::written_scale(n) })
+    }
+
+    /// Half a unit of the last digit below (`high` false) or above the
+    /// value, to `precision` digits after the point. Cutting to fewer
+    /// digits than that carries rounds away from zero on the side the
+    /// boundary points to (a negative low, a positive high) and towards
+    /// zero on the other, as the HL7 test suite expects.
+    fn boundary(self, precision: u32, high: bool) -> Option<Exact> {
+        let scale = self.scale.checked_add(1)?;
+        let precision = i32::try_from(precision).ok()?;
+        let v = self.mantissa.checked_mul(10)?.checked_add(if high { 5 } else { -5 })?;
+        if precision >= scale {
+            let up = u32::try_from(precision.checked_sub(scale)?).ok()?;
+            let mantissa = v.checked_mul(10i128.checked_pow(up)?)?;
+            return Some(Exact { mantissa, scale: precision });
+        }
+        let div = 10i128.checked_pow(u32::try_from(scale.checked_sub(precision)?).ok()?)?;
+        let (q, r) = (v.abs() / div, v.abs() % div);
+        let outward = (high && v > 0) || (!high && v < 0);
+        let q = if outward && r * 2 >= div { q + 1 } else { q };
+        Some(Exact { mantissa: if v < 0 { -q } else { q }, scale: precision })
+    }
+
+    /// The value as a JSON decimal written to its scale, so the digits stay
+    /// what the boundary has: `1.58650000`, precision 8. With no digit
+    /// after the point it is written `945.0`: JSON tells a decimal from an
+    /// integer only by its point, and the result is a Decimal.
+    fn to_value(self) -> Value {
+        let places = self.scale.max(0) as usize;
+        let digits = format!("{:0>width$}", self.mantissa.unsigned_abs(), width = places + 1);
+        let (int, frac) = digits.split_at(digits.len() - places);
+        let sign = if self.mantissa < 0 { "-" } else { "" };
+        let frac = if frac.is_empty() { "0" } else { frac };
+        format!("{}{}.{}", sign, int, frac).parse::<Number>().map(Value::Number).unwrap_or(Value::Null)
+    }
+}
+
 /// Evaluate an ordinary (non-lambda) argument against the context node.
-fn eval_arg(expr: &Expr, env: &mut Env) -> Result<Vec<Value>, String> {
-    let context = env.context();
+pub(super) fn eval_arg(expr: &Expr, env: &mut Env) -> Result<Vec<Value>, String> {
+    let context = env.context()?;
     eval(expr, &context, env)
 }
 
-fn contains(haystack: &[Value], needle: &Value) -> bool {
-    haystack.iter().any(|v| equal(v, needle) == Some(true))
+/// Whether every item of `items` is in `haystack`.
+fn contains_all(haystack: &[Value], items: &[Value], env: &mut Env) -> Result<bool, String> {
+    for v in items {
+        if !contains(haystack, v, env)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn filter(criteria: &Expr, focus: &[Value], env: &mut Env) -> Result<Vec<Value>, String> {
@@ -594,23 +764,26 @@ fn filter(criteria: &Expr, focus: &[Value], env: &mut Env) -> Result<Vec<Value>,
 /// structures such as Questionnaire.item.
 fn repeat(projection: &Expr, focus: &[Value], env: &mut Env) -> Result<Vec<Value>, String> {
     let mut out: Vec<Value> = Vec::new();
-    let mut frontier: Vec<Value> = focus.to_vec();
+    // The first round runs on `focus` itself, so the lambda gets the holders
+    // of its items when they are known (Env::holder_for).
+    let mut frontier: Option<Vec<Value>> = None;
     // Structures are trees in practice; the bound stops a cycle in data that
     // is not, instead of hanging the UI.
     for _ in 0..1000 {
-        if frontier.is_empty() {
+        let current: &[Value] = frontier.as_deref().unwrap_or(focus);
+        if current.is_empty() {
             break;
         }
         let mut next = Vec::new();
-        for (_, res) in eval_per_item(projection, &frontier, env)? {
+        for (_, res) in eval_per_item(projection, current, env)? {
             for v in res {
-                if !contains(&out, &v) {
+                if !contains(&out, &v, env)? {
                     out.push(v.clone());
                     next.push(v);
                 }
             }
         }
-        frontier = next;
+        frontier = Some(next);
     }
     Ok(out)
 }
@@ -631,14 +804,25 @@ fn aggregate(
     env.total = Some(init);
     let mut result = Ok(());
     for (i, item) in focus.iter().enumerate() {
+        if let Err(e) = env.step(1) {
+            result = Err(e);
+            break;
+        }
         let single = [item.clone()];
         let saved_this = env.this.take();
         let saved_index = env.index.take();
+        let holder = env.holder_for(focus, i);
+        let saved_holder = env.set_this_holder(holder);
         env.this = Some(vec![item.clone()]);
         env.index = Some(i as i64);
-        let step = eval(expr, &single, env);
+        let before = env.spent();
+        let step = eval(expr, &single, env).and_then(|v| {
+            let inside = env.spent() - before;
+            env.spend_on(&v, inside).map(|()| v)
+        });
         env.this = saved_this;
         env.index = saved_index;
+        env.set_this_holder(saved_holder);
         match step {
             Ok(v) => env.total = Some(v),
             Err(e) => {
@@ -650,6 +834,35 @@ fn aggregate(
     let total = env.total.take().unwrap_or_default();
     env.total = saved_total;
     result.map(|()| total)
+}
+
+fn exists(name: &str, args: &[Expr], focus: &[Value], env: &mut Env) -> Result<Vec<Value>, String> {
+    match args {
+        [] => Ok(vec![Value::Bool(!focus.is_empty())]),
+        [criteria] => {
+            let kept = filter(criteria, focus, env)?;
+            Ok(vec![Value::Bool(!kept.is_empty())])
+        }
+        _ => Err(arity(name, "0 or 1", args.len())),
+    }
+}
+
+fn all(name: &str, args: &[Expr], focus: &[Value], env: &mut Env) -> Result<Vec<Value>, String> {
+    let criteria = one_arg(name, args)?;
+    for (_, res) in eval_per_item(criteria, focus, env)? {
+        if !as_condition(&res)? {
+            return Ok(vec![Value::Bool(false)]);
+        }
+    }
+    Ok(vec![Value::Bool(true)])
+}
+
+fn select(projection: &Expr, focus: &[Value], env: &mut Env) -> Result<Vec<Value>, String> {
+    let mut out = Vec::new();
+    for (_, mut res) in eval_per_item(projection, focus, env)? {
+        out.append(&mut res);
+    }
+    Ok(out)
 }
 
 fn iif(name: &str, args: &[Expr], focus: &[Value], env: &mut Env) -> Result<Vec<Value>, String> {
@@ -668,6 +881,8 @@ fn iif(name: &str, args: &[Expr], focus: &[Value], env: &mut Env) -> Result<Vec<
     // Unlike `where()`, iif() requires an actual Boolean: a criteria that is
     // merely non-empty is a mistake worth reporting, not a `true`.
     let saved = env.this.replace(focus.to_vec());
+    let holder = env.holder_for(focus, 0);
+    let saved_holder = env.set_this_holder(holder);
     let outcome = (|env: &mut Env| {
         let decided = eval(condition, focus, env)?;
         let taken = match singleton(&decided)? {
@@ -691,6 +906,7 @@ fn iif(name: &str, args: &[Expr], focus: &[Value], env: &mut Env) -> Result<Vec<
         }
     })(env);
     env.this = saved;
+    env.set_this_holder(saved_holder);
     outcome
 }
 
@@ -764,7 +980,7 @@ fn number_arg(
     }
 }
 
-fn int_arg(name: &str, args: &[Expr], focus: &[Value], env: &mut Env) -> Result<i64, String> {
+pub(super) fn int_arg(name: &str, args: &[Expr], focus: &[Value], env: &mut Env) -> Result<i64, String> {
     let vals = eval(one_arg(name, args)?, focus, env)?;
     match singleton(&vals)? {
         None => Ok(0),
@@ -856,7 +1072,10 @@ fn sort(_name: &str, args: &[Expr], focus: &[Value], env: &mut Env) -> Result<Ve
         keys.iter().map(|(_, d)| *d).collect()
     };
 
-    let mut order: Vec<usize> = (0..focus.len()).collect();
+    // A sort makes about n·log2(n) comparisons.
+    let n = focus.len();
+    env.step(n.saturating_mul((usize::BITS - n.leading_zeros()) as usize))?;
+    let mut order: Vec<usize> = (0..n).collect();
     // A comparison error would make the whole sort meaningless, so surface it
     // instead of silently leaving the collection half-ordered.
     let mut failure: Option<String> = None;
@@ -905,6 +1124,16 @@ fn encode(s: &str, format: &str) -> Option<String> {
     })
 }
 
+/// The length of `encode(s, format)`, measured before it is built.
+fn encoded_len(s: &str, format: &str) -> usize {
+    match format {
+        // Padded base64: four characters per three bytes or part of them.
+        "base64" | "urlbase64" => s.len().div_ceil(3).saturating_mul(4),
+        "hex" => s.len().saturating_mul(2),
+        _ => 0,
+    }
+}
+
 fn decode(s: &str, format: &str) -> Option<String> {
     use base64::Engine;
     let bytes = match format {
@@ -950,6 +1179,124 @@ fn escape(s: &str, format: &str) -> Option<String> {
         }
         _ => return None,
     })
+}
+
+/// The length of `escape(s, format)`, measured before it is built.
+fn escaped_len(s: &str, format: &str) -> usize {
+    let extra = |c: char| match (format, c) {
+        ("html", '&') => 4,
+        ("html", '<' | '>') => 3,
+        ("html", '"' | '\'') => 5,
+        ("json", '"' | '\\' | '\n' | '\r' | '\t') => 1,
+        _ => 0,
+    };
+    s.chars().fold(s.len(), |n, c| n.saturating_add(extra(c)))
+}
+
+/// `replaceMatches()`: `re.replace_all(s, r)`, built here so the result is
+/// measured before it grows past the string cap. A replacement such as
+/// `$0$0$0$0` copies each match several times, so the length is known
+/// only match by match.
+fn replace_matches(re: &Regex, s: &str, r: &str, env: &mut Env) -> Result<String, String> {
+    let template = Replacement::parse(re, r);
+    // Two passes over the matches: the first only adds up the length.
+    let mut len = s.len();
+    for caps in re.captures_iter(s) {
+        let m = caps.get(0).expect("group 0 is the match");
+        len = (len - m.len()).saturating_add(template.len_for(&caps));
+        if len > super::eval::MAX_STRING_BYTES {
+            break;
+        }
+    }
+    env.build_string("replaceMatches()", len)?;
+
+    let mut out = String::with_capacity(len);
+    let mut last = 0;
+    for caps in re.captures_iter(s) {
+        let m = caps.get(0).expect("group 0 is the match");
+        out.push_str(&s[last..m.start()]);
+        template.append(&caps, &mut out);
+        last = m.end();
+    }
+    out.push_str(&s[last..]);
+    Ok(out)
+}
+
+/// A replacement string in the syntax the regex crate reads: `$1`,
+/// `${1}`, `$name`, `${name}`, and `$$` for a dollar sign. A `$` that
+/// starts no reference is itself, and a group that does not exist or did
+/// not take part in the match is empty, as there.
+struct Replacement<'r> {
+    pieces: Vec<Piece<'r>>,
+}
+
+enum Piece<'r> {
+    Text(&'r str),
+    Group(Option<usize>),
+}
+
+impl<'r> Replacement<'r> {
+    fn parse(re: &Regex, mut rest: &'r str) -> Self {
+        let group = |name: &str| match name.parse::<usize>() {
+            Ok(i) => Some(i),
+            Err(_) => re.capture_names().position(|n| n == Some(name)),
+        };
+        let mut pieces = Vec::new();
+        while let Some(i) = rest.find('$') {
+            pieces.push(Piece::Text(&rest[..i]));
+            rest = &rest[i..];
+            let after = &rest[1..];
+            if after.starts_with('$') {
+                pieces.push(Piece::Text("$"));
+                rest = &rest[2..];
+                continue;
+            }
+            // `${name}`: anything up to the closing brace.
+            if let Some(braced) = after.strip_prefix('{') {
+                if let Some(end) = braced.find('}') {
+                    pieces.push(Piece::Group(group(&braced[..end])));
+                    rest = &braced[end + 1..];
+                    continue;
+                }
+            } else {
+                // `$name`: the longest run of letters, digits and `_`.
+                let end = after
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .unwrap_or(after.len());
+                if end > 0 {
+                    pieces.push(Piece::Group(group(&after[..end])));
+                    rest = &after[end..];
+                    continue;
+                }
+            }
+            pieces.push(Piece::Text("$"));
+            rest = after;
+        }
+        pieces.push(Piece::Text(rest));
+        Replacement { pieces }
+    }
+
+    fn group<'h>(caps: &regex::Captures<'h>, index: Option<usize>) -> &'h str {
+        index.and_then(|i| caps.get(i)).map_or("", |m| m.as_str())
+    }
+
+    fn len_for(&self, caps: &regex::Captures) -> usize {
+        self.pieces.iter().fold(0usize, |n, p| {
+            n.saturating_add(match p {
+                Piece::Text(t) => t.len(),
+                Piece::Group(i) => Self::group(caps, *i).len(),
+            })
+        })
+    }
+
+    fn append(&self, caps: &regex::Captures, out: &mut String) {
+        for p in &self.pieces {
+            match p {
+                Piece::Text(t) => out.push_str(t),
+                Piece::Group(i) => out.push_str(Self::group(caps, *i)),
+            }
+        }
+    }
 }
 
 fn unescape(s: &str, format: &str) -> Option<String> {
@@ -1032,11 +1379,18 @@ fn map_string(
     name: &str,
     args: &[Expr],
     focus: &[Value],
+    env: &mut Env,
     f: impl Fn(&str) -> String,
 ) -> Result<Vec<Value>, String> {
     no_args(name, args)?;
     match opt_string(focus)? {
-        Some(s) => Ok(vec![Value::from(f(&s))]),
+        Some(s) => {
+            // Measured once built: these change a string by at most three
+            // times its length (`upper()` of an `ß` is `SS`).
+            let out = f(&s);
+            env.build_string(&format!("{}()", name), out.len())?;
+            Ok(vec![Value::from(out)])
+        }
         None => Ok(vec![]),
     }
 }

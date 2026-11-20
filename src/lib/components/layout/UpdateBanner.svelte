@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { t, subscribeLocale } from '$lib/i18n';
+	import { openExternal } from '$lib/page-guard';
 	import {
 		fetchLatestRelease, startupCheckDue, shouldNotify, getUpdatePolicy, effectivePreference, needsFirstRunQuestion,
 		PREF_STARTUP_CHECK, PREF_LAST_CHECK, PREF_SKIPPED, type LatestRelease,
@@ -58,13 +59,8 @@
 
 	async function download() {
 		if (!release) return;
-		const url = release.url;
-		try {
-			const { openUrl } = await import('@tauri-apps/plugin-opener');
-			await openUrl(url);
-		} catch {
-			window.open(url, '_blank');
-		}
+		// Says so, with the address, when no browser can be started.
+		await openExternal(release.url);
 	}
 
 	async function answer(yes: boolean) {

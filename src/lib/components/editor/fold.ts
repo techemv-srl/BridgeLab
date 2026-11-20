@@ -21,6 +21,11 @@ const payloads = new Map<number, string>();
 /** Identical runs share one id, so re-folding the same field (tab switch,
  *  fold/expand cycles) never stores its content twice. */
 const idOf = new Map<string, number>();
+/** The exact text of each id's token. Only that text is a token: a message
+ *  can hold token-shaped text of its own (`⟨scan #1⟩` in a note), which
+ *  has the shape and a registered id but not the label, and must stay as
+ *  written rather than become another field's content on save. */
+const tokenTexts = new Map<number, string>();
 let nextId = 1;
 
 /** A token: ⟨label #id⟩. The brackets are U+27E8/U+27E9, never used by HL7. */
@@ -33,8 +38,21 @@ export function tokenFor(payload: string): string {
 		id = nextId++;
 		payloads.set(id, payload);
 		idOf.set(payload, id);
+		tokenTexts.set(id, `⟨${describe(payload)} #${id}⟩`);
 	}
-	return `⟨${describe(payload)} #${id}⟩`;
+	return tokenTexts.get(id)!;
+}
+
+/** The payload `match` (a TOKEN_RE match with id `id`) stands for: only
+ *  when it is exactly that id's token. */
+function payloadFor(match: string, id: number): string | undefined {
+	return tokenTexts.get(id) === match ? payloads.get(id) : undefined;
+}
+
+function forget(id: number, payload: string): void {
+	payloads.delete(id);
+	idOf.delete(payload);
+	tokenTexts.delete(id);
 }
 
 /**
@@ -45,10 +63,7 @@ export function tokenFor(payload: string): string {
 export function retainOnly(text: string): void {
 	const live = new Set(tokensIn(text).map((t) => t.id));
 	for (const [id, payload] of payloads) {
-		if (!live.has(id)) {
-			payloads.delete(id);
-			idOf.delete(payload);
-		}
+		if (!live.has(id)) forget(id, payload);
 	}
 }
 
@@ -56,10 +71,7 @@ export function retainOnly(text: string): void {
  *  document shows or may bring back through its undo history. */
 export function retainIds(live: Set<number>): void {
 	for (const [id, payload] of payloads) {
-		if (!live.has(id)) {
-			payloads.delete(id);
-			idOf.delete(payload);
-		}
+		if (!live.has(id)) forget(id, payload);
 	}
 }
 
@@ -94,7 +106,7 @@ export function formatSize(n: number): string {
 /** Rebuild the full text: every known token becomes its payload. */
 export function expandText(display: string): string {
 	if (!display.includes('⟨')) return display;
-	return display.replace(TOKEN_RE, (tok, id) => payloads.get(Number(id)) ?? tok);
+	return display.replace(TOKEN_RE, (tok, id) => payloadFor(tok, Number(id)) ?? tok);
 }
 
 /** The known tokens in a text, with their offsets. */
@@ -102,10 +114,27 @@ export function tokensIn(text: string): Array<{ index: number; length: number; i
 	const out: Array<{ index: number; length: number; id: number; payload: string }> = [];
 	if (!text.includes('⟨')) return out;
 	for (const m of text.matchAll(TOKEN_RE)) {
-		const payload = payloads.get(Number(m[1]));
+		const payload = payloadFor(m[0], Number(m[1]));
 		if (payload !== undefined) out.push({ index: m.index!, length: m[0].length, id: Number(m[1]), payload });
 	}
 	return out;
+}
+
+/**
+ * Which of `tokens` a context-menu action on the caret means: the one the
+ * caret is on or against (a caret is snapped to a token's edge), else the
+ * nearest. Measured to each token's nearer edge, not its start: with two
+ * folded fields side by side, a caret at the end of the first is closer to
+ * the second one's start than to its own. -1 when there is none.
+ */
+export function tokenNearCaret(tokens: ReadonlyArray<{ index: number; length: number }>, caret: number): number {
+	let best = -1;
+	let bestDist = Infinity;
+	tokens.forEach((f, i) => {
+		const d = caret < f.index ? f.index - caret : caret > f.index + f.length ? caret - (f.index + f.length) : 0;
+		if (d < bestDist) { best = i; bestDist = d; }
+	});
+	return best;
 }
 
 /** Replace every run longer than `threshold` with a token. */

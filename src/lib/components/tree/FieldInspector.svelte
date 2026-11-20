@@ -2,7 +2,7 @@
 	import type { TreeNode } from '$lib/types/hl7';
 	import type { FieldInfo, SegmentInfo } from '$lib/ipc/tables';
 	import { getFieldInfo, getSegmentInfo, getHl7Table, type ValueTable } from '$lib/ipc/tables';
-	import { getFieldContent } from '$lib/ipc/parser';
+	import { getFieldContent, getFieldLength } from '$lib/ipc/parser';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 
@@ -102,19 +102,53 @@
 	const SEGMENT_PREVIEW = 80;
 	let segmentCut = $derived(selectedNode?.node_type === 'segment' && (selectedNode.value_preview?.length ?? 0) >= SEGMENT_PREVIEW);
 
-	// Current raw value length (from node preview if not truncated, else ask backend)
+	/** The tree shows only the start of this value. */
+	let valueCut = $derived(!!selectedNode && (selectedNode.is_truncated || segmentCut));
+
+	/** Where the whole value is: a field, or (field 0) the whole segment.
+	 *  Null for a repetition, whose full text is its field's. */
+	function fullValueTarget(node: TreeNode): { segmentIdx: number; field: number } | null {
+		const p = parseNodeId(node.id);
+		if (p.segmentIdx === null) return null;
+		if (node.node_type === 'segment') return { segmentIdx: p.segmentIdx, field: 0 };
+		if (node.node_type === 'field' && p.fieldPosition !== null) return { segmentIdx: p.segmentIdx, field: p.fieldPosition };
+		return null;
+	}
+
+	/** The length of a value the tree shows cut, asked of the backend (the
+	 *  value itself can be megabytes). The inspector used to show none. */
+	let cutLength = $state<number | null>(null);
+	$effect(() => {
+		cutLength = null;
+		const node = selectedNode;
+		if (!node || !messageId || !valueCut || isFhir) return;
+		const target = fullValueTarget(node);
+		if (!target) return;
+		let current = true;
+		getFieldLength(messageId, target.segmentIdx, target.field)
+			.then((n) => { if (current) cutLength = n; })
+			.catch(() => { /* message released: no length */ });
+		return () => { current = false; };
+	});
+
+	// Current raw value length: the preview's when it is the whole value,
+	// otherwise the backend's.
 	let currentLength = $derived.by(() => {
 		if (!selectedNode) return null;
-		if (selectedNode.is_truncated || segmentCut) return null; // unknown without full fetch
+		if (valueCut) return cutLength;
 		return selectedNode.value_preview?.length ?? 0;
 	});
 
 	async function handleViewFull() {
 		if (!selectedNode || !messageId) return;
 		const p = parseNodeId(selectedNode.id);
-		if (p.segmentIdx === null || p.fieldPosition === null) return;
+		// A long segment opens whole (field 0); a field or repetition opens
+		// its field.
+		const target = fullValueTarget(selectedNode)
+			?? (p.segmentIdx !== null && p.fieldPosition !== null ? { segmentIdx: p.segmentIdx, field: p.fieldPosition } : null);
+		if (!target) return;
 		try {
-			const res = await getFieldContent(messageId, p.segmentIdx, p.fieldPosition);
+			const res = await getFieldContent(messageId, target.segmentIdx, target.field);
 			onViewFullValue?.(res.full_text);
 		} catch (e) {
 			await dialogStore.error(tr('inspector.viewFull'), undefined, String(e));
@@ -283,21 +317,23 @@
 				<div class="value-section">
 					<div class="value-label">
 						{tr('inspector.currentValue')}
-						{#if selectedNode.is_truncated || segmentCut}
+						{#if valueCut}
 							<span class="badge-warn">{tr('inspector.truncated')}</span>
 						{/if}
-						{#if selectedNode.value_preview && !selectedNode.is_truncated && !segmentCut}
+						{#if selectedNode.value_preview && !valueCut}
 							<button class="copy-btn" onclick={copyValue} title={tr('modal.copy')}>⧉</button>
 						{/if}
 					</div>
 					<pre class="value-box">{selectedNode.value_preview || ''}</pre>
-					{#if selectedNode.is_truncated}
+					{#if currentLength !== null && !isFhir}
+						<!-- FHIR container previews ("[1 items]") are synthetic: their length is meaningless -->
+						<div class="value-meta">{tr('inspector.currentLength')}: {currentLength}</div>
+					{/if}
+					{#if valueCut && !isFhir}
+						<!-- A long segment had the badge and no way to see the rest. -->
 						<button class="view-full-btn" onclick={handleViewFull}>
 							{tr('inspector.viewFull')}
 						</button>
-					{:else if currentLength !== null && !isFhir}
-						<!-- FHIR container previews ("[1 items]") are synthetic: their length is meaningless -->
-						<div class="value-meta">{tr('inspector.currentLength')}: {currentLength}</div>
 					{/if}
 				</div>
 			{/if}
@@ -403,7 +439,7 @@
 	.table-id {
 		font-weight: 400;
 		font-size: 10px;
-		opacity: 0.8;
+		opacity: var(--text-dim, 0.8);
 	}
 
 	.table-warn {

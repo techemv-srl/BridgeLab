@@ -3,7 +3,9 @@
 //! What is checked:
 //!
 //! - **Cardinality** — a required element that is absent, or a `0..1`
-//!   element that repeats.
+//!   element that repeats; and in JSON, the shape that goes with it: a
+//!   repeating element is an array even with one item, a single-valued one
+//!   never is.
 //! - **Types** — the JSON shape against the declared type, including
 //!   choice elements, where `value[x]` must appear as exactly one of
 //!   `valueQuantity`, `valueString`, …
@@ -23,20 +25,35 @@ use std::collections::HashSet;
 use serde_json::{Map, Value};
 
 use super::model::{Profile, ProfileElement, ProfileIndex};
-use crate::parser::fhir::FhirValidationIssue;
+use crate::parser::fhir::{FhirFormat, FhirValidationIssue};
 
 /// How deep to follow complex types into their own definitions. FHIR data
 /// types nest (Reference → Identifier → Period), and a bound keeps a cyclic
 /// or pathological profile from hanging the UI.
 const MAX_DEPTH: usize = 6;
 
-/// Validate `resource` against `profile`, following child types through
-/// `index` where the profile itself does not constrain them.
+/// What every level of the walk shares.
+struct Context<'a> {
+    index: &'a ProfileIndex,
+    /// The resource was written in JSON. Only JSON has arrays, so only
+    /// there can a repeating element be written as a single value, or a
+    /// single-valued one as a list; a resource read from XML got its arrays
+    /// from the definitions while it was converted.
+    json: bool,
+}
+
+/// Validate `resource`, written in JSON, against `profile`, following
+/// child types through `index` where the profile itself does not
+/// constrain them.
 pub fn validate_against(
     resource: &Value,
     profile: &Profile,
     index: &ProfileIndex,
 ) -> Vec<FhirValidationIssue> {
+    against(resource, profile, &Context { index, json: true })
+}
+
+fn against(resource: &Value, profile: &Profile, cx: &Context) -> Vec<FhirValidationIssue> {
     let mut issues = Vec::new();
     let root = profile.type_name.clone();
     walk(
@@ -44,7 +61,7 @@ pub fn validate_against(
         profile,
         &root,
         &root,
-        index,
+        cx,
         0,
         &mut Vec::new(),
         &mut issues,
@@ -52,8 +69,8 @@ pub fn validate_against(
     issues
 }
 
-/// Validate against every profile the resource declares in `meta.profile`,
-/// plus the base definition of its resource type.
+/// Validate a resource written in JSON against every profile it declares
+/// in `meta.profile`, plus the base definition of its resource type.
 ///
 /// Returns `None` when nothing applicable is installed, so the caller can
 /// stay quiet rather than claim a resource passed checks that never ran.
@@ -66,17 +83,21 @@ pub fn validate_declared(
     resource: &Value,
     index: &ProfileIndex,
 ) -> Option<Vec<FhirValidationIssue>> {
-    validate_declared_status(resource, index).map(|(issues, _)| issues)
+    validate_declared_status(resource, index, &FhirFormat::Json).map(|(issues, _)| issues)
 }
 
-/// As [`validate_declared`], also telling whether any definition was
-/// actually applied: `false` when the only findings are "declared but not
-/// installed" notes, so a caller never reports such a resource as checked.
+/// As [`validate_declared`] for a resource read from `format`, also telling
+/// whether any definition was actually applied: `false` when the only
+/// findings are "declared but not installed" notes, so a caller never
+/// reports such a resource as checked.
 pub fn validate_declared_status(
     resource: &Value,
     index: &ProfileIndex,
+    format: &FhirFormat,
 ) -> Option<(Vec<FhirValidationIssue>, bool)> {
     use crate::parser::fhir::profile::model::Lookup;
+
+    let cx = Context { index, json: *format == FhirFormat::Json };
 
     let resource_type = resource.get("resourceType")?.as_str()?;
 
@@ -93,7 +114,11 @@ pub fn validate_declared_status(
         for canonical in declared.iter().filter_map(|u| u.as_str()) {
             let skipped = match index.lookup(canonical) {
                 Lookup::Found(profile) => {
-                    applied.push(profile);
+                    match applicability(profile, resource_type, index) {
+                        Some(true) => applied.push(profile),
+                        Some(false) => issues.push(other_type(canonical, profile, resource_type, "meta.profile".into())),
+                        None => issues.push(undetermined(canonical, profile, resource_type, "meta.profile".into())),
+                    }
                     continue;
                 }
                 Lookup::Missing => format!(
@@ -101,20 +126,7 @@ pub fn validate_declared_status(
                      that defines it to check conformance",
                     canonical
                 ),
-                Lookup::WrongVersion { installed } => {
-                    let (url, wanted) = canonical.split_once('|').unwrap_or((canonical, ""));
-                    let installed = installed
-                        .iter()
-                        .map(|v| if v.is_empty() { "an unversioned copy" } else { v.as_str() })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!(
-                        "Profile {} is pinned to version {} but only {} is installed — \
-                         conformance against another version would answer a different \
-                         question, so this profile was skipped",
-                        url, wanted, installed
-                    )
-                }
+                Lookup::WrongVersion { installed } => wrong_version_message(canonical, &installed),
             };
             issues.push(FhirValidationIssue {
                 severity: "warning".into(),
@@ -131,9 +143,107 @@ pub fn validate_declared_status(
 
     let checked = !applied.is_empty();
     for profile in applied {
-        issues.extend(validate_against(resource, profile, index));
+        issues.extend(against(resource, profile, &cx));
     }
     Some((dedup_issues(issues), checked))
+}
+
+/// Whether `profile` can apply to a resource of `resource_type`: it
+/// constrains that type or one the type derives from (Resource, which every
+/// resource is; DomainResource; in R5 CanonicalResource, MetadataResource).
+/// A Patient that declares an Observation profile was walked as if it were
+/// an Observation ("Observation.status is required").
+///
+/// `Some(true)` applies, `Some(false)` provably does not, `None` cannot be
+/// told: the profile is on an abstract type, and no installed definition of
+/// the resource's type says whether it derives from that.
+fn applicability(profile: &Profile, resource_type: &str, index: &ProfileIndex) -> Option<bool> {
+    let target = profile.type_name.as_str();
+    if target == resource_type || target == "Resource" {
+        return Some(true);
+    }
+    // Read in the profile's own FHIR release: R4's CapabilityStatement
+    // derives from DomainResource, R5's from CanonicalResource.
+    let (ancestors, complete) = ancestors_of(resource_type, &profile.fhir_version, index);
+    if ancestors.iter().any(|a| a == target) {
+        return Some(true);
+    }
+    if complete {
+        return Some(false);
+    }
+    match target {
+        // In R4 and R5 every resource but these three derives from it.
+        "DomainResource" => Some(!matches!(resource_type, "Bundle" | "Binary" | "Parameters")),
+        "CanonicalResource" | "MetadataResource" => None,
+        // A concrete type is no other type's ancestor.
+        _ => Some(false),
+    }
+}
+
+/// The types `resource_type` derives from in FHIR release `release`, read
+/// up the `baseDefinition` chain of its installed definitions of that
+/// release (the built-in R4 core holds every R4 resource's), nearest first,
+/// and whether the chain was read up to Resource, its root. A definition
+/// not installed is still named by its canonical URL; the chain stops there.
+fn ancestors_of(resource_type: &str, release: &str, index: &ProfileIndex) -> (Vec<String>, bool) {
+    const BASE: &str = "http://hl7.org/fhir/StructureDefinition/";
+    let mut out: Vec<String> = Vec::new();
+    let Some(mut current) = index.base_for_type_in(resource_type, release) else {
+        return (out, false);
+    };
+    // Bounded: a definition chain is a few steps long, and a cycle in
+    // hand-made definitions must not hang the validation.
+    for _ in 0..16 {
+        if current.type_name == "Resource" {
+            return (out, true);
+        }
+        let Some(url) = current.base.as_deref() else {
+            return (out, false);
+        };
+        match index.get_in_release(url, release) {
+            Some(next) => {
+                out.push(next.type_name.clone());
+                current = next;
+            }
+            None => {
+                let name = url.strip_prefix(BASE).unwrap_or(url).to_string();
+                let root = name == "Resource";
+                out.push(name);
+                return (out, root);
+            }
+        }
+    }
+    (out, false)
+}
+
+/// The finding for a declared profile on an abstract type the resource's
+/// type may or may not derive from, with nothing installed to tell: not
+/// applied, and said so in the words ("was skipped") that make Run all and
+/// `bridgelab-cli test` report the resource as not checked against it.
+fn undetermined(canonical: &str, profile: &Profile, resource_type: &str, path: String) -> FhirValidationIssue {
+    issue(
+        "warning",
+        format!(
+            "Profile {} constrains {}, and no installed definition of {} says whether a {} is one, \
+             so this profile was skipped",
+            canonical, profile.type_name, resource_type, resource_type
+        ),
+        path,
+    )
+}
+
+/// The finding for a declared profile of another resource type: the
+/// resource cannot conform to it, which is an error, and it is not
+/// applied.
+fn other_type(canonical: &str, profile: &Profile, resource_type: &str, path: String) -> FhirValidationIssue {
+    issue(
+        "error",
+        format!(
+            "Profile {} is declared, but it constrains {}, not {}: a {} cannot conform to it, so it was not applied",
+            canonical, profile.type_name, resource_type, resource_type
+        ),
+        path,
+    )
 }
 
 /// How many resources may nest inside one another before the walk stops:
@@ -147,11 +257,13 @@ const MAX_NESTING: usize = 4;
 fn validate_nested(
     resource: &Value,
     report_path: &str,
-    index: &ProfileIndex,
+    cx: &Context,
     depth: usize,
     issues: &mut Vec<FhirValidationIssue>,
 ) {
     use crate::parser::fhir::profile::model::Lookup;
+
+    let index = cx.index;
 
     // `depth` counts element levels; each nested resource sits a few of
     // those below its parent, so the element budget alone bounds nesting.
@@ -175,7 +287,21 @@ fn validate_nested(
     {
         for canonical in declared.iter().filter_map(|u| u.as_str()) {
             match index.lookup(canonical) {
-                Lookup::Found(profile) => applied.push(profile),
+                Lookup::Found(profile) => match applicability(profile, resource_type, index) {
+                    Some(true) => applied.push(profile),
+                    Some(false) => issues.push(other_type(
+                        canonical,
+                        profile,
+                        resource_type,
+                        format!("{}.meta.profile", report_path),
+                    )),
+                    None => issues.push(undetermined(
+                        canonical,
+                        profile,
+                        resource_type,
+                        format!("{}.meta.profile", report_path),
+                    )),
+                },
                 Lookup::Missing => issues.push(issue(
                     "warning",
                     format!(
@@ -185,13 +311,13 @@ fn validate_nested(
                     ),
                     format!("{}.meta.profile", report_path),
                 )),
+                // Same words as at the top level: Run all and `bridgelab-cli
+                // test` recognise a profile that was not applied by them, so
+                // a nested resource pinned to a missing version is "not
+                // checked", never a pass.
                 Lookup::WrongVersion { installed } => issues.push(issue(
                     "warning",
-                    format!(
-                        "Profile {} is pinned to a version that is not installed (installed: {})",
-                        canonical,
-                        installed.join(", ")
-                    ),
+                    wrong_version_message(canonical, &installed),
                     format!("{}.meta.profile", report_path),
                 )),
             }
@@ -207,7 +333,7 @@ fn validate_nested(
             profile,
             &root,
             report_path,
-            index,
+            cx,
             depth + 1,
             &mut Vec::new(),
             issues,
@@ -226,7 +352,7 @@ fn walk(
     profile: &Profile,
     profile_path: &str,
     report_path: &str,
-    index: &ProfileIndex,
+    cx: &Context,
     depth: usize,
     seen_types: &mut Vec<String>,
     issues: &mut Vec<FhirValidationIssue>,
@@ -268,7 +394,10 @@ fn walk(
                     let sibling = format!("_{}", element.base_name());
                     if let Some(ext) = object.get(&sibling) {
                         known.insert(sibling.clone());
-                        check_primitive_sibling(ext, &format!("{}.{}", report_path, sibling), index, depth, seen_types, issues);
+                        if cx.json {
+                            check_shape(element, profile, cx.index, ext, report_path, &sibling, issues);
+                        }
+                        check_primitive_sibling(ext, &format!("{}.{}", report_path, sibling), cx, depth, seen_types, issues);
                         continue;
                     }
                 }
@@ -314,11 +443,17 @@ fn walk(
         // prefixed with '_'; it belongs to the same element.
         let sibling = format!("_{}", key);
         if let Some(ext) = object.get(&sibling) {
-            check_primitive_sibling(ext, &format!("{}.{}", report_path, sibling), index, depth, seen_types, issues);
+            if cx.json {
+                check_shape(element, profile, cx.index, ext, report_path, &sibling, issues);
+            }
+            check_primitive_sibling(ext, &format!("{}.{}", report_path, sibling), cx, depth, seen_types, issues);
         }
         known.insert(sibling);
 
         check_cardinality(element, values.len(), report_path, &key, issues);
+        if cx.json {
+            check_shape(element, profile, cx.index, &object[&key], report_path, &key, issues);
+        }
 
         // FHIR's JSON has no empty values: a missing element is left out,
         // not written as "", [] or {}.
@@ -375,7 +510,7 @@ fn walk(
                 applicable,
                 profile,
                 &child_report,
-                index,
+                cx,
                 depth,
                 seen_types,
                 issues,
@@ -392,7 +527,7 @@ fn walk(
 fn check_primitive_sibling(
     value: &Value,
     report_path: &str,
-    index: &ProfileIndex,
+    cx: &Context,
     depth: usize,
     seen_types: &mut Vec<String>,
     issues: &mut Vec<FhirValidationIssue>,
@@ -408,10 +543,10 @@ fn check_primitive_sibling(
                 if depth >= MAX_DEPTH || seen_types.iter().any(|t| t == "Element") {
                     continue;
                 }
-                let Some(element) = index.base_for_type("Element") else { continue };
+                let Some(element) = cx.index.base_for_type("Element") else { continue };
                 seen_types.push("Element".into());
                 let root = element.type_name.clone();
-                walk(item, element, &root, &path, index, depth + 1, seen_types, issues);
+                walk(item, element, &root, &path, cx, depth + 1, seen_types, issues);
                 seen_types.pop();
             }
             other => issues.push(issue(
@@ -453,7 +588,7 @@ fn recurse(
     applicable: Option<&str>,
     profile: &Profile,
     report_path: &str,
-    index: &ProfileIndex,
+    cx: &Context,
     depth: usize,
     seen_types: &mut Vec<String>,
     issues: &mut Vec<FhirValidationIssue>,
@@ -469,7 +604,7 @@ fn recurse(
             profile,
             &element.path,
             report_path,
-            index,
+            cx,
             depth + 1,
             seen_types,
             issues,
@@ -486,14 +621,14 @@ fn recurse(
     // instance and its meta.profile declarations apply to it exactly as
     // they would at the top of a document.
     if type_code == "Resource" || type_code == "DomainResource" {
-        validate_nested(value, report_path, index, depth, issues);
+        validate_nested(value, report_path, cx, depth, issues);
         return;
     }
 
     if seen_types.contains(&type_code.to_string()) {
         return; // already expanded on this branch: stop before looping
     }
-    let Some(type_profile) = index.base_for_type(type_code) else {
+    let Some(type_profile) = cx.index.base_for_type(type_code) else {
         return;
     };
 
@@ -504,7 +639,7 @@ fn recurse(
         type_profile,
         &root,
         report_path,
-        index,
+        cx,
         depth + 1,
         seen_types,
         issues,
@@ -588,6 +723,69 @@ fn check_cardinality(
                 format!("{}.{}", report_path, key),
             ));
         }
+    }
+}
+
+/// FHIR's JSON writes an element that can repeat as an array, even when it
+/// holds one item, and one that cannot as a bare value. The values read
+/// the same either way, which is why nothing else here notices, but a
+/// server parsing `"name": {…}` or `"gender": ["male"]` refuses the
+/// resource. `key` is the element's JSON key, or its `_key` sibling, which
+/// takes the same shape.
+///
+/// The messages leave out the cardinality: the base definition and a
+/// profile narrowing it give the same finding, reported once.
+fn check_shape(
+    element: &ProfileElement,
+    profile: &Profile,
+    index: &ProfileIndex,
+    value: &Value,
+    report_path: &str,
+    key: &str,
+    issues: &mut Vec<FhirValidationIssue>,
+) {
+    let Some(repeats) = repeats_in_json(element, profile, index) else {
+        return;
+    };
+    let message = match (value, repeats) {
+        (Value::Array(_), true) => return,
+        // An empty array has a finding of its own.
+        (Value::Array(items), false) if items.is_empty() => return,
+        (Value::Array(_), false) => format!(
+            "{} does not repeat, so in JSON '{}' must be a single value, not an array",
+            element.path, key
+        ),
+        (_, true) => format!(
+            "{} repeats, so in JSON '{}' must be an array, even with one item",
+            element.path, key
+        ),
+        (_, false) => return,
+    };
+    issues.push(issue("error", message, format!("{}.{}", report_path, key)));
+}
+
+/// Whether JSON writes `element` as an array: whether it repeats in the
+/// base definition it comes from. `None` when that cannot be told, and then
+/// the shape is not judged rather than guessed.
+fn repeats_in_json(element: &ProfileElement, profile: &Profile, index: &ProfileIndex) -> Option<bool> {
+    if let Some(repeats) = element.repeats_in_base() {
+        return Some(repeats);
+    }
+    // A base definition is its own base.
+    if !profile.is_constraint() {
+        return (element.max == Some(1)).then_some(false);
+    }
+    // A profile whose package kept no base maximums, with a maximum of one:
+    // the same element in the definition of the type it constrains says
+    // whether that is the element's own or a narrowed one.
+    let base = index.base_for_type(&profile.type_name)?;
+    let same = base
+        .elements
+        .iter()
+        .find(|e| e.path == element.path && e.slice_name.is_none())?;
+    match same.max {
+        Some(1) => Some(false),
+        _ => same.repeats_in_base(),
     }
 }
 
@@ -888,6 +1086,24 @@ fn issue(severity: &str, message: String, path: String) -> FhirValidationIssue {
     }
 }
 
+/// The warning for a declared profile pinned to a version that is not
+/// installed. Its ending, "was skipped", is what Run all and `bridgelab-cli
+/// test` look for to report the resource as not checked.
+fn wrong_version_message(canonical: &str, installed: &[String]) -> String {
+    let (url, wanted) = canonical.split_once('|').unwrap_or((canonical, ""));
+    let installed = installed
+        .iter()
+        .map(|v| if v.is_empty() { "an unversioned copy" } else { v.as_str() })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "Profile {} is pinned to version {} but only {} is installed — \
+         conformance against another version would answer a different \
+         question, so this profile was skipped",
+        url, wanted, installed
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1127,7 +1343,159 @@ mod tests {
         });
         let issues = validate_declared(&patient, &index).expect("base profile applies");
         assert_eq!(issues.len(), 1);
-        assert!(issues[0].message.contains("not installed"), "{}", issues[0].message);
+        // bridgelab-cli's "not checked" rule and the Test Case Library's
+        // (testcases/expectations.ts) look for this path and wording.
+        assert_eq!(issues[0].path, "meta.profile");
+        assert!(issues[0].message.contains("is declared but not installed"), "{}", issues[0].message);
+    }
+
+    /// A Patient declaring a profile of Observation is not walked as an
+    /// Observation: one error says the profile is for another type, and the
+    /// Patient base still runs.
+    #[test]
+    fn a_profile_of_another_resource_type_is_not_applied() {
+        let observation = json!({
+            "resourceType": "StructureDefinition",
+            "url": "http://acme.org/StructureDefinition/AcmeObs",
+            "name": "AcmeObs", "kind": "resource", "type": "Observation",
+            "derivation": "constraint",
+            "snapshot": { "element": [
+                {"path": "Observation", "min": 0, "max": "*"},
+                {"path": "Observation.status", "min": 1, "max": "1", "type": [{"code": "code"}]}
+            ]}
+        });
+        let index = index_with(vec![patient_sd(), human_name_sd(), meta_sd(), observation]);
+        let patient = json!({
+            "resourceType": "Patient",
+            "meta": {"profile": ["http://acme.org/StructureDefinition/AcmeObs"]},
+            "gender": "male"
+        });
+        let issues = validate_declared(&patient, &index).unwrap();
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!(issues[0].severity, "error");
+        assert_eq!(issues[0].path, "meta.profile");
+        assert!(issues[0].message.contains("constrains Observation, not Patient"), "{}", issues[0].message);
+        assert!(!issues.iter().any(|i| i.message.contains("Observation.status")));
+    }
+
+    /// A DomainResource profile applies only to resources derived from
+    /// DomainResource: not to a Bundle, Binary or Parameters, nor to a type
+    /// whose definition says it derives from Resource. A Resource profile
+    /// applies to every resource.
+    #[test]
+    fn a_domain_resource_profile_applies_only_to_domain_resources() {
+        let abstract_profile = |name: &str, base: &str| json!({
+            "resourceType": "StructureDefinition",
+            "url": format!("http://acme.org/StructureDefinition/{name}"),
+            "name": name, "kind": "resource", "type": base, "abstract": true,
+            "derivation": "constraint",
+            "snapshot": { "element": [{"path": base, "min": 0, "max": "*"}]}
+        });
+        let widget = json!({
+            "resourceType": "StructureDefinition",
+            "url": "http://acme.org/StructureDefinition/Widget",
+            "name": "Widget", "kind": "resource", "type": "Widget",
+            "derivation": "specialization",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Resource",
+            "snapshot": { "element": [{"path": "Widget", "min": 0, "max": "*"}]}
+        });
+        let index = index_with(vec![
+            patient_sd(), human_name_sd(), meta_sd(), bundle_sd(), widget,
+            abstract_profile("AnyDomain", "DomainResource"), abstract_profile("AnyResource", "Resource"),
+        ]);
+        let declaring = |resource_type: &str, profile: &str| {
+            let mut r = json!({"resourceType": resource_type, "meta": {"profile": [format!("http://acme.org/StructureDefinition/{profile}")]}});
+            if resource_type == "Bundle" {
+                r["type"] = json!("collection");
+            }
+            validate_declared(&r, &index).unwrap_or_default()
+        };
+        let mismatch = |issues: &[FhirValidationIssue]| issues.iter().any(|i| i.path == "meta.profile" && i.message.contains("constrains DomainResource"));
+
+        assert!(!mismatch(&declaring("Patient", "AnyDomain")), "{:?}", declaring("Patient", "AnyDomain"));
+        for not_domain in ["Bundle", "Binary", "Parameters", "Widget"] {
+            let issues = declaring(not_domain, "AnyDomain");
+            assert!(mismatch(&issues), "{not_domain}: {issues:?}");
+            assert!(issues.iter().any(|i| i.severity == "error" && i.message.contains(&format!("not {not_domain}"))));
+        }
+        for any in ["Patient", "Bundle", "Binary", "Widget"] {
+            assert!(!declaring(any, "AnyResource").iter().any(|i| i.message.contains("constrains")), "{any}");
+        }
+        // The chain is read where it is installed, the list used where not.
+        let domain = index.get("http://acme.org/StructureDefinition/AnyDomain").unwrap();
+        assert_eq!(applicability(domain, "Widget", &index), Some(false));
+        assert_eq!(applicability(domain, "Observation", &index), Some(true));
+        assert_eq!(applicability(domain, "Binary", &index), Some(false));
+    }
+
+    /// R5 puts CanonicalResource between CapabilityStatement and
+    /// DomainResource: a profile on it applies to a CapabilityStatement,
+    /// and is a mismatch for a Patient, read from the R5 definitions. With
+    /// no definition of the resource's type in that release it cannot be
+    /// told, and the profile is skipped without a mismatch reported.
+    #[test]
+    fn a_profile_on_an_intermediate_type_applies_to_the_types_derived_from_it() {
+        let base = "http://hl7.org/fhir/StructureDefinition/";
+        let sd = |name: &str, parent: Option<&str>, derivation: &str, extra: Vec<Value>| {
+            let mut elements = vec![json!({"path": name, "min": 0, "max": "*"})];
+            elements.extend(extra);
+            let mut v = json!({
+                "resourceType": "StructureDefinition",
+                "url": format!("{base}{name}"),
+                "name": name, "kind": "resource", "type": name,
+                "derivation": derivation,
+                "snapshot": {"element": elements}
+            });
+            if let Some(p) = parent {
+                v["baseDefinition"] = json!(format!("{base}{p}"));
+            }
+            v
+        };
+        let mut canonical_profile = sd(
+            "CanonicalResource",
+            Some("CanonicalResource"),
+            "constraint",
+            vec![json!({"path": "CanonicalResource.url", "min": 1, "max": "1", "type": [{"code": "uri"}]})],
+        );
+        canonical_profile["url"] = json!("http://acme.org/StructureDefinition/MustHaveUrl");
+        let r5 = vec![
+            sd("Resource", None, "specialization", vec![]),
+            sd("DomainResource", Some("Resource"), "specialization", vec![]),
+            sd("CanonicalResource", Some("DomainResource"), "specialization", vec![]),
+            sd("CapabilityStatement", Some("CanonicalResource"), "specialization",
+               vec![json!({"path": "CapabilityStatement.url", "min": 0, "max": "1", "type": [{"code": "uri"}]})]),
+            sd("Patient", Some("DomainResource"), "specialization", vec![]),
+            canonical_profile,
+        ];
+        let mut index = ProfileIndex::default();
+        index.add_package(ProfilePackage {
+            name: "r5".into(),
+            version: "5.0.0".into(),
+            title: String::new(),
+            fhir_version: "5.0.0".into(),
+            profiles: r5.iter().filter_map(from_structure_definition).collect(),
+        });
+        let profile = index.get("http://acme.org/StructureDefinition/MustHaveUrl").unwrap();
+        assert_eq!(applicability(profile, "CapabilityStatement", &index), Some(true));
+        assert_eq!(applicability(profile, "Patient", &index), Some(false));
+        // No R5 definition of the type: not provable either way.
+        assert_eq!(applicability(profile, "Questionnaire", &index), None);
+
+        let declaring = |resource_type: &str| {
+            validate_declared(
+                &json!({"resourceType": resource_type, "meta": {"profile": ["http://acme.org/StructureDefinition/MustHaveUrl"]}}),
+                &index,
+            )
+            .unwrap_or_default()
+        };
+        let cs = declaring("CapabilityStatement");
+        assert!(!cs.iter().any(|i| i.message.contains("constrains")), "{cs:?}");
+        assert!(cs.iter().any(|i| i.message.contains("url") && i.message.contains("required")), "the profile ran: {cs:?}");
+        let patient = declaring("Patient");
+        assert!(patient.iter().any(|i| i.severity == "error" && i.message.contains("constrains CanonicalResource, not Patient")), "{patient:?}");
+        let questionnaire = declaring("Questionnaire");
+        assert!(questionnaire.iter().any(|i| i.severity == "warning" && i.message.contains("was skipped")), "{questionnaire:?}");
+        assert!(!questionnaire.iter().any(|i| i.severity == "error"), "{questionnaire:?}");
     }
 
     #[test]
@@ -1210,6 +1578,9 @@ mod tests {
         assert_eq!(pinned_absent.len(), 1, "{pinned_absent:?}");
         assert!(pinned_absent[0].contains("pinned to version 3.0.0"), "{pinned_absent:?}");
         assert!(pinned_absent[0].contains("2.0.0, 1.0.0"), "{pinned_absent:?}");
+        // The wording the "not checked" rule of bridgelab-cli and of the
+        // Test Case Library looks for.
+        assert!(pinned_absent[0].contains("was skipped"), "{pinned_absent:?}");
     }
 
     #[test]
@@ -1310,7 +1681,10 @@ mod tests {
                 {"fullUrl": "urn:uuid:aaaaaaaa-0000-4000-8000-000000000002",
                  "resource": {"resourceType": "Patient",
                               "meta": {"profile": ["http://acme.org/StructureDefinition/Nope"]},
-                              "genderr": "female"}}
+                              "genderr": "female"}},
+                {"fullUrl": "urn:uuid:aaaaaaaa-0000-4000-8000-000000000003",
+                 "resource": {"resourceType": "Patient",
+                              "meta": {"profile": ["http://acme.org/StructureDefinition/AcmePatient|9.9.9"]}}}
             ]
         });
         let issues = validate_declared(&bundle, &index).unwrap();
@@ -1321,6 +1695,11 @@ mod tests {
         // Entry 1: its profile is missing — said under its own path — and the base still runs.
         assert!(at("Bundle.entry[1].resource.meta.profile").iter().any(|m| m.contains("not installed")), "{issues:?}");
         assert!(at("Bundle.entry[1].resource.genderr").iter().any(|m| m.contains("not defined")), "{issues:?}");
+        // Entry 2: pinned to a version nobody installed. The same words as at
+        // the top level ("was skipped"), so Run all and `bridgelab-cli test`
+        // report it as not checked rather than as a pass.
+        let pinned = at("Bundle.entry[2].resource.meta.profile");
+        assert!(pinned.iter().any(|m| m.contains("pinned to version 9.9.9") && m.contains("was skipped")), "{issues:?}");
         // The bundle itself is fine.
         assert!(!issues.iter().any(|i| i.path == "Bundle.type"), "{issues:?}");
     }
@@ -1382,7 +1761,7 @@ mod tests {
             "birthDate": "1970-01-01",
             "_birthDate": {"extension": [{"valueString": "x"}], "bogus": 1},
             "_gender": 5});
-        let (issues, _) = validate_declared_status(&bad, &index).unwrap();
+        let (issues, _) = validate_declared_status(&bad, &index, &FhirFormat::Json).unwrap();
         let text: Vec<String> = issues.iter().map(|i| format!("{} | {}", i.path, i.message)).collect();
         assert!(text.iter().any(|t| t.contains("_birthDate") && t.contains("url is required")), "{:#?}", text);
         assert!(text.iter().any(|t| t.contains("'bogus'")), "{:#?}", text);
@@ -1392,7 +1771,7 @@ mod tests {
         let good = json!({"resourceType": "Patient", "id": "pj",
             "_birthDate": {"extension": [{"url": "http://hl7.org/fhir/StructureDefinition/patient-birthTime",
                 "valueDateTime": "1970-01-01T10:00:00Z"}]}});
-        let (issues, _) = validate_declared_status(&good, &index).unwrap();
+        let (issues, _) = validate_declared_status(&good, &index, &FhirFormat::Json).unwrap();
         assert!(issues.iter().all(|i| i.severity != "error"), "{:#?}", issues);
     }
 
@@ -1401,7 +1780,7 @@ mod tests {
         let mut index = ProfileIndex::default();
         index.add_builtin(crate::parser::fhir::profile::package::builtin().expect("built-in core"));
         let errors = |r: Value| -> Vec<String> {
-            validate_declared_status(&r, &index)
+            validate_declared_status(&r, &index, &FhirFormat::Json)
                 .unwrap()
                 .0
                 .into_iter()
@@ -1425,5 +1804,158 @@ mod tests {
         let e = errors(json!({"resourceType": "Patient", "id": "p-1.x", "birthDate": "2020-02-29",
             "name": [{"family": "x"}]}));
         assert!(e.is_empty(), "{e:#?}");
+    }
+
+    fn core() -> ProfileIndex {
+        let mut index = ProfileIndex::default();
+        index.add_builtin(crate::parser::fhir::profile::package::builtin().expect("built-in core"));
+        index
+    }
+
+    fn errors_in(resource: &Value, index: &ProfileIndex, format: &FhirFormat) -> Vec<(String, String)> {
+        validate_declared_status(resource, index, format)
+            .unwrap()
+            .0
+            .into_iter()
+            .filter(|i| i.severity == "error")
+            .map(|i| (i.path, i.message))
+            .collect()
+    }
+
+    #[test]
+    fn json_array_shape_follows_whether_the_element_repeats() {
+        let index = core();
+        // A repeating element given as one value, and single-valued ones
+        // given as arrays: what a FHIR server refuses to read.
+        let wrong = json!({"resourceType": "Patient", "id": "p",
+            "name": {"family": "X", "given": "Jane"},
+            "gender": ["male"], "active": [true],
+            "telecom": [{"system": "phone", "value": "1"}],
+            "birthDate": "1980-01-01", "_birthDate": [{"id": "b"}]});
+        let e = errors_in(&wrong, &index, &FhirFormat::Json);
+        let at = |path: &str| e.iter().filter(|(p, _)| p == path).map(|(_, m)| m.as_str()).collect::<Vec<_>>();
+        assert_eq!(
+            at("Patient.name"),
+            vec!["Patient.name repeats, so in JSON 'name' must be an array, even with one item"],
+            "{e:#?}"
+        );
+        assert_eq!(
+            at("Patient.name.given"),
+            vec!["HumanName.given repeats, so in JSON 'given' must be an array, even with one item"],
+            "{e:#?}"
+        );
+        assert_eq!(
+            at("Patient.gender"),
+            vec!["Patient.gender does not repeat, so in JSON 'gender' must be a single value, not an array"],
+            "{e:#?}"
+        );
+        assert_eq!(at("Patient.active").len(), 1, "{e:#?}");
+        assert!(at("Patient._birthDate")[0].contains("must be a single value"), "{e:#?}");
+        // One finding per element: nothing else is wrong with the values.
+        assert_eq!(e.len(), 5, "{e:#?}");
+
+        let right = json!({"resourceType": "Patient", "id": "p",
+            "name": [{"family": "X", "given": ["Jane"]}],
+            "gender": "male", "active": true,
+            "birthDate": "1980-01-01", "_birthDate": {"id": "b"}});
+        assert_eq!(errors_in(&right, &index, &FhirFormat::Json), vec![]);
+
+        // The same in a Bundle entry and a contained resource.
+        let bundle = json!({"resourceType": "Bundle", "type": "collection", "entry": {
+            "resource": {"resourceType": "Observation", "id": "o", "status": ["final"], "code": {"text": "x"},
+                "contained": [{"resourceType": "Patient", "id": "c", "name": {"family": "Y"}}]}}});
+        let e = errors_in(&bundle, &index, &FhirFormat::Json);
+        let paths: Vec<&str> = e.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(paths.contains(&"Bundle.entry"), "{e:#?}");
+        assert!(paths.contains(&"Bundle.entry.resource.status"), "{e:#?}");
+        assert!(paths.contains(&"Bundle.entry.resource.contained[0].name"), "{e:#?}");
+    }
+
+    #[test]
+    fn the_json_shape_is_the_base_definitions_not_a_narrowed_profiles() {
+        // A profile that narrows Patient.name to 1..1 leaves it an array.
+        let narrowed = |with_base: bool| {
+            let mut name = json!({"path": "Patient.name", "min": 1, "max": "1", "type": [{"code": "HumanName"}]});
+            if with_base {
+                name["base"] = json!({"path": "Patient.name", "min": 0, "max": "*"});
+            }
+            json!({
+                "resourceType": "StructureDefinition",
+                "url": "http://acme.org/StructureDefinition/OneName",
+                "name": "OneName", "kind": "resource", "type": "Patient",
+                "derivation": "constraint",
+                "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+                "snapshot": { "element": [{"path": "Patient", "min": 0, "max": "*"}, name]}
+            })
+        };
+        for with_base in [true, false] {
+            let index = index_with(vec![patient_sd(), human_name_sd(), narrowed(with_base)]);
+            let profile = index.get("http://acme.org/StructureDefinition/OneName").unwrap();
+            let one = json!({"resourceType": "Patient", "name": [{"family": "A"}]});
+            assert_eq!(validate_against(&one, profile, &index), vec![], "with base: {with_base}");
+            let bare = json!({"resourceType": "Patient", "name": {"family": "A"}});
+            let issues = validate_against(&bare, profile, &index);
+            assert_eq!(issues.len(), 1, "with base: {with_base}: {issues:?}");
+            assert!(issues[0].message.contains("must be an array"), "{issues:?}");
+        }
+    }
+
+    #[test]
+    fn a_profile_and_its_base_report_a_wrong_shape_once() {
+        let required_gender = json!({
+            "resourceType": "StructureDefinition",
+            "url": "http://acme.org/StructureDefinition/Gendered",
+            "name": "Gendered", "kind": "resource", "type": "Patient",
+            "derivation": "constraint",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "snapshot": { "element": [
+                {"path": "Patient", "min": 0, "max": "*"},
+                {"path": "Patient.gender", "min": 1, "max": "1", "type": [{"code": "code"}],
+                 "base": {"path": "Patient.gender", "min": 0, "max": "1"}}
+            ]}
+        });
+        let index = index_with(vec![patient_sd(), human_name_sd(), meta_sd(), required_gender]);
+        let patient = json!({"resourceType": "Patient", "gender": ["male"],
+            "meta": {"profile": ["http://acme.org/StructureDefinition/Gendered"]}});
+        let issues = validate_declared(&patient, &index).unwrap();
+        let shape: Vec<_> = issues.iter().filter(|i| i.path == "Patient.gender").collect();
+        assert_eq!(shape.len(), 1, "{issues:#?}");
+        assert!(shape[0].message.contains("must be a single value"), "{issues:#?}");
+    }
+
+    #[test]
+    fn xml_has_no_arrays_so_its_shape_is_not_judged() {
+        // What the XML converter produces before the definitions give it
+        // arrays: the validator must not blame the document for it.
+        let index = core();
+        let converted = json!({"resourceType": "Patient", "id": "p", "name": {"family": "X"}, "gender": ["male"]});
+        assert_eq!(errors_in(&converted, &index, &FhirFormat::Xml), vec![]);
+        assert_eq!(errors_in(&converted, &index, &FhirFormat::Json).len(), 2);
+
+        let xml = r#"<Patient xmlns="http://hl7.org/fhir"><id value="p"/><name><family value="X"/><given value="Jane"/></name><gender value="male"/></Patient>"#;
+        let resource = crate::parser::fhir::parse_fhir_xml(xml).unwrap();
+        let json = resource.json_value.as_ref().unwrap();
+        assert_eq!(errors_in(json, &index, &resource.format), vec![]);
+    }
+
+    #[test]
+    fn bundled_examples_validate_clean() {
+        // The FHIR templates the app offers and the fixtures the CI and the
+        // manual tests use: no profile finding, the shape check included.
+        let index = core();
+        let mut resources: Vec<(String, Value)> = crate::templates::get_builtin_templates()
+            .into_iter()
+            .filter(|t| t.message_type == "FHIR")
+            .map(|t| (t.id, serde_json::from_str(&t.content).unwrap()))
+            .collect();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/fhir");
+        for entry in std::fs::read_dir(&dir).expect("tests/fixtures/fhir").flatten() {
+            let text = std::fs::read_to_string(entry.path()).unwrap();
+            resources.push((entry.path().display().to_string(), serde_json::from_str(&text).unwrap()));
+        }
+        assert!(resources.len() >= 7, "{}", resources.len());
+        for (name, resource) in &resources {
+            assert_eq!(errors_in(resource, &index, &FhirFormat::Json), vec![], "{name}");
+        }
     }
 }

@@ -2,6 +2,7 @@
 	import { getLocale, subscribeLocale, t } from '$lib/i18n';
 	import { generateManualHtml, manualRoute, TITLES } from './helpContent';
 	import { shortcutStore, SHORTCUTS, displayKeys, monacoKeys } from '$lib/stores/shortcuts.svelte';
+	import { installPageGuards } from '$lib/page-guard';
 
 	interface Props {
 		onClose: () => void;
@@ -11,6 +12,7 @@
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
+	let closeLabel = $derived.by(() => { void localeVersion; return t('modal.close'); });
 
 	// Strategy:
 	// - In Tauri, use WebviewWindow to create a real OS window (independent,
@@ -28,11 +30,9 @@
 				label: t('shortcut.' + s.id),
 				keys: s.isMonaco ? monacoKeys(s) : shortcutStore.get(s.id),
 			})),
-			// Fixed keys, not in the rebindable list; the hand-written table
-			// has them and the live one replaces it.
+			// A fixed key, not in the list; the hand-written table has it and
+			// the live one replaces it.
 			{ label: t('menu.help.manual'), keys: 'F1' },
-			{ label: t('ctx.showInTree'), keys: 'Alt+T' },
-			{ label: t('ctx.copySegment'), keys: 'Alt+C' },
 		].map((b) => ({ ...b, keys: displayKeys(b.keys) })); // ⌘ and ⌥ on macOS
 	});
 	// The window and the popup load the /manual page; only the in-app modal
@@ -149,6 +149,13 @@
 		}
 	}
 	function onUp() { dragging = false; resizing = false; }
+
+	// The fallback shows the manual in a frame, a document of its own that
+	// the page's link and context-menu guards do not reach.
+	function guardFrame(e: Event) {
+		const win = (e.currentTarget as HTMLIFrameElement).contentWindow;
+		if (win) installPageGuards(win);
+	}
 </script>
 
 {#if mode === 'modal'}
@@ -157,9 +164,9 @@
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div class="hw-title" onmousedown={startDrag}>
 			<span>{TITLES[getLocale()] ?? TITLES.en}</span>
-			<button class="hw-close" onclick={onClose} aria-label="Close">&times;</button>
+			<button class="hw-close" onclick={onClose} aria-label={closeLabel}>&times;</button>
 		</div>
-		<iframe class="hw-frame" srcdoc={helpHtml} title="Manual"></iframe>
+		<iframe class="hw-frame" srcdoc={helpHtml} title={TITLES[getLocale()] ?? TITLES.en} onload={guardFrame}></iframe>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div class="hw-resize" onmousedown={startResize}></div>

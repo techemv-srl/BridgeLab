@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ParseResult, TreeNode, FieldContent } from '$lib/types/hl7';
 import { trackMessage } from '$lib/stores/message-gc';
+import type { Reading } from '$lib/hl7/interpretation';
 
 /** Parse an HL7 message from raw text content */
 export async function parseMessage(content: string, source?: string): Promise<ParseResult> {
@@ -38,9 +39,16 @@ export async function getFieldContent(
 	return invoke<FieldContent>('get_field_content', { messageId, segmentIdx, fieldIdx });
 }
 
-/** Open a file from disk and parse it */
-export async function openFile(path: string): Promise<ParseResult> {
-	const result = await invoke<ParseResult>('open_file', { path });
+/** A field's length in characters (field 0: the whole segment), without
+ *  fetching the value. */
+export async function getFieldLength(messageId: string, segmentIdx: number, fieldIdx: number): Promise<number> {
+	return invoke<number>('get_field_length', { messageId, segmentIdx, fieldIdx });
+}
+
+/** Open and parse a file. A large one (see `openRefusal`) is refused
+ *  unless `allowLarge`: the user was asked first. */
+export async function openFile(path: string, allowLarge = false): Promise<ParseResult> {
+	const result = await invoke<ParseResult>('open_file', { path, allowLarge });
 	trackMessage(result.message_id);
 	return result;
 }
@@ -86,6 +94,13 @@ export async function collapseAllFields(messageId: string): Promise<string> {
  *  Rejects when that cannot be told (no permission...). */
 export async function fileStat(path: string): Promise<{ modified_ms: number; size: number } | null> {
 	return invoke('file_stat', { path });
+}
+
+/** Lets the frontend write `picked` (a save dialog's answer) with `.ext`
+ *  added to its name, and returns that path. Refused unless `picked` is
+ *  a new file the dialog returned and `ext` an export's extension. */
+export async function allowSaveWithExtension(picked: string, ext: string): Promise<string> {
+	return invoke('allow_save_with_extension', { picked, ext });
 }
 
 /** The file `path` names with symlinks and `.`/`..` resolved; null when
@@ -141,6 +156,12 @@ export async function getSegmentCounts(messageId: string): Promise<SegmentCount[
 
 export async function getSegmentGrid(messageId: string, segmentType: string): Promise<SegmentGrid> {
 	return invoke('get_segment_grid', { messageId, segmentType });
+}
+
+/** The parsed HL7 v2 message read field by field, with code meanings, for
+ *  the interpretation panel. */
+export async function getMessageReading(messageId: string): Promise<Reading> {
+	return invoke('interpret_message', { messageId });
 }
 
 /** The segment the grid opens on: the requested one if present, otherwise

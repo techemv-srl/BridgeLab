@@ -94,6 +94,13 @@ pub fn get_hardware_id() -> Result<String, String> {
     Ok(licensing::get_hardware_id())
 }
 
+/// The hardware ID with whether it is the host-and-user fallback, so the
+/// activation dialog can say that it may change.
+#[tauri::command]
+pub fn get_hardware_id_info() -> licensing::HardwareIdInfo {
+    licensing::hardware_id_info()
+}
+
 /// Get the list of features available to the current user.
 #[tauri::command]
 pub fn get_available_features() -> Result<Vec<String>, String> {
@@ -140,7 +147,10 @@ pub async fn send_telemetry_now(
 }
 
 /// The exact JSON payload a telemetry send would transmit (transparency).
+///
+/// Async, off the main thread: the payload counts the active plugin packs,
+/// which right after startup waits for them to finish loading.
 #[tauri::command]
-pub fn get_telemetry_preview(app: tauri::AppHandle) -> serde_json::Value {
+pub async fn get_telemetry_preview(app: tauri::AppHandle) -> serde_json::Value {
     telemetry::build_payload(&app)
 }

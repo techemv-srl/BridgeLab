@@ -167,6 +167,25 @@ mod tests {
         assert_eq!(describe_code("9999", "P"), None);
     }
 
+    /// hl7-dictionary's table 0104 stops at 2.6, so a valid v2.7
+    /// MSH-12 was "not in HL7 table 0104", and it read 2.5.1 as "Release
+    /// 1.5.1". The converter corrects it; this fails if a regeneration
+    /// loses the correction. Every release BridgeLab has a catalogue for is
+    /// a listed Version ID.
+    #[test]
+    fn table_0104_lists_every_shipped_version() {
+        use crate::parser::hl7::schema::Hl7Version;
+        for v in Hl7Version::ALL {
+            assert_eq!(
+                describe_code("0104", v.as_str()),
+                Some(format!("Release {}", v.as_str()).as_str()),
+                "MSH-12 {}",
+                v.as_str()
+            );
+        }
+        assert!(get_table("0104", Some("ID")).unwrap().exhaustive, "MSH-12.1 is an ID");
+    }
+
     #[test]
     fn user_defined_tables_without_standard_values_are_absent() {
         // IN1-2 Insurance Plan ID draws from 0072, a user-defined table the

@@ -260,7 +260,9 @@ pub async fn send(app: &tauri::AppHandle) -> Result<(String, serde_json::Value),
     let url = format!("{}/bridgelab/telemetry", license_server_base());
     let version = app.package_info().version.to_string();
 
-    let resp = reqwest::Client::new()
+    let resp = crate::communication::proxy::client_builder(&url)
+        .build()
+        .unwrap_or_default()
         .post(&url)
         .timeout(Duration::from_secs(5))
         .header("User-Agent", format!("BridgeLab/{}", version))

@@ -235,6 +235,33 @@ if (skipped.length) {
 }
 
 // ---------- value tables ----------
+
+// The HL7 standard's values where the dictionary's tables are wrong,
+// applied here so that a regeneration keeps the fix. Table 0104 (Version
+// ID) stops at 2.6 in the dictionary, which made a valid v2.7 or v2.7.1
+// MSH-12 "not in HL7 table 0104", and it explains 2.5.1 as "Release 1.5.1"
+// and 2.1 as "Release 2. 1". Its codes go up to the newest release
+// BridgeLab has a catalogue for (v2.7.1). A code already in the table gets
+// the description given here; a new one is added after the others.
+const TABLE_CORRECTIONS = {
+	'0104': {
+		'2.1': 'Release 2.1',
+		'2.5.1': 'Release 2.5.1',
+		'2.7': 'Release 2.7',
+		'2.7.1': 'Release 2.7.1',
+	},
+};
+
+function corrected(id, values) {
+	const fixes = TABLE_CORRECTIONS[id];
+	if (!fixes) return values;
+	const out = values.map((v) => (v.code in fixes ? { code: v.code, description: fixes[v.code] } : v));
+	for (const [code, description] of Object.entries(fixes)) {
+		if (!out.some((v) => v.code === code)) out.push({ code, description });
+	}
+	return out;
+}
+
 // lib/tables.js is one set for every version (the dictionary does not
 // version its tables), keyed by the unpadded number. Written sorted by id
 // so regenerating the file produces a stable diff.
@@ -247,7 +274,10 @@ if (tablesOutPath) {
 		.map(([id, def]) => ({
 			id: tableId(id),
 			name: def.desc ?? `Table ${tableId(id)}`,
-			values: Object.entries(def.values ?? {}).map(([code, description]) => ({ code, description })),
+			values: corrected(
+				tableId(id),
+				Object.entries(def.values ?? {}).map(([code, description]) => ({ code, description })),
+			),
 		}))
 		.filter((t) => t.values.length > 0)
 		.sort((a, b) => a.id.localeCompare(b.id));

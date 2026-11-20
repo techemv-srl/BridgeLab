@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { detectPhi, anonymizeMessage, type PhiLocation, type AnonymizeResult } from '$lib/ipc/anonymization';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
+	import { pluginsNotApplied } from '$lib/ipc/plugins';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -19,6 +20,9 @@
 	let anonymizing = $state(false);
 	let result = $state<AnonymizeResult | null>(null);
 	let errorMsg = $state('');
+	/** Packs with PHI fields the Community cap leaves out: fewer fields found
+	 *  must not read as a message with less personal data. */
+	let capped = $state(0);
 
 	function friendlyError(e: unknown): string {
 		const up = parseUpgradeError(e);
@@ -34,6 +38,7 @@
 		errorMsg = '';
 		try {
 			phiLocations = await detectPhi(messageId);
+			capped = await pluginsNotApplied('phi').catch(() => 0);
 		} catch (e) {
 			errorMsg = friendlyError(e);
 		}
@@ -83,6 +88,9 @@
 		{#if errorMsg}
 			<div class="anon-error">{errorMsg}</div>
 		{/if}
+		{#if !loading && capped > 0}
+			<div class="anon-note">{tr('plugins.notApplied', { count: capped })}</div>
+		{/if}
 		{#if loading}
 			<div class="anon-loading">{tr('anonymize.detecting')}</div>
 		{:else if phiLocations.length === 0}
@@ -130,6 +138,7 @@
 	.close-btn { background: none; border: none; color: var(--color-text-secondary); cursor: pointer; font-size: 20px; }
 	.anon-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
 	.anon-loading, .anon-empty { text-align: center; color: var(--color-text-secondary); padding: 20px; font-style: italic; }
+	.anon-note { margin-bottom: 8px; padding: 4px 10px; border-left: 3px solid var(--color-warning); font-size: 12px; color: var(--color-text-secondary); }
 	.anon-error { margin-bottom: 8px; padding: 6px 10px; border: 1px solid var(--color-error); border-radius: 4px; color: var(--color-error); font-size: 12px; }
 	.phi-summary { margin-bottom: 8px; font-size: 13px; }
 	.phi-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }

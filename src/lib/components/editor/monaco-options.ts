@@ -24,6 +24,47 @@ export interface EditorOptions {
 	stickyScroll?: boolean;
 }
 
+/**
+ * Whether a link the editor opens (Ctrl+click on a URL in the text,
+ * "Follow link" in its hover) goes to the system's browser or mail
+ * client: web and e-mail links do; anything else (`file:`, `command:`...)
+ * opens nothing. Every link in the editor comes from the document, which
+ * is not ours, and the editor would run a `command:` link from it.
+ *
+ * The editor's own way does not work in the app: it opens web links with
+ * window.open, which the webview refuses, so the setting did nothing, and
+ * sets the page's location for other schemes, which replaced the app.
+ */
+export function opensExternally(scheme: string): boolean {
+	return ['http', 'https', 'mailto'].includes(scheme.toLowerCase());
+}
+
+/** The parts of the editor's API `routeEditorLinks` uses. */
+interface LinkOpenerHost {
+	editor: {
+		registerLinkOpener(opener: {
+			open(uri: { scheme: string; toString(skipEncoding?: boolean): string }): boolean;
+		}): unknown;
+	};
+}
+
+let linksRouted = false;
+
+/** Send the editor's links to `open` (the app's external opener). The
+ *  opener is global to every editor, so it is registered once. */
+export function routeEditorLinks(monaco: LinkOpenerHost, open: (url: string) => void): void {
+	if (linksRouted) return;
+	linksRouted = true;
+	monaco.editor.registerLinkOpener({
+		open(uri) {
+			// Written out as the editor itself would hand it on.
+			if (opensExternally(uri.scheme)) open(encodeURI(uri.toString(true)));
+			// Handled either way: the editor's own openers must not run.
+			return true;
+		},
+	});
+}
+
 /** Monaco options for the settings that are set; unset ones keep the
  *  editor's defaults. */
 export function toMonacoOptions(o: EditorOptions) {

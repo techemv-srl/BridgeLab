@@ -1,6 +1,12 @@
 @import 'tailwindcss';
 
+/* color-scheme tells the webview which variant of its native widgets to
+   draw. Without it WebKitGTK on Linux drew every <select> (and its list)
+   as a light widget under the dark theme's light text, which made the
+   values nearly invisible; scrollbars and checkboxes follow it too. Set
+   with the colours, so a theme switch changes both at once. */
 :root {
+	color-scheme: dark;
 	--color-bg-primary: #1e1e2e;
 	--color-bg-secondary: #313244;
 	--color-bg-tertiary: #45475a;
@@ -16,15 +22,24 @@
 	--color-field: #89b4fa;
 	--color-component: #a6e3a1;
 	--color-delimiter: #6c7086;
+	--color-placeholder: #a6adc8;
 }
 
 [data-theme='light'] {
+	color-scheme: light;
 	--color-bg-primary: #eff1f5;
 	--color-bg-secondary: #e6e9ef;
 	--color-bg-tertiary: #ccd0da;
 	--color-text-primary: #4c4f69;
-	--color-text-secondary: #6c6f85;
-	--color-accent: #1e66f5;
+	/* 4.5:1 or more on all three backgrounds (the palette's #6c6f85 read
+	   at 3.2-4.4:1). It is as light as text can be and stay readable, so
+	   text that the dark theme dims further keeps it as it is: --text-dim
+	   cancels those opacities (0.5-0.8 left values in the tree at 2-3:1). */
+	--color-text-secondary: #55586e;
+	--text-dim: 1;
+	/* Darker than the palette's #1e66f5, which read at 4.0-4.3:1 as link
+	   text and under the status bar's light text: 5.4:1 or more now. */
+	--color-accent: #1755cc;
 	--color-accent-hover: #209fb5;
 	/* Darker than the palette's: as text on the light backgrounds the
 	   originals read at 2.2-3:1. */
@@ -33,9 +48,19 @@
 	--color-error: #d20f39;
 	--color-border: #9ca0b0;
 	--color-segment: #8839ef;
-	--color-field: #1e66f5;
+	--color-field: #1755cc;
 	--color-component: #40a02b;
 	--color-delimiter: #9ca0b0;
+	/* Fields are drawn on the tertiary background: a shade darker than the
+	   secondary text keeps placeholders at 5:1 there. */
+	--color-placeholder: #4e5166;
+}
+
+/* Placeholder text in every field (the tree search, the MLLP host…): the
+   webview's own grey read at about 2:1 on the light theme's fields. */
+::placeholder {
+	color: var(--color-placeholder);
+	opacity: 1;
 }
 
 html, body {

@@ -22,11 +22,14 @@ pub struct SoapRequest {
     /// when WS-Addressing is on, the wsa:Action value.
     #[serde(default)]
     pub action: String,
-    /// Inner payload. Content starting with '<' is inserted as-is (it is
-    /// the caller's XML); anything else is XML-escaped and wrapped in a
-    /// <payload> element so raw HL7 v2 pipe messages travel safely.
+    /// Inner payload. Content starting with '<' is the caller's XML and is
+    /// inserted as it is, less its own byte-order mark and XML
+    /// declaration (see `without_xml_declaration`); anything else is
+    /// XML-escaped and wrapped in a <payload> element so raw HL7 v2 pipe
+    /// messages travel safely.
     pub payload: String,
-    /// Optional custom envelope; `{payload}` is replaced verbatim.
+    /// Optional custom envelope; `{payload}` is replaced by the payload
+    /// prepared as above.
     #[serde(default)]
     pub envelope_template: Option<String>,
     #[serde(default)]
@@ -61,6 +64,9 @@ pub struct SoapResult {
     pub body: Option<String>,
     pub response_time_ms: u64,
     pub error: Option<String>,
+    /// Why no answer came, for the frontend to say in the user's language
+    /// (see `communication::send_error`).
+    pub failure: Option<crate::communication::send_error::Failure>,
 }
 
 const NS_11: &str = "http://schemas.xmlsoap.org/soap/envelope/";
@@ -219,18 +225,87 @@ fn inject_headers(tpl: &str, headers: &str, payload_xml: &str) -> Result<String,
     ))
 }
 
+/// An XML payload as it can sit inside the SOAP Body: without the
+/// byte-order mark, the `<?xml …?>` declaration, and blank space at the
+/// start and the end. CDA and FHIR XML files usually start with a
+/// declaration, and a declaration is allowed only at the very start of a
+/// document: inside the Body it made the whole envelope malformed, and
+/// the receiver refused it. The envelope carries its own declaration,
+/// and the payload is text by now, sent as UTF-8 with the envelope, so
+/// the encoding its declaration named no longer applies. Other
+/// processing instructions (`<?xml-stylesheet …?>`) are legal content
+/// and stay.
+fn without_xml_declaration(payload: &str) -> &str {
+    let is_lead = |c: char| c == '\u{feff}' || c.is_whitespace();
+    let rest = payload.trim_start_matches(is_lead).trim_end();
+    match rest.strip_prefix("<?xml") {
+        // `<?xml` then blank space: the declaration, not `<?xml-…` or
+        // another processing instruction whose name starts with "xml".
+        Some(after) if after.starts_with(|c: char| c.is_ascii_whitespace()) => match after.find("?>") {
+            Some(end) => after[end + 2..].trim_start(),
+            // Unterminated: not a declaration that can be dropped; sent
+            // as it is, for the receiver to report.
+            None => rest,
+        },
+        _ => rest,
+    }
+}
+
+/// The payload as it goes into the envelope: an XML payload as it is
+/// (without its declaration), any other text in a `<payload>` element,
+/// XML-escaped, its HL7 v2 segments ending in CR (kept as `&#13;`).
+fn payload_xml(payload: &str) -> String {
+    let xml = without_xml_declaration(payload);
+    if xml.starts_with('<') {
+        xml.to_string()
+    } else {
+        format!("<payload>{}</payload>", xml_escape(&crate::parser::hl7::to_wire_segments(payload)))
+    }
+}
+
+/// Bytes of [`payload_xml`], counted without building it.
+fn payload_xml_len(payload: &str) -> usize {
+    let xml = without_xml_declaration(payload);
+    if xml.starts_with('<') {
+        return xml.len();
+    }
+    let escaped: usize = crate::parser::hl7::to_wire_segments(payload)
+        .chars()
+        .map(|c| match c {
+            '&' => "&amp;".len(),
+            '<' => "&lt;".len(),
+            '>' => "&gt;".len(),
+            '"' => "&quot;".len(),
+            '\'' => "&apos;".len(),
+            '\r' => "&#13;".len(),
+            other => other.len_utf8(),
+        })
+        .sum();
+    "<payload></payload>".len() + escaped
+}
+
 /// Build the full envelope. With a user template only `{payload}` is
 /// substituted (the user owns the rest) and the WS-Security and
 /// WS-Addressing headers, when asked for, are added to its SOAP Header;
 /// otherwise a standard envelope with those headers is produced.
 pub fn build_envelope(req: &SoapRequest) -> Result<String, String> {
-    let payload_xml = if req.payload.trim_start().starts_with('<') {
-        req.payload.clone()
-    } else {
-        // HL7 v2 segments end with CR (LF from the editor is converted);
-        // xml_escape keeps the CR as &#13;.
-        format!("<payload>{}</payload>", xml_escape(&crate::parser::hl7::to_wire_segments(&req.payload)))
-    };
+    build_envelope_with(req, &payload_xml(&req.payload))
+}
+
+/// Bytes of the envelope [`build_envelope`] builds, counted without
+/// building it: the envelope is built twice around a payload of none and
+/// of one byte, which gives how many times the payload goes in (a template
+/// may hold `{payload}` many times), and the payload's own length is
+/// counted. A large payload is never copied, however many times it would
+/// appear.
+pub fn envelope_len(req: &SoapRequest) -> Result<usize, String> {
+    let without = build_envelope_with(req, "")?.len();
+    let slots = build_envelope_with(req, "x")?.len() - without;
+    Ok(without + slots * payload_xml_len(&req.payload))
+}
+
+/// [`build_envelope`] around `payload_xml`, the payload as it goes in.
+fn build_envelope_with(req: &SoapRequest, payload_xml: &str) -> Result<String, String> {
     let ns = if req.soap_version == "1.2" { NS_12 } else { NS_11 };
 
     if let Some(tpl) = &req.envelope_template {
@@ -244,9 +319,9 @@ pub fn build_envelope(req: &SoapRequest) -> Result<String, String> {
             };
             let headers = header_blocks(req, &must_understand);
             if headers.is_empty() {
-                return Ok(tpl.replace("{payload}", &payload_xml));
+                return Ok(tpl.replace("{payload}", payload_xml));
             }
-            return inject_headers(tpl, &headers, &payload_xml);
+            return inject_headers(tpl, &headers, payload_xml);
         }
     }
 
@@ -446,6 +521,7 @@ pub async fn send(req: SoapRequest) -> SoapResult {
                 body: None,
                 response_time_ms: 0,
                 error: Some(e),
+                failure: None,
             }
         }
     };
@@ -453,7 +529,10 @@ pub async fn send(req: SoapRequest) -> SoapResult {
     // No redirects: a 307/308 would re-post the envelope, WS-Security
     // password included, to whatever host the Location names. A redirect
     // is shown as the non-SOAP reply it is.
-    let client = match reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build() {
+    let client = match crate::communication::proxy::client_builder(&req.endpoint)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    {
         Ok(c) => c,
         Err(_) => reqwest::Client::new(),
     };
@@ -502,6 +581,7 @@ pub async fn send(req: SoapRequest) -> SoapResult {
                         body,
                         response_time_ms: elapsed,
                         error,
+                        failure: None,
                     }
                 }
                 Err(e) => SoapResult {
@@ -511,17 +591,23 @@ pub async fn send(req: SoapRequest) -> SoapResult {
                     body: None,
                     response_time_ms: started.elapsed().as_millis() as u64,
                     error: Some(format!("Failed to read response body: {}", e)),
+                    failure: None,
                 },
             }
         }
-        Err(e) => SoapResult {
-            success: false,
-            status_code: 0,
-            fault: None,
-            body: None,
-            response_time_ms: started.elapsed().as_millis() as u64,
-            error: Some(e.to_string()),
-        },
+        Err(e) => {
+            // The reason from the error's sources, as in the HTTP tool.
+            let (error, failure) = crate::communication::send_error::message(&e);
+            SoapResult {
+                success: false,
+                status_code: 0,
+                fault: None,
+                body: None,
+                response_time_ms: started.elapsed().as_millis() as u64,
+                error: Some(error),
+                failure,
+            }
+        }
     }
 }
 
@@ -546,7 +632,8 @@ mod tests {
     fn test_envelope_escapes_pipe_message() {
         let env = build_envelope(&base_req()).unwrap();
         assert!(env.contains(NS_11));
-        assert!(env.contains("<payload>MSH|^~\\&amp;|A|B</payload>"));
+        // The one segment ends with CR, as on the wire.
+        assert!(env.contains("<payload>MSH|^~\\&amp;|A|B&#13;</payload>"));
         assert!(!env.contains("<soap:Header>"));
     }
 
@@ -556,6 +643,82 @@ mod tests {
         r.payload = "<msg><x>1</x></msg>".into();
         let env = build_envelope(&r).unwrap();
         assert!(env.contains("<soap:Body><msg><x>1</x></msg></soap:Body>"));
+    }
+
+    /// Parse `xml` to the end with quick-xml and fail on anything an XML
+    /// parser refuses that quick-xml itself lets through: a declaration
+    /// anywhere but at the very start, and more than one root element.
+    fn assert_well_formed(xml: &str) {
+        use quick_xml::events::Event;
+        let mut reader = quick_xml::Reader::from_str(xml);
+        let (mut depth, mut roots, mut index) = (0usize, 0usize, 0usize);
+        loop {
+            match reader.read_event() {
+                Ok(Event::Decl(_)) => assert_eq!(index, 0, "XML declaration not at the start: {xml}"),
+                Ok(Event::Start(_)) => {
+                    roots += usize::from(depth == 0);
+                    depth += 1;
+                }
+                Ok(Event::Empty(_)) => roots += usize::from(depth == 0),
+                Ok(Event::End(_)) => depth -= 1,
+                Ok(Event::Eof) => break,
+                Err(e) => panic!("not well-formed ({e}): {xml}"),
+                _ => {}
+            }
+            index += 1;
+        }
+        assert_eq!((depth, roots), (0, 1), "unbalanced or several roots: {xml}");
+    }
+
+    /// A CDA or FHIR XML file saved with a byte-order mark and its own
+    /// `<?xml?>` declaration: both are dropped, so the envelope keeps a
+    /// single declaration at its start and parses. The default envelope,
+    /// a custom template, and a template that gets the WS headers.
+    #[test]
+    fn an_xml_payload_loses_its_own_declaration() {
+        let doc = "<ClinicalDocument xmlns=\"urn:hl7-org:v3\"><id root=\"1.2.3\"/></ClinicalDocument>";
+        let mut r = base_req();
+        for payload in [
+            format!("\u{feff}<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n{doc}\n"),
+            format!("  \n<?xml version='1.0' encoding='ISO-8859-1' standalone='yes' ?>{doc}"),
+            format!("\u{feff}{doc}"),
+        ] {
+            r.payload = payload;
+            r.envelope_template = None;
+            r.ws_security = None;
+            let env = build_envelope(&r).unwrap();
+            assert!(env.contains(&format!("<soap:Body>{doc}")), "{env}");
+            assert_eq!(env.matches("<?xml").count(), 1, "{env}");
+            assert_well_formed(&env);
+            let (_, body) = parse_response(&env);
+            assert!(body.unwrap().starts_with("<ClinicalDocument"));
+
+            r.envelope_template = Some(format!(
+                "<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"{NS_11}\"><s:Body>{{payload}}</s:Body></s:Envelope>"
+            ));
+            let env = build_envelope(&r).unwrap();
+            assert!(env.contains(&format!("<s:Body>{doc}</s:Body>")), "{env}");
+            assert_well_formed(&env);
+
+            r.ws_security = Some(WsSecurity { username: "u".into(), password: "p".into() });
+            let env = build_envelope(&r).unwrap();
+            assert!(env.contains("<wsse:Security") && env.contains(&format!("<s:Body>{doc}</s:Body>")), "{env}");
+            assert_well_formed(&env);
+        }
+    }
+
+    /// Only the declaration goes: a stylesheet processing instruction is
+    /// legal content and stays, and a declaration that never ends is not
+    /// guessed at.
+    #[test]
+    fn other_processing_instructions_are_kept() {
+        assert_eq!(
+            without_xml_declaration("<?xml version=\"1.0\"?>\n<?xml-stylesheet href=\"cda.xsl\"?><a/>"),
+            "<?xml-stylesheet href=\"cda.xsl\"?><a/>"
+        );
+        assert_eq!(without_xml_declaration("<?xmlfoo x?><a/>"), "<?xmlfoo x?><a/>");
+        assert_eq!(without_xml_declaration("<?xml version=\"1.0\" <a/>"), "<?xml version=\"1.0\" <a/>");
+        assert_eq!(without_xml_declaration("MSH|^~\\&|A"), "MSH|^~\\&|A");
     }
 
     #[test]
@@ -583,7 +746,7 @@ mod tests {
         let mut r = base_req();
         r.envelope_template = Some("<e><b>{payload}</b></e>".into());
         let env = build_envelope(&r).unwrap();
-        assert_eq!(env, "<e><b><payload>MSH|^~\\&amp;|A|B</payload></b></e>");
+        assert_eq!(env, "<e><b><payload>MSH|^~\\&amp;|A|B&#13;</payload></b></e>");
     }
 
     /// A raw HL7 message keeps its CR segment terminators through XML

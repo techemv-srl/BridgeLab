@@ -48,9 +48,20 @@ pub fn validate_hl7_message(msg: &Hl7Message) -> ValidationReport {
 
     // A missing MSH-10/MSH-12 is already an error from the catalogue's
     // required-field check: the MSH warning would report it a second time.
+    // A missing MSH-9 is the other way round: the MSH check (an MSH too
+    // short to hold it, or an empty MSH-9) already counts it as an error,
+    // so the required-field error would count it twice.
     let required = |rule: &str| issues.iter().any(|i| i.rule_id == rule);
     let (dup_10, dup_12) = (required("REQ-MSH-10"), required("REQ-MSH-12"));
-    issues.retain(|i| !(dup_10 && i.rule_id == "MSH-003" || dup_12 && i.rule_id == "MSH-004"));
+    let header_9 = issues
+        .iter()
+        .find(|i| i.rule_id == "MSH-001" || i.rule_id == "MSH-002")
+        .map(|i| i.segment_idx);
+    issues.retain(|i| {
+        !(dup_10 && i.rule_id == "MSH-003"
+            || dup_12 && i.rule_id == "MSH-004"
+            || header_9.is_some_and(|at| i.rule_id == "REQ-MSH-9" && i.segment_idx == at))
+    });
 
     let error_count = issues.iter().filter(|i| i.severity == Severity::Error).count();
     let warning_count = issues.iter().filter(|i| i.severity == Severity::Warning).count();
@@ -99,15 +110,17 @@ fn validate_structure(msg: &Hl7Message, issues: &mut Vec<ValidationIssue>) {
         });
     }
 
-    // A second MSH means several messages in one text: only the first
-    // header is the one being validated.
+    // A second MSH means several messages in one text. Every segment's
+    // fields are still checked (a batch file is read that way), but the
+    // header checks and the version used are the first message's: say
+    // that, not that the other messages go unchecked.
     let first_msh = msg.segments.iter().position(|s| s.segment_type == "MSH").unwrap_or(0);
     for (i, seg) in msg.segments.iter().enumerate().skip(first_msh + 1) {
         if seg.segment_type == "MSH" {
             issues.push(ValidationIssue {
                 severity: Severity::Warning,
                 message: format!(
-                    "Another MSH at segment {}: this text holds more than one message, and only the first is validated as a message",
+                    "Another MSH at segment {}: this text holds more than one message. Every segment is checked field by field, against the version the first MSH declares; the message header checks (MSH-001 to MSH-005) look at the first MSH only",
                     i + 1
                 ),
                 segment_idx: Some(i),
@@ -118,13 +131,14 @@ fn validate_structure(msg: &Hl7Message, issues: &mut Vec<ValidationIssue>) {
         }
     }
 
-    // Validate segment type format (3 uppercase alphanumeric chars)
+    // Validate segment type format (3 uppercase alphanumeric chars).
+    // Segments are numbered from 1 in the text, as in STRUCT-004.
     for (i, seg) in msg.segments.iter().enumerate() {
         let st = &seg.segment_type;
         if st.len() != 3 || !st.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
             issues.push(ValidationIssue {
                 severity: Severity::Warning,
-                message: format!("Invalid segment type '{}' at position {}", st, i),
+                message: format!("Invalid segment type '{}' at segment {}", st, i + 1),
                 segment_idx: Some(i),
                 segment_type: Some(st.clone()),
                 field_position: None,
@@ -141,6 +155,45 @@ fn validate_msh(msg: &Hl7Message, issues: &mut Vec<ValidationIssue>) {
         Some(found) => found,
         None => return,
     };
+
+    // MSH-2 with three encoding characters: the parser took '&' for the
+    // missing subcomponent separator. Said, so the sender can be told.
+    if let Some(f2) = msh.fields.iter().find(|f| f.position == 2) {
+        let declared = f2.span.as_str(&msg.raw);
+        if declared.chars().count() == 3 {
+            issues.push(ValidationIssue {
+                severity: Severity::Warning,
+                message: format!(
+                    "MSH-2 declares 3 of the 4 encoding characters ('{}'): the subcomponent separator is missing, and '{}' is taken for it",
+                    declared,
+                    crate::parser::hl7::delimiters::DEFAULT_SUBCOMPONENT as char
+                ),
+                segment_idx: Some(msh_idx),
+                segment_type: Some("MSH".into()),
+                field_position: Some(2),
+                rule_id: "MSH-006".into(),
+            });
+        }
+        // More than five: the parser uses the first five (the fifth being
+        // v2.7's truncation character) and nothing splits on the others,
+        // which stay in MSH-2 as written. Said, as for three.
+        let count = declared.chars().count();
+        if count > 5 {
+            issues.push(ValidationIssue {
+                severity: Severity::Warning,
+                message: format!(
+                    "MSH-2 declares {} characters ('{}'): only the first five are encoding characters (component, repetition, escape, subcomponent, truncation); the rest ('{}') are taken as data and ignored",
+                    count,
+                    declared,
+                    declared.chars().skip(5).collect::<String>()
+                ),
+                segment_idx: Some(msh_idx),
+                segment_type: Some("MSH".into()),
+                field_position: Some(2),
+                rule_id: "MSH-007".into(),
+            });
+        }
+    }
 
     // MSH must have at least 12 fields (MSH-1 through MSH-12)
     let max_pos = msh.fields.iter().map(|f| f.position).max().unwrap_or(0);
@@ -612,9 +665,78 @@ mod tests {
         assert!(type_issues(two).iter().any(|r| r == "STRUCT-004"));
     }
 
+    /// The second message's segments are checked, and the warning says so
+    /// rather than that only the first message is validated.
+    #[test]
+    fn the_second_msh_warning_matches_what_is_checked() {
+        let two = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1||1^^^H^MR||Rossi^Mario\r\
+                   MSH|^~\\&|A|B|C|D|20240101||ADT^A01|2|P|2.5\rPID|1||2^^^H^MR\r";
+        let report = validate_hl7_message(&parse_msg(two));
+        let warning = report.issues.iter().find(|i| i.rule_id == "STRUCT-004").unwrap();
+        assert!(warning.message.contains("segment 3"), "{}", warning.message);
+        assert!(warning.message.contains("Every segment is checked"), "{}", warning.message);
+        assert!(!warning.message.contains("only the first is validated"));
+        assert!(report.issues.iter().any(|i| i.rule_id == "REQ-PID-5" && i.segment_idx == Some(3)));
+    }
+
+    /// STRUCT-003 numbers segments the way STRUCT-004 does, from 1.
+    #[test]
+    fn segment_numbers_count_from_one_in_every_message() {
+        let text = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPIDX|1\rMSH|^~\\&|A|B|C|D|20240101||ADT^A01|2|P|2.5\r";
+        let report = validate_hl7_message(&parse_msg(text));
+        let bad = report.issues.iter().find(|i| i.rule_id == "STRUCT-003").unwrap();
+        assert!(bad.message.ends_with("at segment 2"), "{}", bad.message);
+        let second = report.issues.iter().find(|i| i.rule_id == "STRUCT-004").unwrap();
+        assert!(second.message.contains("at segment 3"), "{}", second.message);
+    }
+
+    /// A missing MSH-9 is one error, not the MSH check plus the
+    /// required-field check.
+    #[test]
+    fn a_missing_msh9_is_one_error() {
+        let empty = parse_msg("MSH|^~\\&|SENDING|FAC|RECEIVING|FAC|20260414120000|||MSG1|P|2.5\rPID|1||1^^^H^MR||Rossi^Mario\r");
+        let report = validate_hl7_message(&empty);
+        let ids: Vec<&str> = report.issues.iter().map(|i| i.rule_id.as_str()).collect();
+        assert!(ids.contains(&"MSH-002"), "{ids:?}");
+        assert!(!ids.contains(&"REQ-MSH-9"), "{ids:?}");
+        assert_eq!(report.error_count, 1, "{ids:?}");
+        // MSH-2 with three encoding characters parses, with a warning.
+        let report = validate_hl7_message(&parse_msg("MSH|^~\\|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1||1^^^H^MR||DOE^JOHN"));
+        let w = report.issues.iter().find(|i| i.rule_id == "MSH-006").expect("MSH-006");
+        assert!(w.message.contains("3 of the 4") && w.message.contains("'&'"), "{}", w.message);
+        assert!(!report.issues.iter().any(|i| i.rule_id == "MSH-006" && i.severity == Severity::Error));
+        // A header too short to hold MSH-9 at all: MSH-001, not REQ-MSH-9 too.
+        let short = validate_hl7_message(&parse_msg("MSH|^~\\&|A|B|C|D|20240101"));
+        assert!(short.issues.iter().any(|i| i.rule_id == "MSH-001"));
+        assert!(!short.issues.iter().any(|i| i.rule_id == "REQ-MSH-9"));
+        // A second message's own missing MSH-9 is still reported.
+        let two = parse_msg("MSH|^~\\&|A|B|C|D|20240101|||1|P|2.5\rMSH|^~\\&|A|B|C|D|20240101|||2|P|2.5\r");
+        let req9: Vec<_> = validate_hl7_message(&two).issues.into_iter().filter(|i| i.rule_id == "REQ-MSH-9").collect();
+        assert_eq!(req9.len(), 1);
+        assert_eq!(req9[0].segment_idx, Some(1));
+    }
+
     fn rule_ids(text: &str) -> Vec<String> {
         let msg = Hl7Lexer::new().parse(text.as_bytes().to_vec()).unwrap();
         validate_hl7_message(&msg).issues.into_iter().map(|i| i.rule_id).collect()
+    }
+
+    /// An MSH-2 longer than five characters still parses, with a warning
+    /// naming what is ignored; four and five characters get none.
+    #[test]
+    fn extra_encoding_characters_are_a_warning() {
+        let msg = |enc: &str| format!("MSH|{enc}|A|B|C|D|20240101||ADT^A01|1|P|2.7\rPID|1||1^^^H^MR||DOE^JOHN\r");
+        let six = validate_hl7_message(&parse_msg(&msg("^~\\&#@")));
+        let w = six.issues.iter().find(|i| i.rule_id == "MSH-007").expect("MSH-007");
+        assert_eq!(w.severity, Severity::Warning);
+        assert!(w.message.contains("declares 6 characters") && w.message.contains("('@')"), "{}", w.message);
+        // The fields after MSH-2 read as usual.
+        let parsed = parse_msg(&msg("^~\\&#@"));
+        let msh3 = parsed.segments[0].fields.iter().find(|f| f.position == 3).unwrap();
+        assert_eq!(msh3.span.as_str(&parsed.raw), "A");
+        for enc in ["^~\\&", "^~\\&#"] {
+            assert!(!rule_ids(&msg(enc)).iter().any(|r| r == "MSH-007"), "{enc}");
+        }
     }
 
     #[test]

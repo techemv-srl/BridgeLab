@@ -14,6 +14,35 @@ export async function appSuite() {
 	const r = new Report('app');
 	const d = await newSession();
 
+	/**
+	 * Answer the IPC requests for `commands` (`plugin:dialog|save`...) in
+	 * the current window's page, recording their arguments, instead of
+	 * letting them reach the backend: a native dialog or the system's
+	 * browser is out of WebDriver's reach. The app's IPC goes through
+	 * window.fetch. `ipcCalls` reads and clears what was recorded;
+	 * `unstubIpc` puts the real fetch back.
+	 */
+	const stubIpc = (commands) => js(d, `
+		const wanted = ${JSON.stringify(commands)};
+		const stub = window.__blStub ?? (window.__blStub = { real: window.fetch });
+		stub.calls = [];
+		window.fetch = function (input, init) {
+			const url = decodeURIComponent(typeof input === 'string' ? input : input.url);
+			const m = /^(?:ipc:\\/\\/localhost|https?:\\/\\/ipc\\.localhost)\\/(.+)$/.exec(url);
+			if (m && wanted.includes(m[1])) {
+				let body = init && init.body;
+				if (body && typeof body !== 'string') body = new TextDecoder().decode(body);
+				stub.calls.push({ cmd: m[1], args: body ? JSON.parse(body) : null });
+				return Promise.resolve(new Response('null', { status: 200, headers: { 'Content-Type': 'application/json', 'Tauri-Response': 'ok' } }));
+			}
+			return stub.real.apply(this, arguments);
+		};`);
+	const ipcCalls = () => js(d, `const c = window.__blStub?.calls ?? []; if (window.__blStub) window.__blStub.calls = []; return c;`);
+	const unstubIpc = () => js(d, `if (window.__blStub) { window.fetch = window.__blStub.real; delete window.__blStub; }`);
+	/** In the page: fire a cancelable `contextmenu` at `el`; true when
+	 *  something cancelled it (the webview's own menu then stays shut). */
+	const MENU_CANCELLED = `const menuCancelled = (el) => !el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));`;
+
 	try {
 		await ready(d);
 
@@ -66,6 +95,19 @@ export async function appSuite() {
 				return t && document.querySelectorAll('.tree-node, [data-node-id]').length > 0 ? t.trim() : null;`, 15000, 'sample tab parsed');
 			return `${via}: ${label}`;
 		});
+		// Close the manual the way its title-bar button does: a close request
+		// to the window, so its "destroyed" event reaches the main window.
+		// WebDriver's own close only drops the page; the window stays known to
+		// the app, a state no user can reach, and F1 then sees it still open.
+		const closeManual = async (main) => {
+			await d.switchTo().window(main);
+			await js(d, `return window.__TAURI_INTERNALS__.invoke('plugin:window|close', { label: 'bridgelab-help' }).catch(() => null)`);
+			for (const end = Date.now() + 10000; Date.now() < end;) {
+				if ((await d.getAllWindowHandles()).length === 1) return;
+				await sleep(300);
+			}
+			throw new Error('the manual window did not close');
+		};
 		await r.check('F1 opens the manual in its own window, with content', async () => {
 			// The window used to load a blob: URL made by the main webview,
 			// which WebKitGTK cannot load from a second webview: it opened
@@ -74,26 +116,87 @@ export async function appSuite() {
 			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true }))`);
 			const end = Date.now() + 15000;
 			let found = null;
-			while (!found && Date.now() < end) {
+			try {
+				while (!found && Date.now() < end) {
+					await sleep(500);
+					for (const h of await d.getAllWindowHandles()) {
+						if (h === main) continue;
+						await d.switchTo().window(h);
+						const info = await js(d, `return {
+							sections: document.querySelectorAll('main.content section').length,
+							toc: document.querySelectorAll('aside.toc a[href^="#"]').length,
+							title: document.title,
+						}`);
+						if (info.sections > 5) {
+							found = info;
+							await closeManual(main);
+							break;
+						}
+					}
+					await d.switchTo().window(main);
+				}
+			} finally {
+				// Back to the main window whatever happened, so one failure
+				// here does not fail every later check with NoSuchWindowError.
+				await d.switchTo().window(main).catch(() => {});
+			}
+			if (!found) throw new Error('no window with manual content within 15 s');
+			return `${found.title}: ${found.sections} sections, ${found.toc} contents links`;
+		});
+		await r.check("the webview's own context menu never opens, text fields included", async () => {
+			// WebKitGTK's menu (Back, Forward, Stop, Reload) opened on the
+			// status bar, the panels, the menu bar, the banners and Settings;
+			// its Reload dropped every unsaved tab with session restore off.
+			const got = await js(d, `${MENU_CANCELLED}
+				const out = {};
+				for (const [name, sel] of [['status bar', '.status-bar'], ['menu bar', '.menu-trigger'], ['tab strip', '.tab'], ['page', 'body']]) {
+					const el = document.querySelector(sel);
+					out[name] = el ? menuCancelled(el) : 'missing';
+				}
+				// A text field too: WebView2's menu there has Emoji, password
+				// import and "More tools". Cut, Copy and Paste keep their keys.
+				const field = document.createElement('input');
+				field.type = 'text';
+				document.body.appendChild(field);
+				out['text field'] = menuCancelled(field);
+				field.remove();
+				return out;`);
+			const wrong = Object.entries(got).filter(([, v]) => v !== true);
+			if (wrong.length) throw new Error(`cancelled: ${JSON.stringify(got)}`);
+			return Object.entries(got).map(([k, v]) => `${k} ${v ? 'cancelled' : 'native'}`).join(', ');
+		});
+		await r.check('in the manual window, the e-mail link goes to the mail client and the native menu stays shut', async () => {
+			// A middle click there loaded mailto: in the manual window itself:
+			// "The URL can't be shown", and the manual was gone.
+			const main = await d.getWindowHandle();
+			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true }))`);
+			let manual = null;
+			for (const end = Date.now() + 15000; !manual && Date.now() < end;) {
 				await sleep(500);
 				for (const h of await d.getAllWindowHandles()) {
 					if (h === main) continue;
 					await d.switchTo().window(h);
-					const info = await js(d, `return {
-						sections: document.querySelectorAll('main.content section').length,
-						toc: document.querySelectorAll('aside.toc a[href^="#"]').length,
-						title: document.title,
-					}`);
-					if (info.sections > 5) {
-						found = info;
-						await d.close(); // the manual window; its destroy event resets the shell
-						break;
-					}
+					if (await js(d, `return document.querySelectorAll('main.content section').length > 5`)) { manual = h; break; }
 				}
-				await d.switchTo().window(main);
+				if (!manual) await d.switchTo().window(main);
 			}
-			if (!found) throw new Error('no window with manual content within 15 s');
-			return `${found.title}: ${found.sections} sections, ${found.toc} contents links`;
+			if (!manual) throw new Error('no manual window within 15 s');
+			try {
+				await stubIpc(['plugin:opener|open_url']);
+				const got = await js(d, `${MENU_CANCELLED}
+					const a = document.querySelector('a[href^="mailto:"]');
+					if (!a) return null;
+					const middle = !a.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }));
+					return { middle, menu: menuCancelled(document.body), href: location.href };`);
+				if (!got) throw new Error('no e-mail link in the manual');
+				const calls = await waitFor(d, `return window.__blStub.calls.length ? window.__blStub.calls : null`, 5000, 'the opener');
+				if (!got.middle || calls[0].args?.url !== 'mailto:info@techemv.it') throw new Error(`middle click cancelled ${got.middle}, opener ${JSON.stringify(calls)}`);
+				if (!got.menu) throw new Error('the native menu was not cancelled');
+				if (!/\/manual/.test(got.href)) throw new Error(`the manual window is at ${got.href}`);
+				return `opener got ${calls[0].args.url}; menu cancelled; still at the manual`;
+			} finally {
+				await closeManual(main);
+			}
 		});
 
 		// ---- HL7 v2 ------------------------------------------------------
@@ -295,6 +398,31 @@ export async function appSuite() {
 			}
 			return 'both closed';
 		});
+		await r.check('a middle click on the e-mail link in About opens the mail client and leaves the window alone', async () => {
+			// Only a left click was taken: a middle click loaded mailto: in
+			// the app's own window, which then showed "The URL can't be shown".
+			await stubIpc(['plugin:opener|open_url']);
+			try {
+				await js(d, `[...document.querySelectorAll('.menu-trigger')].find((x) => /help/i.test(x.textContent))?.click()`);
+				await sleep(350);
+				await js(d, `[...document.querySelectorAll('.menu-item')].find((x) => /about/i.test(x.textContent))?.click()`);
+				await waitFor(d, `return document.querySelector('.modal a[href^="mailto:"]') ? true : null`, 5000, 'About with its e-mail link');
+				const cancelled = await js(d, `
+					const a = document.querySelector('.modal a[href^="mailto:"]');
+					return !a.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }));`);
+				const calls = await waitFor(d, `return window.__blStub.calls.length ? window.__blStub.calls : null`, 5000, 'the opener');
+				await sleep(500);
+				const still = await js(d, `return { href: location.href, shell: !!document.querySelector('.menu-trigger') }`);
+				if (!cancelled) throw new Error('the middle click was left to the webview');
+				if (calls[0].args?.url !== 'mailto:info@techemv.it') throw new Error(`opener: ${JSON.stringify(calls)}`);
+				if (!still.shell || /^mailto:|^about:/.test(still.href)) throw new Error(`window: ${JSON.stringify(still)}`);
+				return `opener got ${calls[0].args.url}; window still at ${still.href}`;
+			} finally {
+				await unstubIpc();
+				await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
+				await waitFor(d, `return document.querySelector('.modal') ? null : true`, 5000, 'About closed').catch(() => {});
+			}
+		});
 		await r.check('editor settings for suggestions, occurrences, links and sticky scroll are saved', async () => {
 			const openSettings = async () => {
 				await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true }))`);
@@ -334,6 +462,150 @@ export async function appSuite() {
 			await set(before);
 			await waitFor(d, `return document.getElementById('s-wordsugg') ? null : true`, 5000, 'Settings closed');
 			return 'saved, reloaded and restored';
+		});
+		await r.check('native controls follow the theme (color-scheme)', async () => {
+			// Without it, WebKitGTK drew every <select> as a light widget
+			// under the dark theme's light text: the values were unreadable.
+			const state = () => js(d, `return {
+				theme: document.documentElement.getAttribute('data-theme') || 'dark',
+				scheme: getComputedStyle(document.documentElement).colorScheme,
+			}`);
+			const pick = async (label) => {
+				await js(d, `[...document.querySelectorAll('.menu-trigger')].find((x) => /view/i.test(x.textContent))?.click()`);
+				await sleep(350);
+				await js(d, `[...document.querySelectorAll('.menu-item')].find((x) => x.textContent.trim() === ${JSON.stringify(label)})?.click()`);
+				await sleep(300);
+				return state();
+			};
+			const start = await state();
+			const light = await pick('Light');
+			const dark = await pick('Dark');
+			if (start.theme === 'light') await pick('Light');
+			const bad = [start, light, dark].filter((s) => s.scheme !== s.theme);
+			if (light.theme !== 'light' || dark.theme !== 'dark') throw new Error(`theme switch: ${JSON.stringify([light, dark])}`);
+			if (bad.length) throw new Error(`color-scheme does not follow: ${JSON.stringify(bad)}`);
+			return `${start.theme} start; light → ${light.scheme}, dark → ${dark.scheme}`;
+		});
+		await r.check('resetting a shortcut whose key moved elsewhere asks, then moves it back', async () => {
+			// The reset next to an entry used to write its default key even
+			// when another action had it: both showed Ctrl+O, and Ctrl+O only
+			// ever opened the file dialog.
+			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: ',', ctrlKey: true, bubbles: true }))`);
+			await waitFor(d, `return document.querySelector('.settings-nav') ? true : null`, 5000, 'Settings');
+			try {
+				await js(d, `[...document.querySelectorAll('.settings-nav .nav-item')].find((b) => /shortcut/i.test(b.textContent))?.click()`);
+				await waitFor(d, `return document.querySelectorAll('.shortcut-row').length > 10 ? true : null`, 5000, 'Settings → Keyboard Shortcuts');
+				await sleep(500); // the editor loads the saved bindings when it opens
+				const row = (label) => `[...document.querySelectorAll('.shortcut-row')].find((r) => r.querySelector('.shortcut-label')?.textContent.trim() === ${JSON.stringify(label)})`;
+				const keysOf = (label) => js(d, `return ${row(label)}?.querySelector('.binding, .capture-keys')?.textContent.trim() ?? null`);
+				const before = { open: await keysOf('Open File'), validate: await keysOf('Validate') };
+				if (before.open !== 'Ctrl+O' || before.validate !== 'F6') throw new Error(`not the defaults: ${JSON.stringify(before)}`);
+				// Give Ctrl+O to Validate, with Reassign.
+				await js(d, `${row('Validate')}.querySelector('.binding').click()`);
+				await js(d, `(document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'o', ctrlKey: true, bubbles: true, cancelable: true }))`);
+				await waitFor(d, `return ${row('Validate')}?.querySelector('.conflict')?.textContent.includes('Open File') ? true : null`, 5000, 'conflict warning');
+				await js(d, `${row('Validate')}.querySelector('.capture-area .btn-primary').click()`);
+				await sleep(300);
+				const moved = { open: await keysOf('Open File'), validate: await keysOf('Validate') };
+				if (moved.validate !== 'Ctrl+O' || moved.open !== '(none)') throw new Error(`after Reassign: ${JSON.stringify(moved)}`);
+				// The reset next to Open File asks first: its key is Validate's now.
+				await js(d, `${row('Open File')}.querySelector('.reset-btn').click()`);
+				const warning = await waitFor(d, `return ${row('Open File')}?.querySelector('.capture-area .conflict')?.textContent.trim() ?? null`, 5000, 'reset asks');
+				if (!warning.includes('Validate')) throw new Error(`warning: ${warning}`);
+				if (await keysOf('Validate') !== 'Ctrl+O') throw new Error('the reset changed Validate before it was confirmed');
+				await js(d, `${row('Open File')}.querySelector('.capture-area .btn-primary').click()`);
+				await sleep(300);
+				const back = { open: await keysOf('Open File'), validate: await keysOf('Validate') };
+				if (back.open !== 'Ctrl+O' || back.validate !== '(none)') throw new Error(`after reset: ${JSON.stringify(back)}`);
+				const stored = JSON.parse(await js(d, `return window.__TAURI_INTERNALS__.invoke('get_preference', { key: 'shortcuts_json' })`));
+				if (stored['file.open'] !== 'Ctrl+O' || stored['tools.validate'] !== '') throw new Error(`stored: ${JSON.stringify(stored)}`);
+				// Validate's F6 is free: its reset applies at once. Defaults again.
+				await js(d, `${row('Validate')}.querySelector('.reset-btn').click()`);
+				await sleep(300);
+				const restored = await keysOf('Validate');
+				if (restored !== 'F6') throw new Error(`Validate reset to ${restored}`);
+				return `reset asked (“${warning}”), moved Ctrl+O back; stored ${stored['file.open']} / ${JSON.stringify(stored['tools.validate'])}`;
+			} finally {
+				// Escape leaves a capture first, then closes Settings.
+				for (let i = 0; i < 3; i++) {
+					if (!(await js(d, `return !!document.querySelector('.settings-nav')`))) break;
+					await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))`);
+					await sleep(300);
+				}
+			}
+		});
+		await r.check('a reload asks first while the newest edits are not in the saved session', async () => {
+			// Nothing in the app reloads the page, but a reload with session
+			// restore off dropped every unsaved tab without a question, and
+			// with it on the edits the autosave had not written yet.
+			const unload = `
+				const e = document.createEvent('BeforeUnloadEvent');
+				e.initEvent('beforeunload', false, true);
+				window.dispatchEvent(e);
+				return e.defaultPrevented || !!e.returnValue;`;
+			await js(d, `
+				if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+				const dt = new DataTransfer();
+				dt.setData('text/plain', 'MSH|^~\\\\&|A|B|C|D|20240101||ADT^A01|RELOAD|P|2.5\\rPID|1||1||Unsaved^Edit\\r');
+				document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));`);
+			// Within the autosave's 0.8 s pause: the new tab is not saved yet.
+			const pending = await js(d, unload);
+			// Once it is, restore (on in a fresh profile) brings it back.
+			await waitFor(d, `return (() => { ${unload} })() ? null : true`, 10000, 'the autosave to write the session');
+			if (!pending) throw new Error('a reload right after an edit did not ask');
+			return 'asks while the autosave is pending; not once the session holds the tab';
+		});
+		await r.check('Save As asks for the file type of the document', async () => {
+			// FHIR tabs were offered "HL7 Messages (*.hl7)" and "Untitled": on
+			// Windows a Patient saved as "patient" became patient.hl7.
+			await stubIpc(['plugin:dialog|save']);
+			try {
+				const asked = {};
+				for (const [kind, text] of [
+					['FHIR JSON', PATIENT],
+					['FHIR XML', '<Patient xmlns="http://hl7.org/fhir"><id value="x1"/><gender value="male"/></Patient>'],
+					['HL7', HL7_V23],
+				]) {
+					await paste(d, text);
+					await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'S', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))`);
+					await waitFor(d, `return window.__blStub.calls.length ? true : null`, 5000, `the ${kind} save dialog`);
+					const [call] = await ipcCalls(); // and cleared for the next document
+					asked[kind] = call.args?.options;
+				}
+				const want = { 'FHIR JSON': 'json', 'FHIR XML': 'xml', HL7: 'hl7' };
+				for (const [kind, ext] of Object.entries(want)) {
+					const o = asked[kind];
+					const first = o?.filters?.[0]?.extensions?.join(',');
+					const last = o?.filters?.at(-1)?.extensions?.join(',');
+					if (first !== ext || last !== '*' || !o.defaultPath?.endsWith(`.${ext}`)) {
+						throw new Error(`${kind}: ${JSON.stringify(o)}`);
+					}
+				}
+				return Object.entries(asked).map(([k, o]) => `${k} → ${o.filters[0].name} (*.${o.filters[0].extensions[0]}), ${o.defaultPath}`).join('; ');
+			} finally {
+				await unstubIpc();
+			}
+		});
+		await r.check('a link in the editor opens in the browser from its hover', async () => {
+			// The editor opened its links with window.open, which the webview
+			// refuses: "Clickable links (Ctrl+click)" and the hover's "Follow
+			// link" did nothing. (WebDriver cannot hold Ctrl through a click,
+			// so the hover link stands in for Ctrl+click: both end in the
+			// same opener.)
+			await paste(d, 'MSH|^~\\&|S|F|R|F|20240101||ADT^A01|LINK|P|2.5\rOBX|1|TX|||See http://bl-e2e.invalid/report for the report\r');
+			await stubIpc(['plugin:opener|open_url']);
+			try {
+				await waitFor(d, `return document.querySelector('.monaco-editor .detected-link') ? true : null`, 15000, 'the underlined link');
+				await d.actions({ async: true }).move({ origin: await d.findElement({ css: '.monaco-editor .detected-link' }) }).perform();
+				await waitFor(d, `return [...document.querySelectorAll('.monaco-hover a')].some((a) => /follow link/i.test(a.textContent)) || null`, 10000, '"Follow link" in the hover');
+				await d.findElement({ xpath: "//*[contains(@class,'monaco-hover')]//a[contains(., 'Follow link')]" }).click();
+				const calls = await waitFor(d, `return window.__blStub.calls.length ? window.__blStub.calls : null`, 5000, 'the opener');
+				if (!String(calls[0].args?.url).startsWith('http://bl-e2e.invalid/report')) throw new Error(`opener: ${JSON.stringify(calls)}`);
+				return `opener got ${calls[0].args.url}`;
+			} finally {
+				await unstubIpc();
+				await d.actions({ async: true }).move({ x: 5, y: 5 }).perform().catch(() => {});
+			}
 		});
 		await r.check('a launch file that does not exist is reported', async () => {
 			const path = `${tmpdir()}/bl-e2e-missing-${process.pid}.hl7`;
@@ -395,6 +667,81 @@ export async function appSuite() {
 			}
 		});
 
+		/** Expand segment `seg` in the tree (if it is not) and return the
+		 *  position of field `f`'s {...} button and of its row, once drawn. */
+		const cutFieldButton = async (seg, f) => {
+			await js(d, `
+				const row = document.querySelector('[data-node-id="seg${seg}"]');
+				if (row && row.getAttribute('aria-expanded') !== 'true') row.click();`);
+			return waitFor(d, `
+				const b = document.querySelector('[data-node-id="seg${seg}.f${f}"] .truncated-btn');
+				if (!b) return null;
+				const r = b.getBoundingClientRect(), p = b.closest('.tree-node').getBoundingClientRect();
+				return { btn: [Math.round(r.left), Math.round(r.right)], row: [Math.round(p.left), Math.round(p.right)] };`,
+			10000, `{...} button on seg${seg}.f${f}`);
+		};
+
+		await r.check('the {...} button of a cut field is on screen at the default tree width', async () => {
+			// It sat inside the value text, which is clipped: a cut value's
+			// 55-character preview pushed it past the edge of the 350 px tree.
+			const b64 = Buffer.from(Array.from({ length: 225 }, (_, i) => (i * 53) % 256)).toString('base64');
+			await paste(d, [
+				'MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|MSGB|P|2.5',
+				'PID|1||12345^^^FAC^MR||Smith^Jane',
+				`OBX|1|ED|PDF^Report||^AP^PDF^Base64^${b64}||||||F`,
+			].join('\r'));
+			const box = await cutFieldButton(2, 5);
+			if (box.btn[0] < box.row[0] || box.btn[1] > box.row[1]) throw new Error(`button at ${box.btn} outside its row ${box.row}`);
+			// A real click: WebDriver refuses an element that cannot be seen.
+			await d.findElement({ css: '[data-node-id="seg2.f5"] .truncated-btn' }).click();
+			const len = await waitFor(d, `return document.querySelector('.modal-body pre')?.textContent.length ?? null`, 5000, 'Full Field Content');
+			await closeModal(d);
+			if (len < b64.length) throw new Error(`the window shows ${len} characters`);
+			return `button at x ${box.btn.join('-')}, row ${box.row.join('-')}; opens ${len} characters`;
+		});
+
+		await r.check('a 5 MB field opens in the full-value window at once, and Copy copies all of it', async () => {
+			// The whole value went into one <pre>: 10 s with the window frozen
+			// in WebKitGTK. Only its start is drawn now.
+			const value = '^application^pdf^Base64^' + Buffer.alloc(3932160, 7).toString('base64'); // 5 MB of base64
+			// OBX is segment 3 here, so the previous check's tree (OBX at 2)
+			// cannot stand in for this one.
+			const msg = [
+				'MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|MSG5M|P|2.5',
+				'PID|1||12345^^^FAC^MR||Smith^Jane||19900515|F',
+				'OBR|1||ORD5M|PDF^Report',
+				`OBX|1|ED|PDF^Report||${value}||||||F`,
+			].join('\r') + '\r';
+			// "65,536" / "65.536" / "65 536": the note follows the system locale.
+			const grouped = (n) => new RegExp(String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\\D?'));
+			const path = `${tmpdir()}/bl-e2e-5mb-${process.pid}.hl7`;
+			writeFileSync(path, msg);
+			try {
+				await js(d, `return window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'app://open-files', payload: [${JSON.stringify(path)}] })`);
+				await waitFor(d, `return document.querySelector('.tab.active')?.textContent.includes('bl-e2e-5mb') && document.querySelector('[data-node-id="seg3"]') ? true : null`, 20000, '5 MB file open');
+				await cutFieldButton(3, 5);
+				// Copy goes to the system clipboard: count what it is given.
+				await js(d, `window.__blCopied = null; navigator.clipboard.writeText = (t) => { window.__blCopied = t.length; return Promise.resolve(); };`);
+				const t0 = Date.now();
+				await js(d, `document.querySelector('[data-node-id="seg3.f5"] .truncated-btn').click()`);
+				const shown = await waitFor(d, `
+					const pre = document.querySelector('.modal-body pre');
+					return pre ? { chars: pre.textContent.length, note: document.querySelector('.modal-info.cut')?.textContent.trim() ?? '' } : null;`,
+				30000, 'Full Field Content');
+				const ms = Date.now() - t0;
+				await js(d, `[...document.querySelectorAll('.modal-footer .btn')].find((b) => /copy/i.test(b.textContent))?.click()`);
+				const copied = await waitFor(d, `return window.__blCopied`, 5000, 'copy');
+				await closeModal(d);
+				// 65,536 characters and the "…" after them.
+				if (shown.chars > 65537) throw new Error(`${shown.chars} characters drawn`);
+				if (!grouped(65536).test(shown.note) || !grouped(value.length).test(shown.note)) throw new Error(`note: ${shown.note}`);
+				if (copied !== value.length) throw new Error(`copied ${copied} of ${value.length} characters`);
+				return `${shown.chars} characters drawn in ${ms} ms; “${shown.note}”; copied ${copied}`;
+			} finally {
+				rmSync(path, { force: true });
+			}
+		});
+
 		await r.check('the segment grid lists every OBX as a row', async () => {
 			await paste(d, [
 				'MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|MSG2|P|2.5',
@@ -418,6 +765,44 @@ export async function appSuite() {
 			// Close the panel again so later checks see the usual layout.
 			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'G', ctrlKey: true, shiftKey: true, bubbles: true }))`);
 			return `${n} OBX rows; codes: ${info.desc.slice(0, 3).join(', ')}`;
+		});
+
+		await r.check('the interpretation panel reads the message and links each value', async () => {
+			await paste(d, [
+				'MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ADT^A01|MSG3|P|2.5',
+				'EVN|A01|20240101120000',
+				'PID|1||12345^^^FAC^MR||Rossi^Mario||19800515|M',
+			].join('\r'));
+			const toggle = `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'E', ctrlKey: true, shiftKey: true, bubbles: true }))`;
+			await js(d, toggle);
+			const patient = await waitFor(d, `
+				const p = [...document.querySelectorAll('.interp-sentence')].find((e) => e.textContent.startsWith('Patient'));
+				return p ? p.textContent : null;`, 15000, 'patient sentence');
+			if (!/Rossi, Mario, Male, born 1980-05-15, identifiers 12345 \(Medical record number\)\./.test(patient)) {
+				throw new Error(`patient: ${patient}`);
+			}
+			// A value selects its field: PID-5 in the tree.
+			await js(d, `[...document.querySelectorAll('.interp-value')].find((e) => e.textContent === 'Rossi, Mario')?.click()`);
+			const tree = await waitFor(d, `return document.querySelector('.tree-node.selected')?.dataset.nodeId ?? null`, 5000, 'tree selection');
+			if (tree !== 'seg2.f5') throw new Error(`tree selected ${tree}`);
+			await js(d, toggle);
+			return `${patient}; click selects ${tree}`;
+		});
+
+		await r.check('the interpretation panel draws a long result a page at a time', async () => {
+			const lines = ['MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|BIG2|P|2.5', 'PID|1||1^^^H^MR||Big^Log', 'OBR|1||O1|CBC^Count'];
+			for (let i = 1; i <= 1000; i++) lines.push(`OBX|${i}|NM|WBC^Leukocytes^LN||1.1|10*9/L|4.0-10.0|N|||F`);
+			await paste(d, lines.join('\r'));
+			const toggle = `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'E', ctrlKey: true, shiftKey: true, bubbles: true }))`;
+			await js(d, toggle);
+			const page = `const more = document.querySelector('.interp-more');
+				return more ? { blocks: document.querySelectorAll('.interp-block').length, more: more.textContent.trim() } : null;`;
+			const first = await waitFor(d, page, 20000, 'first page');
+			if (first.blocks !== 200 || !/\b200 of 1003\b/.test(first.more)) throw new Error(`${first.blocks} blocks; ${first.more}`);
+			await js(d, `document.querySelector('.interp-more').click()`);
+			const second = await waitFor(d, `const n = document.querySelectorAll('.interp-block').length; return n > 200 ? n : null;`, 5000, 'second page');
+			await js(d, toggle);
+			return `${first.blocks} of 1003 blocks drawn, then ${second}`;
 		});
 
 		await r.check('a message with thousands of segments draws only the rows in view', async () => {
@@ -454,6 +839,45 @@ export async function appSuite() {
 			const tree = await waitFor(d, `return document.querySelector('.tree-node.selected')?.dataset.nodeId ?? null`, 5000, 'tree selection');
 			if (tree !== 'seg2.f7') throw new Error(`tree selected ${tree}`);
 			return `${status.match(/Ln \d+, Col \d+/)?.[0]}; tree ${tree}`;
+		});
+
+		await r.check('the validation panel draws a long report a page at a time', async () => {
+			// Every issue used to get a row: 10,000 issues froze the window for
+			// seconds, 30,000 for a minute, and again at each re-validation.
+			const lines = ['MSH|^~\\&|LAB|FAC|EHR|FAC|20240101120000||ORU^R01|BIG3|P|2.5', 'PID|1||1^^^H^MR||Big^Log', 'OBR|1||O1|CBC^Count'];
+			// No OBX-11 (result status, required): one error per OBX.
+			for (let i = 1; i <= 1000; i++) lines.push(`OBX|${i}|NM|WBC^Leukocytes^LN||1.1|10*9/L|4.0-10.0|N`);
+			await paste(d, lines.join('\r'));
+			await validate(d);
+			const first = await waitFor(d, `
+				const more = document.querySelector('.validation-more');
+				const all = document.querySelector('.summary-badge')?.textContent.match(/\\((\\d+)\\)/)?.[1];
+				return more ? { rows: document.querySelectorAll('.issue-row').length, more: more.textContent.trim(), all: Number(all) } : null;`, 20000, 'first page');
+			// The badges count the whole report, the rows are its first page.
+			if (first.all < 1000) throw new Error(`the badge counts ${first.all} issues`);
+			if (first.rows !== 200 || !first.more.includes(`200 of ${first.all}`)) throw new Error(`${first.rows} rows; ${first.more}`);
+			await js(d, `document.querySelector('.validation-more').click()`);
+			const second = await waitFor(d, `const n = document.querySelectorAll('.issue-row').length; return n > 200 ? n : null;`, 5000, 'second page');
+			if (second !== 400) throw new Error(`${second} rows after Show more`);
+			// Another filter is another list: its own first page, counted whole.
+			await js(d, `document.querySelector('.summary-badge.error')?.click()`);
+			const errors = await waitFor(d, `
+				const badge = document.querySelector('.summary-badge.error');
+				const more = document.querySelector('.validation-more')?.textContent.trim();
+				const n = document.querySelectorAll('.issue-row').length;
+				return badge?.classList.contains('active') && more && n === 200
+					? { count: Number(badge.textContent.replace(/\\D+/g, '')), more } : null;`, 5000, 'errors only, first page');
+			await js(d, `document.querySelector('.summary-badge.error')?.click()`);
+			if (errors.count < 1000 || !errors.more.includes(`200 of ${errors.count}`)) throw new Error(`errors: ${JSON.stringify(errors)}`);
+			// Click-to-navigate works on a row past the first page too.
+			await js(d, `document.querySelector('.validation-more').click()`);
+			await waitFor(d, `return document.querySelectorAll('.issue-row').length > 200 ? true : null`, 5000, 'second page again');
+			await js(d, `[...document.querySelectorAll('.issue-row')].find((x) => /OBX-11\\s*\\(300\\)/.test(x.textContent))?.click()`);
+			const tree = await waitFor(d, `return document.querySelector('.tree-node.selected')?.dataset.nodeId ?? null`, 5000, 'tree selection');
+			// OBX-11 is absent from these segments, so there is no field node
+			// to select: the segment it belongs to is selected instead.
+			if (!/^seg300(\.f11)?$/.test(tree)) throw new Error(`tree selected ${tree}`);
+			return `${first.rows} of ${first.all} issues drawn, then ${second}; errors only: ${errors.more}; row 300 selects ${tree}`;
 		});
 
 		// ---- version catalogue -------------------------------------------
@@ -717,6 +1141,53 @@ export async function appSuite() {
 				return c;`);
 			if (color !== 'rgb(1, 2, 3)') throw new Error(`computed ${color}`);
 			return color;
+		});
+
+		// ---- windows and navigation --------------------------------------
+		// Last: the first can leave the page elsewhere if it fails, and the
+		// second ends the app.
+		console.log('\n=== windows and navigation ===');
+		await r.check('the window refuses to load a page that is not the app', async () => {
+			// A link the webview followed by itself (a middle click, its own
+			// "Open Link") replaced the app. The backend now refuses every
+			// navigation away from the app's pages; web and e-mail links go
+			// to the browser or mail client, an unknown scheme nowhere.
+			const before = await js(d, `return location.href`);
+			await js(d, `setTimeout(() => { location.href = 'bl-e2e-nowhere:test'; }, 0)`);
+			await sleep(2000);
+			const after = await js(d, `return { href: location.href, shell: !!document.querySelector('.menu-trigger') }`).catch((e) => ({ error: String(e) }));
+			if (after.href !== before || !after.shell) throw new Error(`before ${before}; after ${JSON.stringify(after)}`);
+			return `still at ${after.href}`;
+		});
+		await r.check('closing the main window ends the app, the manual window included', async () => {
+			// Left running with only the manual, the app kept the MLLP
+			// listener bound, and every later launch, a double-clicked file
+			// too, went to a main window that was gone: nothing appeared.
+			const main = await d.getWindowHandle();
+			await js(d, `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true }))`);
+			let handles = [];
+			for (const end = Date.now() + 15000; handles.length < 2 && Date.now() < end;) {
+				await sleep(500);
+				handles = await d.getAllWindowHandles();
+			}
+			if (handles.length < 2) throw new Error('the manual window did not open');
+			await d.switchTo().window(main);
+			// The close request the title-bar button sends. Session restore
+			// is on in a fresh profile, so the tabs are saved, not asked about.
+			await js(d, `window.__TAURI_INTERNALS__.invoke('plugin:window|close', { label: 'main' }).catch(() => {})`).catch(() => {});
+			// Ended: the driver has no windows left, or no session.
+			const answer = () => Promise.race([
+				d.getAllWindowHandles().then((h) => h.length, () => 0),
+				sleep(3000).then(() => null),
+			]);
+			let left = null;
+			for (const end = Date.now() + 20000; left !== 0 && Date.now() < end;) {
+				await sleep(500);
+				left = await answer();
+			}
+			if (left === null) throw new Error('WebDriver stopped answering: check by hand that no BridgeLab process is left');
+			if (left !== 0) throw new Error(`${left} window(s) still open 20 s after the main window was closed`);
+			return 'no window left: the app has ended';
 		});
 	} finally {
 		await d.quit().catch(() => {});

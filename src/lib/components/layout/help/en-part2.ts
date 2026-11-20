@@ -45,6 +45,9 @@ Each row names the segment by its number, as the tree does
 apart. When you edit the message after a check, the report is run again
 with the next background parse; with auto-parse off, the panel says the
 report is out of date until you press <kbd>F6</kbd>.</p>
+<p>A long report is listed 200 issues at a time: the next ones appear
+when you scroll to the end of the list, or click <em>Show more</em>. The
+badges, the filter and the sorting always cover the whole report.</p>
 
 <h3>Custom rules from plugin packs</h3>
 <p>Drop a JSON file under <code>&lt;config&gt;/BridgeLab/plugins/validation/</code>
@@ -94,11 +97,14 @@ validation…</strong> on the same folder (one folder, <code>.hl7</code>,
 <code>.txt</code> and <code>.dat</code>, HL7 v2 only):
 <code>--extension hl7,txt,dat</code> scans the same files.</p>
 <pre><code>bridgelab-cli validate message.hl7 bundle.json
-bridgelab-cli validate "*.hl7" --format junit &gt; report.xml
+bridgelab-cli validate "*.hl7" --format junit --output report.xml
 bridgelab-cli batch ./inbox --json
-bridgelab-cli test regression.bltests.json --format junit &gt; tests.xml
+bridgelab-cli test regression.bltests.json --format junit --output tests.xml
 bridgelab-cli fhirpath "Patient.name.family" patient.json
 cat message.hl7 | bridgelab-cli send - --host 10.0.0.5 --port 2575</code></pre>
+<p>Write reports with <code>--output</code>, as above: in Windows
+PowerShell 5.1, <code>&gt;</code> writes UTF-16, which CI tools cannot
+read.</p>
 `,
 };
 
@@ -108,7 +114,12 @@ export const communicationSection: ManualSection = {
 	body: `
 <p>Open the bottom Communication panel with <kbd>Ctrl</kbd>+<kbd>K</kbd>
 or <strong>Tools → Communication Panel</strong>. Four tabs: MLLP, HTTP,
-SOAP and History.</p>
+SOAP and History. The panel opens tall enough to show every setting of its
+tab, up to about 70% of the window; make it smaller and a scrollbar
+appears, and your height is kept until you close the panel. Before
+sending a message over 10 MB, by MLLP, HTTP or SOAP, BridgeLab asks
+first: sending one takes a while, and many receivers refuse a message
+that large (BridgeLab's own listener accepts up to 10 MB).</p>
 
 ${mockupCommunication}
 
@@ -120,7 +131,11 @@ ${mockupCommunication}
 		transport and ACK wait are handled by the Rust backend.</li>
 	<li>The ACK appears in the result area with round-trip time.
 		<em>Accept</em> (AA), <em>Error</em> (AE) and <em>Reject</em>
-		(AR) are all displayed with the original <code>MSA|AA|{control-id}</code>.</li>
+		(AR) are all displayed with the original <code>MSA|AA|{control-id}</code>.
+		A reply that is not HL7, an ACK whose MSA-2 names another message,
+		or an AA or CA with an empty MSA-2 for a message that has an MSH-10
+		is shown in amber with the reason: it does not accept the message
+		sent.</li>
 </ol>
 
 <h3>ACK generator</h3>
@@ -146,9 +161,33 @@ quickly validate what your upstream system is emitting.</p>
 programs on this computer can reach it. To receive a feed from another
 machine, set <strong>Listen on</strong> to <code>0.0.0.0</code> (all
 interfaces) or to the address of one network card, and allow the port
-in the firewall only for the systems you expect.</p>
+in the firewall only for the systems you expect. An empty <strong>Listen
+on</strong> means this computer only too. An IPv6 address may be written
+with or without brackets (<code>::1</code> or <code>[::1]</code>). Port
+0 lets the system choose a free port; the status then shows which one,
+so you can tell the sender.</p>
 <p><strong>Stop</strong> also closes the connections that are still
 open: after it, nothing more is received or acknowledged.</p>
+<p>The listener keeps working while the Communication panel is closed:
+received messages still open in new tabs and are logged in the console,
+which shows them, with its counts, when you open the panel again.</p>
+<p>One sender cannot take the listener down or fill this computer's
+memory. The listener serves at most 64 connections at once: a further one
+is accepted and closed straight away, and one red row in the console says
+why. A message may be up to 10&nbsp;MB, and the messages still arriving
+may hold 64&nbsp;MB in all, across every connection: a message over
+either limit is refused with an AR and its connection closed. A message
+must arrive whole within 2 minutes of its first byte (or within the
+per-connection read timeout, when that is set longer), otherwise its
+connection is dropped: the read timeout starts again with every byte, so
+a sender trickling one byte at a time would hold its connection for ever.
+Ordinary traffic never comes near these limits: hundreds of messages one
+after another, a few senders at once, messages of several MB.</p>
+<p>When accepting a connection fails, for instance because the system has
+run out of open files, a red row in the console says so and the listener
+tries again a moment later. If it stops anyway, the panel shows
+<strong>Start listening</strong> again, with the reason in red, instead of
+"Listening" on a port that no longer answers.</p>
 
 <h3>Listener console</h3>
 <p>While the listener runs, every received message appears as a row in
@@ -157,15 +196,24 @@ was actually written back (green <code>AA</code>, red
 <code>AE</code>/<code>AR</code>, — when auto-ACK is off), the character
 encoding used, and the first line of the message. <strong>Click a row to
 re-open that message in a tab.</strong> Listener errors appear inline as
-red rows.</p>
+red rows. A connection that sends nothing is closed after the
+per-connection read timeout, to free its place, with an ordinary grey
+row, not a red one: a sender may connect long before it has a message.</p>
 <p>The chips in the console header filter the rows by outcome —
 <em>AA</em>, <em>AE</em>, <em>AR</em>, <em>No ACK</em> (received with
 auto-ACK off), <em>Errors</em> — and each carries a live count, so
-"AE&nbsp;12" out of 300 stands out before you scroll. The same chips
-sit on the History tab.</p>
+"AE&nbsp;12" out of 300 stands out before you scroll. The counts cover
+every row since the console was last cleared, while the console keeps
+only the last 200 rows: past that, a line above the list says so, and
+the chips filter only the rows kept. The same chips sit on the History tab.</p>
 <p>The <em>"Open received messages in a new tab"</em> toggle (on by
 default) can be disabled during high-volume tests: messages then land
-only in the console and you cherry-pick the ones you need.</p>
+only in the console and you cherry-pick the ones you need. Even with it
+on, a burst does not bury the window in tabs: after 20 new tabs, or
+16 MB of messages, with no key pressed or click in the window, the next
+messages only go to the console and the History, and one notice above the editor counts them,
+with a button that shows the console. A key or a click lets the next
+messages open in tabs again; closing the notice does too.</p>
 <p class="note">Full message contents kept for click-to-open are capped
 at a 32&nbsp;MB rolling budget. In long unattended sessions the oldest
 rows lose their full content (they appear dimmed) — the metadata row
@@ -185,13 +233,21 @@ Latin-1 fallback, which accepts most legacy traffic even when MSH-18 is
 empty; the console shows the charset chosen, and the ACK is re-encoded
 in it so the peer never sees mojibake. On the sender it uses the charset
 MSH-18 declares, otherwise the one the tab's file was read in, otherwise
-UTF-8, and the result names the charset sent. A message with characters
+UTF-8, and the result names the charset sent. In Auto, a message whose
+MSH-18 names a charset BridgeLab cannot write (<code>ISO IR87</code>,
+<code>UNICODE UTF-16</code>…) is refused rather than sent as UTF-8 under
+that header, and so is a tab whose messages declare different charsets
+when sending them together, in one, would change their text (plain ASCII
+reads the same in all of them and is sent). Choosing an encoding in the
+advanced settings sends them anyway; <code>bridgelab-cli send</code>
+without <code>--encoding</code> refuses the same files. A message with characters
 the chosen charset cannot represent is not sent: the error names them,
 so a name never arrives with <code>?</code> in it. Send and Receive
 encodings are independent.</p>
-<p>Segments go on the wire ending with CR, whatever the editor's line
-endings: LF and CR LF are converted, as the CLI does, and so is an HL7 v2
-body sent over HTTP or SOAP.</p>
+<p>Segments go on the wire ending with CR, the last one too, whatever
+the editor's line endings: LF and CR LF are converted and blank lines are
+not sent, as the CLI does, and so is an HL7 v2 body sent over HTTP or
+SOAP.</p>
 <p><strong>Files</strong> follow the same rules. A file that is not UTF-8
 opens in the charset its MSH-18 declares (<code>8859/1</code>,
 <code>8859/2</code>, <code>8859/15</code>…, and <code>BIG-5</code>,
@@ -214,9 +270,11 @@ and authentication of any kind require Pro: an Authorization or
 Proxy-Authorization header, a cookie, any header whose name suggests a
 key, token, secret, signature or session (such as <code>X-API-Key</code>
 or <code>Ocp-Apim-Subscription-Key</code>), a user:password in the URL,
-or a key or token in the query string (<code>access_token</code>,
+a key or token in the query string (<code>access_token</code>,
 <code>api_key</code>, <code>key</code>, <code>token</code>,
-<code>sig</code>, <code>client_secret</code>…). FHIR search parameters
+<code>sig</code>, <code>client_secret</code>…), or a session ID in the
+URL path (<code>;jsessionid=…</code>) or in a <code>PHPSESSID</code>
+parameter. FHIR search parameters
 such as <code>code</code> are not credentials. Redirects are
 followed in every edition, but only on the same server (or from http to
 https on it): a redirect to another server is shown as the 3xx it is and
@@ -239,7 +297,10 @@ and any SOAP Fault, decoded for both versions.</p>
 <p>A raw HL7 v2 message is XML-escaped (its CR segment ends as
 <code>&amp;#13;</code>, so XML parsing does not turn them into LF) and
 wrapped in a <code>&lt;payload&gt;</code> element automatically; content
-that is already XML is inserted as-is. Advanced settings add
+that is already XML is inserted as it is, less its own
+<code>&lt;?xml …?&gt;</code> declaration and byte-order mark (the envelope
+has its own declaration, and a second one inside the Body is not valid
+XML). Advanced settings add
 <strong>WS-Security UsernameToken</strong> credentials,
 <strong>WS-Addressing</strong> headers (To / Action / MessageID) and a
 <strong>custom envelope template</strong> in which the literal
@@ -250,10 +311,43 @@ Header (one is added before its Body when it has none); a template with
 no SOAP Envelope and Body cannot carry them, and the send is refused
 rather than made without them. WSDL import is planned as a follow-up.</p>
 
+<h3>Proxy and certificates</h3>
+<p>HTTP and SOAP requests, online activation, license renewal and usage
+statistics go through the proxy set in the <code>HTTPS_PROXY</code> or
+<code>HTTP_PROXY</code> environment variable, with <code>NO_PROXY</code>
+listing the hosts reached directly
+(<code>NO_PROXY=10.0.0.0/8,.hospital.local</code>). When neither is set,
+they use the manual proxy of the operating system: on Windows
+<em>Settings → Network &amp; internet → Proxy → Manual proxy setup</em>,
+on macOS the <em>Web proxy (HTTP)</em> and <em>Secure web proxy
+(HTTPS)</em> of the network's proxy settings. Proxy auto-configuration is
+not read: neither a setup script (PAC) nor automatic detection (WPAD).
+On such a network, ask your IT for the proxy's address and set it in
+<code>HTTPS_PROXY</code> or as a manual proxy. MLLP never goes through a
+proxy.</p>
+<p><code>localhost</code>, <code>127.0.0.1</code> and <code>::1</code> are
+always reached directly. Of the exceptions in the Windows proxy settings,
+only host and domain names apply (<code>fhir.example.org</code>,
+<code>*.example.org</code>): "Don't use the proxy server for local
+(intranet) addresses" and address patterns such as <code>10.*</code> are
+not, and the macOS bypass list is not read; list those hosts in
+<code>NO_PROXY</code> instead. A different proxy for each protocol
+(Internet Options → LAN settings → Advanced) is not read either.
+Activation and renewal read the proxy settings once per start: after
+changing them, restart BridgeLab.</p>
+<p>HTTPS certificates are checked against the operating system's
+certificate store and the Mozilla roots built into BridgeLab; a
+certificate that fails the check cannot be accepted anyway. Behind a
+proxy that inspects TLS traffic, its root certificate has to be in the
+operating system's store, where IT usually installs it. A refused
+certificate is reported as such, with the reason (not trusted, expired,
+issued for another name), not as a network failure.</p>
+
 <h3>History</h3>
 <p>Every send, and every message the listener receives, is logged:
 target (host and port, or the URL with any password or key replaced by
-<code>***</code>), size, response code and round-trip time. The last
+<code>***</code>, in its fragment too and in a URL that could not be
+sent), size, response code and round-trip time. The last
 100 entries are persisted between restarts and older ones are deleted;
 click any row to see the full request and response — the message and
 its ACK, or the HTTP body and the reply (for SOAP the payload, never the
@@ -262,7 +356,10 @@ cut. An MLLP send also records the <strong>ACK code</strong> the
 receiver answered with (MSA-1), shown as a green or red badge on the
 row: a send that reached the peer and got an <code>AE</code> back is
 "OK" at the transport level and a rejection at the application level,
-and the badge tells the two apart. Filter chips over the list —
+and the badge tells the two apart. An ACK whose MSA-2 names another
+message, or an AA or CA whose MSA-2 is empty (it names no message),
+acknowledges nothing sent: it gets no badge and is listed under
+<em>No ACK</em>, like a reply that is not HL7. Filter chips over the list —
 <em>AA</em>, <em>AE</em>, <em>AR</em>, <em>No ACK</em>, <em>Failed</em>
 — carry counts and narrow the list to one outcome; the commit-mode codes
 CA, CE and CR count under AA, AE and AR. <em>Failed</em> is a request
@@ -278,11 +375,12 @@ timeout. Selecting a profile applies it to the form;
 saving with an existing name overwrites it; <em>Delete</em> removes the
 selected one. Profiles are stored in the local database and survive
 restarts.</p>
-<p class="note">HTTP profiles save the Headers box as typed, an
-<code>Authorization</code> header included, in the local database. To
-keep a password or token out of it, enter it under
-<em>Authentication</em> in the advanced HTTP settings, which is never
-saved.</p>
+<p class="note">HTTP profiles save the URL and the Headers box as
+typed, a user:password or key in the URL and an
+<code>Authorization</code> header included, in the local database; SOAP
+profiles save their endpoint the same way. To keep a password or token
+out of them, enter it under <em>Authentication</em> in the advanced HTTP
+settings, which is never saved.</p>
 `,
 };
 
@@ -387,8 +485,13 @@ That turns a snippet into a test.</p>
 <p><strong>Run check</strong> parses and validates a single case for
 real — HL7 v2 or FHIR, detected automatically — and compares the
 outcome against its expectations. <strong>Run all</strong> does the
-same for every case matching the current search, with a pass/fail
-badge per row and a passed/total summary in the toolbar. After an
+same for every case matching the current search, with a badge per row
+(✓ passed, ✖ failed, ~ not checked) and a passed/total summary in the
+toolbar. A FHIR resource that meets its expectations but was not fully
+checked — a profile it declares is not installed, or no installed
+package defines its resource type — is <em>not checked</em>, with the
+reason, and is counted apart ("4/8 passed, 1 not checked"), as
+<code>bridgelab-cli test</code> reports it: never a pass. After an
 interface change, one click tells you which of your reference messages
 broke. Editing a case clears its stored result until the next run.</p>
 
@@ -417,6 +520,29 @@ startup</em>, or use <em>Clear saved session</em> to wipe the stored
 tab set (this also turns restore off, so the next launch starts on the
 welcome screen). Turning restore off also deletes the saved tabs, which
 can hold patient data.</p>
+<p>With restore off, closing the window asks before unsaved tabs are
+dropped. When the system ends BridgeLab instead (logging out, shutting
+down or restarting, <em>Quit</em> from the Dock on macOS), nothing can
+ask: the unsaved tabs are then kept once as a recovery copy, in the same
+database, and the next launch offers them with <em>Restore</em> and
+<em>Discard</em>; either way the copy is then deleted. With restore on,
+the latest tabs are written as the session at that moment and come back
+the usual way. On Windows, and on macOS when quitting from the Dock or
+logging out, BridgeLab cannot ask the window at that moment and keeps the
+tabs as the window last handed them over (a third of a second after each
+edit, and whenever you leave the window): edits from the last fraction
+of a second may be lost. Nothing can be kept when BridgeLab is
+killed outright, or when the desktop session closes the display before
+asking the app to quit.</p>
+<p>A large restored tab is read from its file the first time you show it;
+until the text is there the editor is read-only and <strong>Save</strong>
+waits, so the file is never written empty. If the session database
+(<code>bridgelab.db</code>) cannot be opened — damaged, locked by another
+program, on a full or read-only disk — BridgeLab still starts, on a
+database in memory, and a warning names the file and the reason. Until it
+is fixed, open tabs, recent files, the communication history, connection
+profiles, test cases and preferences are not kept after BridgeLab closes.
+The file itself is never deleted or overwritten.</p>
 
 <h3>Files changed by other programs</h3>
 <p>BridgeLab notices when another program changes or deletes a file you

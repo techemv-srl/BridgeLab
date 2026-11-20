@@ -12,8 +12,11 @@ pub(crate) fn plugin_phi_rules(registry: &PluginRegistry) -> Vec<ExtraPhiField> 
 }
 
 /// Detect PHI fields in an HL7 message (built-in + plugin rules).
+///
+/// This and `anonymize_message` are async, off the main thread: right
+/// after startup they wait for the plugin packs to finish loading.
 #[tauri::command]
-pub fn detect_phi(
+pub async fn detect_phi(
     message_id: String,
     store: State<'_, MessageStore>,
     registry: State<'_, PluginRegistry>,
@@ -26,7 +29,7 @@ pub fn detect_phi(
 
 /// Anonymize an HL7 message and return the anonymized text (Pro feature).
 #[tauri::command]
-pub fn anonymize_message(
+pub async fn anonymize_message(
     message_id: String,
     store: State<'_, MessageStore>,
     registry: State<'_, PluginRegistry>,
@@ -64,7 +67,9 @@ pub fn get_message_full_text(
     Ok(truncation::build_full_text(&msg))
 }
 
-/// Get a truncated copy of the message for email sharing.
+/// Get a truncated copy of the message for email sharing. `threshold` is
+/// the editor's fold threshold: longer fields are cut, and 0 ("never
+/// fold") cuts nothing.
 #[tauri::command]
 pub fn get_message_truncated_text(
     message_id: String,

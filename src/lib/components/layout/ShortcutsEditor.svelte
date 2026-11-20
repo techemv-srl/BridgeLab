@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { shortcutStore, shortcutCapture, SHORTCUTS, eventToKeys, bindingProblem, displayKeys, monacoKeys, type ShortcutDef } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, shortcutCapture, SHORTCUTS, eventToKeys, bindingProblem, displayKeys, monacoKeys, isMacPlatform, type ShortcutDef } from '$lib/stores/shortcuts.svelte';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 
@@ -56,37 +56,29 @@
 		capturedKeys = keys;
 
 		const problem = bindingProblem(keys);
+		// The modifiers named as this keyboard labels them: on macOS
+		// Option with a letter types a character, so only ⌘ or ⌃ will do.
 		bindingError = problem === 'reserved'
 			? tr('shortcuts.reserved', { keys: displayKeys(keys) })
-			: problem === 'needsModifier' ? tr('shortcuts.needsModifier') : '';
-		if (bindingError) {
-			conflictWarning = '';
-			return;
-		}
+			: problem === 'needsModifier' ? tr(isMacPlatform() ? 'shortcuts.needsModifierMac' : 'shortcuts.needsModifier') : '';
+		conflictWarning = bindingError ? '' : conflictFor(keys, capturingId);
+	}
 
-		// Check for conflicts
-		const existing = shortcutStore.findByKeys(keys, capturingId);
+	/** The warning for giving `keys` to `id`: another action has them (OK
+	 *  then reads Reassign and takes them over), or the editor uses them;
+	 *  '' when neither. */
+	function conflictFor(keys: string, id: string): string {
+		const existing = shortcutStore.findByKeys(keys, id);
+		if (existing) return tr('shortcuts.conflictApp', { label: tr('shortcut.' + existing.id) });
 		const monacoConflict = shortcutStore.findMonacoConflict(keys);
-		if (existing) {
-			conflictWarning = tr('shortcuts.conflictApp', { label: tr('shortcut.' + existing.id) });
-		} else if (monacoConflict) {
-			conflictWarning = tr('shortcuts.conflictMonaco', { label: tr('shortcut.' + monacoConflict.id) });
-		} else {
-			conflictWarning = '';
-		}
+		if (monacoConflict) return tr('shortcuts.conflictMonaco', { label: tr('shortcut.' + monacoConflict.id) });
+		return '';
 	}
 
 	async function applyCapture() {
 		if (!capturingId || bindingError) return;
-		const newKeys = capturedKeys;
-
-		// If conflict with another app shortcut, clear that one first
-		const existing = shortcutStore.findByKeys(newKeys, capturingId);
-		if (existing) {
-			shortcutStore.set(existing.id, '');
-		}
-
-		shortcutStore.set(capturingId, newKeys);
+		// Takes the keys from the action that had them, if any.
+		shortcutStore.assign(capturingId, capturedKeys);
 		await shortcutStore.save();
 		cancelCapture();
 	}
@@ -102,7 +94,18 @@
 	async function resetToDefault(id: string) {
 		const def = SHORTCUTS.find(s => s.id === id);
 		if (!def) return;
-		shortcutStore.set(id, def.defaultKeys);
+		// The default may have been given to another action since (with
+		// Reassign). Writing it back as well left the key on both, and
+		// only one of them ever ran. Ask first, as picking the key does:
+		// the entry opens with its default key, the warning, and
+		// Reassign / Cancel.
+		if (shortcutStore.findByKeys(def.defaultKeys, id)) {
+			startCapture(id);
+			capturedKeys = def.defaultKeys;
+			conflictWarning = conflictFor(def.defaultKeys, id);
+			return;
+		}
+		shortcutStore.assign(id, def.defaultKeys);
 		await shortcutStore.save();
 	}
 
@@ -198,8 +201,11 @@
 	.category { margin-bottom: 12px; }
 	.category-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-secondary); padding: 4px 0; margin-bottom: 2px; border-bottom: 1px solid var(--color-border); }
 
-	.shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
-	.shortcut-label { font-size: 12px; flex: 1; }
+	/* The capture area (keys, a warning, two buttons) is wide: rather than
+	   squeeze the label into a narrow column ("Test case library" over three
+	   lines), the row wraps and the capture area goes under the label. */
+	.shortcut-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 4px 0; }
+	.shortcut-label { font-size: 12px; flex: 1 1 14em; min-width: 0; }
 	.monaco-tag { padding: 1px 6px; background: var(--color-bg-tertiary); border-radius: 3px; font-size: 9px; color: var(--color-text-secondary); margin-left: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
 
 	.binding-area { display: flex; align-items: center; gap: 4px; }
@@ -210,7 +216,8 @@
 	.reset-btn { padding: 0 6px; font-size: 12px; background: none; border: none; color: var(--color-text-secondary); cursor: pointer; }
 	.reset-btn:hover { color: var(--color-accent); }
 
-	.capture-area { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+	.capture-area { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+	.capture-area .btn-xs { white-space: nowrap; }
 	.capture-keys { padding: 2px 10px; background: var(--color-accent); color: var(--color-bg-primary); border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 11px; min-width: 120px; text-align: center; font-weight: 600; }
 	.conflict { font-size: 10px; color: var(--color-warning); }
 

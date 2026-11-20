@@ -54,8 +54,10 @@ export function getLocaleVersion(): number {
 export function t(key: string, params?: Record<string, string | number>): string {
 	let text = translations[_locale]?.[key] ?? translations['en']?.[key] ?? key;
 	if (params) {
+		// Every occurrence, taken literally: String.replace would fill only
+		// the first and expand `$&`-style patterns found in the value.
 		for (const [k, v] of Object.entries(params)) {
-			text = text.replace(`{${k}}`, String(v));
+			text = text.split(`{${k}}`).join(String(v));
 		}
 	}
 	return text;

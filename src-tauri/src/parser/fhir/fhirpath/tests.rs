@@ -578,6 +578,244 @@ fn resolve_matches_type_and_server_not_just_the_id() {
     assert_eq!(one("Bundle.entry[2].resource.focus.resolve().id", &b), json!("123"));
 }
 
+/// Two servers' entries share Patient/p8: a relative reference resolves on
+/// the referring entry's own server, whichever entry comes first.
+#[test]
+fn resolve_prefers_the_referring_entrys_server() {
+    let b = |first: &str, second: &str| json!({"resourceType": "Bundle", "type": "collection", "entry": [
+        {"fullUrl": format!("{first}/Patient/p8"),
+         "resource": {"resourceType": "Patient", "id": "p8", "name": [{"family": first}]}},
+        {"fullUrl": format!("{second}/Patient/p8"),
+         "resource": {"resourceType": "Patient", "id": "p8", "name": [{"family": second}]}},
+        {"fullUrl": "http://b.example/fhir/Observation/o1",
+         "resource": {"resourceType": "Observation", "id": "o1", "status": "final",
+            "subject": {"reference": "Patient/p8"}}}
+    ]});
+    let family = "Bundle.entry[2].resource.subject.resolve().name.family";
+    assert_eq!(one(family, &b("http://a.example/fhir", "http://b.example/fhir")), json!("http://b.example/fhir"));
+    assert_eq!(one(family, &b("http://b.example/fhir", "http://a.example/fhir")), json!("http://b.example/fhir"));
+    // Neither server is the referring entry's: nothing, not another
+    // server's Patient/p8.
+    empty("Bundle.entry[2].resource.subject.resolve()", &b("http://a.example/fhir", "http://c.example/fhir"));
+    // An entry with a urn fullUrl has no server: by type and id, which
+    // name two different patients here, so nothing.
+    let mut urn = b("http://a.example/fhir", "http://c.example/fhir");
+    urn["entry"][2]["fullUrl"] = json!("urn:uuid:3f1c0c1e-0000-4000-8000-000000000001");
+    empty("Bundle.entry[2].resource.subject.resolve()", &urn);
+}
+
+/// Two servers each send the same Observation (identical JSON) and their
+/// own Patient/1: each entry's reference resolves on its own server. The
+/// path says which entry it is in; content alone cannot.
+#[test]
+fn identical_resources_from_two_servers_resolve_on_their_own_server() {
+    let obs = json!({"resourceType": "Observation", "id": "x", "status": "final", "subject": {"reference": "Patient/1"},
+        "effectiveDateTime": "2024-01-01",
+        "_effectiveDateTime": {"id": "e", "extension": [{"url": "http://example.org/by", "valueReference": {"reference": "Patient/1"}}]},
+        "extension": [{"url": "x", "valueReference": {"reference": "Patient/1"}}]});
+    let b = json!({"resourceType": "Bundle", "type": "collection", "entry": [
+        {"fullUrl": "http://a.example/fhir/Patient/1", "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": "A"}]}},
+        {"fullUrl": "http://b.example/fhir/Patient/1", "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": "B"}]}},
+        {"fullUrl": "http://a.example/fhir/Observation/x", "resource": obs.clone()},
+        {"fullUrl": "http://b.example/fhir/Observation/x", "resource": obs.clone()}
+    ]});
+    assert_eq!(one("Bundle.entry[2].resource.subject.resolve().name.family", &b), json!("A"));
+    assert_eq!(one("Bundle.entry[3].resource.subject.resolve().name.family", &b), json!("B"));
+    // A primitive's extensions, in its `_effectiveDateTime` sibling, sit in
+    // the same resource and entry.
+    let by = |i: usize| one(&format!("Bundle.entry[{i}].resource.effectiveDateTime.extension.valueReference.resolve().name.family"), &b);
+    assert_eq!(by(2), json!("A"));
+    assert_eq!(by(3), json!("B"));
+    assert_eq!(ok("Bundle.entry.resource.ofType(Observation).effectiveDateTime.extension.value.resolve().name.family", &b), vec![json!("A"), json!("B")]);
+    assert_eq!(one("Bundle.entry[3].resource.effectiveDateTime.id", &b), json!("e"));
+    // A resolve() inside a lambda knows the entry of the item it runs on.
+    let obs_path = |rest: &str| ok(&format!("Bundle.entry.resource.ofType(Observation).{rest}"), &b);
+    let a_b = vec![json!("A"), json!("B")];
+    assert_eq!(obs_path("select(subject.resolve()).name.family"), a_b);
+    assert_eq!(obs_path("select($this.subject.resolve()).name.family"), a_b);
+    assert_eq!(obs_path("select(subject).select(resolve()).name.family"), a_b);
+    assert_eq!(obs_path("where(subject.resolve().exists()).subject.resolve().name.family"), a_b);
+    assert_eq!(obs_path("where(subject.resolve().name.family = 'B').count()"), vec![json!(1)]);
+    assert_eq!(obs_path("all(subject.resolve().exists())"), vec![json!(true)]);
+    assert_eq!(obs_path("exists(subject.resolve().name.family = 'A')"), vec![json!(true)]);
+    assert_eq!(obs_path("select(iif(subject.resolve().exists(), subject.resolve(), {})).name.family"), a_b);
+    assert_eq!(
+        one("Bundle.entry[3].resource.aggregate($total | subject.resolve().name.family, {})", &b),
+        json!("B")
+    );
+    assert_eq!(one("(Bundle.entry[3].resource as Observation).subject.resolve().name.family", &b), json!("B"));
+    // extension(url) results sit in the item's resource and entry.
+    assert_eq!(obs_path("extension('x').valueReference.resolve().name.family"), a_b);
+    assert_eq!(obs_path("effectiveDateTime.extension('http://example.org/by').value.resolve().name.family"), a_b);
+    assert_eq!(one("Bundle.entry.where(fullUrl.contains('b.example')).resource.subject.resolve().name.family", &b), json!("B"));
+    assert_eq!(ok("Bundle.entry.resource.subject.resolve().name.family", &b), vec![json!("A"), json!("B")]);
+    // Functions that return their input items as they are keep each one's entry.
+    let families = |path: &str| ok(&format!("Bundle.entry.resource.ofType(Observation).{path}.subject.resolve().name.family"), &b);
+    assert_eq!(families("exclude({})"), vec![json!("A"), json!("B")]);
+    assert_eq!(families("trace('x')"), vec![json!("A"), json!("B")]);
+    // intersect() drops duplicates: the two copies are equal, the first stays.
+    assert_eq!(families("intersect(Bundle.entry.resource.ofType(Observation))"), vec![json!("A")]);
+    assert_eq!(families("exclude(Bundle.entry[0].resource)"), vec![json!("A"), json!("B")]);
+    assert_eq!(one("Bundle.entry[3].resource.as(Observation).subject.resolve().name.family", &b), json!("B"));
+    // Any function or operator that passes items through, not a list of them.
+    assert_eq!(families("combine({})"), vec![json!("A"), json!("B")]);
+    assert_eq!(families("select($this)"), vec![json!("A"), json!("B")]);
+    assert_eq!(families("select(iif(true, $this, {}))"), vec![json!("A"), json!("B")]);
+    assert_eq!(one("Bundle.entry[2].resource.iif(true, $this, {}).subject.resolve().name.family", &b), json!("A"));
+    assert_eq!(one("Bundle.entry[3].resource.iif(true, $this, {}).subject.resolve().name.family", &b), json!("B"));
+    // A projection keeps the item's entry for what it reads from the item.
+    assert_eq!(
+        ok("Bundle.entry.resource.ofType(Observation).select(subject).resolve().name.family", &b),
+        vec![json!("A"), json!("B")]
+    );
+    assert_eq!(
+        ok("(Bundle.entry[2].resource | Bundle.entry[3].resource).combine({}).subject.resolve().name.family", &b),
+        vec![json!("A")],
+        "| drops the equal second copy, as union does"
+    );
+    // union() and | drop equal duplicates: the two copies are one item, the
+    // first, with its own entry (as intersect() and distinct() keep it).
+    assert_eq!(families("union({})"), vec![json!("A")]);
+    assert_eq!(
+        ok("(Bundle.entry.resource.ofType(Observation) | {}).subject.resolve().name.family", &b),
+        vec![json!("A")]
+    );
+    assert_eq!(
+        ok("({} | Bundle.entry[3].resource).subject.resolve().name.family", &b),
+        vec![json!("B")]
+    );
+    // A function that returns one of several equal copies from servers
+    // that disagree: which one cannot be told, so nothing.
+    assert_eq!(families("aggregate($this)"), Vec::<Value>::new());
+    assert_eq!(families("repeat($this)"), Vec::<Value>::new());
+    // Without the path through the entry (a rule run on the Observation
+    // itself, inside the Bundle), the copies cannot be told apart and
+    // their servers disagree: nothing rather than either patient.
+    let r = evaluate_within("subject.resolve()", &obs, &b);
+    assert!(r.error.is_none(), "{:?}", r.error);
+    assert!(r.results.is_empty(), "{:?}", r.results);
+}
+
+/// A contained resource stays in its container's entry: its relative
+/// references resolve on that entry's server, even when another server's
+/// resource of the same type and id comes first. `#id` is unchanged.
+#[test]
+fn a_contained_resource_resolves_on_its_containers_server() {
+    let b = json!({"resourceType": "Bundle", "type": "collection", "entry": [
+        {"fullUrl": "http://b.example/fhir/Patient/1", "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": "B"}]}},
+        {"fullUrl": "http://a.example/fhir/Patient/1", "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": "A"}]}},
+        {"fullUrl": "http://a.example/fhir/DiagnosticReport/r",
+         "resource": {"resourceType": "DiagnosticReport", "id": "r", "status": "final",
+            "contained": [{"resourceType": "Observation", "id": "o", "status": "final", "subject": {"reference": "Patient/1"}}],
+            "result": [{"reference": "#o"}]}}
+    ]});
+    assert_eq!(one("Bundle.entry[2].resource.contained[0].subject.resolve().name.family", &b), json!("A"));
+    assert_eq!(one("Bundle.entry[2].resource.contained.subject.resolve().name.family", &b), json!("A"));
+    assert_eq!(one("Bundle.entry[2].resource.result.resolve().id", &b), json!("o"));
+    assert_eq!(one("Bundle.entry[2].resource.result.resolve().subject.reference", &b), json!("Patient/1"));
+    // Functions that pass items through keep the entry they came from.
+    let family = |path: &str| one(&format!("{path}.subject.resolve().name.family"), &b);
+    assert_eq!(family("Bundle.entry.resource.ofType(DiagnosticReport).first().contained[0]"), json!("A"));
+    assert_eq!(family("Bundle.entry.resource.where(resourceType = 'DiagnosticReport').contained.last()"), json!("A"));
+    assert_eq!(family("Bundle.entry.resource.skip(2).take(1).single().contained.distinct()"), json!("A"));
+    assert_eq!(family("Bundle.entry.tail().tail().resource.contained"), json!("A"));
+    // Without a path through the entry (the report itself, or a resolve()
+    // of the contained one), the contained resource is found inside A's
+    // entry by content: A's patient, not the first Patient/1.
+    let r = evaluate_within("contained[0].subject.resolve().name.family", &b["entry"][2]["resource"], &b);
+    assert_eq!(r.results, vec![json!("A")], "{:?}", r.error);
+    assert_eq!(one("Bundle.entry[2].resource.result.resolve().subject.resolve().name.family", &b), json!("A"));
+}
+
+/// The same report, contained Observation included, from two servers that
+/// each have their own Patient/1, evaluated with no path through the
+/// entries: the copies cannot be told apart and their servers disagree,
+/// so nothing, never one server's patient for the other's report. With
+/// the path, each gets its own.
+#[test]
+fn a_contained_resource_in_identical_copies_resolves_to_nothing_without_its_entry() {
+    let report = json!({"resourceType": "DiagnosticReport", "id": "r", "status": "final",
+        "contained": [{"resourceType": "Observation", "id": "o", "status": "final", "subject": {"reference": "Patient/1"}}],
+        "result": [{"reference": "#o"}]});
+    let b = json!({"resourceType": "Bundle", "type": "collection", "entry": [
+        {"fullUrl": "http://b.example/fhir/Patient/1", "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": "B"}]}},
+        {"fullUrl": "http://a.example/fhir/Patient/1", "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": "A"}]}},
+        {"fullUrl": "http://a.example/fhir/DiagnosticReport/r", "resource": report.clone()},
+        {"fullUrl": "http://b.example/fhir/DiagnosticReport/r", "resource": report.clone()}
+    ]});
+    let r = evaluate_within("contained[0].subject.resolve()", &report, &b);
+    assert!(r.error.is_none() && r.results.is_empty(), "{:?} {:?}", r.results, r.error);
+    let r = evaluate_within("subject.resolve()", &b["entry"][2]["resource"]["contained"][0], &b);
+    assert!(r.results.is_empty(), "{:?}", r.results);
+    assert_eq!(one("Bundle.entry[2].resource.contained[0].subject.resolve().name.family", &b), json!("A"));
+    assert_eq!(one("Bundle.entry[3].resource.contained[0].subject.resolve().name.family", &b), json!("B"));
+    // A resource outside the Bundle goes by type and id, which names two
+    // different patients here: nothing, not the first one listed.
+    let outside = json!({"resourceType": "Observation", "id": "z", "status": "final", "subject": {"reference": "Patient/1"}});
+    assert!(evaluate_within("subject.resolve()", &outside, &b).results.is_empty());
+}
+
+/// A resolved resource is in the entry it was found in: a resolve()
+/// chained on it answers on that server, even when the resource has an
+/// identical copy on another one. A contained target is in its
+/// container's entry.
+#[test]
+fn a_chained_resolve_answers_on_the_resolved_resources_server() {
+    let patient = json!({"resourceType": "Patient", "id": "1", "managingOrganization": {"reference": "Organization/1"}});
+    let obs = json!({"resourceType": "Observation", "id": "x", "status": "final", "subject": {"reference": "Patient/1"}});
+    let with_contained = json!({"resourceType": "Observation", "id": "y", "status": "final",
+        "contained": [{"resourceType": "Patient", "id": "p", "managingOrganization": {"reference": "Organization/1"}}],
+        "subject": {"reference": "#p"}});
+    let b = json!({"resourceType": "Bundle", "type": "collection", "entry": [
+        {"fullUrl": "http://a.example/fhir/Observation/x", "resource": obs.clone()},
+        {"fullUrl": "http://b.example/fhir/Observation/x", "resource": obs.clone()},
+        {"fullUrl": "http://a.example/fhir/Patient/1", "resource": patient.clone()},
+        {"fullUrl": "http://b.example/fhir/Patient/1", "resource": patient.clone()},
+        {"fullUrl": "http://b.example/fhir/Organization/1", "resource": {"resourceType": "Organization", "id": "1", "name": "B org"}},
+        {"fullUrl": "http://a.example/fhir/Organization/1", "resource": {"resourceType": "Organization", "id": "1", "name": "A org"}},
+        {"fullUrl": "http://a.example/fhir/Observation/y", "resource": with_contained}
+    ]});
+    let org = |i: usize| one(&format!("Bundle.entry[{i}].resource.subject.resolve().managingOrganization.resolve().name"), &b);
+    assert_eq!(org(0), json!("A org"));
+    assert_eq!(org(1), json!("B org"));
+    assert_eq!(org(6), json!("A org"), "the contained Patient is in A's entry");
+    assert_eq!(
+        ok("Bundle.entry.resource.ofType(Observation).subject.resolve().managingOrganization.resolve().name", &b),
+        vec![json!("A org"), json!("B org"), json!("A org")]
+    );
+    assert_eq!(
+        ok("Bundle.entry.resource.ofType(Observation).select(subject.resolve().managingOrganization.resolve().name)", &b),
+        vec![json!("A org"), json!("B org"), json!("A org")]
+    );
+}
+
+/// A reference with no holder at all (built by repeat(), here) has no
+/// server to go by: it resolves by type and id only when the Bundle holds
+/// one such resource, whatever servers it sits under.
+#[test]
+fn a_reference_with_no_known_server_resolves_only_when_type_and_id_name_one_resource() {
+    let obs = json!({"resourceType": "Observation", "id": "x", "status": "final", "subject": {"reference": "Patient/1"}});
+    let bundle = |patients: Vec<(&str, &str)>| {
+        let mut entry: Vec<Value> = patients
+            .into_iter()
+            .map(|(url, family)| json!({"fullUrl": url, "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": family}]}}))
+            .collect();
+        entry.push(json!({"fullUrl": "http://a.example/fhir/Observation/x", "resource": obs.clone()}));
+        entry.push(json!({"fullUrl": "http://b.example/fhir/Observation/x", "resource": obs.clone()}));
+        json!({"resourceType": "Bundle", "type": "collection", "entry": entry})
+    };
+    let path = "Bundle.entry.resource.ofType(Observation).repeat(subject).resolve().name.family";
+    let two = bundle(vec![("http://a.example/fhir/Patient/1", "A"), ("http://b.example/fhir/Patient/1", "B")]);
+    assert_eq!(ok(path, &two), Vec::<Value>::new());
+    let one_patient = bundle(vec![("http://a.example/fhir/Patient/1", "A")]);
+    assert_eq!(ok(path, &one_patient), vec![json!("A")]);
+    // The same patient twice (identical copies) is one resource.
+    let copies = bundle(vec![("http://a.example/fhir/Patient/1", "A"), ("urn:uuid:3f1c0c1e-0000-4000-8000-0000000000aa", "A")]);
+    assert_eq!(ok(path, &copies), vec![json!("A")]);
+    // With the path through the entries, each still resolves on its server.
+    assert_eq!(ok("Bundle.entry.resource.ofType(Observation).subject.resolve().name.family", &two), vec![json!("A"), json!("B")]);
+}
+
 #[test]
 fn a_versioned_reference_resolves_only_to_that_version() {
     let b = json!({"resourceType": "Bundle", "type": "collection", "entry": [
@@ -720,6 +958,67 @@ fn dates_take_durations_and_keep_their_precision() {
     );
 }
 
+/// A date moved past the years 1 to 9999 is empty, as an integer that
+/// overflows is: never a panic (the app's release build aborts on one),
+/// never a wrapped or saturated date.
+#[test]
+fn date_arithmetic_out_of_range_is_empty() {
+    let p = patient();
+    for expr in [
+        "@2024-01-01 + 100000000 days",
+        "@2024-01-01 + 14285714285 weeks",
+        "@2024-01-01 + 8640000000000000 seconds",
+        "@2024-01-01 - 99999999999 days",
+        "@2024-01-01 + 9223372036854775807 days",
+        "@2024 + 99999999999 days",
+        "@2024-01 + 400000000 days",
+        "@2024-01-01 + 3000000 days",
+        "@2024-01-01 - 738886 days",
+        // Calendar units, which wrapped or named the wrong cause.
+        "@2024-01-01 + 9223372036854775807 years",
+        "@2024-01-01 + 2147483647 years",
+        "@0001-01-01 - 5 years",
+        "@9999-12 + 1 month",
+        // A date and time: these saturated at 292 years and read as 2316.
+        "@2024-01-01T00:00:00 + 99999999999 days",
+        "@2024-01-01T00:00:00 + 9223372036854775807 seconds",
+        "@9999-12-31T23:59:59 + 1 second",
+        // Past what a double holds exactly: not the number written.
+        "@T23:59:59 + 9223372036854775807 seconds",
+    ] {
+        empty(expr, &p);
+    }
+    // Rules that compare such a value get empty, not a crash.
+    empty("(Patient.birthDate + 100000000 days) > today()", &p);
+    // The duration can come from the resource itself.
+    for value in [json!(100000000000i64), json!(1e300)] {
+        let enc = json!({"resourceType": "Encounter", "period": {"start": "2024-01-01"},
+            "length": {"value": value, "unit": "d", "code": "d", "system": "http://unitsofmeasure.org"}});
+        empty("Encounter.period.start + Encounter.length", &enc);
+    }
+}
+
+#[test]
+fn date_arithmetic_still_reaches_far_dates() {
+    let p = patient();
+    assert_eq!(one("@2024-01-01 + 2000000 days", &p), json!("7499-10-25"));
+    assert_eq!(one("@2024-01-01 - 738885 days", &p), json!("0001-01-01"));
+    assert_eq!(one("@2024-01-01 + 100000 weeks", &p), json!("3940-07-15"));
+    assert_eq!(one("@2024-01-01 + 7975 years", &p), json!("9999-01-01"));
+    assert_eq!(one("@0001-02 - 1 month", &p), json!("0001-01"));
+    // Beyond 292 years of elapsed time (where nanoseconds ran out).
+    assert_eq!(one("@2024-01-01T00:00:00 + 200000 days", &p), json!("2571-08-01T00:00:00"));
+    assert_eq!(
+        one("@2024-01-01T10:00:00 + 15768000007 seconds", &p),
+        json!("2523-09-02T10:00:07")
+    );
+    assert_eq!(one("@9999-12-31T23:59:58 + 1 second", &p), json!("9999-12-31T23:59:59"));
+    // A time of day goes round the clock.
+    assert_eq!(one("@T23:59:59 + 1 second", &p), json!("00:00:00"));
+    assert_eq!(one("@T10:00 + 1000000 days", &p), json!("10:00"));
+    assert_eq!(one("@T10:00 - 90 minutes", &p), json!("08:30"));
+}
+
 #[test]
 fn a_date_rejects_a_duration_it_cannot_use() {
     let p = patient();
@@ -733,6 +1032,10 @@ fn a_date_rejects_a_duration_it_cannot_use() {
 fn quantities_convert_within_a_dimension() {
     let p = patient();
     assert_eq!(one("4 'g' = 4000 'mg'", &p), json!(true));
+    // Prefixes on any metric unit, and one unit per another.
+    assert_eq!(one("1 'mmol/L' = 1000 'umol/L'", &p), json!(true));
+    assert_eq!(one("5.5 'mmol/L' > 5000 'umol/L'", &p), json!(true));
+    assert_eq!(one("100 'mg/dL' = 1 'g/L'", &p), json!(true));
     assert_eq!(one("1 'm' > 99 'cm'", &p), json!(true));
     assert_eq!(one("1 'kg' + 500 'g'", &p), json!({"value": 1.5, "unit": "kg"}));
     assert_eq!(one("(2 'mg' * 3)", &p), json!({"value": 6, "unit": "mg"}));
@@ -785,6 +1088,172 @@ fn precision_counts_significant_digits_of_a_temporal() {
     assert_eq!(one("@2014.precision()", &p), json!(4));
     assert_eq!(one("@2014-01-05T10:30:00.000.precision()", &p), json!(17));
     assert_eq!(one("@T10:30.precision()", &p), json!(4));
+}
+
+#[test]
+fn precision_of_a_decimal_literal_counts_the_digits_as_written() {
+    let p = patient();
+    assert_eq!(one("1.58700.precision()", &p), json!(5));
+    assert_eq!(one("(-1.5).precision()", &p), json!(1));
+}
+
+#[test]
+fn decimal_boundaries_are_exact_and_follow_the_written_precision() {
+    let p = patient();
+    let num = |e: &str| one(e, &p).as_f64().unwrap_or_else(|| panic!("{}: not a number", e));
+    // Half a unit of the last digit written, default 8 digits.
+    assert_eq!(num("1.587.lowBoundary()"), 1.5865);
+    assert_eq!(num("1.587.highBoundary()"), 1.5875);
+    assert_eq!(num("(-1.587).lowBoundary()"), -1.5875);
+    // Trailing zeros count: 12.500 has three digits, 12.5 one.
+    assert_eq!(num("12.500.lowBoundary(4)"), 12.4995);
+    assert_eq!(num("12.5.lowBoundary(4)"), 12.45);
+    // An integer is exact to the unit.
+    assert_eq!(num("120.lowBoundary(2)"), 119.5);
+    assert_eq!(num("1.highBoundary(0)"), 2.0);
+    // Fewer digits: towards zero inside, away from zero outside.
+    assert_eq!(num("1.587.lowBoundary(2)"), 1.58);
+    assert_eq!(num("1.587.highBoundary(2)"), 1.59);
+    assert_eq!(num("(-1.587).lowBoundary(2)"), -1.59);
+    assert_eq!(num("(-9.96).lowBoundary(1)"), -10.0);
+    assert_eq!(num("0.996.highBoundary(1)"), 1.0);
+    assert_eq!(num("0.0034.highBoundary(1)"), 0.0);
+    // A result is a Decimal even when it is whole.
+    assert_eq!(one("1.587.lowBoundary(0) is Decimal", &p), json!(true));
+    // No result for a precision out of range or an empty one.
+    empty("1.587.lowBoundary(-1)", &p);
+    empty("1.587.lowBoundary(32)", &p);
+    empty("1.587.lowBoundary({})", &p);
+}
+
+#[test]
+fn decimals_from_the_resource_keep_the_digits_they_were_written_with() {
+    // 6.30 used to read back as the double 6.3: precision() said 1 and
+    // the boundaries were those of 6.3, unlike the literal 6.30.
+    let observation_json = r#"{"resourceType": "Observation", "id": "o", "status": "final",
+        "code": {"text": "x"}, "valueQuantity": {"value": 6.30, "unit": "mmol/L"}}"#;
+    let observation_xml = r#"<Observation xmlns="http://hl7.org/fhir"><id value="o"/><status value="final"/>
+        <code><text value="x"/></code><valueQuantity><value value="6.30"/><unit value="mmol/L"/></valueQuantity></Observation>"#;
+    let parameters_json = r#"{"resourceType": "Parameters", "parameter": [
+        {"name": "big", "valueDecimal": 12345678901234567890.5},
+        {"name": "exp", "valueDecimal": 9.5e2},
+        {"name": "small", "valueDecimal": 1.5E-3}]}"#;
+    let parameters_xml = r#"<Parameters xmlns="http://hl7.org/fhir">
+        <parameter><name value="big"/><valueDecimal value="12345678901234567890.5"/></parameter>
+        <parameter><name value="exp"/><valueDecimal value="9.5e2"/></parameter>
+        <parameter><name value="small"/><valueDecimal value="1.5E-3"/></parameter></Parameters>"#;
+    let from_json = |text: &str| crate::parser::fhir::parse_fhir_json(text).unwrap().json_value.unwrap();
+    let from_xml = |text: &str| crate::parser::fhir::parse_fhir_xml(text).unwrap().json_value.unwrap();
+    let read = [
+        (from_json(observation_json), from_json(parameters_json)),
+        (from_xml(observation_xml), from_xml(parameters_xml)),
+    ];
+    for (o, parameters) in &read {
+        let text = |e: &str| one(e, o).to_string();
+        assert_eq!(one("Observation.value.value.precision()", o), json!(2));
+        assert_eq!(text("Observation.value.value.lowBoundary()"), "6.29500000");
+        assert_eq!(text("Observation.value.value.highBoundary()"), "6.30500000");
+        assert_eq!(one("Observation.value.value.lowBoundary() = 6.30.lowBoundary()", o), json!(true));
+        assert_eq!(one("Observation.value.lowBoundary().value = 6.295", o), json!(true));
+        assert_eq!(one("Observation.value.value.toString()", o), json!("6.30"));
+        assert_eq!(one("Observation.value.toString()", o), json!("6.30 'mmol/L'"));
+        assert_eq!(one("(-Observation.value.value).toString()", o), json!("-6.30"));
+        // Still the same number as 6.3 to compare with.
+        assert_eq!(one("Observation.value.value = 6.3", o), json!(true));
+        assert_eq!(one("Observation.value.value ~ 6.3", o), json!(true));
+        assert_eq!(one("Observation.value.value > 6.29", o), json!(true));
+
+        let p = |name: &str, f: &str| {
+            let r = one(&format!("Parameters.parameter.where(name = '{}').value.{}", name, f), parameters);
+            assert!(!r.is_string() || f.starts_with("toString"), "{name}.{f}: {r:?} is still text");
+            r
+        };
+        // More digits than a double holds: kept, not 1.2345678901234567e19.
+        assert_eq!(p("big", "toString()"), json!("12345678901234567890.5"));
+        assert_eq!(p("big", "precision()"), json!(1));
+        assert_eq!(p("big", "lowBoundary()").to_string(), "12345678901234567890.45000000");
+        // An exponent moves the point: 9.5e2 is known to the tens.
+        assert_eq!(p("exp", "lowBoundary(0)").to_string(), "945.0");
+        assert_eq!(p("exp", "highBoundary(1)").to_string(), "955.0");
+        assert_eq!(p("small", "precision()"), json!(4));
+        assert_eq!(p("small", "lowBoundary()").to_string(), "0.00145000");
+    }
+}
+
+#[test]
+fn numbers_beyond_a_double_are_read_without_a_crash() {
+    // Numbers keeping their text means a document may now hold one that no
+    // double reaches; nothing may unwrap it as one.
+    let r = crate::parser::fhir::parse_fhir_json(
+        r#"{"resourceType": "Parameters", "parameter": [
+            {"name": "huge", "valueDecimal": 1e2147483647}, {"name": "tiny", "valueDecimal": 1.5e-400}]}"#,
+    )
+    .unwrap()
+    .json_value
+    .unwrap();
+    for name in ["huge", "tiny"] {
+        let at = |f: &str| format!("Parameters.parameter.where(name = '{}').value{}", name, f);
+        empty(&at(".lowBoundary()"), &r);
+        empty(&at(".highBoundary(2)"), &r);
+        // A double holds 1.5e-400 as 0; it has no value at all for 1e2147483647.
+        if name == "huge" {
+            empty(&at(" > 1"), &r);
+        } else {
+            assert_eq!(one(&at(" > 1"), &r), json!(false));
+        }
+        assert_eq!(one(&at(" = 1"), &r), json!(false));
+        assert_eq!(one(&at(" = %resource.parameter.where(name = '{n}').value").replace("{n}", name), &r), json!(true));
+        assert_eq!(one(&at(".precision()"), &r).as_i64().map(|p| p >= 0), Some(true));
+        assert!(one(&at(".toString()"), &r).as_str().unwrap().contains('e'));
+        let _ = evaluate(&at(" + 1"), &r);
+        let _ = evaluate(&at(".round(2)"), &r);
+        let _ = evaluate(&at(" ~ 1.0"), &r);
+    }
+    let q = crate::parser::fhir::parse_fhir_json(
+        r#"{"resourceType": "Observation", "valueQuantity": {"value": 1e2147483647, "unit": "mg"}}"#,
+    )
+    .unwrap()
+    .json_value
+    .unwrap();
+    for e in ["abs()", "lowBoundary()", "toString()"] {
+        let _ = evaluate(&format!("Observation.value.{}", e), &q);
+    }
+    for e in [" > 1 'mg'", " + 1 'mg'", " = 1 'mg'", " ~ 1 'mg'", " * 2"] {
+        let _ = evaluate(&format!("Observation.value{}", e), &q);
+    }
+}
+
+#[test]
+fn quantity_and_temporal_boundaries() {
+    let p = patient();
+    let q = one("1.587 'cm'.lowBoundary(8)", &p);
+    // Written to the precision asked for, as the specification shows it.
+    assert_eq!(q["value"].to_string(), "1.58650000");
+    assert_eq!(q["unit"], json!("cm"));
+    // The quantity's written digits count too: 12.500 has three.
+    assert_eq!(one("12.500 'cm'.lowBoundary(4)", &p)["value"], json!(12.4995));
+    assert_eq!(one("(-12.500 'cm').highBoundary(4)", &p)["value"], json!(-12.4995));
+    assert_eq!(one("@2014.lowBoundary(6)", &p), json!("2014-01"));
+    assert_eq!(one("@2014.highBoundary(6)", &p), json!("2014-12"));
+    assert_eq!(one("@2016-02.highBoundary(8)", &p), json!("2016-02-29"));
+    // No zone: the extreme zones; a zone is kept.
+    assert_eq!(one("@2014-01-01T08:05.lowBoundary(17)", &p), json!("2014-01-01T08:05:00.000+14:00"));
+    assert_eq!(one("@2014-01-01T08:05-05:00.highBoundary(17)", &p), json!("2014-01-01T08:05:59.999-05:00"));
+    // Cut to the date, a dateTime becomes a date.
+    assert_eq!(one("@2014-01-01T08:05.lowBoundary(8)", &p), json!("2014-01-01"));
+    assert_eq!(one("@T10:30.highBoundary(9)", &p), json!("T10:30:59.999"));
+    assert_eq!(one("@T10:30:15.5.lowBoundary(9)", &p), json!("T10:30:15.500"));
+    // One or two digits of a second.
+    assert_eq!(one("@T10:30.lowBoundary(7)", &p), json!("T10:30:00.0"));
+    assert_eq!(one("@2014-01-01T08:00.highBoundary(16)", &p), json!("2014-01-01T08:00:59.99-12:00"));
+    // An hour alone: its minutes take their extreme value, as the
+    // specification's example has it.
+    assert_eq!(one("@2014-01-01T08.highBoundary(17)", &p), json!("2014-01-01T08:59:59.999-12:00"));
+    assert_eq!(one("@2014-01-01T08.lowBoundary(17)", &p), json!("2014-01-01T08:00:00.000+14:00"));
+    // A precision the kind does not have.
+    empty("@2014-01-01.lowBoundary(17)", &p);
+    empty("@T10:30.lowBoundary(5)", &p);
+    empty("@T10:30.lowBoundary(10)", &p);
 }
 
 #[test]
@@ -859,8 +1328,12 @@ fn deeply_nested_expressions_are_refused_not_a_crash() {
     let p = patient();
     let parens = format!("{}1{}", "(".repeat(20000), ")".repeat(20000));
     assert!(err(&parens, &p).contains("nested more than"));
+    // A flat sum is one chain, not 50,000 levels: it is refused for its
+    // length instead.
     let sum = format!("1{}", "+1".repeat(50000));
-    assert!(err(&sum, &p).contains("nested more than"));
+    assert!(err(&sum, &p).contains("more than 4096 terms"));
+    let nested_sum = format!("{}1{}", "1+(".repeat(20000), ")".repeat(20000));
+    assert!(err(&nested_sum, &p).contains("nested more than"));
     let minus = format!("{}1", "-(".repeat(20000));
     assert!(err(&minus, &p).contains("nested more than"));
     let path = format!("Patient{}", ".name".repeat(20000));
@@ -886,10 +1359,72 @@ fn expressions_up_to_the_nesting_limit_evaluate_on_a_small_stack() {
             assert_eq!(one(&mixed, &p), json!(true));
             let calls = format!("{}Patient.active{}", "iif(true, ".repeat(n / 2), ", false)".repeat(n / 2));
             assert_eq!(one(&calls, &p), json!(true));
+            // Criteria inside criteria, about as deep as the limit allows:
+            // each level runs a where() and an exists() on every item.
+            let one_name = json!({"resourceType": "Patient", "name": [{"family": "A"}]});
+            let mut criteria = "%resource.name".to_string();
+            for _ in 0..28 {
+                criteria = format!("%resource.name.where({criteria}.exists())");
+            }
+            assert_eq!(one(&format!("{criteria}.exists()"), &one_name), json!(true));
         })
         .unwrap()
         .join()
         .unwrap();
+}
+
+#[test]
+fn long_flat_lists_evaluate_on_a_small_stack() {
+    // A list of codes or alternatives used to count one nesting level per
+    // term, so the 64th item was refused. 2 MiB is a test thread's stack.
+    std::thread::Builder::new()
+        .stack_size(2 << 20)
+        .spawn(|| {
+            let p = patient();
+            let codes: Vec<String> = (0..999).map(|i| format!("'c{}'", i)).collect();
+            let list = format!("{} | 'female'", codes.join(" | "));
+            assert_eq!(one(&format!("Patient.gender in ({})", list), &p), json!(true));
+            assert_eq!(one(&format!("({}).count()", list), &p), json!(1000));
+            // Duplicates are still dropped, keeping the first occurrence.
+            assert_eq!(ok(&format!("{} | 'c0' | 'female'", list), &p).len(), 1000);
+            assert_eq!(one(&format!("Patient.gender in ({}).exclude('female')", list), &p), json!(false));
+
+            let alternatives: Vec<String> =
+                (0..999).map(|i| format!("Patient.gender = 'c{}'", i)).collect();
+            let or_chain = format!("{} or Patient.gender = 'female'", alternatives.join(" or "));
+            assert_eq!(one(&or_chain, &p), json!(true));
+            let and_chain = format!("{} and Patient.active", ["Patient.active"; 999].join(" and "));
+            assert_eq!(one(&and_chain, &p), json!(true));
+
+            // The longest chain allowed evaluates; one more term is refused.
+            let n = super::parser::MAX_TERMS;
+            let sum = format!("1{}", "+1".repeat(n - 1));
+            assert_eq!(one(&sum, &p), json!(n as i64));
+            let too_long = format!("1{}", "+1".repeat(n));
+            assert!(err(&too_long, &p).contains("more than 4096 terms"));
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn a_chain_of_mixed_operators_folds_left_to_right() {
+    let p = patient();
+    assert_eq!(one("10 - 2 - 3 + 1", &p), json!(6));
+    assert_eq!(one("2 + 3 * 4 - 1", &p), json!(13));
+    assert_eq!(one("1 + 1 = 2 and 2 * 2 = 4 or false", &p), json!(true));
+    assert_eq!(one("(Patient.gender | 'x' | Patient.gender).count()", &p), json!(2));
+    assert_eq!(
+        ok("Patient.name.given | 'Jane' | 'Z'", &p),
+        vec![json!("Jane"), json!("A"), json!("John"), json!("Z")]
+    );
+    assert_eq!(one("1 + 2 is Integer", &p), json!(true));
+    // Three-valued logic still short-circuits along the chain: the
+    // comparison in the middle would fail if it were evaluated.
+    assert_eq!(one("false and Patient.name.given > 1 and true", &p), json!(false));
+    assert_eq!(one("true or Patient.name.given > 1 or false", &p), json!(true));
+    assert!(err("true and Patient.name.given > 1", &p).contains("single value"));
 }
 
 #[test]
@@ -947,4 +1482,304 @@ fn integer_arithmetic_is_exact_and_overflow_is_empty() {
     let big = json!({"resourceType": "Observation", "valueInteger64": 9007199254740993i64});
     assert_eq!(one("Observation.value + 0", &big), json!(9007199254740993i64));
     assert_eq!(one("1.5 + 1", &p), json!(2.5));
+}
+
+/// `seed` followed by `step` `times` times.
+fn chain(seed: &str, step: &str, times: usize) -> String {
+    format!("{}{}", seed, step.repeat(times))
+}
+
+/// A string too long to build is refused before it is built: a failed
+/// allocation aborts the whole app, and a short expression can ask for
+/// terabytes.
+#[test]
+fn string_growth_stops_at_the_string_cap() {
+    let p = patient();
+    let tenfold = ".replace('a', 'aaaaaaaaaa')";
+    for expr in [
+        // 10^12 bytes.
+        chain("'a'", tenfold, 12),
+        // Between every character: 2.6 GB.
+        chain("'abc'", ".replace('', 'XXXXXXXXXXXXXXXXXXXX')", 7),
+        chain("'a'", ".replaceMatches('a', 'aaaaaaaaaa')", 12),
+        // Each match copied ten times over, by number and by name.
+        chain("'ab'", ".replaceMatches('.+', '$0$0$0$0$0$0$0$0$0$0')", 9),
+        chain("'ab'", ".replaceMatches('(?P<c>.)', '${c}${c}${c}${c}${c}${c}${c}${c}${c}${c}')", 9),
+    ] {
+        let e = err(&format!("{expr}.length()"), &p);
+        assert!(e.contains("would exceed 16 MB"), "{expr}: {e}");
+    }
+    // The message names what refused.
+    let e = err(&format!("{}.length()", chain("'a'", tenfold, 12)), &p);
+    assert!(e.starts_with("replace() result would exceed 16 MB"), "{e}");
+    // Strings of 10, 5 and 8 MB, then ways of growing them past 16 MB.
+    let ten_mb = chain("'a'", tenfold, 7);
+    let one_mb = chain("'a'", tenfold, 6);
+    for (base, grow) in [
+        (ten_mb.clone(), "$this & $this"),
+        (ten_mb.clone(), "$this + $this"),
+        (ten_mb.clone(), "($this | 'b').join($this)"),
+        (ten_mb.clone(), "$this.encode('hex')"),
+        (ten_mb.clone(), "$this.encode('base64') & $this"),
+        (format!("{one_mb}.replace('a', '<<<<<')"), "$this.escape('html')"),
+        (format!("{one_mb}.replace('a', 'ΐΐΐΐ')"), "$this.upper()"),
+    ] {
+        let e = err(&format!("{base}.select({grow}).length()"), &p);
+        assert!(e.contains("would exceed 16 MB"), "{grow}: {e}");
+    }
+}
+
+#[test]
+fn strings_under_the_cap_are_built() {
+    let p = patient();
+    let tenfold = ".replace('a', 'aaaaaaaaaa')";
+    assert_eq!(one(&format!("{}.length()", chain("'a'", tenfold, 5)), &p), json!(100000));
+    assert_eq!(one(&format!("{}.length()", chain("'a'", tenfold, 7)), &p), json!(10_000_000));
+    assert_eq!(
+        one(&format!("{}.length()", chain("'a'", ".replaceMatches('a', 'aaaaaaaaaa')", 5)), &p),
+        json!(100000)
+    );
+    assert_eq!(one("'abc'.replace('', '-')", &p), json!("-a-b-c-"));
+    assert_eq!(one("'aXbX'.replace('X', 'YY')", &p), json!("aYYbYY"));
+    assert_eq!(one("('a' | 'b' | 'c').join(', ')", &p), json!("a, b, c"));
+    assert_eq!(one("'<a & \"b\">'.escape('html')", &p), json!("&lt;a &amp; &quot;b&quot;&gt;"));
+    assert_eq!(one("'ab'.encode('base64')", &p), json!("YWI="));
+    assert_eq!(one("'abcd'.encode('urlbase64')", &p), json!("YWJjZA=="));
+    assert_eq!(one("'ab'.encode('hex')", &p), json!("6162"));
+    assert_eq!(one("'straße'.upper()", &p), json!("STRASSE"));
+    assert_eq!(one("'abc'.toChars().count()", &p), json!(3));
+    assert_eq!(one("'a,b,c'.split(',').count()", &p), json!(3));
+    assert_eq!(one("'a' & 'b' + 'c'", &p), json!("abc"));
+}
+
+/// `replaceMatches()` builds its result itself, so it can be measured:
+/// the replacement syntax must read as the regex crate reads it.
+#[test]
+fn replace_matches_reads_the_replacement_like_the_regex_crate() {
+    let p = patient();
+    let text = "John Smith, Jane Doe";
+    let pattern = r"(?P<first>\w+) (?P<last>\w+)";
+    let re = regex::Regex::new(pattern).unwrap();
+    for replacement in [
+        "$last $first",
+        "${last}_${first}",
+        "$2, $1",
+        "${2}x${1}",
+        "$1x",
+        "$$1",
+        "$",
+        "a$",
+        "${",
+        "${last",
+        "${}",
+        "$9",
+        "$nope",
+        "$0$0",
+        "$é",
+        "100$ off",
+        "$01",
+        "",
+    ] {
+        let expected = re.replace_all(text, replacement).to_string();
+        let expr = format!("'{}'.replaceMatches('{}', '{}')", text, pattern.replace('\\', "\\\\"), replacement);
+        assert_eq!(one(&expr, &p), json!(expected), "{replacement:?}");
+    }
+    // Empty matches, at every position, as replace_all makes them.
+    let expected = regex::Regex::new("x*").unwrap().replace_all("abc", "-").to_string();
+    assert_eq!(one("'abc'.replaceMatches('x*', '-')", &p), json!(expected));
+}
+
+/// Evaluate with a small budget, so the tests reach it without building
+/// half a gigabyte.
+fn eval_with_budget(expr: &str, root: &Value, budget: usize) -> Result<Vec<Value>, String> {
+    let parsed = parser::parse(expr)?;
+    let mut env = eval::Env::within(root, root).with_budget(budget);
+    eval::eval(&parsed, std::slice::from_ref(root), &mut env)
+}
+
+/// Values that multiply without any long string count against one budget
+/// per evaluation.
+#[test]
+fn growing_collections_stop_at_the_evaluation_budget() {
+    let p = patient();
+    let ten = "(1|2|3|4|5|6|7|8|9|10)";
+    let hundred_kb = chain("'a'", ".replace('a', 'aaaaaaaaaa')", 5);
+    let mb = 1024 * 1024;
+    for expr in [
+        // 10^6 numbers.
+        format!("{ten}{}", format!(".select({ten})").repeat(5)),
+        // 10^4 copies of the resource.
+        format!("{ten}.select({ten}.select({ten}.select({ten}.select(%resource))))"),
+        chain("Patient.combine(%resource)", ".select($this.combine($this))", 12),
+        chain("Patient.union(%resource.name)", &format!(".select({ten}.select(%resource))"), 3),
+        format!("{hundred_kb}.toChars()"),
+        format!("{hundred_kb}.split('a')"),
+        format!("{ten}.select({ten}.select({ten}.select(trace('x', %resource))))"),
+        format!("{ten}.aggregate($total.combine({ten}.select({ten}.select(%resource))), {{}})"),
+        // Distinct strings, so repeat() keeps finding new ones.
+        "'a'.repeat($this & 'aaaa')".to_string(),
+    ] {
+        let e = eval_with_budget(&expr, &p, mb).expect_err(&expr);
+        assert!(e.contains("would build more than 1 MB"), "{expr}: {e}");
+    }
+    let e = eval_with_budget("Patient.descendants()", &p, 1024).unwrap_err();
+    assert!(e.contains("would build more than"), "{e}");
+    // What a real expression builds fits.
+    let count = |expr: &str| eval_with_budget(expr, &p, mb).unwrap();
+    assert_eq!(count(&format!("{ten}.select({ten}).count()")), vec![json!(100)]);
+    assert_eq!(count("Patient.descendants().count()").len(), 1);
+    assert_eq!(count("'a'.repeat(iif($this.length() < 50, $this & 'a', {})).count()"), vec![json!(49)]);
+}
+
+/// A Patient with ten names, for `%resource.name` wrapped in
+/// `%resource.name.where(… .exists())`: ten times the work per level,
+/// while building almost nothing.
+fn ten_names() -> Value {
+    let names: Vec<Value> = (0..10).map(|i| json!({"family": format!("F{i}")})).collect();
+    json!({"resourceType": "Patient", "id": "p", "name": names})
+}
+
+fn nested_criteria(depth: usize) -> String {
+    let mut e = "%resource.name".to_string();
+    for _ in 0..depth {
+        e = format!("%resource.name.where({e}.exists())");
+    }
+    format!("{e}.count()")
+}
+
+/// Evaluate under `steps` steps, returning what is left of them.
+fn eval_with_steps(expr: &str, root: &Value, steps: u64) -> (FhirPathResult, u64) {
+    let mut budget = Budget::with_limits(steps, std::time::Duration::from_secs(3600));
+    let r = evaluate_sharing(expr, root, root, &mut budget);
+    (r, budget.steps_left())
+}
+
+/// Work that builds nothing still counts. Nine levels of nested criteria
+/// over ten names are 10^9 evaluations: hours, in a few MB, which the
+/// memory budget never saw.
+#[test]
+fn nested_criteria_stop_at_the_step_budget() {
+    let p = ten_names();
+    // Three levels run to the end, and the steps say what they cost.
+    let (r, left) = eval_with_steps(&nested_criteria(3), &p, 1_000_000);
+    assert_eq!(r.results, vec![json!(10)], "{:?}", r.error);
+    let three = 1_000_000 - left;
+    assert!((10_000..100_000).contains(&three), "{three}");
+    // Each level costs about ten times the one below.
+    let (_, left) = eval_with_steps(&nested_criteria(4), &p, 10_000_000);
+    let four = 10_000_000 - left;
+    assert!(four > 8 * three && four < 12 * three, "{three} then {four}");
+
+    // Nine levels stop at the budget, quickly, with an error that says so.
+    let started = std::time::Instant::now();
+    let (r, left) = eval_with_steps(&nested_criteria(9), &p, 1_000_000);
+    let e = r.error.expect("refused");
+    assert_eq!(e, "The expression takes too long to evaluate (more than 1 million steps); narrow it down");
+    assert_eq!(left, 0);
+    assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
+
+    // The default budget is the one the panel and the rules run under.
+    assert_eq!(Budget::new().steps_left(), MAX_EVAL_STEPS);
+    assert!(evaluate(&nested_criteria(2), &p).error.is_none());
+}
+
+/// Comparisons are steps too: `distinct()`, `|`, `subsetOf()` and the like
+/// compare each item with the ones before it, the square of the length.
+#[test]
+fn comparisons_count_against_the_step_budget() {
+    let p = patient();
+    let numbers: Vec<String> = (0..300).map(|i| i.to_string()).collect();
+    let list = format!("({})", numbers.join(" | "));
+    // 300 distinct numbers: about 45 000 comparisons to build the list.
+    let (r, left) = eval_with_steps(&format!("{list}.count()"), &p, 1_000_000);
+    assert_eq!(r.results, vec![json!(300)]);
+    assert!(1_000_000 - left > 40_000, "{}", 1_000_000 - left);
+    // Past the list itself, each of these compares as much again.
+    let built = 1_000_000 - left;
+    for expr in [
+        format!("{list}.combine({list}).distinct().count()"),
+        format!("{list}.combine({list}).isDistinct()"),
+        format!("{list}.subsetOf({list}.combine({list}))"),
+        format!("{list}.intersect({list}).count()"),
+        format!("{list}.exclude({list}).count()"),
+        format!("{list}.union({list}).count()"),
+        format!("{list}.combine({list}) ~ {list}.combine({list})"),
+    ] {
+        let (r, _) = eval_with_steps(&expr, &p, 3 * built);
+        let e = r.error.unwrap_or_else(|| panic!("{expr}: ran to the end"));
+        assert!(e.contains("takes too long"), "{expr}: {e}");
+    }
+    // A sort counts its n·log2(n) comparisons.
+    let (r, left) = eval_with_steps(&format!("{list}.sort().count()"), &p, 1_000_000);
+    assert_eq!(r.results, vec![json!(300)]);
+    assert!(1_000_000 - left >= built + 300 * 9, "{}", 1_000_000 - left);
+}
+
+/// A copy of the whole resource counts by its size: copying a large
+/// resource for every item of a criteria is far more than one step.
+/// Reading a path from `%resource` copies nothing.
+#[test]
+fn copies_of_the_resource_count_by_their_size() {
+    let notes: Vec<Value> = (0..1000).map(|i| json!({"text": format!("{i:0>200}")})).collect();
+    let big = json!({"resourceType": "Patient", "id": "p", "name": [{"family": "F"}], "note": notes});
+    let small = ten_names();
+    let cost = |expr: &str, root: &Value| {
+        let (r, left) = eval_with_steps(expr, root, 100_000_000);
+        assert!(r.error.is_none(), "{expr}: {:?}", r.error);
+        100_000_000 - left
+    };
+    let ten = "(1|2|3|4|5|6|7|8|9|10)";
+    // About 300 KB, so about 1000 steps a copy: ten copies here.
+    let copying = format!("{ten}.where(%resource.exists()).count()");
+    let (on_big, on_small) = (cost(&copying, &big), cost(&copying, &small));
+    assert!(on_big > 10_000 && on_small < 500, "{on_big} vs {on_small}");
+    // `$this` outside a criteria, and a function's argument, are copies too.
+    assert!(cost("$this.exists()", &big) > 500, "{}", cost("$this.exists()", &big));
+    assert!(cost("name.combine(name).count()", &big) > 500);
+    // A path read from the resource does not copy it.
+    let reading = format!("{ten}.where(%resource.id.exists()).count()");
+    assert_eq!(cost(&reading, &big), cost(&reading, &ten_names()));
+}
+
+/// The clock stops what the steps do not: a few steps can each copy a
+/// resource of many MB. A budget whose time is already up stops at once.
+#[test]
+fn the_time_limit_stops_an_evaluation_too() {
+    let p = ten_names();
+    let mut budget = Budget::with_limits(u64::MAX, std::time::Duration::ZERO);
+    let r = evaluate_sharing(&nested_criteria(3), &p, &p, &mut budget);
+    assert_eq!(
+        r.error.as_deref(),
+        Some("The expression takes too long to evaluate (more than 0 seconds); narrow it down")
+    );
+    assert!(budget.exhausted());
+    assert_eq!(MAX_EVAL_TIME, std::time::Duration::from_secs(60));
+}
+
+/// Evaluations drawing on one budget share it: each takes what it used,
+/// and once it is spent the next one stops at once.
+#[test]
+fn evaluations_can_share_one_budget() {
+    let p = ten_names();
+    let hour = std::time::Duration::from_secs(3600);
+    let mut shared = Budget::with_limits(100_000, hour);
+    let r = evaluate_sharing(&nested_criteria(3), &p, &p, &mut shared);
+    assert!(r.error.is_none());
+    let after_one = shared.steps_left();
+    assert!(after_one < 100_000 && after_one > 0);
+    // Each evaluation also keeps to its own limit within the shared one.
+    let mut capped = Budget::with_limits(1_000_000, hour).each_at_most(1000, hour);
+    let r = evaluate_sharing(&nested_criteria(3), &p, &p, &mut capped);
+    assert!(r.error.unwrap().contains("more than 1000 steps"));
+    assert!(!capped.exhausted());
+    assert_eq!(capped.steps_left(), 999_000);
+    // Spent, the shared one refuses every evaluation after.
+    while !shared.exhausted() {
+        evaluate_sharing(&nested_criteria(3), &p, &p, &mut shared);
+    }
+    assert!(evaluate_sharing("1 + 1", &p, &p, &mut shared).error.unwrap().contains("takes too long"));
+    // A validation's budget is the evaluations' worth it is said to be.
+    let validation = Budget::for_validation();
+    assert_eq!(validation.steps_left(), MAX_EVAL_STEPS * u64::from(VALIDATION_EVALS));
+    assert_eq!(validation.for_one_evaluation().steps_left(), MAX_EVAL_STEPS);
 }

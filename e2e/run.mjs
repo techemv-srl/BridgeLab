@@ -27,7 +27,7 @@ const DISPLAY = process.env.BL_DISPLAY || ':99';
 // features be exercised) unless the caller asks for their own.
 const KEEP_PROFILE = process.env.BL_KEEP_PROFILE === '1';
 const DEB = process.argv[2]
-	|| 'src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/BridgeLab_'
+	|| 'src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/bridgelab_'
 		+ JSON.parse(await import('node:fs/promises').then((fs) => fs.readFile('package.json', 'utf8'))).version
 		+ '_amd64.deb';
 

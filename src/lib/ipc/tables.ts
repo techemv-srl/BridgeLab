@@ -95,11 +95,13 @@ export interface ExpectedSegment {
 	choice: boolean;
 }
 
-/** Expected segment sequence for a message type (empty if unknown). */
+/** Expected segment sequence for a message type (empty if unknown).
+ *  `messageId` is the parsed message the type comes from: its MSH-9 is
+ *  split with that message's own component separator. */
 export async function getExpectedSegments(
-	messageType: string, version: string,
+	messageType: string, version: string, messageId?: string,
 ): Promise<ExpectedSegment[]> {
-	return invoke('get_expected_segments', { messageType, version });
+	return invoke('get_expected_segments', { messageType, version, messageId: messageId ?? null });
 }
 
 export interface SchemaFieldInfo {

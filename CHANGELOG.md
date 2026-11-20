@@ -4,11 +4,491 @@ All notable user-facing changes to BridgeLab. Dates are UTC.
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-11-20
+
+What is new, and what changes if you build BridgeLab yourself, is
+summarised in [docs/releases/2.1.0.md](docs/releases/2.1.0.md).
+
 ### Added
+- **Interpretation panel.** View → Interpretation (`Ctrl+Shift+E`) reads
+  the open HL7 v2 message in plain words, one block per segment, in your
+  language: "Patient DOE, JOHN Q, Male, born 1980-01-01, identifiers
+  123456 (Medical record number)." — "Glucose (GLU): 98 mg/dL, Above
+  high normal, status Final results." Every value is a link that selects
+  its field in the editor and in the tree. MSH, EVN, PID, NK1, PV1, ORC,
+  OBR, OBX, AL1, DG1 and NTE have their own wording; any other segment,
+  Z-segments included, is read field by field, codes explained from the
+  HL7 value tables. Long results are drawn 200 segments at a time.
+- **FHIRPath `lowBoundary()` and `highBoundary()`.** On decimals,
+  quantities, dates, dateTimes and times, computed exactly from the
+  precision written in the value (`12.500.lowBoundary(4)` is 12.4995,
+  `@2014.highBoundary(6)` is `@2014-12`); `precision()` on a decimal now
+  counts its trailing zeros (`1.58700.precision()` is 5).
+  Against the official HL7 test suite the engine now passes 984 of 1,053
+  runnable cases.
+- **Docker image of the CLI.** Every release is also published as
+  `ghcr.io/techemv-srl/bridgelab-cli` (version tag and `latest`), for CI
+  pipelines that run containers: `docker run --rm -v "$PWD:/work"
+  ghcr.io/techemv-srl/bridgelab-cli validate "messages/*.hl7"`. The CLI
+  README has GitLab CI and `--user` examples.
+- **Build code.** About shows a build code next to the version (for
+  example `Version 2.1.0 · Build 20261117.762cc1c`: the date and short
+  hash of the commit it was built from), and `bridgelab-cli --version`
+  prints it too, so two builds with the same version number can be told
+  apart. It also goes into the quote request e-mail with the version.
 - **Examples in the CLI help.** `bridgelab-cli --help` and each command's
   `--help` now end with a few ready-to-use examples (validating a folder
   with a JUnit report, anonymizing from standard input, sending over
   MLLP…), so the usual invocations are there without opening the README.
+- **Unsaved tabs survive the system ending BridgeLab.** When you log out,
+  shut down or choose Quit from the Dock with unsaved tabs, BridgeLab now
+  keeps them even with session restore off, and offers them at the next
+  start with Restore and Discard. With restore on, the last edits are saved
+  first. On Windows, and for the Dock's Quit and logout on macOS, edits
+  made in the last fraction of a second may be lost; a forced kill or a
+  power cut still loses what was not saved.
+- **Reload for FHIR packages.** Settings → FHIR packages has a Reload button
+  that reads the package folder again, and Remove works on a package
+  already deleted by hand.
+- **`--output` for every CLI report.** `validate`, `test` and `batch` write
+  their report to a file with `--output FILE`, as `anonymize`, `to-json`
+  and `xsd` already did, and never read that file back as an input when
+  it lies inside the pattern or folder they check. Use it in Windows
+  PowerShell 5.1, where `>` writes UTF-16 that CI tools cannot read.
+
+### Changed
+- **Clearer "Opened as text" message.** When a file opens as text because
+  it is not a message BridgeLab can read, the dialog now says why in your
+  language and suggests a fix: a missing M at the start of `MSH`, a
+  header in lower case, an `MSH` too short to declare its delimiters,
+  something before the header, XML or JSON that is not a FHIR resource,
+  JSON with a syntax error (with the line and column). The F6 report on
+  the same text gives the same hint.
+- **Tauri 2.12.** The desktop framework and its plugins (dialog, file
+  system, opener, process, single instance, updater) move to their
+  current releases.
+- **Frontend stack.** SvelteKit 3 and Vite 8. Building BridgeLab from
+  source now needs Node.js 22.17 or later.
+- **The Linux package is called `bridgelab`.** The .deb and .rpm were
+  named `bridge-lab`; installing the new one over it replaces it in one
+  step, with one menu entry, and keeps your settings, licence and saved
+  tabs. Both packages now depend on xdg-utils, so links and Open plugins
+  folder work on a minimal system.
+- **macOS keyboard.** ⌘H, full screen (⌃⌘F) and Control-key text editing
+  work again. Show Segment in Tree and Copy Segment are now ⌘⌥T and ⌘⌥C
+  (Alt+T and Alt+C elsewhere), so ⌥T and ⌥C type their characters again.
+  On every system Ctrl in a shortcut is Control on Windows and Linux and
+  Command on macOS, never both: the Windows/Super key no longer runs Ctrl
+  shortcuts, and on macOS Control is no longer taken for Command.
+- **Shortcuts wait while a dialog is open.** A shortcut pressed with
+  Settings or another dialog open does nothing behind it, and its key goes
+  nowhere else either; F1 still opens the manual. Giving a shortcut one of
+  the editor's own keys (Ctrl+D, Ctrl+/…) now warns you.
+- **Delimiters are checked before a message is split.** A header that
+  declares a tab, a line break, a non-ASCII character, a letter or one
+  character twice as a delimiter, or two encoding characters or fewer,
+  now opens as text with the reason, instead of showing values split the
+  wrong way. A header with three encoding characters (`MSH|^~\|`) still
+  opens, with `&` as the subcomponent separator, and validation warns
+  about it (MSH-006). v2.7's fifth encoding character, the truncation
+  character, is checked like the others and kept in the tree, the
+  inspector and `to-json`; characters after the fifth are taken as data,
+  with a warning (MSH-007).
+- **`to-json` and Export JSON give one document per message.** A file that
+  holds several messages becomes a JSON array with one document per
+  message, each with its own type, version and delimiters, instead of one
+  document with every segment.
+- **MLLP checks the character set of every message.** In Auto encoding a
+  message whose MSH-18 names a character set BridgeLab cannot write
+  (ISO IR87, UNICODE UTF-16…) is refused instead of going out as UTF-8
+  under that header, and so is a tab whose messages declare different
+  character sets when sending them in one would change their text.
+  `bridgelab-cli send` does the same before it sends anything.
+- **Light theme.** Grey secondary text, placeholders in fields, links and
+  the status bar are darker: at least 4.5:1 on every background.
+
+### Fixed
+- **Saving a restored tab no longer empties its file.** A large file tab
+  restored from the last session is read from its file when first shown;
+  Ctrl+S pressed during that read (about a second for a 10 MB file) wrote
+  an empty file, and the tab gave no sign of it. A save now waits for the
+  read, the editor stays read-only until the text is there, and a tab
+  whose file could not be read says so instead of saving nothing.
+- **Anonymization masks indented and lower-case segments.** Segment lines
+  indented with spaces or a tab (text pasted from an e-mail) or written in
+  lower case (`pid|…`) were not recognised: the dialog said no PHI was
+  found, and Batch anonymize and `bridgelab-cli anonymize` wrote the
+  patient's data in clear. They are masked like any other segment, and a
+  plugin PHI rule written in lower case now applies too.
+- **Several cursors cannot cut into a folded field.** Only the main
+  cursor was kept out of a fold chip: a cursor added with
+  Shift+Alt+Down (Ctrl+Alt+Down on Windows, Cmd+Option+Down on macOS) or
+  Ctrl+D could type or delete inside it, and the save then wrote the chip
+  text, or another field's content, in place of the folded value. Every
+  cursor now jumps over a chip and selects it before deleting it.
+- **Expand Folded Field opens the field you right-clicked.** With two
+  folded fields side by side, the context menu opened the next one.
+- **Long validation reports no longer freeze the window.** The
+  Validation panel lists 200 issues at a time and draws the next ones as
+  you scroll to the end of the list or click *Show more*. The badges, the
+  filter and the sorting still cover the whole report, and checking the
+  message again after an edit stays fast with tens of thousands of issues.
+- **Opening a huge field value no longer freezes the window.** For a very
+  large value, such as a multi-megabyte embedded PDF, the Full Field
+  Content window shows the first 65,536 characters and the full length;
+  *Copy to Clipboard* still copies the whole value.
+- **The red {…} button of a long field is visible in the tree again.** At
+  the default tree width it was pushed out of view. The value now shortens
+  with an ellipsis and the button stays on screen.
+- **Dropdowns are readable in the dark theme on Linux.** They were drawn
+  as light widgets with light text; they now follow the theme, as do
+  scrollbars and checkboxes.
+- **Resetting a single shortcut no longer gives one key to two actions.**
+  If another action has taken the entry's default key, the reset button
+  now warns, as picking a key does, and *Reassign* moves the key back.
+  Duplicates already saved are cleaned up when the app starts.
+- **The schema-aware tree follows the version a message declares.** A
+  message whose MSH-12 carries extra components (`2.3.1^ITA`) or a patch
+  release BridgeLab has no catalogue for (`2.7.2`) showed v2.5's segments
+  and fields in the tree, while validation used the declared release. The
+  tree now shows the structure the message is validated against, and
+  expanding a node no longer re-reads the whole catalogue.
+- **A v2.7 or v2.7.1 message is no longer flagged as an unknown
+  version.** The Field Inspector and the hover said MSH-12 `2.7` was not in
+  HL7 table 0104, and explained `2.5.1` as "Release 1.5.1". The table now
+  lists every release BridgeLab supports, with the right descriptions.
+- **The listener keeps working with the Communication panel closed.**
+  While the panel was closed the MLLP listener still acknowledged
+  messages, but they no longer opened in a tab or reached the console, and
+  reopening it showed an empty console and "0 received". Received messages
+  are now handled whether the panel is open or not, and the panel shows the
+  running listener, its console and the settings it was started with.
+- **The listener console counts every message, not only the last 200.**
+  The outcome chips were counted from the rows the console keeps, so after
+  12 AE and 288 AA they read "AE 0". The counts now cover every message
+  since the console was last cleared, and the console says when only the
+  last 200 rows are kept.
+- **SOAP accepts XML files that start with their own declaration.** A CDA
+  or FHIR XML file beginning with `<?xml …?>`, or with a byte-order mark,
+  was put into the SOAP Body as it was, and the envelope was not valid
+  XML. The file's own declaration and byte-order mark are now left out,
+  with the default envelope and with a custom template.
+- **Exports save a name typed without an extension on Linux.** Export
+  JSON, Export CSV, the XSD dialog's Save as and the batch validation CSV
+  failed with "forbidden path" when the name was typed without its
+  extension, and nothing was written. The file is now saved with the
+  extension added, as 2.0.0 intended, after asking if that file already
+  exists.
+- **Run all no longer passes a FHIR case that was not fully checked.** A
+  FHIR resource declaring a profile that is not installed, or of a type no
+  installed package defines, was marked "All expectations met". The Test
+  Case Library now marks it *not checked*, with the reason, and counts it
+  apart ("4/8 passed, 1 not checked"), as `bridgelab-cli test` does.
+- **Plugin packs with heavy patterns no longer stall BridgeLab.** Each
+  pattern was compiled again for every rule on every validation, so a pack
+  of a few hundred long `\w{300}`-style rules delayed startup and Reload by
+  twenty seconds, and every validation as long. Patterns are now compiled
+  once when the pack loads, packs load without holding back the window (a
+  validation started meanwhile waits for them), and a pattern too large or
+  slow to compile is named under its pack.
+- **Plugin rules on a lower-case segment now work, and mistakes are
+  listed.** A rule written for `"pid"` never fired. Segment names now match
+  in any case, and Settings → Plugins and the CLI list rules with a
+  malformed segment name, field 0 or component 0, and packs with an empty
+  id or name.
+- **FHIR validation checks the JSON array shape.** An element that can
+  repeat written as a single value (`"name": {…}`), or a single-valued one
+  written as an array (`"gender": ["male"]`), validated clean in F6 and
+  `bridgelab-cli validate`, though FHIR servers refuse both. Each one is
+  now an error that names the element (JSON only: XML has no arrays). A
+  profile that narrows an element to one value does not change its shape:
+  `Patient.name` stays an array.
+- **FHIRPath decimals from the resource keep their precision.**
+  `precision()`, `lowBoundary()`, `highBoundary()` and `toString()`
+  ignored the trailing zeros of a decimal read from a JSON or XML
+  resource: for a `valueQuantity.value` of 6.30, `precision()` gave 1 and
+  `lowBoundary()` 6.25, where the literal `6.30` gives 6.295. They now use
+  the digits as written, and a value with more than 17 digits is no longer
+  shown as `1.2345678901234567e+19`.
+- **FHIRPath lists of hundreds of terms work.** A list of codes
+  (`Patient.gender in ('c0' | … | 'female')`) or a chain of `or`
+  alternatives was refused from its 64th term as "nested more than 64
+  levels deep", in the FHIRPath panel, the CLI and custom FHIR rules. A
+  list joined by operators now counts as one level up to 4,096 terms;
+  real nesting (parentheses, function arguments) stays limited to 64
+  levels.
+- **Opening a file can no longer take the app out of memory.** A file up
+  to 16 MB opens at once, one up to 64 MB after a question, and a larger
+  one, or a device or named pipe, does not open; a message names the size
+  and the limit. A session tab whose file has grown past a limit comes
+  back empty with the reason, instead of crashing the app at every start.
+- **Large messages ask before they slow the window down.** Pasting more
+  than 16 MB of text now asks first, as opening a file that size does, and
+  more than 64 MB is refused: a 20 MB paste kept the window busy for about
+  six seconds and took several GB. Sending a message over 10 MB by MLLP,
+  HTTP or SOAP asks first too, since many receivers refuse one that large,
+  BridgeLab's own listener included. Received messages that open in tabs
+  by themselves stop at 16 MB in a burst as well as at 20 tabs, so a run
+  of 10 MB messages cannot fill the memory; the others wait in the console.
+- **The HL7 parser takes far less memory on files of many short
+  segments.** 10 MB of short OBX segments went from about 1.1 GB to about
+  430 MB. The published memory figures now say what was measured and for
+  which kind of message.
+- **Right-clicking no longer opens the webview's own menu.** It opened on
+  the status bar, the panels, the menu bar, the banners, the welcome screen
+  and Settings, with Back, Forward and Reload; with "Restore open tabs on
+  startup" off, Reload dropped every unsaved tab without asking. In text
+  fields WebView2 showed its own browser menu (Emoji, password import,
+  "More tools"). It no longer opens anywhere: Cut, Copy and Paste keep
+  their keys, the editor, tabs and tree keep their own menus, and anything
+  else that would reload the window while unsaved work could be lost asks
+  first.
+- **The Communication panel opens showing all its settings.** It opened at
+  the height of the other bottom panels, so the connection and send fields
+  needed a scroll or a resize every time. It now opens tall enough for its
+  content (up to most of the window), and a scrollbar appears only if you
+  make it smaller. The empty connection profile is shown as "—" instead of
+  the literal text "\u2014".
+- **F1 always shows the manual.** With the manual open, F1 did nothing
+  visible, and after the manual window was closed a first F1 could do
+  nothing either. F1 now brings an open manual to the front, or opens it.
+- **Closing the main window ends BridgeLab, the manual included.** With
+  the manual (F1) open, closing the main window left BridgeLab running with
+  only the manual: the MLLP listener stayed active, and a double-clicked
+  .hl7 or a new launch showed nothing until the manual was closed.
+- **A file whose name is not valid UTF-8 no longer stops BridgeLab.** On
+  Linux, double-clicking a file named in Latin-1, or one in such a folder,
+  ended the app before any window appeared. BridgeLab now starts and says
+  that the file cannot be opened because of its name, and `bridgelab-cli`
+  reads such names when the shell passes them to `validate`, `info` and
+  `test`.
+- **BridgeLab starts even when its database cannot be opened.** A damaged
+  or locked database, a full disk or a data folder without write access
+  ended the app at startup without a word (on Windows nothing was shown at
+  all). BridgeLab now starts without it and says so, naming the file and
+  the reason; the editor works, but session tabs, recent files, history,
+  profiles, test cases and preferences are not kept until the cause is
+  fixed. The file is never deleted or overwritten.
+- **Saving keeps a file's ACL and extended attributes.** Save replaced the
+  file with a new one that lost its access control list and extended
+  attributes (macOS Finder tags among them); on Linux this could give the
+  owning group access it did not have and lock out the users the ACL
+  named. They are now carried over; on Windows the file keeps its ACL,
+  attributes and alternate data streams. This covers Save, Save As, test
+  pack and rule pack export, and the CLI's `--output`.
+- **Save As offers the right file type for FHIR resources.** FHIR JSON and
+  XML tabs were offered only "HL7 Messages (*.hl7)". Save As now offers
+  FHIR JSON, FHIR XML or HL7 to match the document, with All Files, and on
+  Linux a name typed without an extension gets one, after asking if that
+  file already exists.
+- **Links open in your browser or mail client, and nothing else can
+  replace the window.** A middle click on the e-mail address in About or
+  in the manual, or the webview's own "Open Link", replaced the window
+  with "The URL can't be shown"; Ctrl+click and "Follow link" on a URL in
+  the editor did nothing. Web and e-mail links now always open outside
+  the app, and the window never loads anything but BridgeLab's own pages.
+- **A burst of received messages no longer buries the window in tabs.**
+  The listener opens at most 20 tabs while nobody is at the window; the
+  rest stay in the console and History, and one notice counts them.
+- **FHIRPath date arithmetic far past the year 9999 no longer closes the
+  app.** Adding a very large number of days, weeks or seconds to a date
+  crashed; years and months wrapped, and date-times stopped at 292 years.
+  A result outside the years 1 to 9999 is now empty, as an integer
+  overflow is.
+- **A FHIRPath expression can no longer exhaust memory.** One string an
+  operation builds holds at most 16 MB, and one evaluation builds at most
+  about 512 MB in all; past either limit the panel and rule packs report
+  an error naming the limit.
+- **Requests to this computer no longer go through the proxy.** With a
+  proxy set, in the system settings or in `HTTPS_PROXY`, HTTP-tool and SOAP
+  requests to `localhost`, `127.0.0.1` or `::1` were sent to the proxy.
+  They now always go direct. The manual explains which proxy settings
+  BridgeLab reads; proxy auto-configuration (PAC, WPAD) is not read.
+- **A refused certificate is reported as such.** The HTTP tool and SOAP
+  showed the same "Connection failed" for an untrusted, expired or
+  wrong-name certificate as for a closed port, and activation said the
+  license server could not be reached. They now say what happened, in the
+  user's language; activation explains that the server's certificate is
+  not trusted, usually because of a company proxy whose root certificate
+  is not installed, and still offers the offline key.
+- **A slow FHIRPath expression or FHIR rule stops instead of running for
+  hours.** Criteria nested in criteria multiply their work: a 500-byte rule
+  pack kept Validate, the rules builder's Test and `bridgelab-cli validate`
+  busy for hours. One evaluation now does at most 50 million steps and runs
+  at most 60 seconds; past that, the FHIRPath panel, the CLI and the rule
+  say "The expression takes too long to evaluate". The rules of one
+  validation share twice that budget; when it is spent, the remaining rules
+  are not run and one error says how many checks were left out. Rules that
+  resolve references in a large Bundle are also much faster.
+- **Validating no longer stops open, save and the FHIRPath panel.** FHIR and
+  HL7 v2 validation ran on the threads every other command shares, so a few
+  presses of Validate with a slow rule pack left opening, saving and the
+  FHIRPath panel unanswered. Validation, the rules builder's Test and FHIR
+  package installs now run on their own threads.
+- **Installing a named pipe as a FHIR package no longer stalls BridgeLab.**
+  A folder, device or named pipe is now refused at once, as when opening a
+  file, and a package file over 256 MB is refused.
+- **The MLLP listener no longer spends seconds of CPU on one large
+  message**: the end of a frame is now searched only in the bytes each read
+  adds.
+- **`bridgelab-cli` finds every file a `**` pattern reaches on Linux.** A
+  file whose name is not valid UTF-8 was skipped without a word by
+  `"**/*.hl7"` and by patterns with a wildcard folder, and the run could
+  exit 0 without checking it. Such files and folders are now matched at
+  any depth.
+- **Smaller fixes.**
+  - *HL7 v2:* saving keeps mixed and trailing line endings exactly, also
+    after undo and redo, and lines added to a pasted one-line message end
+    with CR on every system; Batch anonymize keeps each file's line endings.
+    Text that looks like a fold chip is no longer replaced by another
+    field's content on save. MSH-9 completion no longer doubles the message
+    code. The standard-structure rows appear with any component separator,
+    and MSH-11 is explained in v2.3 messages. A missing MSH-9 counts as one
+    error, and segment numbers in validation count from 1. Interpretation
+    reads results such as "<5" and "1:128". Plugin rules check values with
+    HL7 escapes resolved, and a `not_empty` rule fires when its segment is
+    missing.
+  - *FHIR:* a property written twice is reported, and so is FHIR XML
+    outside the FHIR namespace or a narrative `div` outside the XHTML
+    namespace. A profile declared for another resource
+    type is reported and not applied (a DomainResource profile on a
+    Bundle, Binary or Parameters included). The Bundle view, `resolve()`
+    and the dangling-reference check follow a relative reference only to
+    the entry on the referring entry's own server; when that server is not
+    known (a `urn:` entry), only to a resource the Bundle holds once, and
+    the check names a reference that matches different resources. An Encounter's status shows once. FHIRPath converts metric
+    prefixes and concentrations (`1 'mmol/L' = 1000 'umol/L'`). The FHIR
+    rules editor speaks your language, and a pattern error says why.
+  - *Communication:* a reply that is not HL7, an ACK whose MSA-2 names
+    another message, or an AA whose MSA-2 is empty when the message sent
+    has an MSH-10, is no longer shown as accepted, and History lists it
+    under No ACK. MLLP, HTTP and SOAP send HL7 v2 as the CLI does: the last
+    segment ends with CR, and blank lines are not sent as empty segments.
+    HTTP Basic authentication sends user and password in UTF-8. A bad
+    header, URL or unfollowed redirect is named with the reason instead of
+    "builder error". An empty "Listen on" means this computer only, a bad
+    port or read timeout is explained before Start, port 0 listens on a
+    free port and shows which one, `[::1]` counts as this computer only,
+    a link-local IPv6
+    address with its zone (`fe80::1%3`) can be listened on, and an idle
+    connection is closed after the read timeout with an ordinary console
+    row.
+  - *Tools and plugins:* masked test-pack export changes only cases that
+    hold personal data, and keeps their line endings; a birth or death date
+    given as a year alone is masked to 1900. Export JSON/CSV proposes the
+    right file name for tabs such as "ORU^R01 v2.5.1". Copy Truncated
+    Message cuts at the fold threshold set in Settings. Pack import
+    replaces a creation date that is not RFC 3339 with the import time. A
+    plugin pack with no rules no longer takes one of the three Community
+    slots, adding a pack while the app is closed no longer switches off one
+    in use, and an unreadable `.state.json` is reported and kept as
+    `.state.json.broken` (then `.broken.1`, `.broken.2`…) instead of being
+    reset. FHIR, anonymization and
+    batch results say when packs were left out by the limit.
+  - *CLI:* folder names in patterns ignore case, and hidden files such as
+    macOS `._name.hl7` are skipped unless the pattern starts with a dot;
+    named pipes and process substitution are accepted. `--fhir-packages`
+    reads `.JSON` in any case and names every file it ignores. `send`
+    refuses input that is not HL7 v2, `xsd` accepts a whole MSH-9 such as
+    `ADT^A04^ADT_A01`, and `to-json` and `anonymize` say when the input is
+    a FHIR resource.
+  - *Interface:* Close All Tabs returns to the welcome screen, and with no
+    tab open the status bar shows no parse state or cursor position. Sizes
+    in questions and in the status bar use the interface language's
+    decimal separator. "Untitled"
+    tabs follow the interface language. Copy commands say when nothing was
+    copied. A large restored tab shows that it is loading. The Field
+    Inspector shows the full length of a cut value and can open a long
+    segment whole. The recent list and test-case export keep names with
+    backslashes on Linux and macOS, and a dropped web link is reported as a
+    link. Plugin warnings, the plugin-limit note and licence feature names
+    are translated.
+  - *Platforms:* on Linux without xdg-open or gio, links and Open plugins
+    folder say what is missing and show the address or folder. A
+    `policy.json` that cannot be used is named with the reason in Settings
+    → Privacy, in the interface language, and the manual says where the policy variables must be set
+    on each system. Windows writes a hard-linked file in place on save.
+    Linux keeps every file when several are opened at once on a first
+    start, and without a D-Bus session a second window says it cannot
+    reach the first instead of overwriting its saved tabs. A zeroed or
+    "uninitialized" `/etc/machine-id` no longer gives several machines the
+    same hardware ID; licences activated before keep working, and
+    activation says when the ID is based on the computer and user name.
+
+### Security
+- Bundled components move to their patched releases: SQLite 3.54.1
+  (rusqlite 0.41, RUSTSEC-2026-0459; the history database uses the
+  write-ahead log the advisory concerns), the updater's `zip` 9.1.3
+  (RUSTSEC-2026-0367/0368/0369/0429/0548), Tauri 2.12
+  (GHSA-w28w-mhc8-qvjv) and its file-system plugin's scope check,
+  `rustls-webpki`, `webpki-roots`, `webpki-root-certs`, `tokio` and
+  `rustix`. `quinn-proto` and `quinn-udp` are locked but not compiled
+  (HTTP/3 is off) and are updated too. The CLI lockfile follows.
+- SvelteKit 3 closes GHSA-3r8g-jcqq-3p5j, GHSA-6cf5-gc4q-fm3x,
+  GHSA-pfhg-q3qv-9q6r and GHSA-27mw-82g8-phjj; 2.70.4 had closed
+  GHSA-rqp5-r3wg-vg35 and GHSA-mw6w-2fmv-pvw3. None of them reached the
+  app, which has no server-side routes, form actions or remote
+  functions. Build and test tooling (devalue, source-map-js, Vite,
+  Vitest) is on patched releases as well.
+- **A save no longer leaves the message readable by other users.** The
+  new text sat, while a file was being saved, in a temporary file next to
+  it that every local user could read, whatever the file's own
+  permissions, and an interrupted save left it behind. The temporary file
+  is now readable by its owner only, and the next save in the folder
+  removes the leftovers of interrupted saves.
+- **A field value can no longer add links or images to the editor
+  hover.** A coded field containing a backtick could put a link with any
+  text, or an image, into that field's hover; values are now always shown
+  as written.
+- **The CLI no longer passes escape sequences to the terminal.** `send`
+  printed the MSA-1 of the reply as received, so a hostile peer could
+  clear the screen, retitle the window or make a rejection read "ACK AA";
+  plugin-pack rule ids and file names, FHIR package file names, a
+  message's MSH-18 character set and command-line values reached standard
+  error raw too. All of it now goes through the same escaping as the rest
+  of the text output, and JSON and JUnit output escape DEL and the C1
+  controls.
+- **One peer can no longer stop the MLLP listener or fill the computer's
+  memory.** A failed accept (for example "too many open files" after a
+  peer opened about a thousand connections) ended the listener for good
+  while the panel still said "Listening", and connections, the memory of
+  messages still arriving and the time a message could take had no limit.
+  The listener now serves at most 64 connections at once, messages still
+  arriving may hold 64 MB in all, and a message must arrive within 2
+  minutes of its first byte (or within the read timeout if that is
+  longer). A failed accept is reported and retried, and if the listener
+  stops anyway the panel shows it stopped, with the reason. Ordinary test
+  traffic never comes near these limits.
+- **The request history no longer keeps a password from a URL that does
+  not parse, or a token from the fragment.** Both are now replaced by
+  `***`, and so are `subscription-key` and other service key parameters.
+  History rows written by earlier versions are cleaned once at start.
+- **A crafted FHIR package can no longer take gigabytes of memory during
+  the install.** A long-name or PAX header entry was read whole before any
+  size check (a 3 MB package declaring a 3 GB name took 6.4 GB). Such an
+  entry over 64 KB now refuses the package before any of it is read, and
+  no more than the package may hold (1 GB) plus 64 MB is ever
+  decompressed.
+- A trial record in the format written before 1.3.0 is accepted only
+  when it dates from before 1.3.0; a newer one is treated as tampered.
+- **On Windows, `policy.json` must belong to Administrators.** It is
+  honoured only when the file and its folder belong to Administrators or
+  SYSTEM, so a standard user can no longer lock settings for everyone.
+- **Check for Updates opens only BridgeLab's own releases page.**
+- **Session IDs in a URL are masked.** A `;jsessionid=` in the path and a
+  `PHPSESSID` parameter count as authentication (Pro) and are masked in
+  History.
+- `cargo audit` reports no vulnerability in the three lockfiles. What it
+  still lists has no fix BridgeLab can take: `glib` 0.18
+  (RUSTSEC-2024-0429, an unsound iterator BridgeLab does not call; the fix
+  is in 0.20, which Tauri's Linux toolkit does not use yet) and crates
+  marked unmaintained with no successor release (`chrono`,
+  RUSTSEC-2026-0543; `proc-macro-error`, RUSTSEC-2024-0370; `zbus_names`,
+  `zvariant` and `zvariant_derive`, RUSTSEC-2026-0370/0371/0372). All of
+  them come through Tauri or its plugins, except `chrono`, which the app
+  and the CLI use for timestamps. A yanked `async-executor` release is
+  replaced. `pnpm audit`, development tooling included, reports no
+  advisory.
 
 ## [2.0.0] — 2026-09-30
 

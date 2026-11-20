@@ -1,6 +1,6 @@
 <script lang="ts">
 	import {
-		listFhirRules, saveFhirRules, checkFhirRule, testFhirRule, blankRule,
+		listFhirRules, saveFhirRules, checkFhirRule, testFhirRule, blankRule, describeRuleError,
 		type FhirRule, type FhirCheck, type FhirRuleTest, type FhirRuleSet, type Severity,
 	} from '$lib/ipc/fhirRules';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
@@ -97,7 +97,7 @@
 			packStatus = set.status;
 			selected = rules.length > 0 ? 0 : null;
 		} catch (e) {
-			error = String(e);
+			error = describe(e);
 		}
 		loading = false;
 	}
@@ -210,9 +210,10 @@
 		saving = false;
 	}
 
+	/** A refusal in the user's language (the backend sends a code with the
+	 *  values its message names), else the English text as it came. */
 	function describe(e: unknown): string {
-		const up = parseUpgradeError(e);
-		return up ? t('upgrade.required', { tier: up.tier }) : String(e);
+		return describeRuleError(e, t, parseUpgradeError);
 	}
 
 	function preview(value: unknown): string {
@@ -226,7 +227,7 @@
 	<div class="modal rules-modal" onclick={(e) => e.stopPropagation()}>
 		<div class="modal-header">
 			<h2>{t('fhirRules.title')}</h2>
-			<button class="close-btn" onclick={requestClose} aria-label="Close">×</button>
+			<button class="close-btn" onclick={requestClose} aria-label={t('modal.close')}>×</button>
 		</div>
 
 		<div class="modal-body">

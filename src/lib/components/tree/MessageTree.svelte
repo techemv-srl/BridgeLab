@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import type { TreeNode } from '$lib/types/hl7';
-	import { placeAbsentSegments, type FieldTarget } from '$lib/hl7/segment-lines';
+	import { expectedSegmentsKey, placeAbsentSegments, type FieldTarget } from '$lib/hl7/segment-lines';
 	import { getTreeChildren, getFieldContent, searchMessage, type SearchHit } from '$lib/ipc/parser';
 	import { getFhirTreeChildren } from '$lib/ipc/validation';
 	import {
@@ -10,6 +10,7 @@
 	} from '$lib/ipc/tables';
 	import TreeNodeRow from './TreeNodeRow.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
+	import { matchesKeys } from '$lib/stores/shortcuts.svelte';
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
 	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
@@ -212,9 +213,10 @@
 	}
 
 	// Ctrl+F / Cmd+F while the tree has focus jumps to the search box.
-	// Monaco keeps its own find widget for the raw-text panel.
+	// Monaco keeps its own find widget for the raw-text panel. Exactly that
+	// key: on macOS Control+Command+F is the menu's Full Screen.
 	function handleTreeKeydown(e: KeyboardEvent) {
-		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+		if (matchesKeys(e, 'Ctrl+F')) {
 			e.preventDefault();
 			e.stopPropagation();
 			searchInputEl?.focus();
@@ -224,12 +226,14 @@
 
 	// Expected segment structure for the current message type (ghost rows of
 	// the full standard-structure view). Fetched once per (messageType,
-	// version) while the toggle is on; HL7 v2 only.
+	// version, declared delimiters) while the toggle is on; HL7 v2 only. The
+	// delimiters count: MSH-9 is split with them, so the same MSH-9 text
+	// under another MSH-2 can name another structure.
 	let expectedSegs = $state<ExpectedSegment[]>([]);
 	let expectedKey = '';
 	$effect(() => {
-		const key = showSchemaFields && format === 'HL7v2' && messageType && version
-			? `${messageType}|${version}`
+		const key = showSchemaFields && format === 'HL7v2'
+			? expectedSegmentsKey(messageType, version, roots[0]?.value_preview)
 			: '';
 		if (key === expectedKey) return;
 		expectedKey = key;
@@ -237,7 +241,10 @@
 			expectedSegs = [];
 			return;
 		}
-		getExpectedSegments(messageType, version)
+		// The message id lets the backend split MSH-9 with the message's own
+		// component separator ('ADT@A01' when MSH-2 declares '@'). It changes
+		// on every parse: read, not tracked, or each edit would ask again.
+		getExpectedSegments(messageType, version, untrack(() => messageId))
 			.then((s) => {
 				// Ignore stale responses: the user may have switched tab or
 				// version while this lookup was in flight.
@@ -700,7 +707,7 @@
 					{#if searchHits.length === 0}
 						<span class="no-results">{tr('tree.searchNoResults')}</span>
 					{:else}
-						<span>{tr('tree.searchResults', { count: searchHits.length })}</span>
+						<span>{tr(searchHits.length === 1 ? 'tree.searchResultsOne' : 'tree.searchResults', { count: searchHits.length })}</span>
 						<span class="search-nav">
 							<button class="nav-btn" onclick={prevHit} title="Shift+Enter">&#9650;</button>
 							<button class="nav-btn" onclick={nextHit} title="Enter">&#9660;</button>
@@ -913,6 +920,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		color: var(--color-text-secondary);
-		opacity: 0.8;
+		opacity: var(--text-dim, 0.8);
 	}
 </style>

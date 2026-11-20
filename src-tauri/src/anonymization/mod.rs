@@ -32,10 +32,14 @@ enum Shape {
     /// meaning and fits the field's length in every version; every other
     /// component is masked.
     Id,
+    /// A date of birth or death (TS/DTM): its first component is a date,
+    /// so a bare year there is a year and becomes 1900, where elsewhere a
+    /// four-digit value may be an id and becomes 0000.
+    Date,
 }
 
 use PhiSensitivity::{High, Medium};
-use Shape::{Id, Plain};
+use Shape::{Date, Id, Plain};
 
 /// Known PHI fields by segment type (segment, field position, name,
 /// sensitivity, shape), after the HL7 v2.5 field definitions: every field of
@@ -50,7 +54,7 @@ const PHI_FIELDS: &[(&str, usize, &str, PhiSensitivity, Shape)] = &[
     ("PID", 4, "Alternate Patient ID", High, Id),
     ("PID", 5, "Patient Name", High, Plain),
     ("PID", 6, "Mother's Maiden Name", Medium, Plain),
-    ("PID", 7, "Date/Time of Birth", High, Plain),
+    ("PID", 7, "Date/Time of Birth", High, Date),
     ("PID", 9, "Patient Alias", Medium, Plain),
     ("PID", 11, "Patient Address", High, Plain),
     ("PID", 13, "Phone Number - Home", High, Plain),
@@ -60,7 +64,7 @@ const PHI_FIELDS: &[(&str, usize, &str, PhiSensitivity, Shape)] = &[
     ("PID", 20, "Driver's License Number", High, Plain),
     ("PID", 21, "Mother's Identifier", High, Id),
     ("PID", 23, "Birth Place", High, Plain),
-    ("PID", 29, "Patient Death Date and Time", High, Plain),
+    ("PID", 29, "Patient Death Date and Time", High, Date),
     // PV1 - the visit numbers identify the patient's stay.
     ("PV1", 5, "Preadmit Number", High, Id),
     ("PV1", 19, "Visit Number", High, Id),
@@ -83,7 +87,7 @@ const PHI_FIELDS: &[(&str, usize, &str, PhiSensitivity, Shape)] = &[
     ("NK1", 6, "Business Phone Number", Medium, Plain),
     ("NK1", 12, "Employee Number", High, Id),
     ("NK1", 13, "Organization Name", Medium, Plain),
-    ("NK1", 16, "Date/Time of Birth", High, Plain),
+    ("NK1", 16, "Date/Time of Birth", High, Date),
     ("NK1", 26, "Mother's Maiden Name", Medium, Plain),
     ("NK1", 30, "Contact Person's Name", Medium, Plain),
     ("NK1", 31, "Contact Person's Telephone Number", Medium, Plain),
@@ -98,14 +102,14 @@ const PHI_FIELDS: &[(&str, usize, &str, PhiSensitivity, Shape)] = &[
     ("GT1", 5, "Guarantor Address", Medium, Plain),
     ("GT1", 6, "Guarantor Phone - Home", Medium, Plain),
     ("GT1", 7, "Guarantor Phone - Business", Medium, Plain),
-    ("GT1", 8, "Guarantor Date/Time of Birth", High, Plain),
+    ("GT1", 8, "Guarantor Date/Time of Birth", High, Date),
     ("GT1", 12, "Guarantor SSN", High, Plain),
     ("GT1", 16, "Guarantor Employer Name", Medium, Plain),
     ("GT1", 17, "Guarantor Employer Address", Medium, Plain),
     ("GT1", 18, "Guarantor Employer Phone", Medium, Plain),
     ("GT1", 19, "Guarantor Employee ID", High, Id),
     ("GT1", 21, "Guarantor Organization Name", Medium, Plain),
-    ("GT1", 24, "Guarantor Death Date and Time", High, Plain),
+    ("GT1", 24, "Guarantor Death Date and Time", High, Date),
     ("GT1", 29, "Guarantor Employer ID Number", High, Id),
     ("GT1", 42, "Guarantor Mother's Maiden Name", Medium, Plain),
     ("GT1", 45, "Guarantor Contact Person's Name", Medium, Plain),
@@ -116,7 +120,7 @@ const PHI_FIELDS: &[(&str, usize, &str, PhiSensitivity, Shape)] = &[
     ("IN1", 10, "Insured's Group Employer ID", High, Id),
     ("IN1", 11, "Insured's Group Employer Name", Medium, Plain),
     ("IN1", 16, "Name of Insured", Medium, Plain),
-    ("IN1", 18, "Insured's Date of Birth", High, Plain),
+    ("IN1", 18, "Insured's Date of Birth", High, Date),
     ("IN1", 19, "Insured's Address", High, Plain),
     ("IN1", 36, "Policy Number", High, Plain),
     ("IN1", 44, "Insured's Employer's Address", Medium, Plain),
@@ -153,10 +157,19 @@ pub fn builtin_field_count() -> usize {
 /// dates and phone numbers.
 const FREE_TEXT_TYPES: &[&str] = &["TX", "FT"];
 
+/// The segment's name as the PHI catalogue spells it. Text pasted from an
+/// e-mail can indent segment lines, and some senders write segment names in
+/// lower case: the parser keeps the name as written ("  PID", "pid"), and an
+/// exact match then found no PHI at all, so the "anonymized" copy kept the
+/// patient's name in clear. Matching more segments only masks more.
+fn phi_segment_name(seg: &crate::parser::hl7::message::SegmentIndex) -> String {
+    seg.segment_type.trim().to_ascii_uppercase()
+}
+
 /// Whether this OBX carries a free-text value (OBX-2 is TX or FT), whose
 /// OBX-5 is then masked like a comment. Coded and numeric results stay.
 fn free_text_obx(seg: &crate::parser::hl7::message::SegmentIndex, raw: &[u8]) -> bool {
-    seg.segment_type == "OBX"
+    phi_segment_name(seg) == "OBX"
         && seg.fields.iter().find(|f| f.position == 2).is_some_and(|f| {
             let v = f.span.as_str(raw).trim();
             FREE_TEXT_TYPES.iter().any(|t| v.eq_ignore_ascii_case(t))
@@ -170,9 +183,10 @@ fn builtin_targets(
     raw: &[u8],
     extra: &[ExtraPhiField],
 ) -> Vec<(usize, &'static str, PhiSensitivity, Shape)> {
+    let name = phi_segment_name(seg);
     let mut out: Vec<_> = PHI_FIELDS
         .iter()
-        .filter(|f| f.0 == seg.segment_type)
+        .filter(|f| f.0 == name)
         .map(|f| (f.1, f.2, f.3.clone(), f.4))
         .collect();
     // A plugin rule on OBX-5 covers every OBX; the built-in one would mask
@@ -205,13 +219,14 @@ pub fn detect_phi_with_extra(msg: &Hl7Message, extra: &[ExtraPhiField]) -> Vec<P
 
     // Built-in PHI fields
     for (seg_idx, seg) in msg.segments.iter().enumerate() {
+        let name = phi_segment_name(seg);
         for (field_pos, field_name, sensitivity, _) in builtin_targets(seg, &msg.raw, &extra) {
             if let Some(field) = seg.fields.iter().find(|f| f.position == field_pos) {
                 let value = field.span.as_str(&msg.raw).trim();
                 if !value.is_empty() {
                     locations.push(PhiLocation {
                         segment_idx: seg_idx,
-                        segment_type: seg.segment_type.clone(),
+                        segment_type: name.clone(),
                         field_position: field_pos,
                         field_name: field_name.to_string(),
                         sensitivity,
@@ -223,7 +238,7 @@ pub fn detect_phi_with_extra(msg: &Hl7Message, extra: &[ExtraPhiField]) -> Vec<P
 
         // Plugin-contributed PHI fields
         for rule in &extra {
-            if seg.segment_type != rule.segment { continue; }
+            if name != rule.segment { continue; }
             if let Some(field) = seg.fields.iter().find(|f| f.position == rule.field) {
                 let value = field.span.as_str(&msg.raw).trim();
                 if !value.is_empty() {
@@ -271,6 +286,8 @@ fn plugin_fields(extra: &[ExtraPhiField]) -> Vec<ExtraPhiField> {
     };
     let mut out: Vec<ExtraPhiField> = Vec::new();
     for rule in extra {
+        // A pack may spell the segment "zpi": it means ZPI.
+        let rule = &ExtraPhiField { segment: rule.segment.trim().to_ascii_uppercase(), ..rule.clone() };
         if rule.field == 0 || (rule.segment == "MSH" && rule.field <= 2) { continue; }
         if PHI_FIELDS.iter().any(|f| f.0 == rule.segment.as_str() && f.1 == rule.field) { continue; }
         match out.iter_mut().find(|o| o.segment == rule.segment && o.field == rule.field) {
@@ -282,8 +299,35 @@ fn plugin_fields(extra: &[ExtraPhiField]) -> Vec<ExtraPhiField> {
     out
 }
 
+/// Anonymize keeping everything between the segments as the source had
+/// it: each segment's own terminator (CR, LF or CR LF, mixed if the file
+/// mixes them), the one after the last segment or its absence, and blank
+/// lines. Only the segments are rewritten. For a masked copy of a file
+/// (batch anonymize), which should differ from the original in its PHI
+/// and nothing else.
+pub fn anonymize_keeping_layout(msg: &Hl7Message, extra: &[ExtraPhiField]) -> String {
+    let segments = anonymized_segments(msg, extra);
+    let Ok(raw) = std::str::from_utf8(&msg.raw) else {
+        return segments.join("\r");
+    };
+    let mut out = String::with_capacity(raw.len());
+    let mut at = 0;
+    for (seg, text) in msg.segments.iter().zip(&segments) {
+        out.push_str(&raw[at..seg.span.start]);
+        out.push_str(text);
+        at = seg.span.end;
+    }
+    out.push_str(&raw[at..]);
+    out
+}
+
 /// Anonymize by building a new message with PHI fields replaced.
 fn anonymize_by_replacement(msg: &Hl7Message, extra: &[ExtraPhiField]) -> String {
+    anonymized_segments(msg, extra).join("\r")
+}
+
+/// Every segment of `msg` with its PHI fields replaced, in order.
+fn anonymized_segments(msg: &Hl7Message, extra: &[ExtraPhiField]) -> Vec<String> {
     let d = &msg.delimiters;
     let sep = d.field as char;
     let extra = plugin_fields(extra);
@@ -294,12 +338,13 @@ fn anonymize_by_replacement(msg: &Hl7Message, extra: &[ExtraPhiField]) -> String
         let mut fields: Vec<String> = seg_text.split(sep).map(|s| s.to_string()).collect();
         // Split on the field separator, MSH-n sits at index n - 1 (the
         // separator itself is MSH-1); in every other segment at index n.
-        let index = |field: usize| if seg.segment_type == "MSH" { field - 1 } else { field };
+        let name = phi_segment_name(seg);
+        let index = |field: usize| if name == "MSH" { field - 1 } else { field };
 
         let targets = builtin_targets(seg, &msg.raw, &extra)
             .into_iter()
             .map(|(field, _, sensitivity, shape)| (field, sensitivity, shape))
-            .chain(extra.iter().filter(|r| seg.segment_type == r.segment).map(|r| (r.field, r.sensitivity.clone(), Plain)));
+            .chain(extra.iter().filter(|r| name == r.segment).map(|r| (r.field, r.sensitivity.clone(), Plain)));
         for (field, sensitivity, shape) in targets {
             let idx = index(field);
             if idx < fields.len() && !fields[idx].trim().is_empty() {
@@ -310,7 +355,7 @@ fn anonymize_by_replacement(msg: &Hl7Message, extra: &[ExtraPhiField]) -> String
         result_segments.push(fields.join(&sep.to_string()));
     }
 
-    result_segments.join("\r")
+    result_segments
 }
 
 /// Generate a replacement value that keeps the field's shape: every
@@ -324,8 +369,19 @@ fn generate_replacement(original: &str, d: &crate::parser::hl7::delimiters::Deli
     let sub = |_: usize, c: &str| mask_split(c, d.subcomponent, &leaf);
     // CX.4 (assigning authority) and CX.5 (identifier type code) say whose
     // number it is, not whose patient: they stay.
+    let date = |_: usize, v: &str| {
+        if v.is_empty() {
+            String::new()
+        } else {
+            masked_date_time(v, 4).unwrap_or_else(|| mask_value(v, sensitivity))
+        }
+    };
     let comp = |_: usize, r: &str| {
-        mask_split(r, d.component, &|i, c| if shape == Id && (i == 3 || i == 4) { c.to_string() } else { sub(i, c) })
+        mask_split(r, d.component, &|i, c| match shape {
+            Id if i == 3 || i == 4 => c.to_string(),
+            Date if i == 0 => mask_split(c, d.subcomponent, &date),
+            _ => sub(i, c),
+        })
     };
     mask_split(original, d.repetition, &comp)
 }
@@ -336,8 +392,16 @@ fn generate_replacement(original: &str, d: &crate::parser::hl7::delimiters::Deli
 /// shape: as many date/time digits, as many fractional digits, and an
 /// offset of +0000 when it had one. So a masked birth or death date still
 /// validates (zeros, or REDACTED for a value with a `.` or an offset,
-/// failed the DT/TS check). A bare YYYY is left to the numeric rule.
+/// failed the DT/TS check). A bare YYYY is left to the numeric rule here:
+/// in a field of any kind it may be an id. In a date of birth or death it
+/// is a year, and becomes 1900 (see [`Shape::Date`]).
 fn masked_timestamp(value: &str) -> Option<String> {
+    masked_date_time(value, 6)
+}
+
+/// [`masked_timestamp`] for values of at least `min_digits` date/time
+/// digits: 6 (YYYYMM) in any field, 4 (YYYY) in a date field.
+fn masked_date_time(value: &str, min_digits: usize) -> Option<String> {
     if !crate::validation::is_timestamp(value) {
         return None;
     }
@@ -349,7 +413,7 @@ fn masked_timestamp(value: &str) -> Option<String> {
         Some((d, f)) => (d, Some(f)),
         None => (main, None),
     };
-    if digits.len() < 6 {
+    if digits.len() < min_digits {
         return None;
     }
     let mut out = "19000101000000"[..digits.len()].to_string();
@@ -409,7 +473,17 @@ fn mask_value(value: &str, sensitivity: &PhiSensitivity) -> String {
 }
 
 /// Build a truncated copy of the message for email sharing.
+///
+/// `threshold` is the editor's fold threshold, counted as the editor
+/// counts it: in UTF-16 code units, JavaScript's `.length`, where an emoji
+/// is two. Counted in characters, a field of 60 emoji was folded on screen
+/// at 100 but copied whole. A field longer than that is cut, keeping whole
+/// characters up to half the threshold; 0 means "never fold", so nothing
+/// is cut.
 pub fn build_truncated_copy(msg: &Hl7Message, threshold: usize) -> String {
+    if threshold == 0 {
+        return String::from_utf8_lossy(&msg.raw).into_owned();
+    }
     let sep = msg.delimiters.field as char;
     let mut result_segments: Vec<String> = Vec::new();
 
@@ -419,8 +493,8 @@ pub fn build_truncated_copy(msg: &Hl7Message, threshold: usize) -> String {
         let mut out_fields: Vec<String> = Vec::new();
 
         for field_str in &fields {
-            if field_str.len() > threshold {
-                let preview: String = field_str.chars().take(threshold / 2).collect();
+            if utf16_len(field_str) > threshold {
+                let preview = utf16_prefix(field_str, threshold / 2);
                 out_fields.push(format!("{}{{...{} bytes}}", preview, field_str.len()));
             } else {
                 out_fields.push(field_str.to_string());
@@ -431,6 +505,24 @@ pub fn build_truncated_copy(msg: &Hl7Message, threshold: usize) -> String {
     }
 
     result_segments.join("\r")
+}
+
+/// The length of `s` as the editor measures it: UTF-16 code units.
+fn utf16_len(s: &str) -> usize {
+    s.chars().map(char::len_utf16).sum()
+}
+
+/// The longest start of `s` within `max` UTF-16 code units, cut between
+/// characters: never inside an emoji's surrogate pair.
+fn utf16_prefix(s: &str, max: usize) -> &str {
+    let mut units = 0;
+    for (i, c) in s.char_indices() {
+        units += c.len_utf16();
+        if units > max {
+            return &s[..i];
+        }
+    }
+    s
 }
 
 #[cfg(test)]
@@ -493,6 +585,33 @@ mod tests {
     }
 
     #[test]
+    fn indented_or_lower_case_segments_are_masked_too() {
+        // Pasted from an e-mail: segment lines indented with spaces or a tab,
+        // or written in lower case. The PHI is the same and must not stay.
+        for text in [
+            "MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\r  PID|1||MRN777^^^HOSP^MR||Indentedname^Rosalind||19650412|F|||12 Hidden Lane^^Leeds",
+            "MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\r\tPID|1||MRN777^^^HOSP^MR||Indentedname^Rosalind||19650412|F|||12 Hidden Lane^^Leeds",
+            "MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\rpid|1||MRN777^^^HOSP^MR||Indentedname^Rosalind||19650412|F|||12 Hidden Lane^^Leeds",
+            "  MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\r  PID|1||MRN777^^^HOSP^MR||Indentedname^Rosalind||19650412|F|||12 Hidden Lane^^Leeds",
+        ] {
+            let msg = parse(text);
+            let found = detect_phi(&msg);
+            assert!(found.iter().any(|p| p.segment_type == "PID" && p.field_position == 5), "{text:?}: {found:?}");
+            let anon = anonymize_message(&msg);
+            for secret in ["Indentedname", "Rosalind", "MRN777", "19650412", "Hidden Lane"] {
+                assert!(!anon.contains(secret), "{secret} left in clear for {text:?}: {anon}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_plugin_rule_written_in_lower_case_masks_its_segment() {
+        let msg = parse("MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\rZPI|1|A|LOWER");
+        let anon = anonymize_message_with_extra(&msg, &[extra("zpi", 3, PhiSensitivity::High)]);
+        assert!(!anon.contains("LOWER"), "{anon}");
+    }
+
+    #[test]
     fn test_anonymize_preserves_structure() {
         let msg = parse("MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\rPID|||123||Doe^John||19800101|M");
         let anon = anonymize_message(&msg);
@@ -505,6 +624,54 @@ mod tests {
         let msg = parse("MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\rOBX|1|ED|||AAAAABBBBBCCCCCDDDDD");
         let truncated = build_truncated_copy(&msg, 10);
         assert!(truncated.contains("{..."));
+    }
+
+    /// Copy Truncated Message cut at a fixed 100 whatever the fold
+    /// threshold: with "never fold" (0) a 5 KB field was still cut.
+    #[test]
+    fn the_truncated_copy_follows_the_fold_threshold() {
+        let long = "Ä".repeat(150);
+        let msg = parse(&format!("MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\rOBX|1|TX|||{long}"));
+        assert_eq!(build_truncated_copy(&msg, 0), String::from_utf8_lossy(&msg.raw), "never fold: nothing cut");
+        assert!(build_truncated_copy(&msg, 200).contains(&long), "150 characters fit in 200 (300 bytes do not)");
+        let cut = build_truncated_copy(&msg, 100);
+        assert!(!cut.contains(&long) && cut.contains("{...300 bytes}"), "{cut}");
+    }
+
+    /// The editor folds by UTF-16 length, where an emoji counts two: 60 of
+    /// them are folded at 100 and must be cut in the copy too, never in
+    /// the middle of one.
+    #[test]
+    fn the_truncated_copy_counts_as_the_editor_does() {
+        let field = |text: &str| -> String {
+            let msg = parse(&format!("MSH|^~\\&|A|B|C|D|20230101||ADT^A01|M1|P|2.5\rOBX|1|TX|||{text}"));
+            build_truncated_copy(&msg, 100)
+        };
+        let emoji = "😀".repeat(60);
+        let cut = field(&emoji);
+        let kept = cut.rsplit("|||").next().unwrap().split("{...").next().unwrap();
+        assert_eq!(kept, "😀".repeat(25), "{cut}");
+        assert!(cut.ends_with("{...240 bytes}"), "{cut}");
+        // An odd half-threshold of units still keeps whole emoji only.
+        assert_eq!(utf16_prefix(&emoji, 51), "😀".repeat(25));
+        assert_eq!(utf16_prefix("a😀b", 2), "a");
+        // A field of exactly the threshold, in plain characters, is kept.
+        let plain = "Ä".repeat(100);
+        assert!(field(&plain).ends_with(&format!("|||{plain}")));
+        assert_eq!(utf16_len(&emoji), 120);
+    }
+
+    /// The manual promises 1900-01-01 at the same precision for a date; a
+    /// birth date given as a bare year became 0000. Outside the date
+    /// fields a four-digit value may be an id and stays zeros.
+    #[test]
+    fn a_birth_year_alone_becomes_1900() {
+        let msg = parse("MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1||1^^^H^MR||Doe^Jo||1970|F|||||||||||||||||||||1999\rZPI|1|1970");
+        let out = anonymize_message_with_extra(&msg, &[extra("ZPI", 2, PhiSensitivity::High)]);
+        assert!(out.contains("||1900|F|"), "{out}");
+        assert!(out.ends_with("|1900\rZPI|1|0000"), "{out}");
+        let report = crate::validation::validate_hl7_message(&parse(&out));
+        assert!(!report.issues.iter().any(|i| i.rule_id.starts_with("TYPE-")), "{:?}", report.issues);
     }
 
     #[test]
@@ -666,6 +833,7 @@ OBX|2|NM|GLU^Glucose||5.4|mmol/L|||||F";
         assert_eq!(masked_timestamp("198005").as_deref(), Some("190001"));
         assert_eq!(masked_timestamp("20260930123045.12345"), None, "5 fraction digits: not a TS");
         assert_eq!(masked_timestamp("1980"), None, "a bare year goes to the numeric rule");
+        assert_eq!(masked_date_time("1980", 4).as_deref(), Some("1900"), "except in a date field");
         assert_eq!(mask_value("19800515", &PhiSensitivity::Medium), "19000101");
 
         // The newly covered date fields, filled with full TS values: masked

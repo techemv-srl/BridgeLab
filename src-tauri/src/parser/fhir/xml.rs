@@ -12,7 +12,6 @@
 //!   their internals are presentation, not data.
 
 use quick_xml::events::Event;
-use quick_xml::Reader;
 use serde_json::{Map, Value};
 
 /// FHIR properties that are arrays in JSON even with a single occurrence.
@@ -144,17 +143,80 @@ fn emit(frame: Frame, stack: &mut Vec<Frame>, root: &mut Option<(String, Value)>
 /// the result and take the whole app down.
 const MAX_XML_DEPTH: usize = 128;
 
+/// The FHIR namespace every element of a FHIR XML resource is in.
+pub const FHIR_NS: &[u8] = b"http://hl7.org/fhir";
+
+/// The namespace of the narrative, the `<div>` of a `text` element.
+pub const XHTML_NS: &[u8] = b"http://www.w3.org/1999/xhtml";
+
+/// The first element found outside the namespace it belongs in.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutsideFhir {
+    /// Its name as written (`Patient`, `f:name`).
+    pub element: String,
+    /// The namespace it is in; `None` for no namespace at all.
+    pub namespace: Option<String>,
+    /// Where it is, as a validation path (empty for the root).
+    pub path: String,
+    /// It is the narrative `<div>`, which belongs in XHTML's namespace.
+    pub narrative: bool,
+}
+
 /// Convert a FHIR XML document into (resource_type, JSON value).
 pub fn fhir_xml_to_json(xml: &str) -> Result<(String, Value), String> {
-    let mut reader = Reader::from_str(xml);
+    fhir_xml_to_json_checked(xml).map(|(rt, json, _)| (rt, json))
+}
+
+/// [`fhir_xml_to_json`], also giving the first element that is not in the
+/// FHIR namespace (the XHTML narrative excepted), if any. The conversion
+/// itself goes by local names, so without this a `<Patient>` with no
+/// namespace, or in another one, read as a FHIR Patient and validated
+/// clean.
+pub fn fhir_xml_to_json_checked(xml: &str) -> Result<(String, Value, Option<OutsideFhir>), String> {
+    let mut reader = quick_xml::NsReader::from_str(xml);
     let mut stack: Vec<Frame> = Vec::new();
     let mut root: Option<(String, Value)> = None;
+    let mut outside: Option<OutsideFhir> = None;
 
     loop {
-        match reader.read_event() {
-            Err(e) => return Err(format!("Invalid XML: {}", e)),
-            Ok(Event::Eof) => break,
-            Ok(Event::Start(e)) => {
+        use quick_xml::name::ResolveResult;
+        let (ns, event) = reader.read_resolved_event().map_err(|e| format!("Invalid XML: {}", e))?;
+        // The element's namespace (`None` for none at all) and whether it
+        // is FHIR's or XHTML's. Owned, so the reader can move on.
+        let (namespace, in_fhir, in_xhtml): (Option<String>, bool, bool) = match ns {
+            ResolveResult::Bound(n) => {
+                (Some(String::from_utf8_lossy(n.as_ref()).into_owned()), n.as_ref() == FHIR_NS, n.as_ref() == XHTML_NS)
+            }
+            ResolveResult::Unbound => (None, false, false),
+            ResolveResult::Unknown(prefix) => {
+                (Some(format!("of the undeclared prefix '{}'", String::from_utf8_lossy(&prefix))), false, false)
+            }
+        };
+        if let Event::Start(e) | Event::Empty(e) = &event {
+            // The narrative is the one place for another namespace: the
+            // <div> of a `text` element, in XHTML's (its subtree is skipped
+            // below). Any other <div> is held to FHIR's like the rest, and
+            // a narrative <div> in no namespace, or in another one, is not
+            // a narrative.
+            let narrative = e.local_name().as_ref() == b"div" && stack.last().is_some_and(|f| f.name == "text");
+            let misplaced = if narrative { !in_xhtml } else { !in_fhir };
+            if misplaced && outside.is_none() {
+                let local = String::from_utf8_lossy(e.local_name().as_ref()).into_owned();
+                let mut path: Vec<&str> = stack.iter().skip(1).map(|f| f.name.as_str()).collect();
+                if !stack.is_empty() {
+                    path.push(&local);
+                }
+                outside = Some(OutsideFhir {
+                    element: String::from_utf8_lossy(e.name().as_ref()).into_owned(),
+                    namespace,
+                    path: path.join("."),
+                    narrative,
+                });
+            }
+        }
+        match event {
+            Event::Eof => break,
+            Event::Start(e) => {
                 let frame = frame_from_start(&e)?;
                 if frame.name == "div" {
                     // XHTML narrative: skip the subtree, keep a placeholder.
@@ -178,13 +240,13 @@ pub fn fhir_xml_to_json(xml: &str) -> Result<(String, Value), String> {
                 }
                 stack.push(frame);
             }
-            Ok(Event::Empty(e)) => {
+            Event::Empty(e) => {
                 // A self-closing element with no parent is a valid (minimal)
                 // document root: <Patient xmlns="..."/> must still validate.
                 let frame = frame_from_start(&e)?;
                 emit(frame, &mut stack, &mut root);
             }
-            Ok(Event::End(_)) => {
+            Event::End(_) => {
                 let frame = match stack.pop() {
                     Some(f) => f,
                     None => return Err("Unbalanced XML end tag".into()),
@@ -193,7 +255,7 @@ pub fn fhir_xml_to_json(xml: &str) -> Result<(String, Value), String> {
             }
             // FHIR data lives in value attributes; free text only occurs
             // inside <div>, which is skipped above.
-            Ok(_) => {}
+            _ => {}
         }
     }
 
@@ -207,7 +269,7 @@ pub fn fhir_xml_to_json(xml: &str) -> Result<(String, Value), String> {
         }
     };
     obj.insert("resourceType".into(), Value::String(resource_type.clone()));
-    Ok((resource_type, Value::Object(obj)))
+    Ok((resource_type, Value::Object(obj), outside))
 }
 
 #[cfg(test)]
@@ -294,6 +356,77 @@ mod tests {
             issues.iter().any(|i| i.path == "gender"),
             "invalid gender with extension must still be flagged"
         );
+    }
+
+    /// Elements outside the FHIR namespace are found: a root with no xmlns
+    /// or another one, a nested element in a foreign namespace. The FHIR
+    /// namespace by prefix, and the XHTML narrative, are fine.
+    #[test]
+    fn elements_outside_the_fhir_namespace_are_found() {
+        let outside = |xml: &str| fhir_xml_to_json_checked(xml).unwrap().2;
+        assert_eq!(outside(PATIENT_XML), None);
+        assert_eq!(outside(r#"<f:Patient xmlns:f="http://hl7.org/fhir"><f:id value="1"/></f:Patient>"#), None);
+
+        let none = outside(r#"<Patient><id value="1"/><gender value="male"/></Patient>"#).unwrap();
+        assert_eq!((none.element.as_str(), none.namespace.clone(), none.path.as_str()), ("Patient", None, ""));
+
+        let wrong = outside(r#"<Patient xmlns="http://example.org/fhir"><id value="1"/></Patient>"#).unwrap();
+        assert_eq!(wrong.namespace.as_deref(), Some("http://example.org/fhir"));
+
+        let nested = outside(
+            r#"<Patient xmlns="http://hl7.org/fhir" xmlns:x="urn:x"><name><x:family value="R"/></name></Patient>"#,
+        )
+        .unwrap();
+        assert_eq!(nested.element, "x:family");
+        assert_eq!(nested.path, "name.family");
+        assert_eq!(nested.namespace.as_deref(), Some("urn:x"));
+    }
+
+    #[test]
+    fn validation_reports_a_resource_outside_the_fhir_namespace() {
+        use crate::parser::fhir::{parse_fhir_xml, validate_fhir_json};
+        let issues = |xml: &str| validate_fhir_json(&parse_fhir_xml(xml).unwrap());
+        let plain = issues(r#"<Patient><id value="1"/><gender value="male"/></Patient>"#);
+        let first = &plain[0];
+        assert_eq!(first.severity, "error");
+        assert!(first.message.contains("no namespace"), "{}", first.message);
+        let wrong = issues(r#"<Patient xmlns="http://example.org"><id value="1"/></Patient>"#);
+        assert!(wrong[0].message.contains("http://example.org"), "{}", wrong[0].message);
+        assert!(!issues(PATIENT_XML).iter().any(|i| i.message.contains("namespace")));
+    }
+
+    /// Only the narrative <div> of a `text`, in the XHTML namespace, may
+    /// leave FHIR's: one in no namespace, in another or in FHIR's is not a
+    /// narrative, and a <div> anywhere else is held to FHIR's namespace.
+    #[test]
+    fn only_an_xhtml_narrative_div_is_exempt() {
+        let outside = |xml: &str| fhir_xml_to_json_checked(xml).unwrap().2;
+        let patient = |text: &str| format!(r#"<Patient xmlns="http://hl7.org/fhir"><id value="1"/>{text}</Patient>"#);
+        // The narrative as FHIR writes it, by a declaration on the div, by a
+        // prefix, self-closing, and inside a contained resource.
+        for ok in [
+            r#"<text><status value="generated"/><div xmlns="http://www.w3.org/1999/xhtml"><p>Hi</p></div></text>"#,
+            r#"<text><status value="generated"/><h:div xmlns:h="http://www.w3.org/1999/xhtml"><h:p>Hi</h:p></h:div></text>"#,
+            r#"<text><status value="empty"/><div xmlns="http://www.w3.org/1999/xhtml"/></text>"#,
+            r#"<contained><Patient><text><div xmlns="http://www.w3.org/1999/xhtml">x</div></text></Patient></contained>"#,
+        ] {
+            assert_eq!(outside(&patient(ok)), None, "{ok}");
+        }
+        let bad = |text: &str| outside(&patient(text)).unwrap_or_else(|| panic!("not reported: {text}"));
+        let foreign = bad(r#"<text><div xmlns="urn:not-xhtml"><p>x</p></div></text>"#);
+        assert_eq!((foreign.narrative, foreign.namespace.as_deref(), foreign.path.as_str()), (true, Some("urn:not-xhtml"), "text.div"));
+        let none = bad(r#"<text><div xmlns=""><p>x</p></div></text>"#);
+        assert_eq!((none.narrative, none.namespace.clone()), (true, None));
+        // Inheriting FHIR's namespace is not XHTML either.
+        assert_eq!(bad(r#"<text><div><p>x</p></div></text>"#).namespace.as_deref(), Some("http://hl7.org/fhir"));
+        // A <div> that is no narrative, in XHTML's namespace: outside FHIR's.
+        let elsewhere = bad(r#"<div xmlns="http://www.w3.org/1999/xhtml">x</div>"#);
+        assert_eq!((elsewhere.narrative, elsewhere.path.as_str()), (false, "div"));
+
+        use crate::parser::fhir::{parse_fhir_xml, validate_fhir_json};
+        let issues = validate_fhir_json(&parse_fhir_xml(&patient(r#"<text><div xmlns="urn:not-xhtml">x</div></text>"#)).unwrap());
+        assert!(issues[0].message.contains("narrative") && issues[0].message.contains("urn:not-xhtml"), "{:?}", issues[0]);
+        assert_eq!(issues[0].severity, "error");
     }
 
     /// A self-closing root is a valid minimal document.

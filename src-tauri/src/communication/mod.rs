@@ -4,3 +4,5 @@ pub mod mllp_listener;
 pub mod credentials;
 pub mod http_client;
 pub mod profiles;
+pub mod proxy;
+pub mod send_error;

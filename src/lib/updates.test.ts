@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { isNewerVersion, startupCheckDue, shouldNotify, effectivePreference, needsFirstRunQuestion, CHECK_INTERVAL_MS } from './updates';
+import {
+	isNewerVersion, startupCheckDue, shouldNotify, effectivePreference, needsFirstRunQuestion, CHECK_INTERVAL_MS,
+	releasePageUrl, policyProblemKey, policyProblemDetail, RELEASES_PAGE,
+} from './updates';
 
 describe('isNewerVersion', () => {
 	it('compares numerically per part', () => {
@@ -14,6 +17,11 @@ describe('isNewerVersion', () => {
 		expect(isNewerVersion('v2.0.0', '1.8.9')).toBe(true);
 		expect(isNewerVersion('1.8.1', '2.0.0')).toBe(false);
 		expect(isNewerVersion('2.0.0', '2.0.0')).toBe(false);
+	});
+	it('sees a minor release as newer than the previous one', () => {
+		expect(isNewerVersion('2.1.0', '2.0.0')).toBe(true);
+		expect(isNewerVersion('2.0.0', '2.1.0')).toBe(false);
+		expect(isNewerVersion('2.10.0', '2.9.0')).toBe(true);
 	});
 	it('does not compare as strings', () => {
 		expect(isNewerVersion('1.10.0', '1.9.0')).toBe(true);
@@ -86,5 +94,62 @@ describe('needsFirstRunQuestion', () => {
 		expect(needsFirstRunQuestion(none, 'false')).toBe(false);
 		expect(needsFirstRunQuestion({ ...none, installer_choice: true }, null)).toBe(false);
 		expect(needsFirstRunQuestion({ ...none, disabled_by_policy: true, policy_source: 'env' }, null)).toBe(false);
+	});
+});
+
+describe('releasePageUrl', () => {
+	it('keeps a page of the project releases', () => {
+		const tag = 'https://github.com/techemv-srl/BridgeLab/releases/tag/v2.1.1';
+		expect(releasePageUrl(tag)).toBe(tag);
+		expect(releasePageUrl(RELEASES_PAGE)).toBe(RELEASES_PAGE);
+		// Owner and repository names ignore case on GitHub.
+		expect(releasePageUrl('https://github.com/TECHEMV-SRL/BridgeLab/releases/tag/v3.0.0'))
+			.toBe('https://github.com/TECHEMV-SRL/BridgeLab/releases/tag/v3.0.0');
+	});
+	it('opens the releases page for any other address', () => {
+		for (const url of [
+			'https://downloads.evil.example/BridgeLab_2.1.1_x64-setup.exe',
+			'http://github.com/techemv-srl/BridgeLab/releases/tag/v2.1.1',
+			'https://github.com.evil.example/techemv-srl/BridgeLab/releases',
+			'https://github.com@evil.example/techemv-srl/BridgeLab/releases',
+			'https://user:pw@github.com/techemv-srl/BridgeLab/releases',
+			'https://github.com:8443/techemv-srl/BridgeLab/releases',
+			'https://github.com/someone/BridgeLab/releases/tag/v2.1.1',
+			'https://github.com/techemv-srl/BridgeLab/releases-evil',
+			'https://github.com/techemv-srl/BridgeLab/releases/../../evil/repo/releases',
+			'https://github.com/techemv-srl/BridgeLab/archive/main.zip',
+			'file:///etc/passwd',
+			'not a url',
+			'',
+		]) {
+			expect(releasePageUrl(url), url).toBe(RELEASES_PAGE);
+		}
+		expect(releasePageUrl(undefined)).toBe(RELEASES_PAGE);
+		expect(releasePageUrl(42)).toBe(RELEASES_PAGE);
+	});
+});
+
+describe('policyProblemKey', () => {
+	it('names one sentence per kind of ignored policy file', () => {
+		expect(policyProblemKey('invalid_json')).toBe('settings.policyInvalidJson');
+		expect(policyProblemKey('unreadable')).toBe('settings.policyUnreadable');
+		expect(policyProblemKey('untrusted_owner')).toBe('settings.policyUntrusted');
+		expect(policyProblemKey('untrusted_permissions')).toBe('settings.policyUntrustedPermissions');
+	});
+});
+
+describe('policyProblemDetail', () => {
+	it('words a reason BridgeLab knows in the user\'s language', async () => {
+		const { setLocale, t } = await import('$lib/i18n');
+		setLocale('it');
+		const detail = policyProblemDetail(
+			{ path: 'C:\\ProgramData\\BridgeLab\\policy.json', kind: 'untrusted_permissions', detail: 'PC\\alice can change …', detail_key: 'writableFile', detail_args: { who: 'PC\\alice', path: 'C:\\ProgramData\\BridgeLab\\policy.json' } },
+			(k, p) => t(k, p),
+		);
+		expect(detail).toContain('PC\\alice può modificare');
+		setLocale('en');
+	});
+	it('shows the parser\'s or the system\'s words as they are', () => {
+		expect(policyProblemDetail({ path: 'p', kind: 'invalid_json', detail: 'trailing comma at line 2' }, () => 'x')).toBe('trailing comma at line 2');
 	});
 });

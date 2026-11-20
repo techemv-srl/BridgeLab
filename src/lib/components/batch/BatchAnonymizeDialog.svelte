@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { batchAnonymize, type BatchAnonFileResult } from '$lib/ipc/batch';
+	import { pluginsNotApplied } from '$lib/ipc/plugins';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
@@ -16,6 +17,8 @@
 	let outputDir = $state('');
 	let results = $state<BatchAnonFileResult[]>([]);
 	let skipped = $state(0);
+	/** Packs with PHI fields the Community cap left out of this run. */
+	let capped = $state(0);
 	let running = $state(false);
 	let errorMsg = $state('');
 	let ranOnce = $state(false);
@@ -61,6 +64,7 @@
 			const report = await batchAnonymize(sources, outputDir);
 			results = report.results;
 			skipped = report.skipped;
+			capped = await pluginsNotApplied('phi').catch(() => 0);
 			ranOnce = true;
 		} catch (e) {
 			const up = parseUpgradeError(e);
@@ -111,6 +115,9 @@
 			{/if}
 			{#if skipped > 0}
 				<div class="batch-warn">{tr('batch.skipped', { count: skipped })}</div>
+			{/if}
+			{#if ranOnce && capped > 0}
+				<div class="batch-warn">{tr('plugins.notApplied', { count: capped })}</div>
 			{/if}
 
 			<div class="batch-table-wrap">

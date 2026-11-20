@@ -1,17 +1,17 @@
 <script lang="ts">
 	import {
 		mllpSend, httpRequest, generateAck,
-		mllpListenStart, mllpListenStop, mllpListenStatus,
 		getRequestHistory, clearRequestHistory,
 		saveConnectionProfile, getConnectionProfiles, deleteConnectionProfile,
 		type MllpSendResult, type HttpResult, type HistoryEntry,
-		type ListenerStatus, type MllpReceivedEvent, type ConnectionProfile,
-		HISTORY_KEPT,
+		type ConnectionProfile,
+		HISTORY_KEPT, mllpWireSize,
 	} from '$lib/ipc/communication';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
-	import { ackFamily, ackLabel, httpBodyFor, methodSendsMessage, wireSize } from './comm-helpers';
-	import { soapSend, type SoapResult } from '$lib/pro/soap/ipc';
-	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+	import { ackFamily, basicAuthorization, httpBodyFor, isLocalBindAddress, listenHost, listenSettingsProblem, methodSendsMessage, replyLabel, replyProblemText, sendErrorText, unfollowedRedirectText, wireSize } from './comm-helpers';
+	import { formatSize, maySendMessage, utf8Length } from '$lib/large-content';
+	import { soapEnvelopeSize, soapSend, type SoapResult } from '$lib/pro/soap/ipc';
+	import { listenerStore, consoleMatches, ACK_FILTERS, CONSOLE_CAP, type AckFilter } from '$lib/stores/listener.svelte';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -22,12 +22,28 @@
 		activeTabLabel?: string;
 		/** Charset the active tab's file was read in (null for UTF-8). */
 		activeTabCharset?: string | null;
-		onMessageReceived?: (content: string) => void;
 		/** Open generated content (e.g. an ACK) in a new tab with a label. */
 		onOpenGenerated?: (content: string, label: string) => void;
+		/** How many more pixels the panel needs to show its tab without a
+		 *  scrollbar; called when it opens and when the tab changes. */
+		onWantsHeight?: (extraPx: number) => void;
 	}
 
-	let { currentMessage = '', activeTabLabel = '', activeTabCharset = null, onMessageReceived, onOpenGenerated }: Props = $props();
+	let { currentMessage = '', activeTabLabel = '', activeTabCharset = null, onOpenGenerated, onWantsHeight }: Props = $props();
+
+	// Open showing everything: the panel asks the shell for the height its
+	// content needs, so connection, send and result fit without scrolling
+	// (a scrollbar appears only if the user makes the panel smaller).
+	let contentEl = $state<HTMLElement | null>(null);
+	$effect(() => {
+		void activeSubTab;
+		const el = contentEl;
+		if (!el || !onWantsHeight) return;
+		requestAnimationFrame(() => {
+			const extra = el.scrollHeight - el.clientHeight;
+			if (extra > 0) onWantsHeight(extra);
+		});
+	});
 
 	// --- ACK generator (for the message currently in the editor) ---
 	let ackGenCode = $state('AA');
@@ -64,76 +80,34 @@
 	let mllpTimeout = $state(30);
 	let mllpResult = $state<MllpSendResult | null>(null);
 	let mllpSending = $state(false);
-	let mllpListenPort = $state(2576);
 	let mllpShowAdvanced = $state(false);
 
-	// Persistent listener state — driven by the backend via mllp:received events
+	// --- MLLP listener ---
+	// The listener, its console and the opening of received messages live
+	// in listenerStore for the app's lifetime: they keep working while this
+	// panel is closed. The form shows the settings the listener was last
+	// started with, so closing and reopening the panel does not reset them.
+	const lastListen = listenerStore.lastConfig;
+	let mllpListenPort = $state(lastListen?.port ?? 2576);
 	// Loopback by default: other machines can connect only after the user
 	// picks 0.0.0.0 (or a specific interface) on purpose.
-	let listenBindAddress = $state('127.0.0.1');
-	const listenBindIsLocal = $derived.by(() => {
-		const a = listenBindAddress.trim().toLowerCase();
-		return a === '' || a === 'localhost' || a === '::1' || a.startsWith('127.');
-	});
-	let listenAckCode = $state('AA');
-	let listenReadTimeout = $state(30);
+	let listenBindAddress = $state(lastListen?.bind_address ?? '127.0.0.1');
+	const listenBindIsLocal = $derived(isLocalBindAddress(listenBindAddress));
+	let listenAckCode = $state(lastListen?.ack_code ?? 'AA');
+	let listenReadTimeout = $state(lastListen?.read_timeout_secs ?? 30);
 	// 'auto': MSH-18 when it names a charset, else UTF-8, else Latin-1.
-	let listenEncoding = $state('auto');
-	let listenStatus = $state<ListenerStatus>({ running: false, port: null, bind_address: null });
-	let listenError = $state<string | null>(null);
-	let listenInboxCount = $state(0);
+	let listenEncoding = $state(lastListen?.encoding ?? 'auto');
 	let listenShowSettings = $state(false);
-
-	// --- Listener console: rolling log of received messages and errors ---
-	interface ConsoleEntry {
-		id: number;
-		time: string;            // local HH:MM:SS
-		kind: 'msg' | 'error';
-		peer?: string;
-		bytes?: number;
-		ack?: string | null;     // ACK code sent, null = auto-ACK off
-		encoding?: string;
-		snippet?: string;        // first line, always retained
-		content?: string;        // full message for click-to-open; evicted by byte budget
-		text?: string;           // error text
-	}
-	const CONSOLE_CAP = 200;
-	// Total bytes of full message contents retained for click-to-open. The
-	// backend accepts payloads up to 10 MiB each, so an entry cap alone could
-	// pin gigabytes in renderer state during an unattended high-volume
-	// session. Oldest entries lose `content` first (snippet row stays).
-	const CONSOLE_CONTENT_BUDGET = 32 * 1024 * 1024;
-	let consoleEntries = $state<ConsoleEntry[]>([]);
-	let autoOpenReceived = $state(true);
-	let consoleNextId = 0;
-
-	function pushConsole(entry: Omit<ConsoleEntry, 'id'>) {
-		// Newest first; cap so an unattended listener can't grow unbounded.
-		const entries = [{ ...entry, id: consoleNextId++ }, ...consoleEntries.slice(0, CONSOLE_CAP - 1)];
-		// Enforce the byte budget newest→oldest: once cumulative content size
-		// exceeds it, strip full contents from the older entries.
-		let retained = 0;
-		for (let i = 0; i < entries.length; i++) {
-			const e = entries[i];
-			if (!e.content) continue;
-			retained += e.bytes ?? e.content.length;
-			if (retained > CONSOLE_CONTENT_BUDGET && i > 0) {
-				entries[i] = { ...e, content: undefined };
-			}
-		}
-		consoleEntries = entries;
-	}
-
-	function clearConsole() {
-		consoleEntries = [];
-		listenInboxCount = 0;
-	}
+	/** Why the settings cannot start the listener, said next to them. */
+	let listenFormError = $state('');
+	// The store reads the status at startup; read it again in case the
+	// listener stopped while the panel was closed.
+	$effect(() => { void listenerStore.refreshStatus(); });
 
 	// --- Outcome filters: the same chips over the listener console and the
 	// send history, each with a live count so a bad batch stands out
-	// ("AE 12") before anyone scrolls.
-	type AckFilter = 'all' | 'AA' | 'AE' | 'AR' | 'noack' | 'fail';
-	const ACK_FILTERS: AckFilter[] = ['all', 'AA', 'AE', 'AR', 'noack', 'fail'];
+	// ("AE 12") before anyone scrolls. The console counts are the store's:
+	// every row since the console was cleared, not only the rows kept.
 	let consoleFilter = $state<AckFilter>('all');
 	let historyFilter = $state<AckFilter>('all');
 
@@ -146,21 +120,11 @@
 		}
 	}
 
-	/** Console rows: `fail` is a listener error row, `noack` a message received
-	 *  with auto-ACK off. */
-	function consoleMatches(e: ConsoleEntry, f: AckFilter): boolean {
-		switch (f) {
-			case 'all': return true;
-			case 'fail': return e.kind === 'error';
-			case 'noack': return e.kind === 'msg' && !e.ack;
-			default: return e.kind === 'msg' && ackFamily(e.ack) === f;
-		}
-	}
-
 	/** History rows: `fail` is a request that never got a reply, `noack` an
-	 *  MLLP send that got one without a readable MSA-1 (HTTP and SOAP have no
-	 *  ACK code and only ever match `all` and `fail`). The commit-mode codes
-	 *  CA, CE and CR count under AA, AE and AR. */
+	 *  MLLP send that got one without a readable MSA-1, or with the ACK of
+	 *  another message (the backend files it without a code; HTTP and SOAP
+	 *  have no ACK code and only ever match `all` and `fail`). The
+	 *  commit-mode codes CA, CE and CR count under AA, AE and AR. */
 	function historyMatches(e: HistoryEntry, f: AckFilter): boolean {
 		switch (f) {
 			case 'all': return true;
@@ -170,22 +134,15 @@
 		}
 	}
 
-	let consoleCounts = $derived(
-		Object.fromEntries(ACK_FILTERS.map((f) => [f, consoleEntries.filter((e) => consoleMatches(e, f)).length])) as Record<AckFilter, number>
-	);
-	let visibleConsole = $derived(consoleEntries.filter((e) => consoleMatches(e, consoleFilter)));
+	let visibleConsole = $derived(listenerStore.entries.filter((e) => consoleMatches(e, consoleFilter)));
+	// More rows arrived than the console keeps: the counts cover them all,
+	// the list and its filters only the newest CONSOLE_CAP.
+	let consoleCapped = $derived(listenerStore.counts.all > listenerStore.entries.length);
 
-	function localTime(iso: string): string {
-		try { return new Date(iso).toLocaleTimeString(); } catch { return iso; }
-	}
-
-	function msgSnippet(content: string): string {
-		const firstLine = content.split(/\r|\n/, 1)[0] ?? '';
-		return firstLine.substring(0, 80);
-	}
 	// MLLP advanced options
 	let mllpResponseTimeout = $state(30);
-	let mllpAutoAck = $state(true);
+	// Also the listener's auto-ACK (the listener settings show it too).
+	let mllpAutoAck = $state(lastListen?.auto_ack ?? true);
 	// 'auto': MSH-18, else the charset the tab's file was read in, else UTF-8.
 	let mllpEncoding = $state('auto');
 	let mllpStartChar = $state('0x0B');
@@ -200,6 +157,9 @@
 	let httpHeadersText = $state('Content-Type: application/hl7-v2\nAccept: application/hl7-v2');
 	let httpBody = $state('');
 	let httpResult = $state<HttpResult | null>(null);
+	/** Whether 'Follow redirects' was on for the request httpResult answers:
+	 *  a redirect it shows unfollowed was not followed for that reason. */
+	let httpResultFollowed = $state(true);
 	let httpSending = $state(false);
 	let httpShowAdvanced = $state(false);
 	// HTTP advanced options
@@ -339,8 +299,32 @@
 
 	// --- MLLP ---
 	async function handleMllpSend() {
-		if (!hasMessage) return;
+		if (!hasMessage || mllpSending) return;
+		// Busy before the question, so a second click cannot send it twice.
 		mllpSending = true;
+		// What is sent is fixed now: a message the listener opens in a tab
+		// during the question, or between retries, changes the active tab.
+		const message = currentMessage;
+		const charset = activeTabCharset;
+		const label = activeTabLabel || undefined;
+		const options = {
+			timeoutSecs: mllpTimeout,
+			responseTimeoutSecs: mllpResponseTimeout,
+			encoding: mllpEncoding,
+			sourceCharset: charset,
+			startChar: mllpStartChar,
+			endChar1: mllpEndChar1,
+			endChar2: mllpEndChar2,
+			profileName: label,
+		};
+		const host = mllpHost;
+		const port = mllpPort;
+		// In the encoding the send uses: Latin-1 text is half its UTF-8 size.
+		const bytes = await mllpWireSize(message, mllpEncoding, charset).catch(() => wireSize(message));
+		if (!(await maySendMessage(bytes))) {
+			mllpSending = false;
+			return;
+		}
 		mllpResult = null;
 
 		// Retries: 0 = single attempt. Each retry waits mllpRetryDelay seconds.
@@ -354,16 +338,7 @@
 				await new Promise((r) => setTimeout(r, retryDelaySecs * 1000));
 			}
 			try {
-				mllpResult = await mllpSend(mllpHost, mllpPort, currentMessage, {
-					timeoutSecs: mllpTimeout,
-					responseTimeoutSecs: mllpResponseTimeout,
-					encoding: mllpEncoding,
-					sourceCharset: activeTabCharset,
-					startChar: mllpStartChar,
-					endChar1: mllpEndChar1,
-					endChar2: mllpEndChar2,
-					profileName: activeTabLabel || undefined,
-				});
+				mllpResult = await mllpSend(host, port, message, options);
 			} catch (e) {
 				mllpResult = { success: false, response: '', response_time_ms: 0, error: friendlyError(e) };
 				if (parseUpgradeError(e)) break; // retrying won't change the license
@@ -375,79 +350,50 @@
 	}
 
 	async function handleListenStart() {
-		listenError = null;
+		const problem = listenSettingsProblem(mllpListenPort, listenReadTimeout);
+		listenFormError = problem ? tr(problem) : '';
+		if (problem) {
+			// The read timeout lives under Settings: open them to show it.
+			if (problem === 'comm.listenReadTimeoutInvalid') listenShowSettings = true;
+			return;
+		}
 		try {
-			listenStatus = await mllpListenStart({
+			await listenerStore.start({
 				port: mllpListenPort,
-				bind_address: listenBindAddress,
+				// Empty is this computer only, as the hint under it says.
+				bind_address: listenBindAddress.trim() || '127.0.0.1',
 				auto_ack: mllpAutoAck,
 				ack_code: listenAckCode,
 				read_timeout_secs: listenReadTimeout,
 				encoding: listenEncoding,
 			});
 		} catch (e) {
-			listenError = friendlyError(e);
+			listenerStore.error = friendlyError(e);
 		}
 	}
 
 	async function handleListenStop() {
 		try {
-			listenStatus = await mllpListenStop();
+			await listenerStore.stop();
 		} catch (e) {
-			listenError = String(e);
+			listenerStore.error = String(e);
 		}
 	}
 
-	// Subscribe to the backend event stream once. mllp:received fires for
-	// every successfully-decoded incoming message; mllp:listen_error for any
-	// per-connection or accept-loop failure (the listener itself stays up
-	// unless accept() fatally fails).
-	let unlistenReceived: UnlistenFn | null = null;
-	let unlistenError: UnlistenFn | null = null;
-	$effect(() => {
-		if (typeof window === 'undefined') return;
-		(async () => {
-			// Sync initial status (in case the listener was running before this
-			// component mounted, e.g. after a frontend reload with backend alive).
-			try { listenStatus = await mllpListenStatus(); } catch {}
-
-			unlistenReceived = await listen<MllpReceivedEvent>(
-				'mllp:received',
-				(ev) => {
-					listenInboxCount += 1;
-					pushConsole({
-						time: localTime(ev.payload.received_at),
-						kind: 'msg',
-						peer: ev.payload.source_addr,
-						bytes: ev.payload.bytes,
-						ack: ev.payload.ack_code,
-						encoding: ev.payload.encoding,
-						snippet: msgSnippet(ev.payload.content),
-						content: ev.payload.content,
-					});
-					if (autoOpenReceived) onMessageReceived?.(ev.payload.content);
-					loadHistory();
-				},
-			);
-			unlistenError = await listen<string>('mllp:listen_error', (ev) => {
-				listenError = ev.payload;
-				pushConsole({
-					time: new Date().toLocaleTimeString(),
-					kind: 'error',
-					text: ev.payload,
-				});
-			});
-		})();
-
-		return () => {
-			unlistenReceived?.();
-			unlistenError?.();
-		};
-	});
-
 	// --- HTTP ---
 	async function handleHttpSend() {
+		// GET and DELETE carry a body only when one is typed: the active
+		// message is not sent along with a query.
+		const body = httpBodyFor(httpMethod, httpBody, currentMessage);
+		if (httpSending) return;
 		httpSending = true;
+		// The tab's label is fixed now too: the listener may open another
+		// tab during the question.
+		const label = activeTabLabel || undefined;
+		if (body && !(await maySendMessage(utf8Length(body)))) {
+			httpSending = false;
+			return;
+		}
 		httpResult = null;
 		try {
 			const headers: Record<string, string> = {};
@@ -460,18 +406,17 @@
 			const hasExplicitAuth = Object.keys(headers).some((k) => k.toLowerCase() === 'authorization');
 			if (!hasExplicitAuth) {
 				if (httpAuth === 'basic' && httpAuthUser) {
-					headers['Authorization'] = 'Basic ' + btoa(`${httpAuthUser}:${httpAuthPass}`);
+					headers['Authorization'] = basicAuthorization(httpAuthUser, httpAuthPass);
 				} else if (httpAuth === 'bearer' && httpAuthUser) {
 					headers['Authorization'] = 'Bearer ' + httpAuthUser;
 				}
 			}
-			// GET and DELETE carry a body only when one is typed: the active
-			// message is not sent along with a query.
-			const body = httpBodyFor(httpMethod, httpBody, currentMessage);
+			const follow = httpFollowRedirects;
 			httpResult = await httpRequest(
 				httpUrl, httpMethod, headers, body,
-				httpTimeout, httpFollowRedirects, activeTabLabel || undefined,
+				httpTimeout, follow, label,
 			);
+			httpResultFollowed = follow;
 		} catch (e) {
 			httpResult = { success: false, status_code: 0, status_text: '', headers: {}, body: '', response_time_ms: 0, error: friendlyError(e) };
 		}
@@ -482,22 +427,35 @@
 	// --- SOAP ---
 	async function handleSoapSend() {
 		const payload = soapBody.trim() || currentMessage;
-		if (!payload.trim()) return;
+		if (!payload.trim() || soapSending) return;
+		// Busy before measuring and asking, so a second click cannot send it twice.
 		soapSending = true;
+		// What is sent is fixed now: the listener may open another tab
+		// during the question.
+		const label = activeTabLabel || undefined;
+		const request = {
+			endpoint: soapEndpoint,
+			soap_version: soapVersion,
+			action: soapAction,
+			payload,
+			envelope_template: soapTemplate.trim() || null,
+			ws_security: soapUseWsSecurity && soapWsUser
+				? { username: soapWsUser, password: soapWsPass }
+				: null,
+			ws_addressing: soapWsAddressing,
+			timeout_secs: soapTimeout,
+		};
+		// The envelope, not the payload: escaping, a custom template and the
+		// WS-* headers can make it several times larger. Measured by the
+		// backend, which builds it; when it cannot be built the send says why.
+		const envelopeBytes = await soapEnvelopeSize(request).catch(() => 0);
+		if (!(await maySendMessage(envelopeBytes))) {
+			soapSending = false;
+			return;
+		}
 		soapResult = null;
 		try {
-			soapResult = await soapSend({
-				endpoint: soapEndpoint,
-				soap_version: soapVersion,
-				action: soapAction,
-				payload,
-				envelope_template: soapTemplate.trim() || null,
-				ws_security: soapUseWsSecurity && soapWsUser
-					? { username: soapWsUser, password: soapWsPass }
-					: null,
-				ws_addressing: soapWsAddressing,
-				timeout_secs: soapTimeout,
-			}, activeTabLabel || undefined);
+			soapResult = await soapSend(request, label);
 		} catch (e) {
 			soapResult = { success: false, status_code: 0, fault: null, body: null, response_time_ms: 0, error: friendlyError(e) };
 		}
@@ -512,13 +470,14 @@
 	async function handleClearHistory() {
 		try { await clearRequestHistory(); history = []; selectedHistoryId = null; } catch { /* */ }
 	}
-	$effect(() => { loadHistory(); });
+	// On opening, and after each message the listener receives (it is
+	// logged in the History).
+	$effect(() => { void listenerStore.received; loadHistory(); });
 
 	let selectedHistory = $derived(history.find(h => h.id === selectedHistoryId));
 
 	function formatBytes(n: number | undefined): string {
-		if (!n) return '';
-		return n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+		return n ? formatSize(n) : '';
 	}
 
 	/** A request the server answered with an error status or a fault. */
@@ -572,7 +531,7 @@
 		</div>
 	</div>
 
-	<div class="comm-content">
+	<div class="comm-content" bind:this={contentEl}>
 		<!-- ==================== MLLP ==================== -->
 		{#if activeSubTab === 'mllp'}
 			<div class="comm-form">
@@ -591,7 +550,7 @@
 					<select id="mllp-profile" bind:value={mllpProfileId}
 						onchange={() => applyMllpProfile(mllpProfileId)}
 						style="min-width: 130px; padding: 4px 6px;">
-						<option value="">\u2014</option>
+						<option value="">—</option>
 						{#each mllpProfiles as p (p.id)}
 							<option value={p.id}>{p.name}</option>
 						{/each}
@@ -631,11 +590,11 @@
 						</div>
 						<div class="form-row">
 							<label for="mllp-startchar">{tr('comm.startBlock')}</label>
-							<input id="mllp-startchar" bind:value={mllpStartChar} class="input-sm" title="MLLP start byte (VT = 0x0B)" />
+							<input id="mllp-startchar" bind:value={mllpStartChar} class="input-sm" title={tr('comm.startByteHint')} />
 							<label for="mllp-endchar1">{tr('comm.endBlock')}</label>
-							<input id="mllp-endchar1" bind:value={mllpEndChar1} class="input-sm" title="MLLP end byte 1 (FS = 0x1C)" />
+							<input id="mllp-endchar1" bind:value={mllpEndChar1} class="input-sm" title={tr('comm.endByte1Hint')} />
 							<label for="mllp-endchar2">{tr('comm.endCr')}</label>
-							<input id="mllp-endchar2" bind:value={mllpEndChar2} class="input-sm" title="MLLP end byte 2 (CR = 0x0D)" />
+							<input id="mllp-endchar2" bind:value={mllpEndChar2} class="input-sm" title={tr('comm.endByte2Hint')} />
 						</div>
 						<div class="form-row">
 							<label for="mllp-retries">{tr('comm.retries')}</label>
@@ -681,12 +640,13 @@
 
 				<div class="section-label">{tr('comm.listen')}</div>
 				<div class="form-row">
-					{#if !listenStatus.running}
+					{#if !listenerStore.status.running}
 						<button class="btn" onclick={handleListenStart}>
 							{tr('comm.startListening')}
 						</button>
 						<label for="mllp-listen-port">{tr('comm.port')}</label>
-						<input id="mllp-listen-port" type="number" bind:value={mllpListenPort} class="input-sm" />
+						<input id="mllp-listen-port" type="number" min={0} max={65535} bind:value={mllpListenPort} class="input-sm"
+							title={tr('comm.listenPortHint')} />
 						<label for="mllp-listen-bind">{tr('comm.bind')}</label>
 						<input id="mllp-listen-bind" type="text" bind:value={listenBindAddress} class="input-sm" placeholder="127.0.0.1" />
 						<button class="btn-link" onclick={() => listenShowSettings = !listenShowSettings}>
@@ -696,17 +656,19 @@
 						<button class="btn btn-danger" onclick={handleListenStop}>
 							{tr('comm.stopListening')}
 						</button>
+						<!-- The backend's status: with port 0 asked for, the port the
+						     system gave, which is where a peer must connect. -->
 						<span class="status-pill running">
 							{tr('comm.listenStatus', {
-								addr: listenStatus.bind_address ?? '',
-								port: listenStatus.port ?? '',
-								count: listenInboxCount,
+								addr: listenHost(listenerStore.status.bind_address),
+								port: listenerStore.status.port ?? '',
+								count: listenerStore.received,
 							})}
 						</span>
 					{/if}
 				</div>
 
-				{#if !listenStatus.running}
+				{#if !listenerStore.status.running}
 					<div class="form-row listen-bind-hint">
 						{#if listenBindIsLocal}
 							<span class="hint">{tr('comm.bindLocalHint')}</span>
@@ -719,7 +681,11 @@
 					</div>
 				{/if}
 
-				{#if listenShowSettings && !listenStatus.running}
+				{#if listenFormError && !listenerStore.status.running}
+					<div class="info-box error">{listenFormError}</div>
+				{/if}
+
+				{#if listenShowSettings && !listenerStore.status.running}
 					<div class="advanced-options">
 						<div class="form-row">
 							<label for="mllp-listen-ack-code">{tr('comm.listenAckCode')}</label>
@@ -755,30 +721,33 @@
 							<label><input type="checkbox" bind:checked={mllpAutoAck} /> {tr('comm.listenAutoAck')}</label>
 						</div>
 						<div class="setting-check">
-							<label><input type="checkbox" bind:checked={autoOpenReceived} /> {tr('comm.consoleAutoOpen')}</label>
+							<label><input type="checkbox" bind:checked={listenerStore.autoOpen} /> {tr('comm.consoleAutoOpen')}</label>
 						</div>
 					</div>
 				{/if}
 
-				{#if listenError}
+				{#if listenerStore.error}
 					<div class="result error">
 						<div class="result-header"><span>{tr('comm.listenError')}</span></div>
-						<div class="result-body">{listenError}</div>
+						<div class="result-body">{listenerStore.error}</div>
 					</div>
 				{/if}
 
 				<!-- Listener console: live log of received messages / errors -->
-				{#if listenStatus.running || consoleEntries.length > 0}
+				{#if listenerStore.status.running || listenerStore.entries.length > 0}
 					<div class="console">
 						<div class="console-header">
 							<span class="console-title">{tr('comm.console')}</span>
-							<span class="console-count">{consoleEntries.length}</span>
-							{@render ackFilterChips(ACK_FILTERS, consoleFilter, consoleCounts, false, (f) => { consoleFilter = f; })}
-							<button class="btn btn-sm" onclick={clearConsole} disabled={consoleEntries.length === 0}>
+							<span class="console-count">{listenerStore.entries.length}</span>
+							{@render ackFilterChips(ACK_FILTERS, consoleFilter, listenerStore.counts, false, (f) => { consoleFilter = f; })}
+							<button class="btn btn-sm" onclick={() => listenerStore.clear()} disabled={listenerStore.entries.length === 0}>
 								{tr('comm.consoleClear')}
 							</button>
 						</div>
-						{#if consoleEntries.length === 0}
+						{#if consoleCapped}
+							<div class="console-capped">{tr('comm.consoleCapped', { cap: CONSOLE_CAP, total: listenerStore.counts.all })}</div>
+						{/if}
+						{#if listenerStore.entries.length === 0}
 							<div class="console-empty">{tr('comm.consoleEmpty')}</div>
 						{:else}
 							<div class="console-list">
@@ -789,7 +758,7 @@
 											class:no-content={!entry.content}
 											disabled={!entry.content}
 											title={entry.content ? tr('comm.consoleOpenHint') : tr('comm.consoleEvicted')}
-											onclick={() => entry.content && onMessageReceived?.(entry.content)}
+											onclick={() => entry.content && listenerStore.open(entry.content)}
 										>
 											<span class="c-time">{entry.time}</span>
 											<span class="c-peer">{entry.peer}</span>
@@ -800,6 +769,11 @@
 											<span class="c-enc">{entry.encoding}</span>
 											<span class="c-snippet">{entry.snippet}</span>
 										</button>
+									{:else if entry.kind === 'note'}
+										<div class="console-row console-note">
+											<span class="c-time">{entry.time}</span>
+											<span class="c-note-text">{entry.text}</span>
+										</div>
 									{:else}
 										<div class="console-row console-error">
 											<span class="c-time">{entry.time}</span>
@@ -813,7 +787,12 @@
 				{/if}
 
 				{#if mllpResult}
-					<div class="result" class:success={mllpResult.success} class:error={!mllpResult.success}>
+					<!-- "OK" is the transport: the peer answered. A reply that is
+					     not HL7, or the ACK of another message, accepts nothing
+					     sent, and is not shown as a success. -->
+					<div class="result" class:success={mllpResult.success && !mllpResult.reply_problem}
+						class:warning={mllpResult.success && !!mllpResult.reply_problem}
+						class:error={!mllpResult.success}>
 						<div class="result-header">
 							<span>{mllpResult.success ? 'OK' : 'FAILED'}</span>
 							<span>{mllpHost}:{mllpPort}</span>
@@ -823,8 +802,11 @@
 						{#if mllpResult.error}
 							<div class="result-error">{mllpResult.error}</div>
 						{/if}
+						{#if mllpResult.reply_problem}
+							<div class="result-warning">{replyProblemText(mllpResult.reply_problem, tr)}</div>
+						{/if}
 						{#if mllpResult.response}
-							<div class="result-label">{ackLabel(mllpResult.ack_code)}</div>
+							<div class="result-label">{replyLabel(mllpResult.ack_code, mllpResult.reply_problem, tr)}</div>
 							<pre class="result-body">{mllpResult.response}</pre>
 						{/if}
 					</div>
@@ -846,7 +828,7 @@
 					<select id="http-profile" bind:value={httpProfileId}
 						onchange={() => applyHttpProfile(httpProfileId)}
 						style="min-width: 130px; padding: 4px 6px;">
-						<option value="">\u2014</option>
+						<option value="">—</option>
 						{#each httpProfiles as p (p.id)}
 							<option value={p.id}>{p.name}</option>
 						{/each}
@@ -892,7 +874,7 @@
 						{:else if httpAuth === 'bearer'}
 							<div class="form-row">
 								<label for="http-token">{tr('comm.token')}</label>
-								<input id="http-token" bind:value={httpAuthUser} placeholder="Bearer token" class="input-grow" />
+								<input id="http-token" bind:value={httpAuthUser} placeholder={tr('comm.tokenPlaceholder')} class="input-grow" />
 							</div>
 						{/if}
 					</div>
@@ -918,6 +900,7 @@
 				</div>
 
 				{#if httpResult}
+					{@const unfollowed = unfollowedRedirectText(httpResult.status_code, httpResult.headers['location'], httpResultFollowed, tr)}
 					<div class="result" class:success={httpResult.success} class:error={!httpResult.success}>
 						<div class="result-header">
 							<span>{httpResult.status_code} {httpResult.status_text}</span>
@@ -926,11 +909,11 @@
 						{#if httpResult.final_url}
 							<div class="result-redirect">{tr('comm.redirectedTo', { url: httpResult.final_url })}</div>
 						{/if}
-						{#if httpResult.status_code >= 300 && httpResult.status_code < 400 && httpResult.headers['location']}
-							<div class="result-redirect">{tr('comm.redirectNotFollowed', { url: httpResult.headers['location'] })}</div>
+						{#if unfollowed}
+							<div class="result-redirect">{unfollowed}</div>
 						{/if}
 						{#if httpResult.error}
-							<div class="result-error">{httpResult.error}</div>
+							<div class="result-error">{sendErrorText(httpResult.error, httpResult.failure, tr)}</div>
 						{/if}
 						{#if Object.keys(httpResult.headers).length > 0}
 							<details class="result-details">
@@ -1037,7 +1020,7 @@
 							<span>{soapResult.response_time_ms}ms</span>
 						</div>
 						{#if soapResult.error}
-							<div class="result-error">{soapResult.error}</div>
+							<div class="result-error">{sendErrorText(soapResult.error, soapResult.failure, tr)}</div>
 						{/if}
 						{#if soapResult.fault}
 							<div class="result-label">{tr('comm.soapFault')}</div>
@@ -1168,6 +1151,9 @@
 	.result-header { display: flex; justify-content: space-between; padding: 4px 8px; background: var(--color-bg-tertiary); font-weight: 600; font-size: 11px; gap: 12px; }
 	.result.success .result-header { color: var(--color-success); }
 	.result.error .result-header { color: var(--color-error); }
+	.result.warning { border-color: var(--color-warning); }
+	.result.warning .result-header { color: var(--color-warning); }
+	.result-warning { padding: 4px 8px; color: var(--color-warning); font-size: 11px; }
 	.result-redirect { font-size: 11px; color: var(--color-warning); padding: 2px 8px; word-break: break-all; }
 	.result-error { padding: 4px 8px; color: var(--color-error); font-size: 11px; }
 	.result-label { padding: 3px 8px; font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--color-text-secondary); background: var(--color-bg-primary); }
@@ -1223,6 +1209,7 @@
 	.console-count { font-size: 10px; color: var(--color-text-secondary); background: var(--color-bg-primary); padding: 0 6px; border-radius: 8px; }
 	.console-header .btn-sm { margin-left: auto; }
 	.console-empty { padding: 10px; text-align: center; font-style: italic; font-size: 11px; color: var(--color-text-secondary); }
+	.console-capped { padding: 3px 8px; font-size: 10px; color: var(--color-text-secondary); border-bottom: 1px solid var(--color-border); }
 	.console-list { max-height: 180px; overflow-y: auto; }
 	.console-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 8px; background: none; border: none; border-bottom: 1px solid var(--color-border); font-family: 'JetBrains Mono', monospace; font-size: 10px; text-align: left; cursor: pointer; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; }
 	.console-row:hover { background: var(--color-bg-tertiary); }
@@ -1238,6 +1225,8 @@
 	.console-row.no-content { cursor: default; opacity: 0.55; }
 	.console-error { cursor: default; }
 	.c-err-text { color: var(--color-error); overflow: hidden; text-overflow: ellipsis; }
+	.console-note { cursor: default; }
+	.c-note-text { color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; }
 
 	/* Advanced toggle */
 	.toggle-advanced { background: none; border: none; color: var(--color-accent); font-size: 11px; font-family: inherit; cursor: pointer; padding: 3px 0; text-align: left; }

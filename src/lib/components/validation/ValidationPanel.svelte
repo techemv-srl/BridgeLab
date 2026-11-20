@@ -1,9 +1,17 @@
 <script lang="ts">
 	import type { ValidationIssue } from '$lib/ipc/validation';
 	import { t, subscribeLocale } from '$lib/i18n';
+	import { ISSUE_PAGE, keyedIssues, listedIssues } from './issue-list';
+	import { capNoteText } from '$lib/plugin-notices';
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
 	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
+	/** The issue's text. The note on plugin packs over the cap is about the
+	 *  app, not the message, and is shown in the user's language. */
+	function messageOf(issue: ValidationIssue): string {
+		void localeVersion;
+		return issue.rule_id === 'PLUGIN-CAP' ? capNoteText(issue.message) : issue.message;
+	}
 
 	interface Props {
 		issues: ValidationIssue[];
@@ -29,21 +37,27 @@
 		}
 	});
 
-	let filteredIssues = $derived.by(() => {
-		let filtered = filterSeverity === 'all'
-			? issues
-			: issues.filter((i) => i.severity === filterSeverity);
+	let rows = $derived(listedIssues(issues, filterSeverity, sortField));
 
-		return [...filtered].sort((a, b) => {
-			if (sortField === 'severity') {
-				const order = { error: 0, warning: 1, info: 2 };
-				return (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
-			}
-			if (sortField === 'segment') {
-				return (a.segment_idx ?? 999) - (b.segment_idx ?? 999);
-			}
-			return 0;
+	// A page at a time (see ISSUE_PAGE): the badges, the filter and the
+	// order still cover the whole report. The page count starts over
+	// whenever the list changes (a new report after an edit, another filter
+	// or sort), so a re-validation never redraws the thousands of rows the
+	// user had scrolled through before.
+	let limit = $derived.by(() => {
+		void rows;
+		return ISSUE_PAGE;
+	});
+	let shown = $derived(keyedIssues(rows.slice(0, limit)));
+	let moreEl = $state<HTMLElement | null>(null);
+	$effect(() => {
+		const el = moreEl;
+		if (!el || typeof IntersectionObserver === 'undefined') return;
+		const io = new IntersectionObserver((entries) => {
+			if (entries.some((e) => e.isIntersecting)) limit += ISSUE_PAGE;
 		});
+		io.observe(el);
+		return () => io.disconnect();
 	});
 
 	function severityIcon(severity: string): string {
@@ -107,7 +121,7 @@
 	{/if}
 
 	<div class="validation-list">
-		{#if filteredIssues.length === 0}
+		{#if rows.length === 0}
 			<div class="validation-empty">
 				{#if issues.length === 0}
 					{tr('validation.noIssues')}
@@ -116,7 +130,7 @@
 				{/if}
 			</div>
 		{:else}
-			{#each filteredIssues as issue, i (issue.rule_id + '|' + (issue.segment_idx ?? '') + '|' + (issue.field_position ?? '') + '|' + i)}
+			{#each shown as { key, issue } (key)}
 				<button
 					class="issue-row {issue.severity}"
 					onclick={() => onIssueClick?.(issue)}
@@ -137,10 +151,15 @@
 							—
 						{/if}
 					</span>
-					<span class="issue-message" title={issue.message}>{issue.message}</span>
+					<span class="issue-message" title={messageOf(issue)}>{messageOf(issue)}</span>
 					<span class="issue-rule" title={issue.rule_id}>{issue.rule_id}</span>
 				</button>
 			{/each}
+			{#if rows.length > shown.length}
+				<button class="validation-more" bind:this={moreEl} onclick={() => (limit += ISSUE_PAGE)}>
+					{tr('validation.more', { shown: shown.length, total: rows.length })}
+				</button>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -163,7 +182,7 @@
 	}
 
 	.issue-seg {
-		opacity: 0.6;
+		opacity: var(--text-dim, 0.6);
 		font-weight: normal;
 	}
 
@@ -226,6 +245,22 @@
 		text-align: center;
 		color: var(--color-text-secondary);
 		font-style: italic;
+	}
+
+	.validation-more {
+		margin: 6px 8px;
+		padding: 2px 8px;
+		background: none;
+		border: 1px solid var(--color-border);
+		border-radius: 3px;
+		color: var(--color-text-secondary);
+		font-size: 12px;
+		font-family: inherit;
+		cursor: pointer;
+	}
+
+	.validation-more:hover {
+		color: var(--color-accent);
 	}
 
 	.issue-row {

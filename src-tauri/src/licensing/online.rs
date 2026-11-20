@@ -28,11 +28,12 @@ pub fn license_server_base() -> String {
         .unwrap_or_else(|| DEFAULT_LICENSE_SERVER.to_string())
 }
 
-/// Shared HTTP client; per-request timeouts are set at the call sites.
+/// Shared HTTP client; per-request timeouts are set at the call sites. It
+/// reads the proxy settings once: a change applies from the next start.
 fn http_client(app_version: &str) -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
+        crate::communication::proxy::client_builder(&license_server_base())
             .user_agent(format!(
                 "BridgeLab/{} ({}; {})",
                 app_version,
@@ -125,10 +126,29 @@ struct DeactivateRequest<'a> {
 /// only mislead users on machines that are offline by design.
 pub const ERR_SERVER_UNREACHABLE: &str = "ERR_SERVER_UNREACHABLE";
 
+/// Sentinel for "the license server was reached, but its TLS certificate
+/// was refused", followed by `: ` and the TLS library's reason. Unlike an
+/// unreachable server this is not a machine without internet: the usual
+/// cause is a TLS-inspecting proxy whose root certificate is not in the
+/// operating system's store, which the user's IT can fix. The frontend
+/// says so, and still points at the offline key.
+pub const ERR_SERVER_CERTIFICATE: &str = "ERR_SERVER_CERTIFICATE";
+
 fn unreachable_err(_e: impl std::fmt::Display) -> String {
     #[cfg(debug_assertions)]
     eprintln!("[licensing] license server unreachable: {}", _e);
     ERR_SERVER_UNREACHABLE.to_string()
+}
+
+/// The error for a request to the license server that got no answer:
+/// [`ERR_SERVER_CERTIFICATE`] when the certificate was refused,
+/// [`ERR_SERVER_UNREACHABLE`] for anything else.
+fn send_err(e: reqwest::Error) -> String {
+    let (kind, failure) = crate::communication::send_error::describe(&e);
+    if kind.is_certificate() {
+        return format!("{}: {}", ERR_SERVER_CERTIFICATE, failure.detail);
+    }
+    unreachable_err(e)
 }
 
 /// Why an activation did not produce a license.
@@ -195,7 +215,7 @@ async fn request_license(
         .json(&req)
         .send()
         .await
-        .map_err(|e| ActivationFailure::Other(unreachable_err(e)))?;
+        .map_err(|e| ActivationFailure::Other(send_err(e)))?;
 
     let status = resp.status();
     let text = resp.text().await.map_err(|e| ActivationFailure::Other(unreachable_err(e)))?;
@@ -376,6 +396,25 @@ pub async fn deactivate_online(code: &str, hardware_id: &str, app_version: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A license server whose certificate this computer does not trust is
+    /// not reported as "cannot be reached"; a closed port still is.
+    #[tokio::test]
+    async fn a_refused_certificate_has_its_own_activation_error() {
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let Some(port) = crate::communication::send_error::test_server::tls_server().await else { return };
+        let err = client.post(format!("https://127.0.0.1:{port}/bridgelab/activate")).send().await.unwrap_err();
+        let msg = send_err(err);
+        assert!(msg.starts_with("ERR_SERVER_CERTIFICATE: "), "{msg}");
+        assert!(msg.contains("UnknownIssuer"), "{msg}");
+        assert_eq!(classify(&Err(ActivationFailure::Other(msg))), RecheckOutcome::Unchanged, "a renewal keeps the license");
+
+        let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
+        let err = client.post(format!("https://127.0.0.1:{port}/bridgelab/activate")).send().await.unwrap_err();
+        assert_eq!(send_err(err), ERR_SERVER_UNREACHABLE);
+    }
 
     #[test]
     fn test_valid_codes() {

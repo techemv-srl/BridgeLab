@@ -22,7 +22,7 @@ use std::sync::RwLock;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::parser::fhir::FhirValidationIssue;
+use crate::parser::fhir::{FhirFormat, FhirValidationIssue};
 use model::ProfileIndex;
 
 /// Installed packages, loaded once and shared across commands.
@@ -108,18 +108,22 @@ impl ProfileRegistry {
         validate::validate_declared(resource, &index)
     }
 
-    /// As [`validate`](Self::validate), with whether any definition was
-    /// applied (see [`validate::validate_declared_status`]): `(issues,
-    /// false)` for a resource whose only findings are profiles declared but
-    /// not installed.
-    pub fn validate_with_status(&self, resource: &Value) -> (Vec<FhirValidationIssue>, bool) {
+    /// As [`validate`](Self::validate) for a resource read from `format`,
+    /// with whether any definition was applied (see
+    /// [`validate::validate_declared_status`]): `(issues, false)` for a
+    /// resource whose only findings are profiles declared but not installed.
+    pub fn validate_with_status(
+        &self,
+        resource: &Value,
+        format: &FhirFormat,
+    ) -> (Vec<FhirValidationIssue>, bool) {
         let Ok(index) = self.index.read() else {
             return (vec![], false);
         };
         if index.is_empty() {
             return (vec![], false);
         }
-        validate::validate_declared_status(resource, &index).unwrap_or((vec![], false))
+        validate::validate_declared_status(resource, &index, format).unwrap_or((vec![], false))
     }
 }
 

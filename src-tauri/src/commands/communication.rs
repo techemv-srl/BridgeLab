@@ -26,6 +26,79 @@ fn parse_framing_byte(input: &Option<String>, default: u8) -> u8 {
         .unwrap_or(default)
 }
 
+/// Bytes `mllp_send` would put on the wire for `message`: its segments
+/// ending in CR, in the encoding the send resolves (the one asked for, or in
+/// "auto" mode MSH-18's, else the file's, else UTF-8). The panel asks before
+/// a send over 10 MB; a UTF-8 count of a Latin-1 message is twice too high
+/// for accented text. Nothing is sent. An encoding it cannot resolve is
+/// counted as UTF-8: the send then says why it refuses.
+#[tauri::command]
+pub async fn mllp_wire_size(message: String, encoding: Option<String>, source_charset: Option<String>) -> usize {
+    let message = crate::parser::hl7::to_wire_segments(&message).into_owned();
+    let requested = encoding.filter(|e| !e.trim().is_empty()).unwrap_or_else(|| mllp::AUTO.into());
+    let wire = mllp::resolve_send_encoding(&message, &requested, source_charset.as_deref());
+    if !crate::parser::hl7::charset::is_known_label(&wire) {
+        return message.len();
+    }
+    mllp::encode_with_label(&message, &wire).len()
+}
+
+/// Why `message` must not go out in `wire` (the charset `requested`
+/// resolved to, with the tab's file read in `source_charset`), if it must
+/// not.
+fn refusal(message: &str, requested: &str, wire: &str, source_charset: Option<&str>) -> Option<String> {
+    // Not sent as UTF-8 under a header that names another charset: the
+    // receiver would decode it in the one MSH-18 declares.
+    // Every message of the tab is checked: it goes out in one frame.
+    if requested.trim().eq_ignore_ascii_case(mllp::AUTO) {
+        if let Some(unwritten) = mllp::msh18_charset_not_written(message) {
+            // A later message is named, so it can be found in the tab.
+            let what = if unwritten.message == 1 {
+                format!("MSH-18 declares the character set '{}', which BridgeLab cannot send in", unwritten.charset)
+            } else {
+                unwritten.to_string()
+            };
+            return Some(format!(
+                "Not sent: {}: in Auto mode it would go out as UTF-8 under that header. Correct MSH-18 (UNICODE UTF-8, 8859/1…), then send again.",
+                what
+            ));
+        }
+        // One frame is one charset, the first message's: a later message
+        // declaring another would reach the receiver in the wrong bytes.
+        if let Some(mixed) = mllp::mixed_declared_charsets(message, source_charset, wire) {
+            return Some(format!(
+                "Not sent: {}. The messages of a tab go out in one frame and one charset: send them separately, or choose an encoding in the advanced MLLP settings.",
+                mixed
+            ));
+        }
+    }
+    // Not sent with '?' in place of a patient's name.
+    let lost = mllp::unencodable_chars(message, wire);
+    if lost.is_empty() {
+        return None;
+    }
+    let shown = lost.iter().take(8).map(char::to_string).collect::<Vec<_>>().join(" ");
+    Some(format!(
+        "Not sent: {} cannot represent {} character(s) of this message ({}). Choose an encoding that can (UTF-8), or correct MSH-18.",
+        wire,
+        lost.len(),
+        shown
+    ))
+}
+
+/// A send refused before anything went out, with the reason.
+fn not_sent(error: String, encoding: String) -> MllpSendResult {
+    MllpSendResult {
+        success: false,
+        response: String::new(),
+        response_time_ms: 0,
+        error: Some(error),
+        encoding,
+        ack_code: None,
+        reply_problem: None,
+    }
+}
+
 #[tauri::command]
 pub async fn mllp_send(
     host: String,
@@ -48,29 +121,15 @@ pub async fn mllp_send(
     // Segments end with CR on the wire, whatever the editor's line endings.
     let message = crate::parser::hl7::to_wire_segments(&message).into_owned();
     // "auto" (the panel's default, and a missing value) sends in the
-    // charset MSH-18 declares, else the file's, else UTF-8.
+    // charset MSH-18 declares, else the file's, else UTF-8; a charset
+    // MSH-18 names that BridgeLab does not write is refused (see refusal).
     let requested = encoding.filter(|e| !e.trim().is_empty()).unwrap_or_else(|| mllp::AUTO.into());
     let wire = mllp::resolve_send_encoding(&message, &requested, source_charset.as_deref());
     if !crate::parser::hl7::charset::is_known_label(&wire) {
         return Err(format!("Unknown encoding '{}'", wire));
     }
-    let lost = mllp::unencodable_chars(&message, &wire);
-    if !lost.is_empty() {
-        // Refused, not sent with '?' in place of a patient's name.
-        let shown = lost.iter().take(8).map(char::to_string).collect::<Vec<_>>().join(" ");
-        return Ok(MllpSendResult {
-            success: false,
-            response: String::new(),
-            response_time_ms: 0,
-            error: Some(format!(
-                "Not sent: {} cannot represent {} character(s) of this message ({}). Choose an encoding that can (UTF-8), or correct MSH-18.",
-                wire,
-                lost.len(),
-                shown
-            )),
-            encoding: wire,
-            ack_code: None,
-        });
+    if let Some(reason) = refusal(&message, &requested, &wire, source_charset.as_deref()) {
+        return Ok(not_sent(reason, wire));
     }
 
     let connect_timeout = timeout_secs.unwrap_or(30);
@@ -92,8 +151,10 @@ pub async fn mllp_send(
     let status = if result.success { "OK" } else { "FAILED" };
     // What the receiver answered, so the history can be filtered by
     // outcome: a send that reached the peer and got an AE back is "OK" at
-    // the transport level and a rejection at the application level.
-    let ack_code = result.ack_code.clone();
+    // the transport level and a rejection at the application level. An
+    // ACK for another message acknowledges nothing sent here: it is filed
+    // under "No ACK", not under the code it carries.
+    let ack_code = if result.reply_problem.is_some() { None } else { result.ack_code.clone() };
     let target = format!("{}:{}", host, port);
     let entry = HistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
@@ -272,4 +333,77 @@ pub fn get_request_history(
 #[tauri::command]
 pub fn clear_request_history(db: State<'_, Database>) -> Result<(), String> {
     db.clear_request_history()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{mllp_wire_size, refusal};
+
+    /// A message whose MSH-18 names a charset BridgeLab does not write is
+    /// not sent as UTF-8 under that header in Auto mode; chosen explicitly,
+    /// the encoding is the user's call.
+    #[test]
+    fn auto_refuses_a_declared_charset_it_cannot_send_in() {
+        let msg = |cs: &str| format!("MSH|^~\\&|A|B|C|D|20260101||ADT^A01|1|P|2.5|||||JPN|{cs}\rPID|1||1||Yamada\r");
+        for cs in ["ISO IR87", "UNICODE UTF-16"] {
+            let reason = refusal(&msg(cs), "auto", "UTF-8", None).unwrap_or_default();
+            assert!(reason.contains(&format!("'{cs}'")), "{cs}: {reason}");
+        }
+        assert_eq!(refusal(&msg("ISO IR87"), "UTF-8", "UTF-8", None), None);
+        // A tab of several messages goes out in one frame: a later one's
+        // MSH-18 counts too, and the refusal says which message it is.
+        let tab = format!("{}{}", msg("8859/1").replace("|1|P|", "|M1|P|"), msg("ISO IR87").replace("|1|P|", "|M2|P|"));
+        let reason = refusal(&tab, "auto", "ISO-8859-1", None).unwrap_or_default();
+        assert!(reason.contains("message 2 (MSH-10 M2)") && reason.contains("'ISO IR87'"), "{reason}");
+        assert_eq!(refusal(&msg("UNICODE UTF-8"), "auto", "UTF-8", None), None);
+        // And still: characters the charset cannot hold.
+        let latin = "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|1|P|2.5|||||ITA|8859/1\rPID|1||1||Łukasz\r";
+        assert!(refusal(latin, "auto", "ISO-8859-1", None).is_some_and(|r| r.contains("Ł")));
+    }
+
+    /// A tab whose messages declare different charsets, even ones BridgeLab
+    /// writes, is not sent in Auto mode: the frame would carry the second
+    /// message in the first one's charset. Chosen explicitly, it is sent.
+    #[test]
+    fn auto_refuses_a_tab_whose_messages_declare_different_charsets() {
+        let msg = |id: &str, cs: &str, name: &str| {
+            format!("MSH|^~\\&|A|B|C|D|20260101||ADT^A01|{id}|P|2.5|||||ITA|{cs}\rPID|1||1||{name}\r")
+        };
+        let tab = format!("{}{}", msg("M1", "8859/1", "Rossi"), msg("M2", "UNICODE UTF-8", "Müller"));
+        let reason = refusal(&tab, "auto", "ISO-8859-1", None).unwrap_or_default();
+        assert!(reason.contains("message 2 (MSH-10 M2)"), "{reason}");
+        assert!(reason.contains("'UNICODE UTF-8'") && reason.contains("'8859/1'"), "{reason}");
+        assert!(reason.contains("send them separately"), "{reason}");
+        assert_eq!(refusal(&tab, "UTF-8", "UTF-8", None), None);
+        // An empty MSH-18 is the default: here the file's Latin-1.
+        let defaulted = format!("{}{}", msg("M1", "8859/1", "Rossi"), "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|M2|P|2.5\rPID|1||1||Müller\r");
+        assert!(refusal(&defaulted, "auto", "ISO-8859-1", None).is_some());
+        assert_eq!(refusal(&defaulted, "auto", "ISO-8859-1", Some("ISO-8859-1")), None);
+    }
+
+    /// Plain ASCII has the same bytes under 8859/1 and UTF-8: a batch whose
+    /// first message says 8859/1 and whose later ones say otherwise, or
+    /// nothing, is sent as before.
+    #[test]
+    fn auto_sends_a_tab_whose_differing_messages_are_plain_ascii() {
+        let tab = "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|M1|P|2.5|||||ITA|8859/1\rPID|1||1||Müller\r\
+                   MSH|^~\\&|A|B|C|D|20260101||ADT^A01|M2|P|2.5\rPID|1||1||Rossi\r\
+                   MSH|^~\\&|A|B|C|D|20260101||ADT^A01|M3|P|2.5|||||ITA|UNICODE UTF-8\rPID|1||1||Bianchi\r";
+        assert_eq!(refusal(tab, "auto", "ISO-8859-1", None), None);
+    }
+
+    /// The size the panel asks about is what goes on the wire: accented
+    /// text in Latin-1 is one byte a character, half its UTF-8 size, LF
+    /// line breaks become CR, and the last segment ends with CR too.
+    #[tokio::test]
+    async fn the_wire_size_follows_the_send_encoding() {
+        let msg = format!("MSH|^~\\&|A|B|C|D|20260101||ADT^A01|1|P|2.5\nPID|1||1||{}", "é".repeat(1000));
+        let utf8 = mllp_wire_size(msg.clone(), Some("UTF-8".into()), None).await;
+        let latin1 = mllp_wire_size(msg.clone(), Some("ISO-8859-1".into()), None).await;
+        assert_eq!(utf8, msg.len() + 1);
+        assert_eq!(latin1, msg.len() + 1 - 1000);
+        // MSH-18 decides in "auto" mode.
+        let declared = msg.replacen("|P|2.5", "|P|2.5||||||8859/1", 1);
+        assert_eq!(mllp_wire_size(declared.clone(), None, None).await, declared.len() + 1 - 1000);
+    }
 }

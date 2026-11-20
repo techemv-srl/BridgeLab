@@ -73,6 +73,21 @@ export function separatorsOf(lines: string[]): Separators {
 	return DEFAULT_SEPARATORS;
 }
 
+/**
+ * What a message's standard-structure (ghost) rows depend on: MSH-9 and
+ * MSH-12 as written, and the delimiters the first header declares, which
+ * MSH-9 is split with (`ADT@A01` under `MSH|@~\&`). `firstSegment` is the
+ * start of the first segment (its tree row's preview). Empty when there is
+ * nothing to look up. Ordinary edits leave it unchanged, so they do not
+ * ask the backend again; another declaration does.
+ */
+export function expectedSegmentsKey(messageType: string, version: string, firstSegment: string | undefined): string {
+	if (!messageType || !version) return '';
+	const head = firstSegment ?? '';
+	const declaration = isHeader(head.slice(0, 3)) ? head.slice(3, 8) : '';
+	return `${messageType}|${version}|${declaration}`;
+}
+
 /** The segment type: everything before the first field separator. */
 export function segmentType(body: string, seps: Separators): string {
 	const end = body.indexOf(seps.field);

@@ -48,7 +48,7 @@
 			<div class="dialog-header">
 				<span class="dialog-icon">{iconFor(d.kind ?? 'info')}</span>
 				<span class="dialog-title">{d.title ?? defaultTitle(d.kind ?? 'info')}</span>
-				<button class="close-x" onclick={handleCancel} aria-label="Close">&times;</button>
+				<button class="close-x" onclick={handleCancel} aria-label={tr('modal.close')}>&times;</button>
 			</div>
 			<div class="dialog-body">
 				<p class="dialog-message">{d.message}</p>

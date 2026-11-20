@@ -1,5 +1,5 @@
 import type { ParseResult, TreeNode } from '$lib/types/hl7';
-import { t } from '$lib/i18n';
+import { t, subscribeLocale } from '$lib/i18n';
 import { baseName, samePath } from '$lib/paths';
 import { setLiveIds } from './message-gc';
 
@@ -57,6 +57,21 @@ export interface MessageTab {
 	 *  FHIRPath) still describes an earlier version. Null/undefined = the
 	 *  parse result is current, as far as is known. */
 	parseStale?: string | null;
+	/** Restored without its text (an unedited file tab too large for the
+	 *  session): `content` is an empty placeholder until the file is read,
+	 *  when the tab is first shown. Saving the placeholder would empty the
+	 *  file, so a save waits for the read and the editor is read-only. */
+	contentPending?: boolean;
+	/** Restored from the session and left without its text on purpose: the
+	 *  file is now too large or not a regular file, or the user chose not
+	 *  to load it. Opening the file again loads it into this tab. */
+	notLoaded?: boolean;
+	/** Set while `label` is a name the app gave the tab ("Untitled",
+	 *  "Anonymized"): its translation key, so the name follows the language.
+	 *  A tab keeps its name as text, and "Untitled" stayed in the language
+	 *  it was created in. Any other name (a file, a test case, a template,
+	 *  even one called "Untitled") clears it: see setLabel. */
+	labelKey?: string | null;
 }
 
 /** Largest unedited file tab whose text the session stores itself. */
@@ -69,9 +84,63 @@ class MessageStore {
 
 	private nextId = 1;
 
+	/** Reads of restored tabs' files in progress, by tab id. */
+	private loads = new Map<string, Promise<unknown>>();
+
+	/** The same, for the view: tab id → reads in progress. A large restored
+	 *  tab takes seconds to read and parse, and showed an empty editor
+	 *  marked "Not parsed" meanwhile. */
+	loading = $state<Record<string, number>>({});
+
+	/** Note that the text of restored tab `tabId` is being read (`load`). */
+	trackLoad<T>(tabId: string, load: Promise<T>): Promise<T> {
+		this.loading[tabId] = (this.loading[tabId] ?? 0) + 1;
+		const done = load.finally(() => {
+			if (this.loads.get(tabId) === done) this.loads.delete(tabId);
+			const left = (this.loading[tabId] ?? 1) - 1;
+			if (left > 0) this.loading[tabId] = left;
+			else delete this.loading[tabId];
+		});
+		this.loads.set(tabId, done);
+		return done;
+	}
+
+	/** True while the restored tab's text is being read or parsed. */
+	isLoading(tabId: string | null | undefined): boolean {
+		return !!tabId && (this.loading[tabId] ?? 0) > 0;
+	}
+
+	/** Resolves when no read of the tab's file is in progress. */
+	async whenLoaded(tabId: string): Promise<void> {
+		for (let p = this.loads.get(tabId); p; p = this.loads.get(tabId)) {
+			try { await p; } catch { /* the read failed: the tab stays pending */ }
+		}
+	}
+
 	/** Get the active tab. */
 	get activeTab(): MessageTab | undefined {
 		return this.tabs.find((t) => t.id === this.activeTabId);
+	}
+
+	/** Put the names the app gave tabs ("Untitled") into the current
+	 *  language; runs when the language changes. */
+	relabelForLocale() {
+		for (const tab of this.tabs) {
+			if (!tab.labelKey) continue;
+			const label = t(tab.labelKey);
+			if (label !== tab.label) tab.label = label;
+		}
+	}
+
+	/** Name a tab. `key` when the name is the app's own, by its translation
+	 *  key ("tab.anonymized"); without it the name is the tab's for good
+	 *  and does not change with the language. */
+	setLabel(tabId: string, label: string, key: string | null = null) {
+		const tab = this.tabs.find((t) => t.id === tabId);
+		if (tab) {
+			tab.label = label;
+			tab.labelKey = key;
+		}
 	}
 
 	/** Create a new empty tab. */
@@ -80,6 +149,7 @@ class MessageStore {
 		const tab: MessageTab = {
 			id,
 			label: t('tab.untitled'),
+			labelKey: 'tab.untitled',
 			filePath: null,
 			content: '',
 			parseResult: null,
@@ -109,6 +179,7 @@ class MessageStore {
 		const tab: MessageTab = {
 			id,
 			label,
+			labelKey: filePath ? null : 'tab.untitled',
 			filePath,
 			realPath,
 			content,
@@ -145,6 +216,8 @@ class MessageStore {
 		const tab = this.tabs.find((t) => t.id === tabId);
 		if (tab) {
 			tab.content = content;
+			tab.contentPending = false;
+			tab.notLoaded = false;
 			tab.parseResult = leanResult(parseResult);
 			tab.parseStale = null;
 			tab.isModified = false;
@@ -152,6 +225,21 @@ class MessageStore {
 			tab.diskStamp = stamp;
 			tab.diskUnverified = false;
 			tab.externalNotice = undefined;
+		}
+	}
+
+	/** Leave a restored tab without text (see `notLoaded`): the text the
+	 *  session kept is no longer the file's, and saving it would overwrite
+	 *  the file. Read-only and pending, as a tab not read yet. */
+	leaveUnloaded(tabId: string) {
+		const tab = this.tabs.find((t) => t.id === tabId);
+		if (tab) {
+			tab.content = '';
+			tab.contentPending = true;
+			tab.notLoaded = true;
+			tab.parseResult = null;
+			tab.parseStale = null;
+			tab.diskStamp = undefined;
 		}
 	}
 
@@ -208,6 +296,7 @@ class MessageStore {
 			if (filePath) {
 				tab.filePath = filePath;
 				tab.label = baseName(filePath) || tab.label;
+				tab.labelKey = null;
 			}
 		}
 	}
@@ -266,7 +355,11 @@ class MessageStore {
 	}> {
 		return this.tabs.map((t, idx) => ({
 			tab_order: idx,
-			label: t.label,
+			// An app-given "Untitled" is stored as no name, which a restore
+			// (this version's and older ones') shows as "Untitled" in the
+			// language of that day. Other names are stored as they read: a
+			// restored "Anonymized" keeps the language it had.
+			label: t.labelKey === 'tab.untitled' ? '' : t.label,
 			file_path: t.filePath,
 			// A large file tab without edits is read back from its file at
 			// restore (see adoptRestoredTab): storing it too rewrote megabytes
@@ -303,13 +396,20 @@ class MessageStore {
 			const id = `tab-${this.nextId++}`;
 			const tab: MessageTab = {
 				id,
+				// No name: an app-given "Untitled" (see serializeSession).
+				// A name, even "Untitled" from an older session, is kept
+				// as it is: it may be a test case or template called so.
 				label: s.label || t('tab.untitled'),
+				labelKey: s.label || s.file_path ? null : 'tab.untitled',
 				filePath: s.file_path,
 				content: s.content,
 				parseResult: null,
 				isModified: s.is_modified,
 				cursorLine: s.cursor_line,
 				cursorColumn: s.cursor_column,
+				// Stored without its text (see serializeSession): the text is
+				// the file's, read when the tab is first shown.
+				contentPending: !!s.file_path && !s.is_modified && s.content === '',
 			};
 			this.tabs.push(tab);
 			if (s.is_active) activeId = id;
@@ -317,8 +417,45 @@ class MessageStore {
 		this.activeTabId = activeId ?? this.tabs[0]?.id ?? null;
 		return true;
 	}
+
+	/**
+	 * Add the tabs of a recovery copy (unsaved tabs kept when the system
+	 * ended the app) after the open ones, and show the first. Unlike
+	 * restoreSession nothing open is replaced. Returns their ids.
+	 */
+	appendRecoveredTabs(
+		tabs: Array<{
+			tab_order: number;
+			label: string;
+			file_path: string | null;
+			content: string;
+			cursor_line: number;
+			cursor_column: number;
+		}>,
+	): string[] {
+		const sorted = [...tabs].sort((a, b) => a.tab_order - b.tab_order);
+		const ids: string[] = [];
+		for (const s of sorted) {
+			const id = `tab-${this.nextId++}`;
+			this.tabs.push({
+				id,
+				label: s.label || t('tab.untitled'),
+				filePath: s.file_path,
+				content: s.content,
+				parseResult: null,
+				// Unsaved by definition: that is why it was kept.
+				isModified: true,
+				cursorLine: s.cursor_line,
+				cursorColumn: s.cursor_column,
+			});
+			ids.push(id);
+		}
+		if (ids.length > 0) this.activeTabId = ids[0];
+		return ids;
+	}
 }
 
 /** Singleton message store. */
 export const messageStore = new MessageStore();
 setLiveIds(() => messageStore.tabs.map((t) => t.parseResult?.message_id));
+subscribeLocale(() => messageStore.relabelForLocale());

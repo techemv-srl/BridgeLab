@@ -39,10 +39,23 @@ export async function packageSuite(debPath) {
 		const deps = line.split(',').map((s) => s.trim()).filter(Boolean);
 		const dupes = deps.filter((d, i) => deps.indexOf(d) !== i);
 		if (dupes.length) throw new Error(`duplicated: ${[...new Set(dupes)].join(', ')}`);
-		for (const need of ['libwebkit2gtk-4.1-0', 'libgtk-3-0']) {
+		for (const need of ['libwebkit2gtk-4.1-0', 'libgtk-3-0', 'xdg-utils']) {
 			if (!deps.includes(need)) throw new Error(`missing ${need}; have: ${deps.join(', ')}`);
 		}
 		return deps.join(', ');
+	});
+
+	// Releases up to 2.0 were packaged as "bridge-lab": the package must
+	// take its place on install, not sit beside it with a second menu entry.
+	await r.check('named bridgelab, replacing bridge-lab', () => {
+		const field = (name) => ((control.match(new RegExp(`^\\s*${name}:\\s*(.+)$`, 'm')) || [])[1] || '')
+			.split(',').map((s) => s.trim());
+		const name = field('Package')[0];
+		if (name !== 'bridgelab') throw new Error(`Package is ${name}`);
+		for (const f of ['Replaces', 'Conflicts', 'Provides']) {
+			if (!field(f).includes('bridge-lab')) throw new Error(`${f} does not name bridge-lab`);
+		}
+		return 'bridgelab; Replaces/Conflicts/Provides bridge-lab';
 	});
 
 	await r.check('section and priority set', () => {
@@ -54,7 +67,7 @@ export async function packageSuite(debPath) {
 	await r.check('binary, desktop entry and icons shipped', () => {
 		for (const path of [
 			'usr/bin/bridgelab',
-			'usr/share/applications/BridgeLab.desktop',
+			'usr/share/applications/bridgelab.desktop',
 			'usr/share/icons/hicolor/128x128/apps/bridgelab.png',
 		]) {
 			if (!contents.includes(path)) throw new Error(`missing ${path}`);
@@ -73,14 +86,14 @@ export async function packageSuite(debPath) {
 	});
 
 	// ---- what installation actually put on this system ------------------
-	const installed = existsSync('/usr/share/applications/BridgeLab.desktop');
+	const installed = existsSync('/usr/share/applications/bridgelab.desktop');
 	if (!installed) {
 		console.log('  (skipping installed-system checks: package is not installed)');
 		return r;
 	}
 
 	await r.check('desktop entry declares the MIME type', () => {
-		const d = readFileSync('/usr/share/applications/BridgeLab.desktop', 'utf8');
+		const d = readFileSync('/usr/share/applications/bridgelab.desktop', 'utf8');
 		if (!/^MimeType=.*application\/hl7-v2/m.test(d)) throw new Error('MimeType missing');
 		if (!/^Exec=bridgelab/m.test(d)) throw new Error('Exec is not bridgelab');
 		return 'application/hl7-v2';

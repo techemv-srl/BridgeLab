@@ -72,8 +72,11 @@ fn selected(db: &Database, ids: &[String]) -> Result<Vec<TestCase>, String> {
 
 /// Which of the selected test cases carry personal data, for the export
 /// warning. Detection only, so every edition gets it.
+///
+/// This and `export_test_cases` are async, off the main thread: right
+/// after startup they wait for the plugin packs to finish loading.
 #[tauri::command]
-pub fn scan_test_cases_phi(
+pub async fn scan_test_cases_phi(
     ids: Vec<String>,
     db: State<'_, Database>,
     registry: State<'_, PluginRegistry>,
@@ -92,7 +95,7 @@ pub struct PackExportResult {
 /// Write the selected test cases (all when `ids` is empty) to `path`.
 /// With `anonymize`, HL7 v2 content is masked in the file only.
 #[tauri::command]
-pub fn export_test_cases(
+pub async fn export_test_cases(
     ids: Vec<String>,
     path: String,
     anonymize: bool,

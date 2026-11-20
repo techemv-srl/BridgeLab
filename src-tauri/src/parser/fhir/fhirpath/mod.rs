@@ -42,6 +42,8 @@ mod types;
 use serde::Serialize;
 use serde_json::Value;
 
+pub use eval::{Budget, References, MAX_EVAL_STEPS, MAX_EVAL_TIME, VALIDATION_EVALS};
+
 /// Result of FHIRPath evaluation.
 #[derive(Debug, Clone, Serialize)]
 pub struct FhirPathResult {
@@ -73,6 +75,28 @@ pub fn evaluate(expression: &str, root: &Value) -> FhirPathResult {
 /// `scope`: the Bundle a rule's entry resource sits in, so a reference to
 /// another entry resolves as it does when the whole Bundle is evaluated.
 pub fn evaluate_within(expression: &str, root: &Value, scope: &Value) -> FhirPathResult {
+    evaluate_sharing(expression, root, scope, &mut Budget::new())
+}
+
+/// [`evaluate_within`], drawing on a budget several evaluations share: the
+/// FHIR rules of one validation run under one, so a Bundle of many entries
+/// cannot take a whole evaluation's budget for each of them. Each
+/// evaluation keeps to its own limits too, and stops sooner when less is
+/// left of the shared budget.
+pub fn evaluate_sharing(expression: &str, root: &Value, scope: &Value, budget: &mut Budget) -> FhirPathResult {
+    evaluate_keeping(expression, root, scope, budget, &mut References::default())
+}
+
+/// [`evaluate_sharing`], keeping the index `resolve()` builds of `scope` in
+/// `references` for the next evaluation in the same scope, instead of
+/// walking the whole Bundle again.
+pub fn evaluate_keeping<'a>(
+    expression: &str,
+    root: &'a Value,
+    scope: &'a Value,
+    budget: &mut Budget,
+    references: &mut References<'a>,
+) -> FhirPathResult {
     let expr = expression.trim();
 
     let parsed = match parser::parse(expr) {
@@ -80,9 +104,15 @@ pub fn evaluate_within(expression: &str, root: &Value, scope: &Value) -> FhirPat
         Err(e) => return failed(expr, e),
     };
 
-    let mut env = eval::Env::within(root, scope);
+    let mut env = eval::Env::within(root, scope)
+        .with_work(budget.for_one_evaluation())
+        .with_references(references);
+    let before = env.work.steps_left();
     let focus = vec![root.clone()];
-    match eval::eval(&parsed, &focus, &mut env) {
+    let outcome = eval::eval(&parsed, &focus, &mut env);
+    budget.used(before - env.work.steps_left());
+    env.keep_references(references);
+    match outcome {
         Ok(results) => FhirPathResult {
             expression: expr.to_string(),
             count: results.len(),

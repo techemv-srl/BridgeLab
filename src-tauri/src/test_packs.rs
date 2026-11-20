@@ -106,7 +106,13 @@ impl PackedTestCase {
             tags: self.tags,
             content: self.content,
             expected_message_type: self.expected_message_type,
-            created_at: if self.created_at.is_empty() { now.to_string() } else { self.created_at },
+            // The library sorts and shows dates as RFC 3339: a hand-written
+            // "yesterday" or "01/02/2026" was stored as it was.
+            created_at: if chrono::DateTime::parse_from_rfc3339(self.created_at.trim()).is_ok() {
+                self.created_at.trim().to_string()
+            } else {
+                now.to_string()
+            },
             updated_at: now.to_string(),
         }
     }
@@ -373,6 +379,12 @@ pub fn scan_phi(cases: &[TestCase], extra: &[ExtraPhiField]) -> Vec<PhiScan> {
 /// Mask the PHI of every HL7 v2 test case in a pack (the library itself is
 /// not touched). FHIR and unparsable content is left as it is; the count
 /// of masked cases is returned.
+///
+/// A case counts, and is rewritten, only when a segment changed. The
+/// anonymizer joins segments with CR and ends without one, so comparing
+/// its text with the stored one counted (and rewrote) every case kept
+/// with LF line endings or a final CR, PHI or not. A masked case keeps
+/// its own line endings and final terminator.
 pub fn anonymize_pack(pack: &mut TestCasePack, extra: &[ExtraPhiField]) -> usize {
     let mut masked = 0;
     for tc in &mut pack.test_cases {
@@ -382,13 +394,31 @@ pub fn anonymize_pack(pack: &mut TestCasePack, extra: &[ExtraPhiField]) -> usize
         let content = tc.content.trim_start_matches('\u{FEFF}');
         if let Ok(msg) = Hl7Lexer::new().parse(content.as_bytes().to_vec()) {
             let anonymized = anonymization::anonymize_message_with_extra(&msg, extra);
-            if anonymized != tc.content {
-                tc.content = anonymized;
+            let unchanged = anonymized.split('\r').eq(msg.segments.iter().map(|s| s.span.as_str(&msg.raw)));
+            if !unchanged {
+                tc.content = with_line_endings_of(&tc.content, &anonymized);
                 masked += 1;
             }
         }
     }
     masked
+}
+
+/// `segments` (joined with CR) with the line endings `original` uses:
+/// CRLF, LF or CR, and a final one when `original` ends with one.
+fn with_line_endings_of(original: &str, segments: &str) -> String {
+    let eol = if original.contains("\r\n") {
+        "\r\n"
+    } else if original.contains('\n') && !original.contains('\r') {
+        "\n"
+    } else {
+        "\r"
+    };
+    let mut out = segments.replace('\r', eol);
+    if original.ends_with(['\r', '\n']) {
+        out.push_str(eol);
+    }
+    out
 }
 
 // --- Running a test case ---------------------------------------------------
@@ -580,6 +610,34 @@ mod tests {
         assert_eq!(masked, 1);
         assert!(!pack.test_cases[0].content.contains("SMITH"));
         assert_eq!(pack.test_cases[1].content, fhir);
+    }
+
+    /// Cases with no PHI were counted and rewritten (CR joins, final CR
+    /// dropped): "personal data masked in 2 of them" when one held PHI.
+    #[test]
+    fn a_case_without_phi_is_neither_counted_nor_rewritten() {
+        let clean_lf = "MSH|^~\\&|APP|FAC|RCV|RFAC|20260101||ADT^A01|MSG1|P|2.5\nEVN|A01|20260101\n";
+        let clean_cr = "MSH|^~\\&|APP|FAC|RCV|RFAC|20260101||ADT^A01|MSG2|P|2.5\rEVN|A01|20260101\r";
+        let phi_crlf = "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|M3|P|2.5\r\nPID|1||123^^^H^MR||Smith^Jo||19800101|F\r\n";
+        let mut pack = build_pack(&[tc("a", "LF", clean_lf), tc("b", "CR", clean_cr), tc("c", "PHI", phi_crlf)], "", "");
+        assert_eq!(anonymize_pack(&mut pack, &[]), 1);
+        assert_eq!(pack.test_cases[0].content, clean_lf);
+        assert_eq!(pack.test_cases[1].content, clean_cr);
+        let masked = &pack.test_cases[2].content;
+        assert!(!masked.contains("Smith") && !masked.contains("19800101"), "{masked}");
+        assert!(masked.ends_with("\r\n") && masked.matches("\r\n").count() == 2, "keeps its CRLF: {masked:?}");
+    }
+
+    /// A created_at that is not RFC 3339 was stored as it was.
+    #[test]
+    fn an_import_keeps_only_rfc3339_creation_dates() {
+        let mut packed = PackedTestCase::from(&tc("a", "A", ADT));
+        packed.created_at = "2025-03-04T05:06:07+01:00".into();
+        assert_eq!(packed.clone().into_test_case("a".into(), "NOW").created_at, "2025-03-04T05:06:07+01:00");
+        for odd in ["yesterday", "04/03/2025", "2025-03-04", ""] {
+            packed.created_at = odd.into();
+            assert_eq!(packed.clone().into_test_case("a".into(), "NOW").created_at, "NOW", "{odd}");
+        }
     }
 
     #[test]

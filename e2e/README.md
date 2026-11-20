@@ -53,7 +53,7 @@ behaving correctly and the suite asking the wrong question.
 A suite can also be run on its own:
 
 ```bash
-node e2e/suites/package.mjs path/to/BridgeLab_1.5.0_amd64.deb   # no display needed
+node e2e/suites/package.mjs path/to/bridgelab_2.1.0_amd64.deb   # no display needed
 node e2e/suites/app.mjs                                          # needs a running tauri-driver
 ```
 
@@ -87,6 +87,13 @@ double-clicking a message never reaches the app.
 - **Content security policy** — a request to an arbitrary host is blocked by
   `connect-src`, one to `api.github.com` (the update check) is not, and
   inline styles still apply. Everything above already ran under the policy.
+- **Windows and navigation** — the window refuses to load a page that is
+  not the app's, and closing the main window ends the app, the manual
+  window included. These run last: the second ends the session.
+
+A check that would open a native dialog or the system's browser answers
+that IPC request in the page instead, by wrapping `window.fetch`, and
+asserts on what the app asked for.
 
 Installing an implementation guide on top goes through a native file dialog
 WebDriver cannot drive; for an automated run install it headlessly — same

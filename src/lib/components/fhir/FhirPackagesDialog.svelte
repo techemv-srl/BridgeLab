@@ -1,6 +1,6 @@
 <script lang="ts">
 	import {
-		listFhirPackages, installFhirPackage, removeFhirPackage, fhirPackagesDir,
+		listFhirPackages, installFhirPackage, removeFhirPackage, fhirPackagesDir, reloadFhirPackages,
 		type FhirPackageInfo,
 	} from '$lib/ipc/fhirPackages';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
@@ -16,6 +16,7 @@
 	let dir = $state('');
 	let loading = $state(true);
 	let installing = $state(false);
+	let reloading = $state(false);
 	let error = $state<string | null>(null);
 
 	$effect(() => {
@@ -38,7 +39,7 @@
 		const { open } = await import('@tauri-apps/plugin-dialog');
 		const picked = await open({
 			multiple: false,
-			filters: [{ name: 'FHIR package', extensions: ['tgz', 'gz'] }],
+			filters: [{ name: t('filter.fhirPackage'), extensions: ['tgz', 'gz'] }],
 		});
 		if (typeof picked !== 'string') return;
 
@@ -62,6 +63,19 @@
 			error = String(e);
 		}
 	}
+
+	/** Read the packages folder again: a package copied there or deleted by
+	 *  hand counts without restarting the app. */
+	async function reload() {
+		error = null;
+		reloading = true;
+		try {
+			packages = await reloadFhirPackages();
+		} catch (e) {
+			error = String(e);
+		}
+		reloading = false;
+	}
 </script>
 
 <div class="modal-backdrop" role="presentation" onclick={onClose}>
@@ -69,7 +83,7 @@
 	<div class="modal" onclick={(e) => e.stopPropagation()}>
 		<div class="modal-header">
 			<h2>{t('fhirPackages.title')}</h2>
-			<button class="close-btn" onclick={onClose} aria-label="Close">×</button>
+			<button class="close-btn" onclick={onClose} aria-label={t('modal.close')}>×</button>
 		</div>
 
 		<div class="modal-body">
@@ -126,6 +140,9 @@
 
 		<div class="modal-footer">
 			<button class="btn" onclick={onClose}>{t('modal.close')}</button>
+			<button class="btn" onclick={reload} disabled={reloading || installing} title={t('fhirPackages.reloadHint')}>
+				{t('fhirPackages.reload')}
+			</button>
 			<button class="btn btn-primary" onclick={install} disabled={installing}>
 				{installing ? t('fhirPackages.installing') : t('fhirPackages.install')}
 			</button>

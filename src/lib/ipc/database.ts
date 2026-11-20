@@ -78,3 +78,45 @@ export async function loadSession(): Promise<SessionTab[]> {
 export async function clearSession(): Promise<void> {
 	return invoke('clear_session');
 }
+
+/** Hand the backend the latest tabs: the whole session (`session`, restore
+ *  on) or only the unsaved tabs (restore off). Held in memory only, and
+ *  written once, as the session or as a recovery copy, if the system ends
+ *  the app without the window's close request. An empty list of unsaved
+ *  tabs drops it. */
+export async function setExitSnapshot(tabs: SessionTab[], session: boolean): Promise<void> {
+	return invoke('set_exit_snapshot', { tabs, session });
+}
+
+/** The unsaved tabs a run the system ended left behind (empty when none). */
+export async function loadRecoveryTabs(): Promise<SessionTab[]> {
+	return invoke('load_recovery_tabs');
+}
+
+/** Delete the recovery copy. */
+export async function clearRecoveryTabs(): Promise<void> {
+	return invoke('clear_recovery_tabs');
+}
+
+/** Tell the backend the window has written what it holds, after it said
+ *  the system is ending the app (`app://os-ending`). */
+export async function osEndingReady(): Promise<void> {
+	return invoke('os_ending_ready');
+}
+
+/** The database file that could not be opened at startup, and why: this
+ *  run keeps everything in memory only. */
+export interface DatabaseFallback {
+	/** Empty when not even the data folder is known. */
+	path: string;
+	reason: string;
+	/** The file is fine, but another BridgeLab window uses it and this
+	 *  launch could not hand its files over (Linux without D-Bus). */
+	second_instance?: boolean;
+}
+
+/** Why this run has no database file, or null when it has one. Answers
+ *  once per run. */
+export async function takeDatabaseFallback(): Promise<DatabaseFallback | null> {
+	return invoke('take_database_fallback');
+}

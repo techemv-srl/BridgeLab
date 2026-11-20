@@ -1,22 +1,29 @@
 <script lang="ts">
 	import { t, subscribeLocale, setLocale, getLocale, type Locale } from '$lib/i18n';
 	import { getPreference, setPreference } from '$lib/ipc/database';
-	import { PREF_STARTUP_CHECK, getUpdatePolicy, effectivePreference } from '$lib/updates';
+	import { PREF_STARTUP_CHECK, getUpdatePolicy, effectivePreference, policyProblemDetail, policyProblemKey, type PolicyProblem } from '$lib/updates';
 	import {
-		listPlugins, reloadPlugins, setPluginEnabled,
+		listPlugins, reloadPlugins, setPluginEnabled, pluginStateProblem,
 		openPluginsFolder, getPluginsDir, type PluginInfo,
 	} from '$lib/ipc/plugins';
 	import {
-		checkLicense, getHardwareId, deactivateLicense, getAvailableFeatures, parseUpgradeError,
+		checkLicense, getHardwareIdInfo, deactivateLicense, getAvailableFeatures, parseUpgradeError,
 		getTelemetrySettings, setTelemetryEnabled, sendTelemetryNow, getTelemetryPreview,
-		type LicenseStatus, type TelemetrySettings,
+		type LicenseStatus, type TelemetrySettings, type HardwareIdInfo,
 	} from '$lib/ipc/licensing';
 	import ShortcutsEditor from '$lib/components/layout/ShortcutsEditor.svelte';
 	import { clampSetting } from '$lib/settings-limits';
+	import { displayKeys } from '$lib/stores/shortcuts.svelte';
+	import { featureName } from '$lib/licensing/feature-names';
+	import { pluginError, pluginWarnings } from '$lib/plugin-notices';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
 	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
+	function feature(tag: string): string { void localeVersion; return featureName(tag); }
+	// A pack's problems in the user's language (the backend's are English).
+	function errorOf(p: PluginInfo): string { void localeVersion; return pluginError(p) ?? ''; }
+	function warningsOf(p: PluginInfo): string[] { void localeVersion; return pluginWarnings(p); }
 	function fmtDate(rfc3339: string): string {
 		// App-selected locale, reactive to language switches (see tr()).
 		void localeVersion;
@@ -172,13 +179,17 @@
 	// License state
 	let licenseStatus = $state<LicenseStatus | null>(null);
 	let hardwareId = $state('');
+	/** Set when the ID is the host-and-user fallback, which may change. */
+	let hardwareIdInfo = $state<HardwareIdInfo | null>(null);
 	let availableFeatures = $state<string[]>([]);
 	let licenseLoaded = $state(false);
 
 	async function loadLicenseInfo() {
 		try {
 			licenseStatus = await checkLicense();
-			hardwareId = await getHardwareId();
+			const hw = await getHardwareIdInfo();
+			hardwareId = hw.id;
+			hardwareIdInfo = hw;
 			availableFeatures = await getAvailableFeatures();
 		} catch { /* web mode */ }
 		licenseLoaded = true;
@@ -203,6 +214,12 @@
 	let pluginsLoading = $state(false);
 	let pluginsLoaded = $state(false);
 	let pluginsError = $state<string | null>(null);
+	/** Why .state.json could not be read: a pack switched off may be running. */
+	let pluginsStateProblem = $state<string | null>(null);
+
+	async function refreshPluginStateProblem() {
+		try { pluginsStateProblem = await pluginStateProblem(); } catch { pluginsStateProblem = null; }
+	}
 
 	async function loadPluginsInfo() {
 		pluginsLoading = true;
@@ -210,6 +227,7 @@
 		try {
 			plugins = await listPlugins();
 			pluginsDir = await getPluginsDir();
+			await refreshPluginStateProblem();
 		} catch (e) {
 			pluginsError = String(e);
 		} finally {
@@ -223,6 +241,7 @@
 		pluginsError = null;
 		try {
 			plugins = await reloadPlugins();
+			await refreshPluginStateProblem();
 		} catch (e) {
 			pluginsError = String(e);
 		} finally {
@@ -243,13 +262,20 @@
 		// Refresh either way: gated flags shift when a slot frees up, and a
 		// refused switch must show the pack as it really is.
 		try { plugins = await listPlugins(); } catch { /* keep the old list */ }
+		// A saved choice replaces an unreadable state file.
+		await refreshPluginStateProblem();
 		// The checkbox's own state changed on click; when the switch was
 		// refused the list value did not, so Svelte leaves it ticked.
 		input.checked = !!plugins.find((x) => x.path === p.path)?.enabled;
 	}
 
 	async function handleOpenPluginsFolder() {
-		try { await openPluginsFolder(); } catch (e) { pluginsError = String(e); }
+		// No file manager could be started (Linux without xdg-open or gio):
+		// say so, and where the folder is, so it can be opened by hand.
+		try { await openPluginsFolder(); } catch (e) {
+			pluginsError = tr('plugins.openFolderFailed', { path: pluginsDir || (await getPluginsDir().catch(() => '')) });
+			console.warn('open_plugins_folder:', e);
+		}
 	}
 
 	$effect(() => {
@@ -276,6 +302,7 @@
 			const decided = effectivePreference(policy, pref).value;
 			updateCheck = decided != null && decided !== 'false';
 			updatePolicySource = policy?.disabled_by_policy ? (policy.policy_source ?? '') : null;
+			policyProblem = policy?.policy_problem ?? null;
 		} catch { /* web mode */ }
 		telemetryLoaded = true;
 	}
@@ -285,6 +312,9 @@
 	let updateCheck = $state(true);
 	/** Set when a machine policy turns the check off; the checkbox is then locked. */
 	let updatePolicySource = $state<string | null>(null);
+	/** A policy.json that is there but was ignored: said so, or an
+	 *  administrator would believe a policy is in force when it is not. */
+	let policyProblem = $state<PolicyProblem | null>(null);
 	async function handleUpdateCheckToggle(e: Event) {
 		updateCheck = (e.currentTarget as HTMLInputElement).checked;
 		try { await setPreference(PREF_STARTUP_CHECK, String(updateCheck)); } catch { /* web mode */ }
@@ -438,7 +468,7 @@
 					<label><input type="checkbox" bind:checked={occurrencesHighlight} /> {tr('settings.occurrences')}</label>
 				</div>
 				<div class="setting-check">
-					<label><input type="checkbox" bind:checked={links} /> {tr('settings.links')}</label>
+					<label><input type="checkbox" bind:checked={links} /> {tr('settings.links', { key: displayKeys('Ctrl') })}</label>
 				</div>
 				<div class="setting-check">
 					<label><input type="checkbox" bind:checked={stickyScroll} /> {tr('settings.stickyScroll')}</label>
@@ -563,6 +593,9 @@
 				{#if pluginsError}
 					<div class="plugin-error">{pluginsError}</div>
 				{/if}
+				{#if pluginsStateProblem}
+					<div class="plugin-warning">⚠ {tr('plugins.stateUnreadable', { file: '.state.json', error: pluginsStateProblem })}</div>
+				{/if}
 
 				{#if !pluginsLoading && pluginsLoaded && plugins.length === 0}
 					<div class="info-block">
@@ -587,9 +620,9 @@
 								<span class="plugin-filepath" title={p.path}>{p.path}</span>
 							</div>
 							{#if p.error}
-								<div class="plugin-error">{tr('plugins.parseError', { error: p.error })}</div>
+								<div class="plugin-error">{tr('plugins.parseError', { error: errorOf(p) })}</div>
 							{/if}
-							{#each p.warnings ?? [] as w}
+							{#each warningsOf(p) as w}
 								<div class="plugin-warning">⚠ {w}</div>
 							{/each}
 							{#if p.gated}
@@ -610,6 +643,13 @@
 
 			{:else if activeSection === 'privacy'}
 				<h3>{tr('settings.privacy')}</h3>
+
+				{#if policyProblem}
+					<div class="policy-problem" role="alert">
+						⚠ {tr(policyProblemKey(policyProblem.kind), { path: policyProblem.path })}
+						<div class="hint">{policyProblemDetail(policyProblem, tr)}</div>
+					</div>
+				{/if}
 
 				<div class="setting-check">
 					<label>
@@ -681,7 +721,12 @@
 						{/if}
 
 						<dt>{tr('act.hardwareId')}</dt>
-						<dd><code>{hardwareId}</code></dd>
+						<dd>
+							<code>{hardwareId}</code>
+							{#if hardwareIdInfo?.fallback}
+								<div class="hw-fallback">{tr('act.hwFallback', { sources: hardwareIdInfo.sources.join(', ') })}</div>
+							{/if}
+						</dd>
 
 						{#if licenseStatus.licensee}
 							<dt>{tr('act.nameCompany')}</dt>
@@ -691,7 +736,7 @@
 						<dt>{tr('act.features')}</dt>
 						<dd class="feature-chips">
 							{#each availableFeatures as feat}
-								<span class="chip">{feat}</span>
+								<span class="chip" title={feat}>{feature(feat)}</span>
 							{/each}
 						</dd>
 					</dl>
@@ -771,6 +816,8 @@
 	.plugin-filepath { font-family: 'JetBrains Mono', monospace; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; }
 	.plugin-error { color: var(--color-error); font-size: 11px; margin-top: 4px; }
 	.plugin-warning { color: var(--color-warning); font-size: 11px; margin-top: 2px; }
+	.policy-problem { color: var(--color-warning); font-size: 12px; margin-bottom: 12px; overflow-wrap: anywhere; }
+	.hw-fallback { color: var(--color-warning); font-size: 11px; margin-top: 4px; }
 	.plugin-gated { color: var(--color-warning); font-size: 11px; margin-top: 4px; }
 	.plugin-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; }
 

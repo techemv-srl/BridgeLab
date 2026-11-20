@@ -46,6 +46,16 @@ ${mockupAppShell}
 		leen tal cual. Un archivo que BridgeLab no puede analizar se abre
 		igualmente, como texto para corregir, con una nota que explica por
 		qué.</li>
+	<li><strong>Tamaño:</strong> un archivo de hasta 16 MB se abre al
+		momento. Entre 16 y 64 MB BridgeLab pregunta antes: la aplicación
+		usa mucha más memoria que el archivo (un archivo de muchos mensajes
+		cortos puede llevarla a varios GB). Un archivo de más de 64 MB, o
+		un dispositivo o una tubería con nombre, no se abre, y un mensaje
+		explica por qué. Una pestaña de la última sesión cuyo archivo ha
+		superado un límite desde entonces vuelve vacía, con el motivo, en
+		lugar de leerse en cada inicio. El texto pegado sigue los mismos
+		límites: con más de 16 MB BridgeLab pregunta antes, con más de
+		64 MB no lo pega.</li>
 	<li><strong>Archivo → Nuevo Mensaje desde Plantilla...</strong> (<kbd>Ctrl</kbd>+<kbd>N</kbd>) -
 		plantillas ADT, ORM, ORU, SIU y más, ya rellenadas. Campos como
 		MSH-7 y MSH-10 se completan con la fecha y hora actuales y un
@@ -59,6 +69,14 @@ ${mockupAppShell}
 		una pestaña nueva. Cada ejemplo supera la validación; pacientes y
 		datos son ficticios.</li>
 </ul>
+<p><strong>Guardar.</strong> <strong>Archivo → Guardar como</strong>, y el
+primer guardado de una pestaña nueva, proponen el tipo que corresponde a
+la pestaña — HL7 Messages (<code>*.hl7</code>), FHIR JSON
+(<code>*.json</code>) o FHIR XML (<code>*.xml</code>) — además de
+All Files, y a un nombre escrito sin extensión se le añade la de ese tipo
+(BridgeLab pregunta antes si ya existe un archivo con ese nombre). Cada
+guardado pasa por una copia temporal que solo tú puedes leer y conserva
+los permisos, la ACL y los atributos extendidos del archivo.</p>
 
 <div class="note">En el primer arranque obtienes una <strong>prueba Pro
 de 14 días</strong> con todas las funcionalidades Pro habilitadas (SOAP y
@@ -129,22 +147,33 @@ origen de las sugerencias de palabras (este mensaje, todos los mensajes
 abiertos o ninguno; las sugerencias de campos y valores HL7 funcionan en
 todos los modos). Los cambios se aplican al instante. Cada pestaña conserva
 su propio historial de deshacer y rehacer (Ctrl+Z, Ctrl+Y) al pasar de una
-pestaña a otra.</p>
+pestaña a otra.
+Con los enlaces clicables activados, <kbd>Ctrl</kbd>+clic sobre una
+dirección http, https o mailto, o <em>Follow link</em> en su hover, la abre
+en el navegador o en el cliente de correo; cualquier otro tipo de enlace no
+hace nada. Los enlaces del resto de la aplicación, en Acerca de BridgeLab o
+en este manual, se abren igual, con un clic o un clic con el botón
+central.</p>
 
 <h3>Menú contextual (clic derecho)</h3>
 ${mockupContextMenu}
 <p>El menú agrupa las acciones en tres secciones:</p>
 <ul>
 	<li><strong>Navegación:</strong> Mostrar segmento en el árbol
-		(<kbd>Alt</kbd>+<kbd>T</kbd>) - abre el árbol y resalta el campo
+		(<kbd>Alt</kbd>+<kbd>T</kbd>; macOS <kbd>⌘⌥T</kbd>) - abre el árbol y resalta el campo
 		exacto bajo el cursor; Expandir / Plegar para valores
 		largos.</li>
 	<li><strong>Portapapeles:</strong> Copiar segmento
-		(<kbd>Alt</kbd>+<kbd>C</kbd>), Copiar mensaje completo (con los
+		(<kbd>Alt</kbd>+<kbd>C</kbd>; macOS <kbd>⌘⌥C</kbd>), Copiar mensaje completo (con los
 		campos expandidos), Copiar mensaje truncado (campos largos
 		acortados, para caber en un email; los datos del paciente se copian
 		tal cual: anonimiza primero).</li>
 </ul>
+<p>El editor, la barra de pestañas y el árbol tienen su propio menú. En el
+resto de la aplicación el clic derecho no hace nada: el menú del navegador
+no se abre nunca, ni siquiera en los campos de texto, donde Cortar, Copiar
+y Pegar son <kbd>Ctrl</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>C</kbd> y
+<kbd>Ctrl</kbd>+<kbd>V</kbd>.</p>
 
 <div class="note">Los atajos nativos de Monaco (<kbd>Ctrl</kbd>+<kbd>F</kbd>
 buscar, <kbd>Ctrl</kbd>+<kbd>H</kbd> reemplazar, <kbd>Ctrl</kbd>+<kbd>Z</kbd>
@@ -193,8 +222,16 @@ metadatos derivados del esquema para el nodo seleccionado:</p>
 	<li>Tipo de dato (XPN, CX, ST, ...), longitud máxima, marcas de
 		requerido/repetible, descripción</li>
 	<li>Valor actual y longitud; un botón <em>Ver valor completo</em>
-		para los campos largos que el editor muestra plegados</li>
+		para los campos largos que el editor muestra plegados (el botón
+		rojo <code>{...}</code> en la fila del campo en el árbol hace lo
+		mismo) y para un segmento largo, cuya fila muestra solo sus
+		primeros 80 caracteres; la longitud indicada es la del valor
+		entero</li>
 </ul>
+<p>El valor completo se abre en una ventana propia. Un valor muy grande
+(un PDF incrustado, por ejemplo) muestra sus primeros 65.536 caracteres y
+su longitud total; <em>Copiar al portapapeles</em> copia igualmente el
+valor entero.</p>
 <p>Los segmentos desconocidos (Z-segments o códigos personalizados fuera
 del estándar) muestran <em>Fuera del estándar HL7</em> pero siguen
 siendo totalmente editables.</p>
@@ -228,6 +265,25 @@ uno indica cuántas veces aparece), escribe en <em>Filtrar filas</em> para
 quedarte con las filas que contienen un texto y haz clic en una celda
 para seleccionar ese campo en el editor. La cuadrícula es de solo lectura
 y sigue al mensaje mientras lo editas.</p>
+
+<h3>Leer un mensaje con palabras</h3>
+<p><strong>Ver → Interpretación</strong>
+(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>) abre un panel inferior que
+lee el mensaje HL7 v2 como frases, un bloque por segmento:
+<em>Paciente DOE, JOHN Q, Male, fecha de nacimiento 1980-01-01,
+identificadores 123456 (Medical record number).</em> — <em>Glucose (GLU):
+98 mg/dL, Above high normal, estado Final results.</em> Nombres, fechas,
+lugares, identificadores y valores codificados se escriben de forma
+legible, los códigos con su significado según las tablas de valores. MSH,
+EVN, PID, NK1, PV1, ORC, OBR, OBX, AL1, DG1 y NTE tienen su propia
+redacción; cualquier otro segmento, Z-segments incluidos, se lee campo por
+campo con los nombres de campo de la versión HL7 del mensaje. Cada valor
+es un enlace: un clic selecciona ese campo (o esa repetición) en el
+editor, y un clic en la etiqueta del segmento lleva al segmento. Las
+frases siguen el idioma de la interfaz y al mensaje mientras lo editas;
+los significados vienen de las tablas HL7 y quedan en inglés. Los valores
+largos (un PDF incrustado en OBX-5) se recortan; el editor los conserva
+completos.</p>
 
 <h3>Comparar dos mensajes</h3>
 <p><strong>Herramientas → Comparar mensajes…</strong> abre un diff lado

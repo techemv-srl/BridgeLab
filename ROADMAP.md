@@ -62,12 +62,13 @@ Shipped and available:
       user-defined one (`IS`, suggestions). Field metadata, hover and the
       built-in validation now read the full catalogue of the declared
       version rather than a hand-written list of fifteen segments
-- [ ] Message interpretation panel — the open message read as
-      sentences ("Patient SMITH, JOHN, male, born 1980-01-01, admitted
-      as inpatient to ward 3…"), each sentence linked to the field it
-      comes from in the editor. A generic rendering driven by the
-      catalogue and the value tables first, then event-specific wording
-      for the common ADT / ORU / ORM messages
+- [x] Message interpretation panel — the open message read as
+      sentences in the interface language ("Patient SMITH, JOHN, Male,
+      born 1980-01-01, identifiers 123456 (Medical record number)."), one
+      block per segment, every value a link that selects its field in the
+      editor. MSH, EVN, PID, NK1, PV1, ORC, OBR, OBX, AL1, DG1 and NTE
+      have their own wording; any other segment is read field by field
+      from the catalogue, codes explained from the value tables
 - [x] Sample message library — thirteen complete, version-tagged examples
       (ADT A01/A04/A08/A03/A40, ORU R01 ×2, ORM O01, SIU S12, MDM T02,
       DFT P03, VXU V04, ACK) in v2.3, v2.5 and v2.5.1, reachable from the
@@ -90,15 +91,18 @@ Shipped and available:
       three-valued logic, partial-precision dates, quantities with unit
       conversion, ~70 functions, and `resolve()` against contained and
       bundled resources. Verified against the official HL7 FHIRPath test
-      suite (838 of 922 runnable cases)
-- [ ] Close the remaining FHIRPath gap: `lowBoundary()`/`highBoundary()`
-      (needs exact decimal arithmetic) and compound UCUM units (55 cases);
-      and 29 cases that need the element definitions at evaluation time:
-      the declared type of ordinary primitives (`Patient.gender.is(id)`,
-      `ofType(string)` and `type()` on a `code`, `@T14:34:28Z.is(Time)`),
-      rejecting unknown element names (`name.given1`,
-      `Encounter.name.given`), strict-mode errors
-      (`children().skip(1)`) and `conformsTo()`
+      suite (984 of 1,053 runnable cases)
+- [x] `lowBoundary()` / `highBoundary()` on decimals, quantities, dates,
+      dateTimes and times, computed exactly from the precision written in
+      the literal or in the resource, JSON or XML (`12.500` counts three
+      digits, `9.5e2` is known to the tens), and `precision()` on decimals
+- [ ] Close the remaining FHIRPath gap: compound UCUM units, and the cases
+      that need the element definitions at evaluation time: the declared
+      type of ordinary primitives (`Patient.gender.is(id)`, `ofType(string)`
+      and `type()` on a `code`, `@T14:34:28Z.is(Time)`), the semantic
+      checks of `is`/`as`, rejecting unknown element names (`name.given1`,
+      `Encounter.name.given`), strict-mode errors (`children().skip(1)`)
+      and `conformsTo()`
 - [x] Custom FHIR validation rules builder — declarative packs with
       FHIRPath invariants or selector-plus-check rules, an in-app editor
       that tests a rule against the open resource before saving it, and no
@@ -163,7 +167,8 @@ Shipped and available:
 - [x] Declarative plugin packs (validation rules, PHI fields) — no code execution
 - [ ] Scripted plugins (sandboxed) and a community plugin marketplace
 - [ ] Optional, end-to-end encrypted cloud sync for settings and templates
-- [ ] Docker image for headless/CI use
+- [x] Docker image of the CLI for headless/CI use —
+      `ghcr.io/techemv-srl/bridgelab-cli`, published with every release
 - [ ] Mirth Connect message importer
 - [ ] Web-based lite version for quick checks
 
@@ -198,7 +203,7 @@ runs on your machine, offline, and stays that way. It is not:
   an engine to look at them.
 - **A web platform.** There is no server-side BridgeLab that stores
   millions of messages. For volume, the CLI validates whole folders in
-  CI, and a Docker image for it is on the list; the optional cloud
+  CI, also as a Docker image; the optional cloud
   sync above is for settings and templates, encrypted end to end, and
   nothing else.
 - **A DICOM viewer.** DICOM is a different standard with a different

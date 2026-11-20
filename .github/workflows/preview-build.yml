@@ -62,6 +62,10 @@ jobs:
 
       # Unsigned, no updater artifacts: a preview, never published.
       - name: Build installers
+        # bash, as on the other steps: the Windows runner's default shell
+        # (PowerShell) strips the inner double quotes of the JSON when it
+        # passes it to pnpm, and tauri then refuses the config.
+        shell: bash
         run: pnpm tauri build --target ${{ matrix.platform.target }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Build CLI

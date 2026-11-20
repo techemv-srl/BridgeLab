@@ -114,22 +114,80 @@ pub struct TrialData {
 /// identifier (Windows `MachineGuid`, macOS `IOPlatformUUID`, Linux
 /// `/etc/machine-id`). It does not change when the computer is renamed or
 /// another user logs in, which the pre-1.9 ID did. Where the OS has no
-/// identifier the pre-1.9 ID is used.
+/// usable identifier the pre-1.9 ID is used, and [`hardware_id_info`] says
+/// so, for the activation dialog.
 pub fn get_hardware_id() -> String {
-    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    ID.get_or_init(|| machine_uid().map(|u| hardware_id_from_uid(&u)).unwrap_or_else(legacy_hardware_id))
-        .clone()
+    machine_ids().current.clone()
 }
 
-/// Every ID this machine answers to: the current one and the pre-1.9 one,
-/// so licenses, offline keys and trials bound before 1.9 keep working.
-pub fn hardware_ids() -> Vec<String> {
-    let mut ids = vec![get_hardware_id()];
-    let legacy = legacy_hardware_id();
-    if !ids.contains(&legacy) {
-        ids.push(legacy);
+/// The hardware ID and whether it is the fallback, for the UI.
+#[derive(Debug, Clone, Serialize)]
+pub struct HardwareIdInfo {
+    pub id: String,
+    /// No identifier of the operating system was usable, and the ID is
+    /// made from the host name and the user name: it changes when either
+    /// does, and a license bound to it then reads as another computer's.
+    pub fallback: bool,
+    /// Where the identifier was looked for, for the explanation.
+    pub sources: Vec<String>,
+}
+
+pub fn hardware_id_info() -> HardwareIdInfo {
+    let ids = machine_ids();
+    HardwareIdInfo {
+        id: ids.current.clone(),
+        fallback: ids.fallback,
+        sources: ID_SOURCE_NAMES.iter().map(|s| s.to_string()).collect(),
     }
-    ids
+}
+
+/// Every ID this machine answers to: the current one, the one versions
+/// before 2.1 computed here (see [`previous_machine_uid`]), and the pre-1.9
+/// one, so licenses, offline keys and trials bound by an earlier version
+/// keep working. Online activation and the weekly re-check send the ID the
+/// license was bound to when it is one of these.
+pub fn hardware_ids() -> Vec<String> {
+    let ids = machine_ids();
+    let mut out = vec![ids.current.clone()];
+    for id in [ids.previous.clone(), legacy_hardware_id()] {
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
+/// The IDs worked out from the machine identifier, once per run.
+struct MachineIds {
+    current: String,
+    fallback: bool,
+    previous: String,
+}
+
+fn machine_ids() -> &'static MachineIds {
+    static IDS: std::sync::OnceLock<MachineIds> = std::sync::OnceLock::new();
+    IDS.get_or_init(|| {
+        let ids = machine_ids_from(&machine_uid_sources(), &legacy_hardware_id());
+        if ids.fallback {
+            eprintln!(
+                "BridgeLab: no usable machine identifier ({}); the hardware ID is made from the host and user name",
+                ID_SOURCE_NAMES.join(", ")
+            );
+        }
+        ids
+    })
+}
+
+/// The current and the previous ID from what the identifier sources hold
+/// (`None` for one that could not be read), in the order they are tried.
+fn machine_ids_from(sources: &[Option<String>], legacy: &str) -> MachineIds {
+    let current = pick_machine_uid(sources).map(|u| hardware_id_from_uid(&u));
+    let previous = previous_machine_uid(sources).map(|u| hardware_id_from_uid(&u));
+    MachineIds {
+        fallback: current.is_none(),
+        current: current.unwrap_or_else(|| legacy.to_string()),
+        previous: previous.unwrap_or_else(|| legacy.to_string()),
+    }
 }
 
 /// True when a license or trial bound to `id` belongs here (an empty ID
@@ -147,11 +205,51 @@ fn hardware_id_from_uid(uid: &str) -> String {
     format!("BL-{}", hex::encode(&d[..8]).to_ascii_uppercase())
 }
 
-/// The operating system's identifier for this installation.
-fn machine_uid() -> Option<String> {
-    let found = machine_uid_raw()?;
-    let found = found.trim().to_string();
-    (!found.is_empty() && found.chars().any(|c| c.is_ascii_alphanumeric() && c != '0')).then_some(found)
+/// The first usable identifier among the sources, in order. On Linux the
+/// first file used to win whenever it was not empty, and was then rejected
+/// if all zeros, so a zeroed `/etc/machine-id` hid a valid
+/// `/var/lib/dbus/machine-id` and the ID fell back to the host and user.
+fn pick_machine_uid(sources: &[Option<String>]) -> Option<String> {
+    sources.iter().flatten().find_map(|s| usable_machine_uid(s))
+}
+
+/// `raw` as an identifier, or `None` when it identifies nothing: empty,
+/// all zeros (a cleared image template), or the "uninitialized" that
+/// systemd writes until the first boot completes, which is the same on
+/// every machine in that state: hashed, it gave all of them one hardware
+/// ID, and one offline key fitted them all.
+fn usable_machine_uid(raw: &str) -> Option<String> {
+    let id = raw.trim();
+    let identifies = !id.eq_ignore_ascii_case("uninitialized") && id.chars().any(|c| c.is_ascii_alphanumeric() && c != '0');
+    identifies.then(|| id.to_string())
+}
+
+/// The identifier the versions before 2.1 took: the first source that is
+/// not empty, rejected only when it holds no letter or digit other than
+/// zero (then the pre-1.9 ID was used). Kept so a license activated
+/// against the ID they computed keeps working on this machine.
+fn previous_machine_uid(sources: &[Option<String>]) -> Option<String> {
+    let found = sources.iter().flatten().map(|s| s.trim()).find(|s| !s.is_empty())?;
+    found.chars().any(|c| c.is_ascii_alphanumeric() && c != '0').then(|| found.to_string())
+}
+
+/// Where the identifier is looked for, in order, as shown to the user.
+#[cfg(target_os = "windows")]
+const ID_SOURCE_NAMES: &[&str] = &[r"MachineGuid (HKLM\SOFTWARE\Microsoft\Cryptography)"];
+#[cfg(target_os = "macos")]
+const ID_SOURCE_NAMES: &[&str] = &["IOPlatformUUID"];
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+const ID_SOURCE_NAMES: &[&str] = &["/etc/machine-id", "/var/lib/dbus/machine-id"];
+
+/// What each identifier source holds, in the order of [`ID_SOURCE_NAMES`].
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn machine_uid_sources() -> Vec<Option<String>> {
+    vec![machine_uid_raw()]
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn machine_uid_sources() -> Vec<Option<String>> {
+    ID_SOURCE_NAMES.iter().map(|p| std::fs::read_to_string(p).ok()).collect()
 }
 
 /// `MachineGuid`, read through the registry API. Up to 1.9.0 it came from
@@ -188,13 +286,6 @@ fn machine_uid_raw() -> Option<String> {
         .lines()
         .find(|l| l.contains("\"IOPlatformUUID\""))
         .and_then(|l| l.split('"').nth(3).map(str::to_string))
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn machine_uid_raw() -> Option<String> {
-    ["/etc/machine-id", "/var/lib/dbus/machine-id"]
-        .iter()
-        .find_map(|p| std::fs::read_to_string(p).ok().filter(|s| !s.trim().is_empty()))
 }
 
 /// The pre-1.9 hardware ID: host name, OS, architecture and user name
@@ -438,6 +529,13 @@ const TRIAL_DAYS: i64 = 14;
 /// Duration written by pre-1.3 versions — the legacy-migration check must
 /// match what the OLD code actually wrote, not the current duration.
 const LEGACY_TRIAL_DAYS: i64 = 7;
+/// The latest start a genuine unsigned record can carry. Signed records
+/// shipped with 1.3.0 (20 August 2026); only 1.2.0 and earlier wrote bare
+/// ones. Without this bound, writing `{"started_at": <now>, "trial_days":
+/// 7}` over the trial files was taken for an old record and re-signed as
+/// genuine: a fresh trial by editing one field. A record started before
+/// this date has long expired, so forging one gains nothing.
+const LEGACY_LAST_START: &str = "2026-08-21T00:00:00Z";
 
 /// Salt for the trial integrity tag. Embedded in the binary: raises the
 /// bar from "edit a JSON file" to "reverse engineer the executable".
@@ -481,17 +579,20 @@ fn trial_is_authentic(trial: &TrialData, hw: &str) -> bool {
 }
 
 /// Pre-hardening `trial.json` files had only `started_at` + `trial_days`.
-/// Accept them (so honest mid-trial users keep their remaining days) only
-/// when they look exactly like what the old code wrote and do not claim a
-/// start in the future.
+/// Accept them (so an upgrade keeps the old start date) only when they look
+/// exactly like what the old code wrote and start before the signed format
+/// shipped (`LEGACY_LAST_START`); anything newer is a forgery and is
+/// treated as tampering.
 fn is_plausible_legacy(trial: &TrialData) -> bool {
+    let last = chrono::DateTime::parse_from_rfc3339(LEGACY_LAST_START).map(|d| d.with_timezone(&chrono::Utc));
     trial.sig.is_empty()
         && trial.hw.is_empty()
         && trial.last_seen.is_empty()
         && trial.trial_days == LEGACY_TRIAL_DAYS
-        && chrono::DateTime::parse_from_rfc3339(&trial.started_at)
-            .map(|d| d.with_timezone(&chrono::Utc) <= chrono::Utc::now() + chrono::Duration::hours(1))
-            .unwrap_or(false)
+        && match (chrono::DateTime::parse_from_rfc3339(&trial.started_at), last) {
+            (Ok(d), Ok(last)) => d.with_timezone(&chrono::Utc) <= last,
+            _ => false,
+        }
 }
 
 pub fn load_or_init_trial() -> TrialData {
@@ -1060,6 +1161,95 @@ mod tests {
         assert!(!is_this_machine("BL-0000000000000000"));
     }
 
+    // /etc/machine-id and /var/lib/dbus/machine-id as the hardware ID sees
+    // them; `None` is a file that could not be read.
+    const ETC: &str = "4c4c4544004230108052b4c04f4b4e32\n";
+    const DBUS: &str = "9f86d081884c7d659a2feaa0c55ad015\n";
+    const LEGACY: &str = "BL-1111111111111111";
+
+    fn ids(etc: Option<&str>, dbus: Option<&str>) -> MachineIds {
+        machine_ids_from(&[etc.map(str::to_string), dbus.map(str::to_string)], LEGACY)
+    }
+
+    #[test]
+    fn a_valid_machine_id_is_used_and_unchanged() {
+        let m = ids(Some(ETC), Some(DBUS));
+        assert_eq!(m.current, hardware_id_from_uid(ETC));
+        assert!(!m.fallback);
+        assert_eq!(m.previous, m.current, "the same ID as before 2.1");
+    }
+
+    #[test]
+    fn an_empty_or_unreadable_machine_id_moves_on_to_the_dbus_copy() {
+        for etc in [Some(""), Some(" \n"), None] {
+            let m = ids(etc, Some(DBUS));
+            assert_eq!(m.current, hardware_id_from_uid(DBUS), "{etc:?}");
+            assert!(!m.fallback);
+            assert_eq!(m.previous, m.current, "{etc:?}: before 2.1 the dbus copy was used too");
+        }
+    }
+
+    #[test]
+    fn an_all_zero_machine_id_no_longer_hides_the_dbus_copy() {
+        let m = ids(Some("00000000000000000000000000000000\n"), Some(DBUS));
+        assert_eq!(m.current, hardware_id_from_uid(DBUS));
+        assert!(!m.fallback);
+        // Before 2.1 the zeros won and the host and user ID was used: a
+        // license bound to it still has to work here.
+        assert_eq!(m.previous, LEGACY);
+    }
+
+    #[test]
+    fn the_uninitialized_placeholder_is_not_an_identifier() {
+        let m = ids(Some("uninitialized\n"), Some(DBUS));
+        assert_eq!(m.current, hardware_id_from_uid(DBUS));
+        assert!(!m.fallback);
+        // What every machine in that state used to get.
+        assert_eq!(m.previous, "BL-188826F25502A04B");
+
+        let alone = ids(Some("uninitialized"), None);
+        assert_eq!(alone.current, LEGACY);
+        assert!(alone.fallback);
+        assert_eq!(alone.previous, "BL-188826F25502A04B");
+        assert!(ids(Some("UNINITIALIZED"), Some("")).fallback);
+    }
+
+    #[test]
+    fn no_usable_identifier_falls_back_and_says_so() {
+        for (etc, dbus) in [
+            (None, None),
+            (Some(""), Some("")),
+            (Some("0000"), None),
+            (Some("00000000"), Some("0000000000000000")),
+        ] {
+            let m = ids(etc, dbus);
+            assert_eq!(m.current, LEGACY, "{etc:?} {dbus:?}");
+            assert!(m.fallback, "{etc:?} {dbus:?}");
+        }
+    }
+
+    #[test]
+    fn hardware_ids_include_the_previous_id_once() {
+        let ids = hardware_ids();
+        assert_eq!(ids[0], get_hardware_id());
+        assert!(ids.contains(&machine_ids().previous));
+        assert!(ids.contains(&legacy_hardware_id()));
+        let unique: std::collections::HashSet<_> = ids.iter().collect();
+        assert_eq!(unique.len(), ids.len(), "no ID twice: {ids:?}");
+        assert!(is_this_machine(&machine_ids().previous));
+    }
+
+    #[test]
+    fn the_info_matches_the_id() {
+        let info = hardware_id_info();
+        assert_eq!(info.id, get_hardware_id());
+        assert_eq!(info.fallback, machine_ids().fallback);
+        if info.fallback {
+            assert_eq!(info.id, legacy_hardware_id());
+        }
+        assert_eq!(info.sources.len(), machine_uid_sources().len());
+    }
+
     #[test]
     fn the_machine_based_id_ignores_case_and_whitespace() {
         let a = hardware_id_from_uid("4C4C4544-0042-3010-8052-B4C04F4B4E32");
@@ -1096,14 +1286,26 @@ mod tests {
 
     #[test]
     fn test_legacy_plausibility() {
+        // What 1.2.0 wrote, during its time.
         let legacy = TrialData {
-            started_at: (chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339(),
+            started_at: "2026-08-10T09:00:00+00:00".into(),
             trial_days: LEGACY_TRIAL_DAYS,
             hw: String::new(),
             last_seen: String::new(),
             sig: String::new(),
         };
         assert!(is_plausible_legacy(&legacy));
+        // ...and it grants nothing today: those 7 days are long over.
+        assert_eq!(trial_days_remaining(&legacy), 0);
+
+        // A bare record started after the signed format shipped is a forgery:
+        // written over the trial files, it used to restart the trial.
+        let mut recent = legacy.clone();
+        recent.started_at = (chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339();
+        assert!(!is_plausible_legacy(&recent));
+        let mut today = legacy.clone();
+        today.started_at = chrono::Utc::now().to_rfc3339();
+        assert!(!is_plausible_legacy(&today));
 
         // Forged legacy with a future start is not migrated
         let mut forged = legacy.clone();

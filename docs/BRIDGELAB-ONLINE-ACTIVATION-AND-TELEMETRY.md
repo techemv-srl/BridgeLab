@@ -51,6 +51,8 @@ pub fn license_server_base() -> String {
 
 HTTP client: `reqwest` is already a dependency (`json`, `rustls-tls`). Use a single lazily-built client with `timeout(10s)` for activation and `timeout(5s)` for telemetry, `User-Agent: BridgeLab/<version> (<os>; <arch>)`.
 
+Proxy (2.1): the clients are built with `communication::proxy::client_builder`. They use `HTTPS_PROXY`/`HTTP_PROXY` with `NO_PROXY`, and when those are not set the manual proxy of the Windows or macOS network settings (reqwest's `system-proxy` feature, enabled by the `desktop` feature). Proxy auto-configuration is not read: no PAC script, no WPAD. On a PAC-only network activation, renewal and telemetry go direct unless `HTTPS_PROXY` is set or a manual proxy is configured. Loopback (`localhost`, `127.0.0.0/8`, `::1`) never goes through a proxy, so `BRIDGELAB_LICENSE_SERVER=http://127.0.0.1:…` reaches a local test server even behind a proxy. The activation client is built once per process: a proxy change applies after a restart.
+
 Version string: read from `env!("CARGO_PKG_VERSION")` (matches `tauri.conf.json` via the release script; verify — if `Cargo.toml` version is not kept in sync, use `app.package_info().version` and pass it down).
 
 ---
@@ -145,6 +147,7 @@ pub async fn deactivate_online(code: &str, hardware_id: &str) -> Result<(), Stri
 `activate_online`:
 - `POST {base}/bridgelab/activate`, JSON body, 10 s timeout.
 - HTTP/network error → `Err("Could not reach the license server: <detail>. Check your connection or use an offline key.")`
+  - As built (2.1): no answer → `ERR_SERVER_UNREACHABLE`, shown as `act.serverUnreachable`; a TLS certificate the client refuses (not trusted, expired, wrong name) → `ERR_SERVER_CERTIFICATE: <reason>`, shown as `act.serverCertificate`, which names a TLS-inspecting proxy without its root certificate in the OS store as the usual cause and still points at the offline key. Certificates are checked against the OS store and the bundled Mozilla roots; there is no option to accept a refused one.
 - `success == false` → `Err(message)` — the server's message is already user-facing. Map `error_code` to i18n only if trivial; otherwise pass through.
 - `success == true` → `parse_and_verify_key(license_key)` (this also enforces hardware binding and signature — **never trust the server blindly**), set `activation_code = Some(code)`, `activated_at = Some(now)`, `save_license()`, return.
 

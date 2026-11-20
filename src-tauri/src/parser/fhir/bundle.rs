@@ -63,6 +63,8 @@ pub fn analyze_bundle(bundle_json: &Value) -> Result<BundleAnalysis, String> {
 
     let mut entries: Vec<BundleEntry> = Vec::new();
     let mut full_url_to_index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    // `Type/id` of each entry's resource, and of each RESTful fullUrl.
+    let mut by_identity: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
 
     for (idx, entry) in entries_arr.iter().enumerate() {
         let full_url = entry.get("fullUrl").and_then(|v| v.as_str()).map(String::from);
@@ -79,14 +81,15 @@ pub fn analyze_bundle(bundle_json: &Value) -> Result<BundleAnalysis, String> {
             None => ("(empty)".to_string(), None, "(no resource)".to_string(), String::new()),
         };
 
-        // Index by fullUrl for reference resolution
+        // Index by fullUrl for reference resolution. The first entry wins,
+        // as in FHIRPath's resolve(): a later duplicate must not take over.
         if let Some(ref url) = full_url {
-            full_url_to_index.insert(url.clone(), idx);
+            full_url_to_index.entry(url.clone()).or_insert(idx);
         }
         // Also index by ResourceType/id shorthand
         if let (rt_non_empty, Some(ref rid)) = (!resource_type.is_empty(), &resource_id) {
             if rt_non_empty {
-                full_url_to_index.insert(format!("{}/{}", resource_type, rid), idx);
+                by_identity.entry(format!("{}/{}", resource_type, rid)).or_default().push(idx);
             }
         }
 
@@ -132,16 +135,16 @@ pub fn analyze_bundle(bundle_json: &Value) -> Result<BundleAnalysis, String> {
 
     // A relative reference ("Patient/1") also names the entry whose
     // fullUrl ends in it; a version suffix names the same resource.
-    let mut by_url_tail: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for e in &entries {
         if let Some(url) = e.full_url.as_deref().filter(|u| !u.starts_with("urn:")) {
             let mut parts = url.rsplit('/');
             if let (Some(id), Some(rt)) = (parts.next(), parts.next()) {
-                by_url_tail.entry(format!("{}/{}", rt, id)).or_insert(e.index);
+                by_identity.entry(format!("{}/{}", rt, id)).or_default().push(e.index);
             }
         }
     }
-    let lookup = |r: &str| -> Option<usize> {
+    // `from` is the fullUrl of the entry the reference sits in.
+    let lookup = |r: &str, from: Option<&str>| -> Option<usize> {
         if let Some(i) = full_url_to_index.get(r) {
             return Some(*i);
         }
@@ -152,12 +155,25 @@ pub fn analyze_bundle(bundle_json: &Value) -> Result<BundleAnalysis, String> {
         if r.starts_with("urn:") || r.contains("://") || r.starts_with('#') {
             return None;
         }
-        by_url_tail.get(r).copied()
+        // Two matches are one resource when they are the same entry, share
+        // a fullUrl, or hold the same resource.
+        let same = |a: &usize, b: &usize| {
+            a == b
+                || entries[*a].full_url.is_some() && entries[*a].full_url == entries[*b].full_url
+                || entries_arr[*a].get("resource") == entries_arr[*b].get("resource")
+        };
+        resolve_relative(
+            r,
+            from,
+            |url| full_url_to_index.get(url).copied(),
+            |id| by_identity.get(id).cloned().unwrap_or_default(),
+            same,
+        )
     };
 
     for entry in &entries {
         for r in &entry.references {
-            let target = lookup(r);
+            let target = lookup(r, entry.full_url.as_deref());
             if target.is_none() {
                 dangling += 1;
             }
@@ -187,6 +203,50 @@ pub fn analyze_bundle(bundle_json: &Value) -> Result<BundleAnalysis, String> {
         resource_type_counts,
         dangling_references: dangling,
     })
+}
+
+/// Where a relative reference (`Patient/1`) inside a Bundle entry points,
+/// by FHIR's Bundle rule, for the visualizer and FHIRPath's resolve()
+/// alike. In an entry whose fullUrl is a RESTful one
+/// (`http://a/fhir/Observation/1`) it means the resource on that server,
+/// `http://a/fhir/Patient/1`, and nothing else: another server's Patient/1
+/// is another patient, so the reference dangles when the Bundle does not
+/// hold this one. In an entry with a `urn:` fullUrl or none, or where the
+/// entry is not known, its server is not known either: it means the
+/// resource of that type and id only when the Bundle holds one such
+/// resource (`by_identity` gives every match, `same` tells copies of one
+/// resource apart from different ones), and nothing when servers hold
+/// different ones. By type and id alone, two servers' Patient/1 were one,
+/// and the first listed won.
+pub(crate) fn resolve_relative<T>(
+    relative: &str,
+    from_full_url: Option<&str>,
+    by_full_url: impl FnOnce(&str) -> Option<T>,
+    by_identity: impl FnOnce(&str) -> Vec<T>,
+    same: impl Fn(&T, &T) -> bool,
+) -> Option<T> {
+    match from_full_url.and_then(restful_base) {
+        Some(base) => by_full_url(&format!("{}/{}", base, relative)),
+        None => {
+            let mut found = by_identity(relative).into_iter();
+            let first = found.next()?;
+            found.all(|other| same(&first, &other)).then_some(first)
+        }
+    }
+}
+
+/// The server base of a RESTful fullUrl: `http://a/fhir` for
+/// `http://a/fhir/Patient/1` (or `…/Patient/1/_history/2`). `None` for a
+/// `urn:` or anything not ending in `Type/id`.
+pub(crate) fn restful_base(full_url: &str) -> Option<&str> {
+    if !full_url.contains("://") {
+        return None;
+    }
+    let url = full_url.find("/_history/").map_or(full_url, |i| &full_url[..i]);
+    let mut parts = url.rsplitn(3, '/');
+    let (id, rtype, base) = (parts.next()?, parts.next()?, parts.next()?);
+    let is_type = rtype.starts_with(|c: char| c.is_ascii_uppercase()) && rtype.chars().all(|c| c.is_ascii_alphanumeric());
+    (is_type && !id.is_empty() && base.contains("://")).then_some(base)
 }
 
 /// Build a human-readable name for a FHIR resource.
@@ -221,12 +281,17 @@ fn build_display_name(resource_type: &str, r: &Value) -> String {
             code_text.to_string()
         }
         "Encounter" => {
+            // The class only: the status is the entry's summary, shown
+            // beside the name ("IMP finished finished" said it twice).
             let class = r.get("class")
                 .and_then(|c| c.get("code"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let status = r.get("status").and_then(|v| v.as_str()).unwrap_or("");
-            format!("{} {}", class, status).trim().to_string()
+            if class.is_empty() {
+                r.get("id").and_then(|v| v.as_str()).map(|id| format!("Encounter/{}", id)).unwrap_or_else(|| "Encounter".into())
+            } else {
+                class.to_string()
+            }
         }
         "Condition" | "DiagnosticReport" | "Procedure" => {
             r.get("code")
@@ -403,5 +468,62 @@ mod tests {
     fn test_rejects_non_bundle() {
         let not_bundle = serde_json::json!({"resourceType": "Patient"});
         assert!(analyze_bundle(&not_bundle).is_err());
+    }
+
+    /// Two servers hold a Patient/p8: a relative reference goes to the one
+    /// on the referring entry's own server, as FHIR's Bundle rule says, in
+    /// whichever order the entries come.
+    #[test]
+    fn a_relative_reference_resolves_on_the_referring_entrys_server() {
+        let bundle = |first: &str, second: &str| {
+            serde_json::json!({
+                "resourceType": "Bundle", "type": "collection",
+                "entry": [
+                    {"fullUrl": format!("{first}/Patient/p8"), "resource": {"resourceType": "Patient", "id": "p8"}},
+                    {"fullUrl": format!("{second}/Patient/p8"), "resource": {"resourceType": "Patient", "id": "p8"}},
+                    {"fullUrl": "http://a.example/fhir/Observation/o1",
+                     "resource": {"resourceType": "Observation", "id": "o1", "subject": {"reference": "Patient/p8"}}},
+                    {"fullUrl": "urn:uuid:3f1c0c1e-0000-4000-8000-000000000001",
+                     "resource": {"resourceType": "Observation", "subject": {"reference": "Patient/p8"}}}
+                ]
+            })
+        };
+        let target = |b: &Value, from: usize| {
+            analyze_bundle(b).unwrap().references.iter().find(|e| e.from_index == from).unwrap().to_index
+        };
+        let ab = bundle("http://a.example/fhir", "http://b.example/fhir");
+        let ba = bundle("http://b.example/fhir", "http://a.example/fhir");
+        assert_eq!(target(&ab, 2), Some(0));
+        assert_eq!(target(&ba, 2), Some(1));
+        // No RESTful fullUrl to go by: type and id, the first entry.
+        assert_eq!(target(&ab, 3), Some(0));
+        // A third server's entry: its own server has no Patient/p8, and the
+        // other servers' are other patients, so the reference dangles.
+        let mut abc = ab.clone();
+        abc["entry"][2]["fullUrl"] = serde_json::json!("http://c.example/fhir/Observation/o1");
+        let analysis = analyze_bundle(&abc).unwrap();
+        assert_eq!(target(&abc, 2), None);
+        assert_eq!(analysis.dangling_references, 1);
+        // The urn entry has no server: its Patient/p8 resolves only while
+        // both servers' copies are the same resource; once they differ,
+        // neither is the one.
+        let mut differ = ab.clone();
+        differ["entry"][1]["resource"]["name"] = serde_json::json!([{"family": "Other"}]);
+        assert_eq!(target(&differ, 3), None);
+        assert_eq!(target(&differ, 2), Some(0), "the RESTful entry still knows its server");
+        assert_eq!(restful_base("http://a.example/fhir/Patient/1/_history/2"), Some("http://a.example/fhir"));
+        assert_eq!(restful_base("urn:uuid:1"), None);
+    }
+
+    /// An Encounter's status is its summary, not part of its name too.
+    #[test]
+    fn an_encounter_shows_its_status_once() {
+        let b = serde_json::json!({"resourceType": "Bundle", "type": "collection", "entry": [
+            {"resource": {"resourceType": "Encounter", "id": "e1", "status": "finished", "class": {"code": "IMP"}}},
+            {"resource": {"resourceType": "Encounter", "id": "e2", "status": "planned"}}
+        ]});
+        let a = analyze_bundle(&b).unwrap();
+        assert_eq!((a.entries[0].display_name.as_str(), a.entries[0].summary.as_str()), ("IMP", "finished"));
+        assert_eq!((a.entries[1].display_name.as_str(), a.entries[1].summary.as_str()), ("Encounter/e2", "planned"));
     }
 }

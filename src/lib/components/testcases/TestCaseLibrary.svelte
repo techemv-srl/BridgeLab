@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { saveTarget } from '$lib/save-target';
+	import { baseName } from '$lib/paths';
 	import { parseDbTime } from '$lib/db-time';
 	import {
 		getTestCases, saveTestCase, deleteTestCase, scanTestCasesPhi, exportTestCases,
@@ -7,7 +8,7 @@
 		type TestCase, type PhiScan, type ImportPreview, type ConflictChoice,
 	} from '$lib/ipc/testcases';
 	import { parseMessage } from '$lib/ipc/parser';
-	import { typeMatches, expectsInvalid } from './expectations';
+	import { typeMatches, expectsInvalid, fhirNotCheckedReasons, caseOutcome, runSummaryOf, type CaseOutcome } from './expectations';
 	import { validateMessage, validateFhir, parseFhirMessage } from '$lib/ipc/validation';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
 	import { parseUpgradeError, getAvailableFeatures } from '$lib/ipc/licensing';
@@ -186,7 +187,7 @@
 	}
 
 	// --- Expected-outcome checks: the "test" part of the test case library ---
-	interface CheckResult { pass: boolean; detail: string; }
+	interface CheckResult { outcome: CaseOutcome; detail: string; }
 	let checkResults = $state<Record<string, CheckResult>>({});
 	let runningAll = $state(false);
 
@@ -198,17 +199,21 @@
 	}
 
 	/** Parse + validate a case's content and compare against its
-	 *  expectations. Parse failure counts as an invalid message. */
+	 *  expectations. Parse failure counts as an invalid message. A FHIR
+	 *  resource that meets them but was not fully checked (a declared
+	 *  profile not installed…) is "not checked", as in bridgelab-cli. */
 	async function runCheck(tc: TestCase): Promise<CheckResult> {
 		let messageType = '';
 		let errorCount: number | null = null;
 		let parseError = '';
+		let notChecked: string[] = [];
 		try {
 			if (isFhirContent(tc.content)) {
 				const parsed = await parseFhirMessage(tc.content);
 				messageType = parsed.message_type ?? ''; // resource type, e.g. "Patient"
 				const report = await validateFhir(tc.content);
 				errorCount = report.error_count;
+				notChecked = fhirNotCheckedReasons(report);
 			} else {
 				const parsed = await parseMessage(tc.content);
 				messageType = parsed.message_type ?? '';
@@ -232,10 +237,16 @@
 			problems.push(tr('tc.checkUnexpectedlyValid'));
 		}
 
-		return problems.length === 0
-			? { pass: true, detail: tr('tc.checkPass') }
-			: { pass: false, detail: problems.join(' · ') };
+		const outcome = caseOutcome(problems, notChecked);
+		switch (outcome) {
+			case 'pass': return { outcome, detail: tr('tc.checkPass') };
+			case 'notChecked': return { outcome, detail: tr('tc.checkNotChecked', { reason: notChecked.join('; ') }) };
+			// A failure also says what was not checked, as the CLI does.
+			default: return { outcome, detail: [...problems, ...notChecked].join(' · ') };
+		}
 	}
+
+	const OUTCOME_MARK: Record<CaseOutcome, string> = { pass: '✓', fail: '✖', notChecked: '~' };
 
 	async function handleRunCheck(tc: TestCase) {
 		checkResults = { ...checkResults, [tc.id]: await runCheck(tc) };
@@ -249,12 +260,7 @@
 		runningAll = false;
 	}
 
-	let runSummary = $derived.by(() => {
-		const ids = filtered.map((c) => c.id).filter((id) => id in checkResults);
-		if (ids.length === 0) return null;
-		const passed = ids.filter((id) => checkResults[id].pass).length;
-		return { passed, total: ids.length };
-	});
+	let runSummary = $derived(runSummaryOf(filtered.filter((c) => c.id in checkResults).map((c) => checkResults[c.id].outcome)));
 
 	// --- Packs: share test cases as a .bltests.json file ---
 
@@ -291,7 +297,7 @@
 	async function doExport() {
 		const { save } = await import('@tauri-apps/plugin-dialog');
 		const picked = await save({ title: tr('tc.export'), defaultPath: 'bridgelab-test-cases.bltests.json', filters: PACK_FILTERS() });
-		const path = picked ? await saveTarget(picked, 'bltests.json', ['json']) : null;
+		const path = picked ? await saveTarget(picked, 'bltests.json', { alsoAccept: ['json'], backendWrites: true }) : null;
 		if (!path) return;
 		busy = true;
 		try {
@@ -353,8 +359,9 @@
 		}
 	}
 
+	/** The file name: a backslash ends a folder only in a Windows path. */
 	function fileName(path: string): string {
-		return path.split(/[\\/]/).pop() ?? path;
+		return baseName(path);
 	}
 
 	async function handleDelete(tc: TestCase) {
@@ -396,8 +403,11 @@
 				{runningAll ? tr('tc.running') : tr('tc.runAll')}
 			</button>
 			{#if runSummary}
-				<span class="run-summary" class:all-pass={runSummary.passed === runSummary.total}>
-					{tr('tc.runSummary', { passed: runSummary.passed, total: runSummary.total })}
+				<span class="run-summary" class:all-pass={runSummary.passed === runSummary.total}
+					class:not-checked={runSummary.notChecked > 0 && runSummary.passed + runSummary.notChecked === runSummary.total}>
+					{runSummary.notChecked > 0
+						? tr('tc.runSummaryNotChecked', { passed: runSummary.passed, total: runSummary.total, notChecked: runSummary.notChecked })
+						: tr('tc.runSummary', { passed: runSummary.passed, total: runSummary.total })}
 				</span>
 			{/if}
 		</div>
@@ -432,9 +442,8 @@
 								<div class="tc-name">
 									{tc.name}
 									{#if checkResults[tc.id]}
-										<span class="check-badge" class:pass={checkResults[tc.id].pass} class:fail={!checkResults[tc.id].pass}
-											title={checkResults[tc.id].detail}>
-											{checkResults[tc.id].pass ? '✓' : '✖'}
+										<span class="check-badge {checkResults[tc.id].outcome}" title={checkResults[tc.id].detail}>
+											{OUTCOME_MARK[checkResults[tc.id].outcome]}
 										</span>
 									{/if}
 								</div>
@@ -477,8 +486,8 @@
 						<span class="meta-item">{tr('tc.expectedResult')}: <strong>{expectsInvalid(selected.expected_validation_result) ? tr('tc.resultInvalid') : tr('tc.resultValid')}</strong></span>
 					</div>
 					{#if checkResults[selected.id]}
-						<div class="check-detail" class:pass={checkResults[selected.id].pass} class:fail={!checkResults[selected.id].pass}>
-							{checkResults[selected.id].pass ? '✓' : '✖'} {checkResults[selected.id].detail}
+						<div class="check-detail {checkResults[selected.id].outcome}">
+							{OUTCOME_MARK[checkResults[selected.id].outcome]} {checkResults[selected.id].detail}
 						</div>
 					{/if}
 					<pre class="detail-content">{selected.content}</pre>
@@ -625,12 +634,15 @@
 	.tc-search { padding: 8px 12px; border-bottom: 1px solid var(--color-border); flex-shrink: 0; display: flex; gap: 8px; align-items: center; }
 	.run-summary { font-size: 11px; font-weight: 700; color: var(--color-error); white-space: nowrap; }
 	.run-summary.all-pass { color: var(--color-success); }
+	.run-summary.not-checked { color: var(--color-warning, #f9e2af); }
 	.check-badge { margin-left: 6px; font-size: 11px; font-weight: 700; }
 	.check-badge.pass { color: var(--color-success); }
 	.check-badge.fail { color: var(--color-error); }
+	.check-badge.notChecked { color: var(--color-warning, #f9e2af); }
 	.check-detail { padding: 6px 10px; border-radius: 4px; font-size: 12px; border: 1px solid; }
 	.check-detail.pass { color: var(--color-success); border-color: var(--color-success); }
 	.check-detail.fail { color: var(--color-error); border-color: var(--color-error); }
+	.check-detail.notChecked { color: var(--color-warning, #f9e2af); border-color: var(--color-warning, #f9e2af); }
 	.search-input { flex: 1; width: auto; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 3px; background: var(--color-bg-tertiary); color: var(--color-text-primary); font-size: 12px; font-family: inherit; }
 
 	.tc-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }

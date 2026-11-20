@@ -16,6 +16,23 @@ use crate::validation::{validate_hl7_message, Severity};
 const MAX_FILES: usize = 5000;
 const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
 
+/// A file of the batch, read within `MAX_FILE_BYTES`, or the reason it was
+/// not, as the row shows it. The cap holds while reading too: a log still
+/// being written can grow past it after its size was checked.
+async fn read_batch_file(path: &std::path::Path) -> Result<Vec<u8>, String> {
+    use crate::utils::bounded_read::{read_regular_file, ReadRefusal};
+    let owned = path.to_path_buf();
+    match tokio::task::spawn_blocking(move || read_regular_file(&owned, MAX_FILE_BYTES)).await {
+        Ok(Ok(bytes)) => Ok(bytes),
+        Ok(Err(ReadRefusal::TooLarge { .. })) => {
+            Err(format!("file exceeds {} MB cap", MAX_FILE_BYTES / (1024 * 1024)))
+        }
+        Ok(Err(ReadRefusal::NotRegular)) => Err("not a regular file".into()),
+        Ok(Err(ReadRefusal::Io(e))) => Err(format!("read failed: {}", e)),
+        Err(e) => Err(format!("read failed: {}", e)),
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BatchFileResult {
     pub path: String,
@@ -96,18 +113,7 @@ async fn process_file(path: &std::path::Path, plugin_rules: &[ValidationRule]) -
         parse_error: None,
     };
 
-    let meta = match tokio::fs::metadata(path).await {
-        Ok(m) => m,
-        Err(e) => return BatchFileResult { parse_error: Some(format!("read failed: {}", e)), ..base },
-    };
-    if meta.len() > MAX_FILE_BYTES {
-        return BatchFileResult {
-            parse_error: Some(format!("file exceeds {} MB cap", MAX_FILE_BYTES / (1024 * 1024))),
-            ..base
-        };
-    }
-
-    let content = match tokio::fs::read(path).await {
+    let content = match read_batch_file(path).await {
         Ok(b) => match crate::parser::hl7::charset::decode_input(&b) {
             // Fields may be split wrongly: no result is better than a wrong one.
             crate::parser::hl7::charset::Decoded { warning: Some(w), .. } if w.is_unsupported() => {
@@ -115,7 +121,7 @@ async fn process_file(path: &std::path::Path, plugin_rules: &[ValidationRule]) -
             }
             d => d.text,
         },
-        Err(e) => return BatchFileResult { parse_error: Some(format!("read failed: {}", e)), ..base },
+        Err(e) => return BatchFileResult { parse_error: Some(e), ..base },
     };
 
     let lexer = Hl7Lexer::new().with_truncation_threshold(100);
@@ -231,20 +237,9 @@ async fn anonymize_file(
         };
     }
 
-    let meta = match tokio::fs::metadata(path).await {
-        Ok(m) => m,
-        Err(e) => return BatchAnonFileResult { error: Some(format!("read failed: {}", e)), ..base },
-    };
-    if meta.len() > MAX_FILE_BYTES {
-        return BatchAnonFileResult {
-            error: Some(format!("file exceeds {} MB cap", MAX_FILE_BYTES / (1024 * 1024))),
-            ..base
-        };
-    }
-
-    let decoded = match tokio::fs::read(path).await {
+    let decoded = match read_batch_file(path).await {
         Ok(b) => crate::parser::hl7::charset::decode_input(&b),
-        Err(e) => return BatchAnonFileResult { error: Some(format!("read failed: {}", e)), ..base },
+        Err(e) => return BatchAnonFileResult { error: Some(e), ..base },
     };
     // In a charset BridgeLab cannot decode, a byte of a character can read
     // as a delimiter and shift the fields: a birth date could stay in clear.
@@ -258,7 +253,10 @@ async fn anonymize_file(
     };
 
     let masked = crate::anonymization::detect_phi_with_extra(&msg, extra).len();
-    let anonymized = crate::anonymization::anonymize_message_with_extra(&msg, extra);
+    // A masked copy differs from its source in the PHI only: segment
+    // terminators (CR LF from a Windows tool, the CR after the last
+    // segment) are kept as the file had them.
+    let anonymized = crate::anonymization::anonymize_keeping_layout(&msg, extra);
 
     // The masked copy keeps the source's character set, so MSH-18 stays true.
     let bytes = crate::parser::hl7::charset::encode_output(&anonymized, decoded.charset.as_deref().unwrap_or(""));
@@ -392,6 +390,24 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// The cap holds however the file is reached, and a device is never
+    /// read: each row says why the file was skipped.
+    #[tokio::test]
+    async fn oversized_and_special_files_are_refused_with_a_reason() {
+        let dir = std::env::temp_dir().join(format!("bl_batch_cap_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let big = dir.join("big.hl7");
+        std::fs::File::create(&big).unwrap().set_len(MAX_FILE_BYTES + 1).unwrap();
+        let r = process_file(&big, &[]).await;
+        assert_eq!(r.parse_error.as_deref(), Some("file exceeds 10 MB cap"));
+        #[cfg(unix)]
+        {
+            let r = process_file(std::path::Path::new("/dev/zero"), &[]).await;
+            assert_eq!(r.parse_error.as_deref(), Some("not a regular file"));
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[tokio::test]
     async fn test_process_valid_and_invalid() {
         let dir = std::env::temp_dir().join(format!("bl_batch2_{}", std::process::id()));
@@ -427,6 +443,28 @@ mod tests {
         let written = std::fs::read_to_string(&r.output_path).unwrap();
         assert!(!written.contains("ROSSI"), "patient name must be masked");
         assert!(written.starts_with("MSH|"), "output must still be an HL7 message");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The masked copy keeps the source's segment terminators: CR LF stays
+    /// CR LF, a final terminator stays, a missing one stays missing.
+    #[tokio::test]
+    async fn anonymized_copies_keep_the_line_endings() {
+        let dir = std::env::temp_dir().join(format!("bl_anon_eol_{}", std::process::id()));
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let out = std::fs::canonicalize(&out).unwrap();
+        let terminators = |s: &str| s.matches(['\r', '\n']).collect::<String>();
+        for (name, eol, last) in [("crlf.hl7", "\r\n", "\r\n"), ("lf.hl7", "\n", "\n"), ("cr.hl7", "\r", "\r"), ("open.hl7", "\r", "")] {
+            let text = format!("{}{}PV1|1|I{}", SAMPLE.replace('\r', eol), eol, last);
+            let src = write_tmp(&dir, name, &text);
+            let sources = std::collections::HashSet::from([path_key(&std::fs::canonicalize(&src).unwrap())]);
+            let r = anonymize_file(&src, &out, name, &sources, &[]).await;
+            assert!(r.error.is_none(), "{name}: {:?}", r.error);
+            let written = std::fs::read_to_string(&r.output_path).unwrap();
+            assert!(!written.contains("ROSSI"), "{name}");
+            assert_eq!(terminators(&written), terminators(&text), "{name}");
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 

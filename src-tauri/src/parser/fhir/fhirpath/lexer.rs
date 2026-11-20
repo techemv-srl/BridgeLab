@@ -14,7 +14,9 @@ pub enum Token {
     /// `'...'` string literal, escapes already resolved.
     Str(String),
     Integer(i64),
-    Decimal(f64),
+    /// A decimal as written (`12.500`): its digits, trailing zeros
+    /// included, are its precision, which a double would not keep.
+    Decimal(String),
     /// `@2015-02-04`, `@2015-02-04T14:34:28Z`, `@T14:34:28` — the leading
     /// `@` is stripped, the rest is kept verbatim.
     DateTime(String),
@@ -74,7 +76,7 @@ impl fmt::Display for Token {
             Token::Ident(s) => write!(f, "{}", s),
             Token::Str(s) => write!(f, "'{}'", s),
             Token::Integer(n) => write!(f, "{}", n),
-            Token::Decimal(n) => write!(f, "{}", n),
+            Token::Decimal(text) => write!(f, "{}", text),
             Token::DateTime(s) => write!(f, "@{}", s),
             Token::Variable(s) => write!(f, "${}", s),
             Token::EnvConstant(s) => write!(f, "%{}", s),
@@ -361,8 +363,8 @@ impl Lexer {
                     break;
                 }
             }
-            let v: f64 = s.parse().map_err(|_| format!("Invalid decimal: {}", s))?;
-            return Ok(Token::Decimal(v));
+            s.parse::<f64>().map_err(|_| format!("Invalid decimal: {}", s))?;
+            return Ok(Token::Decimal(s));
         }
         let v: i64 = s.parse().map_err(|_| format!("Integer out of range: {}", s))?;
         Ok(Token::Integer(v))
@@ -482,7 +484,8 @@ mod tests {
     #[test]
     fn distinguishes_integers_from_decimals() {
         assert_eq!(lex("3"), vec![Token::Integer(3)]);
-        assert_eq!(lex("3.25"), vec![Token::Decimal(3.25)]);
+        assert_eq!(lex("3.25"), vec![Token::Decimal("3.25".into())]);
+        assert_eq!(lex("12.500"), vec![Token::Decimal("12.500".into())]);
     }
 
     #[test]

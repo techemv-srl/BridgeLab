@@ -3978,7 +3978,7 @@
     },
     {
      "code": "2.1",
-     "description": "Release 2. 1"
+     "description": "Release 2.1"
     },
     {
      "code": "2.2",
@@ -4002,11 +4002,19 @@
     },
     {
      "code": "2.5.1",
-     "description": "Release 1.5.1"
+     "description": "Release 2.5.1"
     },
     {
      "code": "2.6",
      "description": "Release 2.6"
+    },
+    {
+     "code": "2.7",
+     "description": "Release 2.7"
+    },
+    {
+     "code": "2.7.1",
+     "description": "Release 2.7.1"
     }
    ]
   },

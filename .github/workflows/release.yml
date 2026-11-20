@@ -251,6 +251,52 @@ jobs:
               draft: false
             })
 
+  cli-image:
+    # The CLI as a container image for CI, ghcr.io/techemv-srl/bridgelab-cli,
+    # tagged with the version and `latest` once the release is published.
+    # GHCR is reached with the workflow's own token: no other account.
+    # One-time step after the first publish: GitHub creates the package as
+    # private and has no API to change that, so make it public by hand
+    # (techemv-srl > Packages > bridgelab-cli > Package settings > Change
+    # visibility), or anonymous `docker pull` fails.
+    name: Publish CLI image
+    needs: [create-release, publish-release]
+    if: github.repository_owner == 'techemv-srl'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ needs.create-release.outputs.tag }}
+
+      # The image is built without the Git history, so it gets the build
+      # code (`bridgelab-cli --version`) the way build.rs computes it.
+      - name: Build code
+        id: build
+        run: echo "id=$(git log -1 --format=%cd --date=format:%Y%m%d).$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tools/bridgelab-cli/Dockerfile
+          push: true
+          build-args: BRIDGELAB_BUILD=${{ steps.build.outputs.id }}
+          tags: |
+            ghcr.io/techemv-srl/bridgelab-cli:${{ needs.create-release.outputs.version }}
+            ghcr.io/techemv-srl/bridgelab-cli:latest
+          labels: |
+            org.opencontainers.image.version=${{ needs.create-release.outputs.version }}
+
   prune-old-assets:
     # After a successful publish, delete the BINARIES of older releases so
     # only the newest KEEP_RELEASES stay downloadable — old builds carry old

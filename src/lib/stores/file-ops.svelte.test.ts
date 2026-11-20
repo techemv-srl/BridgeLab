@@ -22,7 +22,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 import { openFile, saveFile, fileStat, canonicalPath } from '$lib/ipc/parser';
 import { getRecentFiles, addRecentFile, removeRecentFile, clearRecentFiles } from '$lib/ipc/database';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { fileOpsStore, sameStamp } from './file-ops.svelte';
+import { fileOpsStore, sameStamp, openRefusal, isWebLink } from './file-ops.svelte';
 import { messageStore } from './messages.svelte';
 import { dialogStore } from './dialog.svelte';
 
@@ -73,6 +73,19 @@ describe('openPath', () => {
 		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
 		expect(dialogStore.active?.kind).toBe('error');
 		expect(dialogStore.active?.details).toContain('gone');
+		dialogStore.close(true);
+		await p;
+		expect(messageStore.tabs).toHaveLength(0);
+	});
+
+	it('says a file name that is not UTF-8 cannot be opened, not that the file is missing', async () => {
+		vi.mocked(openFile).mockRejectedValue(new Error('No such file or directory (os error 2)'));
+		vi.mocked(fileStat).mockResolvedValue(null);
+		const p = fileOpsStore.openPath('/data/M�ller.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		expect(dialogStore.active?.kind).toBe('error');
+		expect(dialogStore.active?.message).toContain('UTF-8');
+		expect(dialogStore.active?.message).toContain('/data/M�ller.hl7');
 		dialogStore.close(true);
 		await p;
 		expect(messageStore.tabs).toHaveLength(0);
@@ -187,6 +200,76 @@ describe('saveActiveAs', () => {
 		expect(saveFile).toHaveBeenCalledWith({ path: '/exports/final.hl7', content: 'MSH|new' });
 		expect(messageStore.activeTab?.filePath).toBe('/exports/final.hl7');
 		expect(messageStore.activeTab?.label).toBe('final.hl7');
+	});
+
+	it("offers the document's own file type: FHIR JSON, FHIR XML or HL7", async () => {
+		const offered = async (content: string, format: string | null) => {
+			messageStore.closeAllTabs();
+			const id = messageStore.newTab();
+			messageStore.updateContent(id, content);
+			if (format) messageStore.updateParseResult(id, parseResult({ format }));
+			vi.mocked(save).mockClear();
+			await fileOpsStore.saveActiveAs();
+			return vi.mocked(save).mock.calls[0][0];
+		};
+		const json = await offered('{"resourceType":"Patient","id":"p1"}', 'FHIR JSON');
+		expect(json).toEqual({
+			defaultPath: 'Untitled.json',
+			filters: [{ name: 'FHIR JSON', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }],
+		});
+		expect((await offered('<Patient xmlns="http://hl7.org/fhir"/>', 'FHIR XML'))?.filters?.[0]).toEqual({ name: 'FHIR XML', extensions: ['xml'] });
+		expect((await offered('MSH|^~\\&|A', 'HL7v2'))?.defaultPath).toBe('Untitled.hl7');
+		// Not parsed (yet): the text says what it is.
+		expect((await offered('{"resourceType":"Patient"', null))?.defaultPath).toBe('Untitled.json');
+	});
+
+	it('adds the extension to a name typed without one (the Linux dialog does not)', async () => {
+		const id = messageStore.newTab();
+		messageStore.updateContent(id, '{"resourceType":"Patient","id":"p1"}');
+		vi.mocked(save).mockResolvedValue('/home/u/patient');
+		vi.mocked(fileStat).mockResolvedValue(null); // no patient.json there yet
+		await fileOpsStore.saveActiveAs();
+		expect(saveFile).toHaveBeenCalledWith({ path: '/home/u/patient.json', content: '{"resourceType":"Patient","id":"p1"}' });
+		expect(messageStore.activeTab?.label).toBe('patient.json');
+	});
+
+	it('keeps a name typed with an extension, any extension', async () => {
+		const id = messageStore.newTab();
+		messageStore.updateContent(id, 'MSH|^~\\&|A');
+		vi.mocked(save).mockResolvedValue('/home/u/msg.txt');
+		await fileOpsStore.saveActiveAs();
+		expect(saveFile).toHaveBeenCalledWith({ path: '/home/u/msg.txt', content: 'MSH|^~\\&|A' });
+	});
+
+	it('asks before the added extension replaces an existing file', async () => {
+		const id = messageStore.newTab();
+		messageStore.updateContent(id, 'MSH|^~\\&|A');
+		vi.mocked(save).mockResolvedValue('/home/u/msg');
+		vi.mocked(fileStat).mockImplementation(async (p: string) => (p === '/home/u/msg.hl7' ? v1 : null)); // msg.hl7 exists
+		const confirm = vi.spyOn(dialogStore, 'confirm').mockResolvedValue(false);
+		await fileOpsStore.saveActiveAs();
+		expect(confirm).toHaveBeenCalledOnce();
+		expect(confirm.mock.calls[0][0]).toContain('msg.hl7');
+		expect(saveFile).not.toHaveBeenCalled();
+		confirm.mockResolvedValue(true);
+		await fileOpsStore.saveActiveAs();
+		expect(saveFile).toHaveBeenCalledWith({ path: '/home/u/msg.hl7', content: 'MSH|^~\\&|A' });
+		confirm.mockRestore();
+	});
+
+	it("saves over the tab's own file when it has no extension, and over an existing one picked in the dialog", async () => {
+		messageStore.openMessage(parseResult() as never, '/data/message', 'MSH|x');
+		vi.mocked(save).mockResolvedValue('/data/message');
+		vi.mocked(fileStat).mockImplementation(async (p: string) => (p === '/data/message' ? v1 : null));
+		await fileOpsStore.saveActiveAs();
+		expect(saveFile).toHaveBeenCalledWith({ path: '/data/message', content: 'MSH|x', charset: null });
+		expect(messageStore.activeTab?.filePath).toBe('/data/message');
+
+		vi.mocked(saveFile).mockClear();
+		vi.mocked(save).mockResolvedValue('/data/other');
+		vi.mocked(fileStat).mockImplementation(async (p: string) => (p === '/data/other' ? v1 : null));
+		await fileOpsStore.saveActiveAs();
+		expect(saveFile).toHaveBeenCalledWith({ path: '/data/other', content: 'MSH|x', charset: null });
 	});
 
 	it('keeps the charset a legacy file was opened in', async () => {
@@ -311,5 +394,198 @@ describe('files changed by another program', () => {
 		// Saved: the tab now knows the file, and the next save does not ask.
 		await fileOpsStore.saveActive();
 		expect(saveFile).toHaveBeenCalledTimes(2);
+	});
+
+	it('a save during the read of a large restored tab waits for it, and never writes the empty placeholder', async () => {
+		// Stored without its text: the session keeps '' for an unedited large file tab.
+		messageStore.restoreSession([{
+			tab_order: 0, label: 'big.hl7', file_path: '/data/big.hl7', content: '',
+			is_modified: false, is_active: true, cursor_line: 1, cursor_column: 1,
+		}]);
+		const id = messageStore.activeTabId!;
+		expect(messageStore.activeTab?.contentPending).toBe(true);
+		let finishRead!: (r: unknown) => void;
+		vi.mocked(openFile).mockReturnValue(new Promise((r) => { finishRead = r; }) as any);
+		const load = messageStore.trackLoad(id, fileOpsStore.adoptRestoredTab(id, []));
+		const saving = fileOpsStore.saveActive();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(saveFile).not.toHaveBeenCalled();
+		finishRead(parseResult({ full_text: 'MSH|the whole file' }));
+		await load;
+		await saving;
+		expect(saveFile).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(saveFile).mock.calls[0][0].content).toBe('MSH|the whole file');
+		expect(messageStore.activeTab?.contentPending).toBe(false);
+	});
+
+	it('a large restored tab whose file could not be read is not saved: the user is told why', async () => {
+		vi.mocked(fileStat).mockResolvedValue(null);
+		messageStore.restoreSession([{
+			tab_order: 0, label: 'gone.hl7', file_path: '/data/gone.hl7', content: '',
+			is_modified: false, is_active: true, cursor_line: 1, cursor_column: 1,
+		}]);
+		const id = messageStore.activeTabId!;
+		await messageStore.trackLoad(id, fileOpsStore.adoptRestoredTab(id, []));
+		const saving = fileOpsStore.saveActive();
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		expect(dialogStore.active?.message).toContain('gone.hl7');
+		dialogStore.close(true);
+		await saving;
+		const savingAs = fileOpsStore.saveActiveAs();
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		dialogStore.close(true);
+		await savingAs;
+		expect(save).not.toHaveBeenCalled();
+		expect(saveFile).not.toHaveBeenCalled();
+	});
+});
+
+describe('a link dropped instead of a file', () => {
+	it('is recognized; file paths are not', () => {
+		expect(isWebLink('https://example.invalid/x.hl7')).toBe(true);
+		expect(isWebLink('https:/example.invalid/x.hl7')).toBe(true);
+		expect(isWebLink('ftp://host/a.hl7')).toBe(true);
+		expect(isWebLink('/tmp/https:/x.hl7')).toBe(false);
+		expect(isWebLink('C:/data/a.hl7')).toBe(false);
+		expect(isWebLink('C:\\data\\a.hl7')).toBe(false);
+		expect(isWebLink('\\\\server\\share\\a.hl7')).toBe(false);
+	});
+
+	it('is reported as a link, not as a missing file', async () => {
+		const p = fileOpsStore.openPath('https://example.invalid/x.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('error'));
+		expect(dialogStore.active?.message).toContain('https://example.invalid/x.hl7');
+		expect(dialogStore.active?.message).not.toContain('not found');
+		dialogStore.close(true);
+		await p;
+		expect(openFile).not.toHaveBeenCalled();
+		expect(messageStore.tabs).toHaveLength(0);
+	});
+});
+
+describe('files too large to open, and files that are not files', () => {
+	const MB = 1024 * 1024;
+	// open_file's errors, as the backend words them (fileio.rs).
+	const asks = (path: string, size: number) =>
+		new Error(`File error: large file, open only if confirmed: ${size} bytes, limit ${16 * MB} bytes: ${path}`);
+	const refuses = (path: string, size: number) =>
+		new Error(`File error: too large to open: ${size} bytes, limit ${64 * MB} bytes: ${path}`);
+	const restored = (path: string, content = '') => messageStore.restoreSession([{
+		tab_order: 0, label: path.split('/').pop()!, file_path: path, content,
+		is_modified: false, is_active: true, cursor_line: 1, cursor_column: 1,
+	}]);
+
+	it('reads the refusal and its sizes from the error', () => {
+		expect(openRefusal(asks('/a.hl7', 20 * MB))).toEqual({ kind: 'confirm', size: 20 * MB, limit: 16 * MB });
+		expect(openRefusal(refuses('/a.hl7', 80 * MB))).toEqual({ kind: 'too_large', size: 80 * MB, limit: 64 * MB });
+		expect(openRefusal('File error: not a regular file: /dev/zero')?.kind).toBe('not_regular');
+		expect(openRefusal(new Error('No such file or directory (os error 2)'))).toBeNull();
+	});
+
+	it('asks before opening a large file, and opens it once the user agrees', async () => {
+		vi.mocked(openFile).mockImplementation(async (_p, allowLarge) => {
+			if (!allowLarge) throw asks('/logs/big.hl7', 20.5 * MB);
+			return parseResult({ full_text: 'MSH|big' });
+		});
+		const p = fileOpsStore.openPath('/logs/big.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('confirm'));
+		expect(dialogStore.active?.message).toContain('big.hl7 is 20.5 MB');
+		expect(dialogStore.active?.message).toContain('over 16 MB');
+		dialogStore.close(true);
+		await p;
+		expect(openFile).toHaveBeenLastCalledWith('/logs/big.hl7', true);
+		expect(messageStore.activeTab?.content).toBe('MSH|big');
+	});
+
+	it('opens nothing when the user would rather not', async () => {
+		vi.mocked(openFile).mockRejectedValue(asks('/logs/big.hl7', 20 * MB));
+		const p = fileOpsStore.openPath('/logs/big.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('confirm'));
+		dialogStore.close(false);
+		await p;
+		expect(openFile).toHaveBeenCalledTimes(1);
+		expect(messageStore.tabs).toHaveLength(0);
+		expect(addRecentFile).not.toHaveBeenCalled();
+	});
+
+	it('says why a file too large, or not a file, does not open', async () => {
+		vi.mocked(openFile).mockRejectedValue(refuses('/logs/huge.hl7', 300 * MB));
+		let p = fileOpsStore.openPath('/logs/huge.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('error'));
+		expect(dialogStore.active?.message).toContain('huge.hl7 is 300 MB, larger than the 64 MB');
+		dialogStore.close(true);
+		await p;
+
+		vi.mocked(openFile).mockRejectedValue(new Error('File error: not a regular file: /dev/zero'));
+		p = fileOpsStore.openPath('/dev/zero', () => {});
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('error'));
+		expect(dialogStore.active?.message).toContain('not a regular file');
+		expect(dialogStore.active?.message).toContain('/dev/zero');
+		dialogStore.close(true);
+		await p;
+		expect(messageStore.tabs).toHaveLength(0);
+	});
+
+	it('a session tab whose file grew past the limit comes back empty, with the reason, and is not read again', async () => {
+		// A small file, stored with its text, that is now 300 MB.
+		restored('/logs/growing.hl7', 'MSH|small');
+		const id = messageStore.activeTabId!;
+		vi.mocked(openFile).mockRejectedValue(refuses('/logs/growing.hl7', 300 * MB));
+		const load = fileOpsStore.adoptRestoredTab(id, []);
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('warning'));
+		expect(dialogStore.active?.message).toContain('growing.hl7 is 300 MB');
+		dialogStore.close(true);
+		// Handled: the caller does not parse the old text into the tab.
+		expect(await load).toBe(true);
+		const tab = messageStore.activeTab!;
+		expect(tab.content).toBe('');
+		expect(tab.contentPending).toBe(true);
+		expect(tab.notLoaded).toBe(true);
+		// The next session keeps it empty, so the next start does not read
+		// the old text as the file's.
+		expect(messageStore.serializeSession()[0].content).toBe('');
+		// And Save cannot write the empty tab over the file.
+		const saving = fileOpsStore.saveActive();
+		await vi.waitFor(() => expect(dialogStore.active).not.toBeNull());
+		dialogStore.close(true);
+		await saving;
+		expect(saveFile).not.toHaveBeenCalled();
+	});
+
+	it('a session tab on what is now a device comes back empty too', async () => {
+		restored('/data/m.hl7');
+		vi.mocked(openFile).mockRejectedValue(new Error('File error: not a regular file: /data/m.hl7'));
+		const load = fileOpsStore.adoptRestoredTab(messageStore.activeTabId!, []);
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('warning'));
+		expect(dialogStore.active?.message).toContain('not a regular file');
+		dialogStore.close(true);
+		expect(await load).toBe(true);
+		expect(messageStore.activeTab?.notLoaded).toBe(true);
+	});
+
+	it('a large session tab is loaded at start only if the user says so, and later by opening the file again', async () => {
+		restored('/logs/big.hl7');
+		const id = messageStore.activeTabId!;
+		vi.mocked(openFile).mockImplementation(async (_p, allowLarge) => {
+			if (!allowLarge) throw asks('/logs/big.hl7', 40 * MB);
+			return parseResult({ full_text: 'MSH|big' });
+		});
+		const load = fileOpsStore.adoptRestoredTab(id, []);
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('confirm'));
+		expect(dialogStore.active?.message).toContain('was open when BridgeLab was last closed');
+		dialogStore.close(false);
+		expect(await load).toBe(true);
+		expect(messageStore.activeTab?.notLoaded).toBe(true);
+		expect(openFile).toHaveBeenCalledTimes(1);
+
+		// File > Open on the same file loads it into that tab.
+		const p = fileOpsStore.openPath('/logs/big.hl7', () => {});
+		await vi.waitFor(() => expect(dialogStore.active?.kind).toBe('confirm'));
+		dialogStore.close(true);
+		await p;
+		expect(messageStore.tabs).toHaveLength(1);
+		expect(messageStore.activeTab?.content).toBe('MSH|big');
+		expect(messageStore.activeTab?.contentPending).toBe(false);
+		expect(messageStore.activeTab?.notLoaded).toBe(false);
 	});
 });

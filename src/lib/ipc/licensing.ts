@@ -87,6 +87,19 @@ export async function getHardwareId(): Promise<string> {
 	return invoke('get_hardware_id');
 }
 
+/** The hardware ID, and whether it is the fallback made from the host and
+ *  user name (no usable machine identifier), which changes with either. */
+export interface HardwareIdInfo {
+	id: string;
+	fallback: boolean;
+	/** Where the machine identifier was looked for. */
+	sources: string[];
+}
+
+export async function getHardwareIdInfo(): Promise<HardwareIdInfo> {
+	return invoke('get_hardware_id_info');
+}
+
 export async function getAvailableFeatures(): Promise<string[]> {
 	return invoke('get_available_features');
 }

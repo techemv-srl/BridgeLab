@@ -1,9 +1,13 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { TreeNode, ParseResult } from '$lib/types/hl7';
 	import { parseMessage } from '$lib/ipc/parser';
 	import { saveTarget } from '$lib/save-target';
+	import { exportBaseName } from '$lib/paths';
+	import { reloadLosesWork, openExternal, setOpenFailedHandler } from '$lib/page-guard';
+	import { delimiterHint, headerTypoHint } from '$lib/unparsed';
 	import { hl7ToolTarget } from '$lib/tool-target';
-	import { getPreference, setPreference } from '$lib/ipc/database';
+	import { getPreference, setPreference, takeDatabaseFallback } from '$lib/ipc/database';
 	import { validateMessage, parseFhirMessage } from '$lib/ipc/validation';
 	import { getMessageTruncatedText, exportAsJson, exportAsCsv } from '$lib/ipc/anonymization';
 	import type { ValidationIssue, ValidationReport } from '$lib/ipc/validation';
@@ -12,8 +16,11 @@
 	import { editorOptionsStore } from '$lib/stores/editor-options.svelte';
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { fileOpsStore } from '$lib/stores/file-ops.svelte';
-	import { shortcutStore, shortcutCapture, matchesKeys, displayKeys } from '$lib/stores/shortcuts.svelte';
+	import { shortcutStore, shortcutCapture, dispatchShortcut, displayKeys, isBrowserKey } from '$lib/stores/shortcuts.svelte';
+	import { isModalOpen } from '$lib/modal';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
+	import { mayLoadPastedText } from '$lib/large-content';
+	import { listenerStore } from '$lib/stores/listener.svelte';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { openPricing } from '$lib/licensing/pricing';
 	import AppDialog from '$lib/components/shared/AppDialog.svelte';
@@ -30,9 +37,11 @@
 	import TrialBanner from '$lib/components/licensing/TrialBanner.svelte';
 	import LicenseNoticeBanner from '$lib/components/licensing/LicenseNoticeBanner.svelte';
 	import UpdateBanner from '$lib/components/layout/UpdateBanner.svelte';
+	import InboxHeldNotice from '$lib/components/communication/InboxHeldNotice.svelte';
 	import { isNewerVersion, fetchLatestRelease } from '$lib/updates';
 	import FhirPathPanel from '$lib/components/fhirpath/FhirPathPanel.svelte';
 	import SegmentGridPanel from '$lib/components/tree/SegmentGridPanel.svelte';
+	import InterpretationPanel from '$lib/components/tree/InterpretationPanel.svelte';
 	import type { TestCase } from '$lib/ipc/testcases';
 	import { checkLicense, type LicenseStatus } from '$lib/ipc/licensing';
 	import type { MessageTemplate } from '$lib/ipc/templates';
@@ -52,6 +61,21 @@
 	let showValidation = $state(false);
 	let showCommunication = $state(false);
 	let bottomPanelHeight = $state(220);
+	/** The bottom panel height before the Communication panel grew it to
+	 *  fit, put back when that panel closes (unless the user resized). */
+	let heightBeforeCommFit: number | null = null;
+	let bottomResizedByUser = false;
+
+	/** The Communication panel needs `extraPx` more to show its tab without
+	 *  a scrollbar: grow the bottom panel, up to the most a drag allows. */
+	function fitCommunicationPanel(extraPx: number) {
+		if (bottomResizedByUser) return;
+		const max = Math.floor(window.innerHeight * 0.7);
+		const target = Math.min(max, bottomPanelHeight + Math.ceil(extraPx));
+		if (target <= bottomPanelHeight) return;
+		heightBeforeCommFit ??= bottomPanelHeight;
+		bottomPanelHeight = target;
+	}
 	let inspectorHeight = $state(260);
 	let expandedFieldContent = $state<string | null>(null);
 	let showAbout = $state(false);
@@ -71,6 +95,7 @@
 	let showBundleVisualizer = $state(false);
 	let showFhirPath = $state(false);
 	let showSegmentGrid = $state(false);
+	let showInterpretation = $state(false);
 	let segmentGridRequest = $state<{ segment: string; stamp: number } | null>(null);
 	let showTestCases = $state(false);
 	let showHelp = $state(false);
@@ -92,7 +117,7 @@
 
 	// --- Bottom panel tabs ---
 	// The open bottom panels share ONE resizable container and render as tabs.
-	type BottomPanelId = 'validation' | 'communication' | 'fhirpath' | 'segments';
+	type BottomPanelId = 'validation' | 'communication' | 'fhirpath' | 'segments' | 'interpretation';
 	let activeBottomPanel = $state<BottomPanelId>('validation');
 	let openBottomPanels = $derived.by<BottomPanelId[]>(() => {
 		const out: BottomPanelId[] = [];
@@ -102,6 +127,7 @@
 		// "Message not found". The panel comes back on a FHIR tab.
 		if (showFhirPath && activeTab?.parseResult?.format?.startsWith('FHIR')) out.push('fhirpath');
 		if (showSegmentGrid && activeTab?.parseResult?.format === 'HL7v2') out.push('segments');
+		if (showInterpretation && activeTab?.parseResult?.format === 'HL7v2') out.push('interpretation');
 		return out;
 	});
 	// Keep the active tab valid when its panel closes (fall back to the first
@@ -116,6 +142,7 @@
 		if (activeBottomPanel === 'validation') showValidation = false;
 		else if (activeBottomPanel === 'communication') showCommunication = false;
 		else if (activeBottomPanel === 'segments') showSegmentGrid = false;
+		else if (activeBottomPanel === 'interpretation') showInterpretation = false;
 		else showFhirPath = false;
 	}
 
@@ -124,17 +151,47 @@
 		if (id === 'validation') showValidation = !showValidation;
 		else if (id === 'communication') showCommunication = !showCommunication;
 		else if (id === 'segments') showSegmentGrid = !showSegmentGrid;
+		else if (id === 'interpretation') showInterpretation = !showInterpretation;
 		else showFhirPath = !showFhirPath;
 		const nowOpen =
 			(id === 'validation' && showValidation) ||
 			(id === 'communication' && showCommunication) ||
 			(id === 'segments' && showSegmentGrid) ||
+			(id === 'interpretation' && showInterpretation) ||
 			(id === 'fhirpath' && showFhirPath);
 		if (nowOpen) activeBottomPanel = id;
 	}
 
-	// Validation state
-	let validationReport = $state<ValidationReport | null>(null);
+	// Each time the Communication panel opens it may fit itself again; when
+	// it closes, the other panels get back the height they had.
+	let commWasOpen = false;
+	$effect(() => {
+		const open = showCommunication;
+		if (open && !commWasOpen) bottomResizedByUser = false;
+		if (!open && commWasOpen && heightBeforeCommFit !== null) {
+			if (!bottomResizedByUser) bottomPanelHeight = heightBeforeCommFit;
+			heightBeforeCommFit = null;
+		}
+		commWasOpen = open;
+	});
+
+	/** The listener's console, where received messages not opened in a
+	 *  tab (see InboxHeldNotice) can be opened one by one. */
+	function showListenerConsole() {
+		showCommunication = true;
+		activeBottomPanel = 'communication';
+	}
+
+	/** A key or a click: someone is at the window, so the listener may
+	 *  open received messages in tabs again (AUTO_OPEN_BURST). */
+	function noteUserActivity() {
+		listenerStore.noteActivity();
+	}
+
+	// Validation state. Raw: a report is only ever replaced, never edited,
+	// and a deep proxy over thousands of issues made every read of them
+	// (the panel's filter and sort) go through it.
+	let validationReport = $state.raw<ValidationReport | null>(null);
 	/** The text the report was made from: a later edit makes it stale. */
 	let validatedContent = $state<string | null>(null);
 	let validationStale = $derived(
@@ -163,6 +220,12 @@
 		if (appInitialized || typeof window === 'undefined') return;
 		appInitialized = true;
 
+		// A link no program could open (Linux without xdg-open or gio):
+		// the app's dialog says so and holds the address, selectable.
+		setOpenFailedHandler((url) => {
+			void dialogStore.show({ kind: 'warning', message: t('link.openFailed'), details: url });
+		});
+
 		// Load preferences and check license async. We intentionally do NOT
 		// create the default "Untitled" tab synchronously here - if a previous
 		// session exists we want to restore it instead.
@@ -176,6 +239,24 @@
 				}
 				const savedLang = await getPreference('language');
 				if (savedLang) setLocale(savedLang as Locale);
+				// The database file could not be opened and this run keeps
+				// everything in memory: say so once, before anything is
+				// restored, and before the user works on in the belief that
+				// it is all being kept.
+				const dbFallback = await takeDatabaseFallback();
+				if (dbFallback) {
+					// A second window the single-instance check could not
+					// stop (Linux without a D-Bus session bus): the file is
+					// fine, but the first window is using it.
+					await dialogStore.show({
+						kind: 'warning',
+						title: t(dbFallback.second_instance ? 'dialog.secondInstanceTitle' : 'dialog.databaseFallbackTitle'),
+						message: dbFallback.second_instance
+							? t('dialog.secondInstance')
+							: t('dialog.databaseFallback', { path: dbFallback.path || '—' }),
+						details: dbFallback.reason,
+					});
+				}
 				const savedTreeWidth = await getPreference('tree_width');
 				if (savedTreeWidth) treeWidth = parseInt(savedTreeWidth) || 350;
 				const savedInspectorHeight = await getPreference('inspector_height');
@@ -225,6 +306,31 @@
 						await dialogStore.warning(t('file.missingAtRestore', { paths: missing.join('\n') }), t('file.notFoundTitle'));
 					}
 				});
+
+				// Unsaved tabs of a run the system ended (log out, shut down)
+				// without the window's close request, kept although restore
+				// was off: offered once, and the copy deleted either way, as
+				// it holds message text; when restored, only once the tabs
+				// are kept elsewhere (see finishRecovery).
+				const recovered = await sessionStore.loadRecovery();
+				if (recovered.length > 0) {
+					const restore = await dialogStore.show({
+						kind: 'confirm',
+						title: t('dialog.recoveryTitle'),
+						message: t('dialog.recovery', { names: recovered.map((r) => r.label || t('tab.untitled')).join(', ') }),
+						okLabel: t('dialog.recoveryRestore'),
+						cancelLabel: t('dialog.recoveryDiscard'),
+						showCancel: true,
+					});
+					if (restore) {
+						for (const id of messageStore.appendRecoveredTabs(recovered)) {
+							const content = messageStore.tabs.find((x) => x.id === id)?.content ?? '';
+							if (id === messageStore.activeTabId) void loadRestoredTab(id, content);
+							else deferredRestore.set(id, content);
+						}
+					}
+					await sessionStore.finishRecovery(restore);
+				}
 			} catch {
 				// Running in web-only mode without Tauri backend
 			}
@@ -234,6 +340,14 @@
 			// the + button creates the first tab.
 			void sessionRestored;
 			sessionStore.startupComplete = true;
+
+			// The MLLP listener's received messages are handled for the app's
+			// lifetime, not only while the Communication panel is open. Only
+			// from here: after a reload of the window the backend listener may
+			// still be running, and a message opened in a tab before the
+			// session was restored made the restore skip (tabs already open)
+			// and the next autosave replace the saved session with that tab.
+			void listenerStore.init(openReceivedMessage);
 
 			// Files the app was launched with (double-clicked .hl7), plus
 			// files forwarded by later launches (single-instance): both open
@@ -261,8 +375,16 @@
 				const { getCurrentWindow } = await import('@tauri-apps/api/window');
 				await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
 					if (focused) void fileOpsStore.checkAllTabs();
+					// Leaving the window (the Start menu or the Dock to shut
+					// down, log out...): hand the backend the latest tabs
+					// now, as on Windows and macOS the end of the app cannot
+					// wait for the window.
+					else void sessionStore.flushExitSnapshot();
 				});
 			} catch { /* web mode */ }
+			document.addEventListener('visibilitychange', () => {
+				if (document.hidden) void sessionStore.flushExitSnapshot();
+			});
 
 			// Closing the window: write the session now (the autosave is
 			// debounced, and the last keystrokes were lost), and without
@@ -276,12 +398,31 @@
 						// unsaved tabs would not come back. Ask.
 						if (!(await dialogStore.confirm(t('dialog.sessionSaveFailed'), t('dialog.unsavedTitle')))) {
 							event.preventDefault();
+							return;
 						}
+					} else if (!sessionStore.restoreEnabled && !(await confirmDiscard(messageStore.tabs))) {
+						event.preventDefault();
 						return;
 					}
-					if (!sessionStore.restoreEnabled && !(await confirmDiscard(messageStore.tabs))) {
-						event.preventDefault();
-					}
+					// Asked already, so nothing is to be kept for recovery;
+					// and the page goes with the window, and its unload must
+					// not ask a second time.
+					await sessionStore.closeNormally();
+					windowClosing = true;
+				});
+			} catch { /* web mode */ }
+
+			// The system is ending the app (log out, shut down, SIGTERM or
+			// SIGHUP on Linux and macOS): no question can be asked any more.
+			// Write the session now, or with restore off hand the backend
+			// the unsaved tabs, which it keeps as a recovery copy.
+			try {
+				const { listen } = await import('@tauri-apps/api/event');
+				const { osEndingReady } = await import('$lib/ipc/database');
+				await listen('app://os-ending', () => {
+					void (async () => {
+						try { await sessionStore.flush(); } finally { await osEndingReady().catch(() => {}); }
+					})();
 				});
 			} catch { /* web mode */ }
 
@@ -307,10 +448,14 @@
 	});
 
 	// Session autosave: persist open tabs whenever they change, debounced.
-	// Not before startup (restore included) has finished.
+	// Not before startup (restore included) has finished. The store also
+	// hands the latest tabs to the backend's memory, sooner, for the moment
+	// the system ends the app (the session with restore on, a recovery copy
+	// of the unsaved tabs with it off).
 	$effect(() => {
 		if (!appInitialized || typeof window === 'undefined') return;
-		if (!sessionStore.restoreEnabled || !sessionStore.startupComplete) return;
+		void sessionStore.restoreEnabled;
+		if (!sessionStore.startupComplete) return;
 		// Track tabs + active id as dependencies
 		void messageStore.tabs;
 		void messageStore.activeTabId;
@@ -332,7 +477,8 @@
 		if (newTab) {
 			suppressAutoParse();
 			messageStore.updateContent(newTab.id, tc.content);
-			newTab.label = tc.name;
+			// setLabel: the case's own name, kept whatever the language.
+			messageStore.setLabel(newTab.id, tc.name);
 			autoParse(tc.content);
 		}
 	}
@@ -350,19 +496,9 @@
 		if (newTab) {
 			suppressAutoParse();
 			messageStore.updateContent(newTab.id, template.content);
-			newTab.label = template.name.split(' - ')[0] || template.name;
+			messageStore.setLabel(newTab.id, template.name.split(' - ')[0] || template.name);
 			// Trigger parse
 			autoParse(template.content);
-		}
-	}
-
-	/** Open a URL in the OS browser (window.open is a no-op in the webview). */
-	async function openExternal(url: string) {
-		try {
-			const { openUrl } = await import('@tauri-apps/plugin-opener');
-			await openUrl(url);
-		} catch {
-			window.open(url, '_blank'); // web mode
 		}
 	}
 
@@ -454,6 +590,27 @@
 		return dialogStore.confirm(t('dialog.discardTabs', { names }), t('dialog.unsavedTitle'));
 	}
 
+	/** Set once the window's close request has let it close. */
+	let windowClosing = false;
+
+	/**
+	 * A reload of the page drops every tab when session restore is off
+	 * (and, with it on, the edits the autosave has not written yet). The
+	 * app offers no reload: F5 and Ctrl+R are blocked, and so is the
+	 * webview's own menu. Anything else that would reload asks first, the
+	 * webview's own question standing in for ours, since the page cannot
+	 * wait for a dialog of its own while it unloads.
+	 */
+	function confirmUnload(e: BeforeUnloadEvent) {
+		if (windowClosing) return;
+		const dirty = dirtyTabs(messageStore.tabs);
+		if (!reloadLosesWork(dirty.length, sessionStore.restoreEnabled, sessionStore.autosavePending)) return;
+		e.preventDefault();
+		// Engines that predate preventDefault() here ask only when this is
+		// a non-empty string; current ones show their own text instead.
+		e.returnValue = t('dialog.discardTabs', { names: dirty.map((tab) => tab.label).join(', ') });
+	}
+
 	async function handleCloseTab(tabId?: string) {
 		const id = tabId ?? messageStore.activeTabId;
 		const tab = messageStore.tabs.find((x) => x.id === id);
@@ -468,10 +625,12 @@
 		messageStore.closeOtherTabs(keepId);
 	}
 
+	/** Close All leaves no tab, like closing the last one: the welcome
+	 *  screen shows. It used to open an empty "Untitled" tab, even when
+	 *  chosen from the welcome screen with no tab open. */
 	async function handleCloseAllTabs() {
 		if (!(await confirmDiscard(messageStore.tabs))) return;
 		messageStore.closeAllTabs();
-		messageStore.newTab();
 	}
 
 	/** Parse `content` into tab `tabId` — not into whichever tab is active
@@ -480,9 +639,10 @@
 	const deferredRestore = new Map<string, string>();
 
 	function loadRestoredTab(tabId: string, content: string, missing: string[] = []): Promise<void> {
-		return fileOpsStore.adoptRestoredTab(tabId, missing).then((reloaded) => {
+		// Tracked so that a save pressed during the read waits for it.
+		return messageStore.trackLoad(tabId, fileOpsStore.adoptRestoredTab(tabId, missing).then((reloaded) => {
 			if (!reloaded) return parseIntoTab(tabId, content);
-		});
+		}));
 	}
 
 	$effect(() => {
@@ -729,7 +889,7 @@
 			issues.push({
 				severity: 'info', rule_id: 'HINT-001',
 				segment_idx: null, segment_type: null, field_position: null,
-				message: t('val.parseFailedHint', { prefix: firstSegType }),
+				message: headerTypoHint(firstLine) ?? t('val.parseFailedHint', { prefix: firstSegType }),
 			});
 		} else {
 			issues.push({
@@ -737,6 +897,15 @@
 				segment_idx: null, segment_type: null, field_position: null,
 				message: t('val.genericParseError', { error: parseError }),
 			});
+			// Delimiters that cannot be used: what a usable declaration is.
+			const hint = delimiterHint(firstLine, parseError);
+			if (hint) {
+				issues.push({
+					severity: 'info', rule_id: 'HINT-001',
+					segment_idx: null, segment_type: null, field_position: null,
+					message: hint,
+				});
+			}
 		}
 
 		return {
@@ -748,13 +917,18 @@
 	}
 
 	/** An issue row: select its segment (and field) in the editor and the tree. */
+	/** Select a field in the editor and in the tree, from a panel that
+	 *  points at it (a validation issue, a value in the interpretation). */
+	function selectField(segmentIdx: number, target: FieldTarget) {
+		handleTreeNavigateToEditor(segmentIdx, target);
+		if (activeTab?.parseResult) {
+			treeNavigation = { tabId: activeTab.id, segmentIdx, target, stamp: Date.now() };
+		}
+	}
+
 	function handleValidationIssueClick(issue: ValidationIssue) {
 		if (issue.segment_idx === null || issue.segment_idx === undefined) return;
-		const target: FieldTarget = { field: issue.field_position ?? 0, repetition: null, component: null };
-		handleTreeNavigateToEditor(issue.segment_idx, target);
-		if (activeTab?.parseResult) {
-			treeNavigation = { tabId: activeTab.id, segmentIdx: issue.segment_idx, target, stamp: Date.now() };
-		}
+		selectField(issue.segment_idx, { field: issue.field_position ?? 0, repetition: null, component: null });
 	}
 
 	function handleCursorChange(line: number, column: number) {
@@ -986,7 +1160,19 @@
 		const newTab = messageStore.activeTab;
 		if (newTab) {
 			messageStore.updateContent(newTab.id, text);
-			newTab.label = t('tab.anonymized');
+			// The app's own name: it follows the language.
+			messageStore.setLabel(newTab.id, t('tab.anonymized'), 'tab.anonymized');
+		}
+	}
+
+	/** A message the MLLP listener received (or a console row clicked):
+	 *  opened in a fresh tab, so the message in the editor is not lost. */
+	function openReceivedMessage(content: string) {
+		messageStore.newTab();
+		const tab = messageStore.activeTab;
+		if (tab) {
+			messageStore.updateContent(tab.id, content);
+			messageStore.setLabel(tab.id, tr('tab.inbox', { time: new Date().toLocaleTimeString() }));
 		}
 	}
 
@@ -1000,7 +1186,7 @@
 		if (tab) {
 			const tabId = tab.id;
 			messageStore.updateContent(tabId, content);
-			tab.label = label;
+			messageStore.setLabel(tabId, label);
 			void (async () => {
 				try {
 					const result = await parseMessage(content);
@@ -1031,20 +1217,33 @@
 			await dialogStore.warning(t('dialog.noMessage'));
 			return;
 		}
+		await copyText(activeTab.content);
+	}
+
+	/** Put `text` on the clipboard, and say so when the system refuses:
+	 *  the clipboard keeps what it had, and the next paste would show it as
+	 *  if it were the message. */
+	async function copyText(text: string) {
 		try {
-			await navigator.clipboard.writeText(activeTab.content);
-		} catch { /* no clipboard in this context */ }
+			await navigator.clipboard.writeText(text);
+		} catch {
+			await dialogStore.warning(t('dialog.copyFailed'));
+		}
 	}
 
 	async function handleCopyTruncated() {
 		const target = await requireHl7();
 		if (!target) return;
+		let text: string;
 		try {
-			const text = await getMessageTruncatedText(target.result.message_id, 100);
-			await navigator.clipboard.writeText(text);
-		} catch {
-			// web mode fallback
+			// Long fields are cut where the editor folds them (Settings →
+			// Parser); "never fold" (0) copies them whole.
+			text = await getMessageTruncatedText(target.result.message_id, editorOptionsStore.foldThreshold);
+		} catch (e) {
+			await dialogStore.error(t('dialog.copyPrepareFailed'), undefined, String(e));
+			return;
 		}
+		await copyText(text);
 	}
 
 	async function handleExportJson() {
@@ -1061,8 +1260,8 @@
 		const target = await requireHl7();
 		if (!target) return;
 		const messageId = target.result.message_id;
-		const label = messageStore.tabs.find((x) => x.id === target.tabId)?.label;
-		const base = (label || 'message').replace(/\.[^.]*$/, '');
+		const tab = messageStore.tabs.find((x) => x.id === target.tabId);
+		const base = exportBaseName(tab?.label, tab?.filePath);
 		try {
 			const text = kind === 'json' ? await exportAsJson(messageId) : await exportAsCsv(messageId);
 			const { save } = await import('@tauri-apps/plugin-dialog');
@@ -1144,8 +1343,8 @@
 				const text = await file.text();
 				if (text.startsWith('MSH|')) {
 					const result = await parseMessage(text, file.name);
-					messageStore.openMessage(result, null, text);
-					messageStore.tabs[messageStore.tabs.length - 1].label = file.name;
+					const id = messageStore.openMessage(result, null, text);
+					messageStore.setLabel(id, file.name);
 				}
 			} catch {
 				console.error('Failed to read dropped file:', file.name);
@@ -1162,6 +1361,7 @@
 
 	function startBottomDrag(e: MouseEvent) {
 		draggingTarget = 'bottom';
+		bottomResizedByUser = true;
 		e.preventDefault();
 	}
 
@@ -1209,6 +1409,9 @@
 		const text = e.clipboardData?.getData('text/plain');
 		if (!text) return;
 		e.preventDefault();
+		// Tens of MB take the window seconds and GB of memory: asked first,
+		// as for a large file.
+		if (!(await mayLoadPastedText(text))) return;
 		// Paste-to-start: into the empty active tab, otherwise into a NEW
 		// tab. Never over an existing message, which has no undo here.
 		const active = messageStore.activeTab;
@@ -1238,6 +1441,7 @@
 		'view.toggleCommunication': () => toggleBottomPanel('communication'),
 		'view.toggleFhirPath': () => { void handleToggleFhirPath(); },
 		'view.toggleSegmentGrid': () => toggleBottomPanel('segments'),
+		'view.toggleInterpretation': () => toggleBottomPanel('interpretation'),
 		'tools.reparse': () => handleParse(),
 		'tools.validate': () => handleValidate(),
 	};
@@ -1279,6 +1483,29 @@
 	 * for itself. A binding the user gives an editor key wins over the
 	 * editor; the shortcut editor says so when the binding is made.
 	 */
+	/** F1 shows the manual: it brings an open manual window to the front,
+	 *  and opens one otherwise. It used to toggle, so with the manual open F1
+	 *  did nothing visible, and after the manual window was closed in a way
+	 *  its "destroyed" event did not report, the next F1 only reset the flag
+	 *  and a second F1 was needed. */
+	async function openHelp() {
+		try {
+			const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+			const open = await WebviewWindow.getByLabel('bridgelab-help');
+			if (open) {
+				await open.setFocus();
+				showHelp = true;
+				return;
+			}
+		} catch { /* not in Tauri: the in-window manual follows the flag */ }
+		if (showHelp) {
+			// The flag says open but no window is: start over.
+			showHelp = false;
+			await tick();
+		}
+		showHelp = true;
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		// Stand down while the ShortcutsEditor is capturing a combo — pressing
 		// Ctrl+O to *assign* it must not also open the file picker.
@@ -1286,7 +1513,7 @@
 		if (e.key === 'F1') {
 			e.preventDefault();
 			e.stopPropagation();
-			showHelp = !showHelp;
+			void openHelp();
 			return;
 		}
 		// Always block F5 in Tauri WebView - it would reload the entire app and lose state
@@ -1296,42 +1523,34 @@
 			const shortcut = Object.entries(shortcutActions).find(
 				([id]) => shortcutStore.get(id) === 'F5'
 			);
-			if (shortcut) shortcut[1]();
+			if (shortcut && !isModalOpen()) shortcut[1]();
 			return;
 		}
-		// Iterate through shortcut store to find a match; respects user customization
-		for (const [id, action] of Object.entries(shortcutActions)) {
-			const keys = shortcutStore.get(id);
-			if (keys && matchesKeys(e, keys)) {
-				e.preventDefault();
-				e.stopPropagation();
-				action();
-				return;
-			}
-		}
+		// The user's bindings. While a dialog is open their actions wait
+		// (Ctrl+N opened a second dialog over Settings, Ctrl+W closed a tab
+		// under it), but the keys are still taken, so that ⌘W does not close
+		// the window on macOS. F1 above still opens the manual.
+		dispatchShortcut(e, shortcutActions, isModalOpen());
 	}
 
 	/**
-	 * Browser keys that would act on the page itself: on Windows, WebView2
-	 * reloads on Ctrl+R (losing panels, and every tab when session restore
-	 * is off) and prints on Ctrl+P. Runs in the bubble phase, so a key the
-	 * editor or a field used (Ctrl+F in the editor opens its Find) is left
-	 * alone; the rest are cancelled.
+	 * Browser keys that would act on the page itself (see isBrowserKey:
+	 * WebView2's reload, print, find...). Runs in the bubble phase, so a
+	 * key the editor or a field used (Ctrl+F in the editor opens its Find)
+	 * is left alone; the rest are cancelled.
 	 */
 	function blockBrowserKeys(e: KeyboardEvent) {
 		if (e.defaultPrevented) return;
-		const ctrl = e.ctrlKey || e.metaKey;
-		const k = e.key.toLowerCase();
-		const reload = e.key === 'F5' || (ctrl && k === 'r');
-		const pageAction = ctrl && !e.altKey && !e.shiftKey && ['p', 'f', 'g', 'u', 'j', 'h'].includes(k);
-		const caretBrowsing = e.key === 'F7' || e.key === 'F3';
-		if (reload || pageAction || caretBrowsing) e.preventDefault();
+		if (isBrowserKey(e)) e.preventDefault();
 	}
 </script>
 
 <svelte:window
+	onpointerdowncapture={noteUserActivity}
+	onkeyupcapture={noteUserActivity}
 	onkeydowncapture={handleKeydown}
 	onkeydown={blockBrowserKeys}
+	onbeforeunload={confirmUnload}
 	onmousemove={handleMouseMove}
 	onmouseup={stopDrag}
 	onpaste={handlePaste}
@@ -1350,6 +1569,7 @@
 	<!-- Non-blocking notice pushed by the license server (dismiss clears it) -->
 	<LicenseNoticeBanner />
 	<UpdateBanner />
+	<InboxHeldNotice onShowConsole={showListenerConsole} />
 
 	<!-- Menu Bar -->
 	<MenuBar
@@ -1376,6 +1596,7 @@
 		onShowBundleVisualizer={handleShowBundleVisualizer}
 		onToggleFhirPath={() => { void handleToggleFhirPath(); }}
 		onToggleSegmentGrid={() => toggleBottomPanel('segments')}
+		onToggleInterpretation={() => toggleBottomPanel('interpretation')}
 		onCopyFull={handleCopyFull}
 		onCopyTruncated={handleCopyTruncated}
 		onExportJson={handleExportJson}
@@ -1510,6 +1731,7 @@
 					<MonacoEditor
 						bind:this={editorRef}
 						content={activeTab.content}
+						readonly={!!activeTab.contentPending}
 						docKey={activeTab.id}
 						openDocs={messageStore.tabs.map((t) => t.id)}
 						cursorLine={activeTab.cursorLine}
@@ -1528,6 +1750,11 @@
 						onCopyTruncatedMessage={handleCopyTruncated}
 						navigation={editorNavigation}
 					/>
+					{#if messageStore.isLoading(activeTab.id)}
+						<!-- A large restored tab takes seconds to read and parse:
+						     say so over the (still empty or unparsed) editor. -->
+						<div class="editor-loading" role="status">{tr('editor.loadingTab', { name: activeTab.label })}</div>
+					{/if}
 				{:else if sessionStore.startupComplete}
 					<WelcomeScreen
 						onOpenFile={handleOpenFile}
@@ -1589,18 +1816,8 @@
 								currentMessage={activeTab?.content ?? ''}
 								activeTabLabel={activeTab?.label ?? ''}
 								activeTabCharset={activeTab?.charset ?? null}
-								onMessageReceived={(content) => {
-									// Open each incoming MLLP message in a fresh tab so the
-									// user does not lose the message currently in the editor.
-									messageStore.newTab();
-									const t = messageStore.activeTab;
-									if (t) {
-										messageStore.updateContent(t.id, content);
-										const ts = new Date().toLocaleTimeString();
-										t.label = tr('tab.inbox', { time: ts });
-									}
-								}}
 								onOpenGenerated={handleOpenGenerated}
+								onWantsHeight={fitCommunicationPanel}
 							/>
 						</div>
 					{/if}
@@ -1615,6 +1832,14 @@
 								messageId={activeTab.parseResult.message_id}
 								request={segmentGridRequest}
 								onNavigate={(segIdx, pos) => handleTreeNavigateToEditor(segIdx, { field: pos, repetition: null, component: null })}
+							/>
+						</div>
+					{/if}
+					{#if showInterpretation && activeTab?.parseResult?.format === 'HL7v2'}
+						<div class="panel-body" class:hidden-panel={activeBottomPanel !== 'interpretation'}>
+							<InterpretationPanel
+								messageId={activeTab.parseResult.message_id}
+								onNavigate={selectField}
 							/>
 						</div>
 					{/if}
@@ -1666,6 +1891,8 @@
 		cursorLine={activeTab?.cursorLine}
 		cursorColumn={activeTab?.cursorColumn}
 		isModified={activeTab?.isModified ?? false}
+		loading={messageStore.isLoading(activeTab?.id)}
+		hasTab={!!activeTab}
 		parseStale={activeTab?.parseResult ? (activeTab?.parseStale ?? null) : null}
 		errorCount={validationReport ? validationReport.error_count : null}
 		warningCount={validationReport ? validationReport.warning_count : null}
@@ -1763,6 +1990,23 @@
 	.editor-area {
 		flex: 1;
 		overflow: hidden;
+		position: relative;
+	}
+
+	.editor-loading {
+		position: absolute;
+		top: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 5;
+		padding: 6px 14px;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		background: var(--color-bg-secondary);
+		color: var(--color-text-primary);
+		font-size: 12px;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+		pointer-events: none;
 	}
 
 	.bottom-splitter {
@@ -1864,7 +2108,7 @@
 
 	.shortcut-hint {
 		font-size: 11px;
-		opacity: 0.6;
+		opacity: var(--text-dim, 0.6);
 	}
 
 	/* Splitter */

@@ -71,6 +71,43 @@ export async function testFhirRule(rule: FhirRule, messageId: string): Promise<F
 	return invoke('fhir_rule_test', { rule, messageId });
 }
 
+/** Why the builder refused a rule, a save or a test (`Refusal` in
+ *  fhir_rules.rs): a code with the values its message names, and the same
+ *  message in English. Code `other` has only the English (an error from
+ *  the operating system, the licence check). */
+export interface RuleRefusal {
+	code: string;
+	params: Record<string, string>;
+	message: string;
+}
+
+function asRefusal(e: unknown): RuleRefusal | null {
+	if (typeof e !== 'object' || e === null) return null;
+	const r = e as Partial<RuleRefusal>;
+	return typeof r.code === 'string' && typeof r.message === 'string'
+		? { code: r.code, params: r.params ?? {}, message: r.message }
+		: null;
+}
+
+/** An error from the rules commands in the user's language: the refusal's
+ *  translated message, the upgrade notice, or the English text as it came
+ *  when there is no translation for it. */
+export function describeRuleError(
+	e: unknown,
+	tr: (key: string, params?: Record<string, string | number>) => string,
+	upgrade: (err: unknown) => { tier: string } | null,
+): string {
+	const refusal = asRefusal(e);
+	if (refusal && refusal.code !== 'other') {
+		const key = `fhirRules.refusal.${refusal.code}`;
+		const text = tr(key, refusal.params);
+		if (text !== key) return text;
+	}
+	const english = refusal ? refusal.message : String(e);
+	const up = upgrade(english);
+	return up ? tr('upgrade.required', { tier: up.tier }) : english;
+}
+
 /** A blank rule in the invariant form, which is the more common one. */
 export function blankRule(): FhirRule {
 	return {

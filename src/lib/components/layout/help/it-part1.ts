@@ -43,6 +43,15 @@ ${mockupAppShell}
 		di Blocco note) e i file batch FHS/BHS vengono letti così come sono.
 		Un file che BridgeLab non riesce ad analizzare si apre comunque,
 		come testo da correggere, con una nota che spiega perché.</li>
+	<li><strong>Dimensioni:</strong> un file fino a 16 MB si apre
+		subito. Tra 16 e 64 MB BridgeLab chiede prima: l'app occupa molta
+		più memoria del file (un file di molti messaggi brevi può portarla a
+		diversi GB). Un file oltre 64 MB, o un dispositivo
+		o una named pipe, non si apre, e un messaggio spiega perché. Una
+		scheda dell'ultima sessione il cui file nel frattempo ha superato un
+		limite torna vuota, con il motivo, invece di essere letta a ogni
+		avvio. Il testo incollato segue gli stessi limiti: oltre 16 MB
+		BridgeLab chiede prima, oltre 64 MB non lo incolla.</li>
 	<li><strong>File → Nuovo Messaggio da Template...</strong>
 		(<kbd>Ctrl</kbd>+<kbd>N</kbd>) - ADT, ORM, ORU, SIU e altri
 		preconfigurati. MSH-7 e MSH-10 vengono compilati con il timestamp
@@ -56,6 +65,14 @@ ${mockupAppShell}
 		una nuova scheda. Ogni esempio supera la validazione; pazienti e dati
 		sono fittizi.</li>
 </ul>
+<p><strong>Salvataggio.</strong> <strong>File → Salva con nome</strong>, e il
+primo salvataggio di una nuova scheda, propongono il tipo adatto alla
+scheda — HL7 Messages (<code>*.hl7</code>), FHIR JSON (<code>*.json</code>)
+o FHIR XML (<code>*.xml</code>) — più All Files, e a un nome scritto senza
+estensione viene aggiunta quella del tipo (BridgeLab chiede prima se esiste
+già un file con quel nome). Il salvataggio passa per una copia temporanea
+leggibile solo da te e mantiene permessi, ACL e attributi estesi del
+file.</p>
 
 <div class="note">Al primo avvio ricevi un <strong>trial Pro di 14
 giorni</strong> con tutte le funzionalità Pro sbloccate (SOAP e supporto
@@ -125,20 +142,30 @@ sotto il cursore, link cliccabili, intestazione fissa durante lo scorrimento
 i messaggi aperti o nessuno; i suggerimenti di campi e valori HL7 funzionano
 in ogni modalità). Le modifiche si applicano subito. Ogni scheda conserva la
 propria cronologia di annulla e ripeti (Ctrl+Z, Ctrl+Y) quando passi da una
-scheda all'altra.</p>
+scheda all'altra.
+Con i link cliccabili attivi, <kbd>Ctrl</kbd>+clic su un indirizzo http,
+https o mailto, o <em>Follow link</em> nel suo hover, lo apre nel browser o
+nel client di posta; ogni altro tipo di link non fa nulla. I link nel resto
+dell'app, in Informazioni su BridgeLab o in questo manuale, si aprono allo
+stesso modo, con un clic o un clic con il tasto centrale.</p>
 
 <h3>Menu contestuale (tasto destro)</h3>
 ${mockupContextMenu}
 <p>Il menu raggruppa le azioni in tre sezioni:</p>
 <ul>
-	<li><strong>Navigazione:</strong> Mostra Segmento nel Tree
-		(<kbd>Alt</kbd>+<kbd>T</kbd>) - apre il tree e evidenzia il
+	<li><strong>Navigazione:</strong> Mostra Segmento nella Struttura
+		(<kbd>Alt</kbd>+<kbd>T</kbd>; su macOS <kbd>⌘⌥T</kbd>) - apre il tree e evidenzia il
 		campo esatto sotto il cursore; Espandi / Compatta per valori
 		lunghi.</li>
 	<li><strong>Appunti:</strong> Copia Segmento
-		(<kbd>Alt</kbd>+<kbd>C</kbd>), Copia Messaggio Completo (con
+		(<kbd>Alt</kbd>+<kbd>C</kbd>; su macOS <kbd>⌘⌥C</kbd>), Copia Messaggio Completo (con
 		campi espansi), Copia Messaggio Troncato (campi lunghi accorciati, per stare in una email; i dati del paziente sono copiati così come sono: anonimizza prima).</li>
 </ul>
+<p>L'editor, la barra delle schede e il tree hanno un menu proprio. Altrove
+il tasto destro non fa nulla: il menu del browser non si apre mai, nemmeno
+nei campi di testo, dove Taglia, Copia e Incolla sono
+<kbd>Ctrl</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>C</kbd> e
+<kbd>Ctrl</kbd>+<kbd>V</kbd>.</p>
 
 <div class="note">Le scorciatoie native di Monaco
 (<kbd>Ctrl</kbd>+<kbd>F</kbd> trova, <kbd>Ctrl</kbd>+<kbd>H</kbd>
@@ -161,7 +188,7 @@ Messaggio</strong>.</p>
 <h3>Navigare tra tree ed editor</h3>
 <ul>
 	<li><strong>Editor → Tree:</strong> tasto destro su un campo in
-		Monaco, scegli <em>Mostra Segmento nel Tree</em>. Il tree espande il
+		Monaco, scegli <em>Mostra Segmento nella Struttura</em>. Il tree espande il
 		segmento, seleziona il campo esatto (fino al componente) e
 		scrolla fino a renderlo visibile.</li>
 	<li><strong>Tree → Editor:</strong> tasto destro su un nodo del
@@ -187,8 +214,16 @@ metadati dello schema per il nodo selezionato:</p>
 	<li>Tipo di dato (XPN, CX, ST, ...), lunghezza max, flag
 		obbligatorio/ripetibile, descrizione</li>
 	<li>Valore corrente e lunghezza; pulsante <em>Mostra valore
-		completo</em> per i campi lunghi che l'editor mostra compattati</li>
+		completo</em> per i campi lunghi che l'editor mostra compattati
+		(il pulsante rosso <code>{...}</code> sulla riga del campo nel tree
+		fa lo stesso) e per un segmento lungo, la cui riga mostra solo i
+		primi 80 caratteri; la lunghezza indicata è quella del valore
+		intero</li>
 </ul>
+<p>Il valore completo si apre in una finestra a sé. Un valore molto grande
+(per esempio un PDF incorporato) mostra i primi 65.536 caratteri e la sua
+lunghezza totale; <em>Copia negli Appunti</em> copia comunque il valore
+intero.</p>
 <p>I segmenti sconosciuti (Z-segment o codici custom non nello standard)
 mostrano <em>Non nello standard HL7</em> ma restano perfettamente
 modificabili.</p>
@@ -222,6 +257,24 @@ indica quante volte compare), scrivi in <em>Filtra righe</em> per tenere
 solo le righe che contengono un testo e fai clic su una cella per
 selezionare quel campo nell'editor. La griglia è in sola lettura e segue
 il messaggio mentre lo modifichi e lo rianalizzi.</p>
+
+<h3>Leggere un messaggio a parole</h3>
+<p><strong>Visualizza → Interpretazione</strong>
+(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>) apre un pannello in basso
+che legge il messaggio HL7 v2 come frasi, un blocco per segmento:
+<em>Paziente DOE, JOHN Q, Male, data di nascita 1980-01-01, identificativi
+123456 (Medical record number).</em> — <em>Glucose (GLU): 98 mg/dL, Above
+high normal, stato Final results.</em> Nomi, date, luoghi, identificativi
+e valori codificati sono scritti in forma leggibile, i codici con il loro
+significato dalle tabelle dei valori. MSH, EVN, PID, NK1, PV1, ORC, OBR,
+OBX, AL1, DG1 e NTE hanno una formulazione propria; ogni altro segmento,
+Z-segment compresi, è letto campo per campo con i nomi dei campi della
+versione HL7 del messaggio. Ogni valore è un collegamento: un clic
+seleziona quel campo (o quella ripetizione) nell'editor, un clic
+sull'etichetta del segmento porta al segmento. Le frasi seguono la lingua
+dell'interfaccia e il messaggio mentre lo modifichi; i significati vengono
+dalle tabelle HL7 e restano in inglese. I valori lunghi (un PDF
+incorporato in OBX-5) sono accorciati; l'editor li conserva interi.</p>
 
 <h3>Confrontare due messaggi</h3>
 <p><strong>Strumenti → Confronta messaggi…</strong> apre un diff

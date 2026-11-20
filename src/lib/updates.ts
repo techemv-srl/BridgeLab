@@ -16,11 +16,38 @@ export const PREF_STARTUP_CHECK = 'update_check_on_startup';
 export const PREF_LAST_CHECK = 'update_last_check';
 export const PREF_SKIPPED = 'update_skipped_version';
 
+/** A machine policy file that is there but was ignored, and why. */
+export interface PolicyProblem {
+	path: string;
+	kind: 'invalid_json' | 'unreadable' | 'untrusted_owner' | 'untrusted_permissions';
+	/** The parser's or the system's own words, or BridgeLab's in English. */
+	detail: string;
+	/** For a reason BridgeLab words itself: the key under
+	 *  `settings.policyDetail.` and its parameters, for the user's language. */
+	detail_key?: string;
+	detail_args?: Record<string, string>;
+}
+
+/** The detail line of the notice: in the user's language when BridgeLab
+ *  words the reason itself, else the parser's or the system's own words. */
+export function policyProblemDetail(problem: PolicyProblem, tr: (key: string, params?: Record<string, string>) => string): string {
+	return problem.detail_key ? tr(`settings.policyDetail.${problem.detail_key}`, problem.detail_args ?? {}) : problem.detail;
+}
+
 /** Machine policy and installer choice, as the backend reads them. */
 export interface UpdatePolicy {
 	disabled_by_policy: boolean;
 	policy_source: string | null;
 	installer_choice: boolean | null;
+	policy_problem?: PolicyProblem | null;
+}
+
+/** The i18n key of the Settings notice for a policy file that was ignored. */
+export function policyProblemKey(kind: PolicyProblem['kind']): string {
+	if (kind === 'untrusted_owner') return 'settings.policyUntrusted';
+	if (kind === 'untrusted_permissions') return 'settings.policyUntrustedPermissions';
+	if (kind === 'unreadable') return 'settings.policyUnreadable';
+	return 'settings.policyInvalidJson';
 }
 
 export async function getUpdatePolicy(): Promise<UpdatePolicy> {
@@ -92,6 +119,35 @@ export function shouldNotify(latest: string, current: string, skipped: string | 
 	return isNewerVersion(latest, current);
 }
 
+/**
+ * The page to open for a release: the `html_url` of GitHub's answer when it
+ * is a page of this project's releases, the releases page otherwise. The
+ * answer comes over the network and the dialog does not show the address:
+ * behind a TLS-inspecting proxy the system trusts, it could name any
+ * download page, and the browser would open it on the app's word.
+ */
+export function releasePageUrl(htmlUrl: unknown): string {
+	if (typeof htmlUrl !== 'string') return RELEASES_PAGE;
+	let u: URL;
+	try {
+		u = new URL(htmlUrl);
+	} catch {
+		return RELEASES_PAGE;
+	}
+	// GitHub owner and repository names ignore case; the URL parser has
+	// already resolved any `..` in the path.
+	const own = new URL(RELEASES_PAGE).pathname.toLowerCase();
+	const path = u.pathname.toLowerCase();
+	const ours =
+		u.protocol === 'https:' &&
+		u.hostname === 'github.com' &&
+		u.port === '' &&
+		u.username === '' &&
+		u.password === '' &&
+		(path === own || path.startsWith(`${own}/`));
+	return ours ? u.href : RELEASES_PAGE;
+}
+
 /** Latest published release, or an error. `timeoutMs` bounds the request. */
 export async function fetchLatestRelease(timeoutMs = 10_000): Promise<LatestRelease> {
 	const ctrl = new AbortController();
@@ -105,7 +161,7 @@ export async function fetchLatestRelease(timeoutMs = 10_000): Promise<LatestRele
 		const rel = await res.json();
 		const version = String(rel.tag_name ?? '').replace(/^v/, '');
 		if (!version) throw new Error('No release tag found');
-		return { version, url: String(rel.html_url ?? RELEASES_PAGE) };
+		return { version, url: releasePageUrl(rel.html_url) };
 	} finally {
 		clearTimeout(timer);
 	}

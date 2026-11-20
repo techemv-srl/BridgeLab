@@ -49,6 +49,10 @@ problemas iguales en dos segmentos. Si editas el mensaje después de una
 comprobación, el informe se repite con el siguiente análisis en segundo
 plano; con el auto-análisis desactivado, el panel indica que el informe no
 está al día hasta que pulses <kbd>F6</kbd>.</p>
+<p>Un informe largo se lista de 200 en 200 problemas: los siguientes
+aparecen al desplazarte hasta el final de la lista, o con <em>Mostrar
+más</em>. Las insignias, el filtro y el orden abarcan siempre el informe
+entero.</p>
 
 <h3>Reglas personalizadas desde packs de plugins</h3>
 <p>Coloca un archivo JSON en
@@ -106,11 +110,14 @@ misma carpeta (una carpeta, <code>.hl7</code>, <code>.txt</code> y
 <code>.dat</code>, solo HL7 v2); <code>--extension hl7,txt,dat</code> lee
 los mismos archivos.</p>
 <pre><code>bridgelab-cli validate message.hl7 bundle.json
-bridgelab-cli validate "*.hl7" --format junit &gt; report.xml
+bridgelab-cli validate "*.hl7" --format junit --output report.xml
 bridgelab-cli batch ./inbox --json
-bridgelab-cli test regression.bltests.json --format junit &gt; tests.xml
+bridgelab-cli test regression.bltests.json --format junit --output tests.xml
 bridgelab-cli fhirpath "Patient.name.family" patient.json
 cat message.hl7 | bridgelab-cli send - --host 10.0.0.5 --port 2575</code></pre>
+<p>Escribe los informes con <code>--output</code>, como arriba: en
+Windows PowerShell 5.1, <code>&gt;</code> escribe UTF-16, que las
+herramientas de CI no pueden leer.</p>
 `,
 };
 
@@ -120,7 +127,14 @@ export const communicationSection: ManualSection = {
 	body: `
 <p>Abre el panel de comunicación inferior con <kbd>Ctrl</kbd>+<kbd>K</kbd>
 o <strong>Herramientas → Panel de comunicación</strong>. Cuatro
-pestañas: MLLP, HTTP, SOAP e Historial.</p>
+pestañas: MLLP, HTTP, SOAP e Historial. El panel se abre con la altura
+necesaria para mostrar todos los ajustes de su pestaña, hasta un 70% de la
+ventana aproximadamente; si lo haces más pequeño aparece una barra de
+desplazamiento, y la altura que elijas se mantiene hasta que cierres el
+panel. Antes de enviar un mensaje de más de 10 MB, por MLLP, HTTP o SOAP,
+BridgeLab pregunta: enviarlo tarda, y muchos receptores rechazan un
+mensaje tan grande (el propio listener de BridgeLab acepta hasta
+10 MB).</p>
 
 ${mockupCommunication}
 
@@ -135,7 +149,10 @@ ${mockupCommunication}
 	<li>El ACK aparece en el área de resultados con el tiempo de ida y
 		vuelta. <em>Accept</em> (AA), <em>Error</em> (AE) y <em>Reject</em>
 		(AR) se muestran todos con el <code>MSA|AA|{control-id}</code>
-		original.</li>
+		original. Una respuesta que no es HL7, un ACK cuyo MSA-2 nombra
+		otro mensaje, o un AA o CA con MSA-2 vacío para un mensaje que
+		tiene MSH-10 se muestra en ámbar con el motivo: no acepta el
+		mensaje enviado.</li>
 </ol>
 
 <h3>Generador de ACK</h3>
@@ -164,9 +181,36 @@ rápidamente lo que está emitiendo tu sistema origen.</p>
 solo lo alcanzan los programas de este equipo. Para recibir un flujo de
 otra máquina, pon <strong>Escuchar en</strong> en <code>0.0.0.0</code> (todas
 las interfaces) o en la dirección de una tarjeta de red, y abre el puerto
-en el firewall solo para los sistemas previstos.</p>
+en el firewall solo para los sistemas previstos. <strong>Escuchar
+en</strong> vacío también significa solo este equipo. Una dirección IPv6
+puede escribirse con o sin corchetes (<code>::1</code> o
+<code>[::1]</code>). Con el puerto 0 el sistema elige un puerto libre; el
+estado muestra luego cuál, para que se lo indiques al emisor.</p>
 <p><strong>Detener</strong> cierra también las conexiones que siguen
 abiertas: después, ya no se recibe ni se confirma nada.</p>
+<p>El listener sigue funcionando con el panel de comunicación cerrado:
+los mensajes recibidos se siguen abriendo en pestañas nuevas y quedan
+registrados en la consola, que los muestra, con sus recuentos, cuando
+vuelves a abrir el panel.</p>
+<p>Un solo emisor no puede detener el listener ni llenar la memoria de
+este equipo. El listener atiende como máximo 64 conexiones a la vez: una
+más se acepta y se cierra en el acto, y una fila roja en la consola
+explica por qué. Un mensaje puede llegar a 10&nbsp;MB, y los mensajes que
+aún están llegando pueden ocupar 64&nbsp;MB en total, sumando todas las
+conexiones: un mensaje que supera cualquiera de los dos límites se
+rechaza con un AR y se cierra su conexión. Un mensaje debe llegar entero
+en los 2 minutos siguientes a su primer byte (o en el timeout de lectura
+por conexión, si es más largo), si no, su conexión se corta: el timeout
+de lectura vuelve a empezar con cada byte, así que un emisor que enviara
+un byte cada vez conservaría su conexión para siempre. El tráfico
+habitual nunca se acerca a estos límites: cientos de mensajes seguidos,
+unos pocos emisores a la vez, mensajes de varios MB.</p>
+<p>Cuando falla la aceptación de una conexión, por ejemplo porque el
+sistema se ha quedado sin archivos abiertos, una fila roja en la consola
+lo indica y el listener vuelve a intentarlo poco después. Si aun así se
+detiene, el panel vuelve a mostrar <strong>Iniciar escucha</strong>, con
+el motivo en rojo, en lugar de "Escuchando" en un puerto que ya no
+responde.</p>
 
 <h3>Consola del listener</h3>
 <p>Mientras el listener está en marcha, cada mensaje recibido aparece
@@ -176,17 +220,28 @@ verde, <code>AE</code>/<code>AR</code> en rojo, — cuando el auto-ACK
 está desactivado), la codificación de caracteres usada y la primera
 línea del mensaje. <strong>Haz clic en una fila para reabrir ese mensaje
 en una pestaña.</strong> Los errores del listener aparecen en línea como
-filas rojas.</p>
+filas rojas. Una conexión que no envía nada se cierra tras el timeout de
+lectura por conexión, para liberar su plaza, con una fila gris normal, no
+roja: un emisor puede conectarse mucho antes de tener un mensaje.</p>
 <p>Los chips de la cabecera de la consola filtran las filas por
 resultado — <em>AA</em>, <em>AE</em>, <em>AR</em>, <em>Sin ACK</em>
 (recibidos con el auto-ACK desactivado), <em>Errores</em> — y cada uno
 lleva un contador actualizado, de modo que "AE&nbsp;12" de 300 salta a
-la vista antes de desplazarse. Los mismos chips están en la pestaña
-Historial.</p>
+la vista antes de desplazarse. Los recuentos abarcan todas las filas
+desde la última vez que se limpió la consola, mientras que la consola
+solo conserva las últimas 200 filas: a partir de ahí, una línea encima
+de la lista lo indica, y los chips solo filtran las filas conservadas. Los
+mismos chips están en la pestaña Historial.</p>
 <p>El interruptor <em>"Abrir los mensajes recibidos en una pestaña
 nueva"</em> (activado por defecto) puede desactivarse durante pruebas de
 alto volumen: los mensajes quedan entonces solo en la consola y tú
-escoges los que necesitas.</p>
+escoges los que necesitas. Aun activado, una ráfaga no sepulta la
+ventana bajo pestañas: tras 20 pestañas nuevas, o 16 MB de mensajes,
+sin una tecla pulsada ni
+un clic en la ventana, los mensajes siguientes van solo a la consola y
+al Historial, y un único aviso sobre el editor los cuenta, con un botón
+que muestra la consola. Una tecla o un clic hace que los mensajes
+siguientes vuelvan a abrirse en una pestaña; cerrar el aviso también.</p>
 <p class="note">El contenido completo de los mensajes que se conserva
 para abrirlos con un clic está limitado a un presupuesto rotatorio de
 32&nbsp;MB. En sesiones largas sin supervisión, las filas más antiguas
@@ -208,13 +263,21 @@ incluso con MSH-18 vacío; la consola muestra el juego elegido, y el ACK
 se recodifica con él para que el par nunca vea caracteres corruptos. En
 el envío usa el juego que declara MSH-18, si no aquel con el que se leyó
 el archivo de la pestaña, si no UTF-8, y el resultado indica el juego
-enviado. Un mensaje con caracteres que el juego elegido no puede
+enviado. En Auto, un mensaje cuyo MSH-18 nombra un juego que BridgeLab
+no sabe escribir (<code>ISO IR87</code>, <code>UNICODE UTF-16</code>…)
+se rechaza en lugar de salir en UTF-8 bajo esa cabecera, y también una
+pestaña cuyos mensajes declaran juegos distintos cuando enviarlos juntos,
+en uno solo, cambiaría su texto (el ASCII simple se lee igual en todos y
+se envía). Eligiendo una codificación en la configuración avanzada se
+envían de todos modos; <code>bridgelab-cli send</code> sin
+<code>--encoding</code> rechaza los mismos archivos. Un mensaje con caracteres que el juego elegido no puede
 representar no se envía: el error los nombra, para que un nombre nunca
 llegue con un <code>?</code>. Las codificaciones de envío y recepción
 son independientes.</p>
-<p>Los segmentos viajan terminados en CR, sean cuales sean los finales de
-línea del editor: LF y CR LF se convierten, como hace la CLI, y lo mismo
-vale para un cuerpo HL7 v2 enviado por HTTP o SOAP.</p>
+<p>Los segmentos viajan terminados en CR, también el último, sean cuales
+sean los finales de línea del editor: LF y CR LF se convierten y las
+líneas vacías no se envían, como hace la CLI, y lo mismo vale para un
+cuerpo HL7 v2 enviado por HTTP o SOAP.</p>
 <p>Los <strong>archivos</strong> siguen las mismas reglas. Un archivo que
 no está en UTF-8 se abre con la codificación que declara MSH-18
 (<code>8859/1</code>, <code>8859/2</code>, <code>8859/15</code>…, y
@@ -238,10 +301,12 @@ y cualquier forma de autenticación requieren Pro: una cabecera
 Authorization o Proxy-Authorization, una cookie, cualquier cabecera cuyo
 nombre sugiera una clave, un token, un secreto, una firma o una sesión
 (como <code>X-API-Key</code> u <code>Ocp-Apim-Subscription-Key</code>),
-un usuario:contraseña en la URL, o una clave o un token en la query
+un usuario:contraseña en la URL, una clave o un token en la query
 string (<code>access_token</code>, <code>api_key</code>,
 <code>key</code>, <code>token</code>, <code>sig</code>,
-<code>client_secret</code>…). Los parámetros de búsqueda FHIR como
+<code>client_secret</code>…), o un ID de sesión en la ruta de la URL
+(<code>;jsessionid=…</code>) o en un parámetro
+<code>PHPSESSID</code>. Los parámetros de búsqueda FHIR como
 <code>code</code> no son credenciales. Las redirecciones se
 siguen en todas las ediciones, pero solo en el mismo servidor (o de http a
 https en él): una redirección a otro servidor se muestra como el 3xx que es
@@ -266,7 +331,9 @@ Body y el posible SOAP Fault, decodificado para ambas versiones.</p>
 (sus CR de fin de segmento pasan a <code>&amp;#13;</code>, para que el
 análisis XML no los convierta en LF) y se envuelve en un elemento
 <code>&lt;payload&gt;</code>; el contenido que ya es XML se inserta tal
-cual. La configuración avanzada añade credenciales <strong>WS-Security
+cual, sin su propia declaración <code>&lt;?xml …?&gt;</code> ni la marca
+de orden de bytes (BOM): el sobre ya tiene su declaración, y una segunda
+dentro del Body no es XML válido. La configuración avanzada añade credenciales <strong>WS-Security
 UsernameToken</strong>, cabeceras <strong>WS-Addressing</strong>
 (To / Action / MessageID) y una <strong>plantilla de sobre
 personalizada</strong> en la que el marcador literal
@@ -278,10 +345,46 @@ plantilla sin SOAP Envelope ni Body no puede llevarlas, y el envío se
 rechaza en lugar de hacerse sin ellas. La importación de WSDL está
 prevista como paso siguiente.</p>
 
+<h3>Proxy y certificados</h3>
+<p>Las peticiones HTTP y SOAP, la activación en línea, la renovación de
+la licencia y las estadísticas de uso pasan por el proxy indicado en la
+variable de entorno <code>HTTPS_PROXY</code> o <code>HTTP_PROXY</code>,
+con <code>NO_PROXY</code> para los hosts a los que se accede
+directamente (<code>NO_PROXY=10.0.0.0/8,.hospital.local</code>). Si no
+hay ninguna de las dos, usan el proxy manual del sistema operativo: en
+Windows <em>Configuración → Red e Internet → Proxy → Configuración
+manual del proxy</em>, en macOS el <em>Proxy web (HTTP)</em> y el
+<em>Proxy web seguro (HTTPS)</em> de los ajustes de proxy de la red. La
+configuración automática del proxy no se lee: ni un script de
+configuración (PAC) ni la detección automática (WPAD). En una red así,
+pide a tu departamento de TI la dirección del proxy e indícala en
+<code>HTTPS_PROXY</code> o como proxy manual. MLLP nunca pasa por un
+proxy.</p>
+<p><code>localhost</code>, <code>127.0.0.1</code> y <code>::1</code> se
+alcanzan siempre directamente. De las excepciones de la configuración de
+proxy de Windows solo valen los nombres de host y de dominio
+(<code>fhir.example.org</code>, <code>*.example.org</code>): «No usar el
+servidor proxy para direcciones locales (intranet)» y los patrones de
+direcciones como <code>10.*</code> no, y la lista de excepciones de macOS
+no se lee; indica esos hosts en <code>NO_PROXY</code>. Tampoco se lee un
+proxy distinto para cada protocolo (Opciones de Internet → Configuración
+de LAN → Opciones avanzadas). La activación y la renovación leen la
+configuración de proxy una vez por inicio: después de cambiarla,
+reinicia BridgeLab.</p>
+<p>Los certificados HTTPS se comprueban con el almacén de certificados
+del sistema operativo y con las raíces de Mozilla incluidas en
+BridgeLab; un certificado que no supera la comprobación no se puede
+aceptar de todos modos. Detrás de un proxy que inspecciona el tráfico
+TLS, su certificado raíz tiene que estar en el almacén del sistema
+operativo, donde suele instalarlo el departamento de TI. Un certificado
+rechazado se indica como tal, con el motivo (no es de confianza, ha
+caducado, se emitió para otro nombre), no como un fallo de red.</p>
+
 <h3>Historial</h3>
 <p>Cada envío, y cada mensaje que recibe el listener, queda
 registrado: destino (host y puerto, o la URL con contraseñas o claves
-sustituidas por <code>***</code>), tamaño, código de respuesta y tiempo
+sustituidas por <code>***</code>, también en el fragmento y en una URL
+que no se pudo enviar), tamaño, código de respuesta y tiempo
 de ida y vuelta. Las últimas 100 entradas se conservan entre reinicios y
 las más antiguas se eliminan; haz clic en una fila para ver la petición
 y la respuesta completas — el mensaje y su ACK, o el cuerpo HTTP y la
@@ -291,7 +394,10 @@ registra además el <strong>código ACK</strong> con el que respondió el
 receptor (MSA-1), mostrado como insignia verde o roja en la fila: un
 envío que llegó al par y recibió un <code>AE</code> es "OK" a nivel de
 transporte y un rechazo a nivel de aplicación, y la insignia distingue
-ambos casos. Los chips de filtro sobre la lista — <em>AA</em>,
+ambos casos. Un ACK cuyo MSA-2 nombra otro mensaje, o un AA o CA con
+MSA-2 vacío (no indica ningún mensaje), no confirma nada de
+lo enviado: no lleva insignia y aparece en <em>Sin ACK</em>, como una
+respuesta que no es HL7. Los chips de filtro sobre la lista — <em>AA</em>,
 <em>AE</em>, <em>AR</em>, <em>Sin ACK</em>, <em>Fallidos</em> — llevan
 contadores y reducen la lista a un solo resultado; los códigos
 commit-mode CA, CE y CR cuentan como AA, AE y AR. <em>Fallidos</em> es
@@ -308,11 +414,13 @@ espera. Al seleccionar un perfil, este se aplica al formulario;
 guardar con un nombre existente lo sobrescribe; <em>Eliminar</em> borra
 el seleccionado. Los perfiles se guardan en la base de datos local y
 sobreviven a los reinicios.</p>
-<p class="note">Los perfiles HTTP guardan el campo Cabeceras tal
-como se escribe, cabecera <code>Authorization</code> incluida, en la
-base de datos local. Para no guardar ahí una contraseña o un token,
-introdúcelo en <em>Autenticación</em> en la configuración HTTP
-avanzada, que nunca se guarda.</p>
+<p class="note">Los perfiles HTTP guardan la URL y el campo
+Cabeceras tal como se escriben, user:password o claves en la URL y
+cabecera <code>Authorization</code> incluidos, en la base de datos
+local; los perfiles SOAP guardan su endpoint del mismo modo. Para no
+guardar ahí una contraseña o un token, introdúcelo en
+<em>Autenticación</em> en la configuración HTTP avanzada, que nunca se
+guarda.</p>
 `,
 };
 
@@ -430,8 +538,13 @@ test.</p>
 individual — HL7 v2 o FHIR, detectado automáticamente — y compara el
 resultado con sus expectativas. <strong>Ejecutar todos</strong> hace lo
 mismo con cada caso que coincide con la búsqueda actual, con una
-insignia de superado/fallido por fila y un resumen superados/total en la
-barra de herramientas. Tras un cambio en una interfaz, un solo clic te
+insignia por fila (✓ superado, ✖ fallido, ~ sin comprobar) y un resumen
+superados/total en la barra de herramientas. Un recurso FHIR que cumple
+sus expectativas pero no se comprobó por completo — un perfil que
+declara no está instalado, o ningún paquete instalado define su tipo de
+recurso — queda <em>sin comprobar</em>, con el motivo, y se cuenta
+aparte ("4/8 superados, 1 sin comprobar"), como lo indica
+<code>bridgelab-cli test</code>: nunca como superado. Tras un cambio en una interfaz, un solo clic te
 dice cuál de tus mensajes de referencia se rompió. Editar un caso borra
 su resultado almacenado hasta la siguiente ejecución.</p>
 
@@ -464,6 +577,34 @@ almacenado (esto también desactiva la restauración, de modo que el
 siguiente arranque empieza en la pantalla de bienvenida). Desactivar la
 restauración también elimina las pestañas guardadas, que pueden contener
 datos de pacientes.</p>
+<p>Con la restauración desactivada, cerrar la ventana pregunta antes de
+perder las pestañas sin guardar. Cuando es el sistema el que cierra
+BridgeLab (cierre de sesión, apagado o reinicio, <em>Salir</em> desde el
+Dock en macOS), no hay a quién preguntar: las pestañas sin guardar se
+conservan entonces una vez como copia de recuperación, en la misma base
+de datos, y el siguiente arranque las ofrece con <em>Restaurar</em> y
+<em>Descartar</em>; en ambos casos la copia se elimina después. Con la
+restauración activada, las pestañas más recientes se escriben como
+sesión en ese momento y vuelven de la forma habitual. En Windows, y en
+macOS al salir desde el Dock o cerrar la sesión, BridgeLab no puede
+consultar la ventana en ese momento y conserva las pestañas tal como la
+ventana las entregó por última vez (un tercio de segundo después de cada
+cambio, y cada vez que sales de la ventana): los cambios de la última
+fracción de segundo pueden perderse. No se
+puede conservar nada cuando BridgeLab se termina a la fuerza, o cuando
+la sesión del escritorio cierra la pantalla antes de pedir a la
+aplicación que se cierre.</p>
+<p>Una pestaña restaurada grande se lee de su archivo la primera vez que la
+muestras; hasta que el texto está cargado, el editor es de solo lectura y
+<strong>Guardar</strong> espera, así el archivo nunca se escribe vacío. Si
+la base de datos de la sesión (<code>bridgelab.db</code>) no se puede abrir
+— dañada, bloqueada por otro programa, en un disco lleno o de solo
+lectura — BridgeLab arranca igualmente, con una base de datos en memoria,
+y un aviso indica el archivo y el motivo. Hasta que se resuelva, las
+pestañas abiertas, los archivos recientes, el historial de comunicaciones,
+los perfiles de conexión, los casos de prueba y las preferencias no se
+conservan al cerrar BridgeLab. El archivo en sí nunca se borra ni se
+sobrescribe.</p>
 
 <h3>Archivos modificados por otros programas</h3>
 <p>BridgeLab detecta cuando otro programa modifica o elimina un archivo

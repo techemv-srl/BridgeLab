@@ -1,0 +1,10 @@
+# The build context is the repository root; only what the CLI build needs
+# goes in (BuildKit reads this file for tools/bridgelab-cli/Dockerfile).
+*
+!LICENSE
+!src-tauri
+!tools/bridgelab-cli
+src-tauri/target
+src-tauri/gen
+tools/bridgelab-cli/target
+**/node_modules

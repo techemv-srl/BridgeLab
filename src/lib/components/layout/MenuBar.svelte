@@ -47,6 +47,7 @@
 		onShowBundleVisualizer: () => void;
 		onToggleFhirPath: () => void;
 		onToggleSegmentGrid: () => void;
+		onToggleInterpretation: () => void;
 		onCopyFull: () => void;
 		onCopyTruncated: () => void;
 		onExportJson: () => void;
@@ -97,6 +98,7 @@
 		onShowBundleVisualizer,
 		onToggleFhirPath,
 		onToggleSegmentGrid,
+		onToggleInterpretation,
 		onCopyFull,
 		onCopyTruncated,
 		onExportJson,
@@ -299,6 +301,10 @@
 				<button class="menu-item" onclick={() => menuAction(onToggleSegmentGrid)}>
 					<span>{tr('panel.segments')}</span>
 					<span class="shortcut">{sc('view.toggleSegmentGrid')}</span>
+				</button>
+				<button class="menu-item" onclick={() => menuAction(onToggleInterpretation)}>
+					<span>{tr('panel.interpretation')}</span>
+					<span class="shortcut">{sc('view.toggleInterpretation')}</span>
 				</button>
 				<div class="menu-separator"></div>
 				<div class="menu-label">{tr('menu.view.theme')}</div>

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { messageStore } from './messages.svelte';
 import type { ParseResult } from '$lib/types/hl7';
+import { setLocale } from '$lib/i18n';
 
 // The store never inspects the parse result's internals — an opaque
 // placeholder keeps these tests decoupled from the ParseResult shape.
@@ -24,6 +25,46 @@ describe('newTab', () => {
 		const a = messageStore.newTab();
 		const b = messageStore.newTab();
 		expect(a).not.toBe(b);
+	});
+
+	it('an Untitled tab follows the language; a file or a given name does not, even "Untitled"', () => {
+		try {
+			messageStore.newTab();
+			const named = messageStore.newTab();
+			messageStore.setLabel(named, 'ADT^A01');
+			// A test case, template or sample may well be called so.
+			const caseTab = messageStore.newTab();
+			messageStore.setLabel(caseTab, 'Untitled');
+			const anon = messageStore.newTab();
+			messageStore.setLabel(anon, 'Anonymized', 'tab.anonymized');
+			messageStore.openMessage(fakeParse(), '/tmp/Untitled', 'MSH|');
+			setLocale('it');
+			expect(messageStore.tabs.map((t) => t.label)).toEqual(['Senza titolo', 'ADT^A01', 'Untitled', 'Anonimizzato', 'Untitled']);
+			setLocale('de');
+			expect(messageStore.tabs[0].label).toBe('Unbenannt');
+			expect(messageStore.tabs[2].label).toBe('Untitled');
+		} finally {
+			setLocale('en');
+		}
+	});
+
+	it('the session keeps which names the app gave: Untitled comes back in the current language, a name as it was', () => {
+		try {
+			messageStore.newTab();
+			const caseTab = messageStore.newTab();
+			messageStore.setLabel(caseTab, 'Untitled');
+			const saved = messageStore.serializeSession();
+			expect(saved.map((s) => s.label)).toEqual(['', 'Untitled']);
+			setLocale('fr');
+			messageStore.restoreSession(saved);
+			expect(messageStore.tabs.map((t) => t.label)).toEqual(['Sans titre', 'Untitled']);
+			// An older session stored the text: it is left as it was.
+			messageStore.restoreSession([{ tab_order: 0, label: 'Senza titolo', file_path: null, content: '', is_modified: false, is_active: true, cursor_line: 1, cursor_column: 1 }]);
+			setLocale('de');
+			expect(messageStore.tabs[0].label).toBe('Senza titolo');
+		} finally {
+			setLocale('en');
+		}
 	});
 });
 
@@ -253,5 +294,24 @@ describe('parseStale', () => {
 		const id = messageStore.newTab();
 		messageStore.markParseStale(id, 'bad');
 		expect(messageStore.activeTab?.parseStale).toBeFalsy();
+	});
+});
+
+describe('restored tabs being read', () => {
+	it('say they are loading until the read and parse are done, failed or not', async () => {
+		const id = messageStore.newTab();
+		expect(messageStore.isLoading(id)).toBe(false);
+		let finish!: () => void;
+		const read = messageStore.trackLoad(id, new Promise<void>((r) => { finish = r; }));
+		expect(messageStore.isLoading(id)).toBe(true);
+		finish();
+		await read;
+		expect(messageStore.isLoading(id)).toBe(false);
+
+		const failed = messageStore.trackLoad(id, Promise.reject(new Error('gone')));
+		expect(messageStore.isLoading(id)).toBe(true);
+		await failed.catch(() => {});
+		expect(messageStore.isLoading(id)).toBe(false);
+		expect(messageStore.isLoading(null)).toBe(false);
 	});
 });

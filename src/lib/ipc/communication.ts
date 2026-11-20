@@ -9,7 +9,17 @@ export interface MllpSendResult {
 	encoding?: string;
 	/** MSA-1 of the reply (AA/AE/AR/CA/CE/CR), when there was one. */
 	ack_code?: string | null;
+	/** Why the reply acknowledges nothing sent: it is not HL7, or its MSA-2
+	 *  names another message. Absent when it does, or when no reply came. */
+	reply_problem?: ReplyProblem | null;
 }
+
+/** Why an MLLP reply is not an acknowledgement of the message sent. */
+export type ReplyProblem =
+	| { kind: 'not_an_ack' }
+	| { kind: 'other_message'; acknowledged: string; sent: string }
+	/** An AA or CA with MSA-2 empty: it names no message. */
+	| { kind: 'unmatched'; sent: string };
 
 export interface HttpResult {
 	success: boolean;
@@ -21,6 +31,17 @@ export interface HttpResult {
 	error: string | null;
 	/** The URL that answered, when redirects on the same server were followed. */
 	final_url?: string | null;
+	/** Why no answer came, when the backend could tell. */
+	failure?: SendFailure | null;
+}
+
+/** Why a request got no answer: a refused certificate, a closed port… */
+export interface SendFailure {
+	/** certUntrusted, certExpired, certWrongHost, tlsFailed, refused,
+	 *  hostNotFound, timedOut, proxyRefused, proxyAuth or reset. */
+	kind: string;
+	/** The technical reason, as the TLS library or the OS gave it. */
+	detail: string;
 }
 
 export interface ConnectionProfile {
@@ -95,6 +116,12 @@ export async function mllpSend(
 	});
 }
 
+/** Bytes `mllpSend` would put on the wire for `message`, in the encoding
+ *  the send resolves (MSH-18's in "auto" mode); nothing is sent. */
+export async function mllpWireSize(message: string, encoding?: string, sourceCharset?: string | null): Promise<number> {
+	return invoke('mllp_wire_size', { message, encoding, sourceCharset: sourceCharset ?? undefined });
+}
+
 // --- Persistent MLLP listener ---
 export interface ListenerConfig {
 	port: number;
@@ -103,6 +130,13 @@ export interface ListenerConfig {
 	ack_code: string;       // 'AA' | 'AE' | 'AR'
 	read_timeout_secs: number;
 	encoding: string;       // 'auto' | 'UTF-8' | 'ISO-8859-1' | 'windows-1252' | etc.
+}
+
+/** Payload of `mllp:connection_idle`: a connection that sent nothing
+ *  within the read timeout was closed. */
+export interface MllpIdleEvent {
+	source_addr: string;
+	idle_secs: number;
 }
 
 export interface ListenerStatus {

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { baseName, normalizePath, samePath, withExtension } from './paths';
+import fs from 'node:fs';
+import path from 'node:path';
+import { baseName, exportBaseName, normalizePath, samePath, withExtension } from './paths';
 
 describe('baseName', () => {
 	it('splits unix and windows paths', () => {
@@ -10,6 +12,19 @@ describe('baseName', () => {
 
 	it('keeps a backslash that is part of a unix file name', () => {
 		expect(baseName('/tmp/back\\slash.hl7')).toBe('back\\slash.hl7');
+	});
+
+	it('is what the components use for a file name: none splits on backslashes itself', () => {
+		// The Welcome recent list and the test-case export message cut
+		// "back\slash.hl7" to "slash.hl7" on Linux and macOS.
+		const files = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+			const p = path.join(dir, e.name);
+			return e.isDirectory() ? files(p) : /\.(svelte|ts)$/.test(e.name) && !e.name.includes('.test.') ? [p] : [];
+		});
+		const offenders = files(path.resolve(__dirname))
+			.filter((f) => !f.endsWith(`${path.sep}paths.ts`))
+			.filter((f) => fs.readFileSync(f, 'utf8').includes('split(/[\\\\/]/)'));
+		expect(offenders).toEqual([]);
 	});
 });
 
@@ -48,5 +63,25 @@ describe('withExtension', () => {
 		expect(withExtension('/p/cases', 'bltests.json', ['json'])).toBe('/p/cases.bltests.json');
 		expect(withExtension('/p/cases.bltests.json', 'bltests.json', ['json'])).toBe('/p/cases.bltests.json');
 		expect(withExtension('/p/cases.json', 'bltests.json', ['json'])).toBe('/p/cases.json');
+	});
+});
+
+describe('exportBaseName', () => {
+	it('drops the extension of a file tab only', () => {
+		expect(exportBaseName('adt.hl7', '/home/u/msgs/adt.hl7')).toBe('adt');
+		expect(exportBaseName('v1.2.adt.hl7', 'C:\\msgs\\v1.2.adt.hl7')).toBe('v1.2.adt');
+		expect(exportBaseName('.hl7', '/home/u/.hl7')).toBe('.hl7');
+	});
+
+	it('keeps a version number in a tab with no file', () => {
+		expect(exportBaseName('ORU^R01 v2.5.1', null)).toBe('ORU^R01 v2.5.1');
+		expect(exportBaseName('ADT^A01 v2.5', undefined)).toBe('ADT^A01 v2.5');
+	});
+
+	it('replaces characters a file name cannot hold', () => {
+		expect(exportBaseName('Inbox 10:42:07', null)).toBe('Inbox 10_42_07');
+		expect(exportBaseName('a/b\\c?', null)).toBe('a_b_c_');
+		expect(exportBaseName('', null)).toBe('message');
+		expect(exportBaseName(undefined, null)).toBe('message');
 	});
 });

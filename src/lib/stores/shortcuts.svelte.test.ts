@@ -15,6 +15,9 @@ import {
 	eventToKeys,
 	matchesKeys,
 	bindingProblem,
+	withoutDuplicates,
+	isBrowserKey,
+	dispatchShortcut,
 } from './shortcuts.svelte';
 
 /** Minimal stand-in — node has no KeyboardEvent constructor. */
@@ -69,6 +72,148 @@ describe('conflict lookup', () => {
 		expect(shortcutStore.findByKeys('')).toBeNull();
 		expect(shortcutStore.findMonacoConflict('')).toBeNull();
 	});
+
+	it('warns for the editor keys the manual names (Ctrl+D, Ctrl+/)', () => {
+		expect(shortcutStore.findMonacoConflict('Ctrl+D')?.id).toBe('editor.addNextMatch');
+		expect(shortcutStore.findMonacoConflict('Ctrl+/')?.id).toBe('editor.toggleComment');
+		expect(shortcutStore.findMonacoConflict('Alt+C')?.id).toBe('editor.copySegment');
+	});
+
+	it('no default app key is one of the editor keys listed', () => {
+		const editor = new Set(SHORTCUTS.filter((s) => s.isMonaco).flatMap((s) => [s.defaultKeys, s.macKeys]));
+		for (const s of SHORTCUTS.filter((x) => !x.isMonaco && x.defaultKeys)) expect(editor.has(s.defaultKeys), s.id).toBe(false);
+	});
+});
+
+describe('dispatchShortcut', () => {
+	/** A key press that records whether it was consumed. */
+	const press = (partial: Partial<KeyboardEvent>) => {
+		const e = kbd(partial) as KeyboardEvent & { consumed: string[] };
+		e.consumed = [];
+		Object.assign(e, {
+			preventDefault: () => e.consumed.push('default'),
+			stopPropagation: () => e.consumed.push('propagation'),
+		});
+		return e;
+	};
+	const keys: Record<string, string> = { 'file.closeTab': 'Ctrl+W', 'file.open': 'Ctrl+O' };
+
+	it('runs the bound action and takes the key', () => {
+		const close = vi.fn();
+		const e = press({ metaKey: true, key: 'w' });
+		expect(dispatchShortcut(e, { 'file.closeTab': close }, false, (id) => keys[id], true)).toBe('file.closeTab');
+		expect(close).toHaveBeenCalledOnce();
+		expect(e.consumed).toEqual(['default', 'propagation']);
+	});
+
+	it('behind a dialog, takes the key without running the action (⌘W must not close the window)', () => {
+		const close = vi.fn();
+		const e = press({ metaKey: true, key: 'w' });
+		expect(dispatchShortcut(e, { 'file.closeTab': close }, true, (id) => keys[id], true)).toBe('file.closeTab');
+		expect(close).not.toHaveBeenCalled();
+		expect(e.consumed).toEqual(['default', 'propagation']);
+	});
+
+	it("leaves typing and other keys to the dialog's fields", () => {
+		const open = vi.fn();
+		for (const k of [{ key: 'w' }, { shiftKey: true, key: 'W' }, { metaKey: true, key: 'a' }, { key: 'Escape' }]) {
+			const e = press(k);
+			expect(dispatchShortcut(e, { 'file.open': open }, true, (id) => keys[id], true)).toBeNull();
+			expect(e.consumed).toEqual([]);
+		}
+		expect(open).not.toHaveBeenCalled();
+	});
+});
+
+describe('isBrowserKey', () => {
+	it('cancels the WebView2 page keys on Windows and Linux, with the Control key only', () => {
+		expect(isBrowserKey(kbd({ ctrlKey: true, key: 'r' }), false)).toBe(true);
+		expect(isBrowserKey(kbd({ ctrlKey: true, key: 'p' }), false)).toBe(true);
+		expect(isBrowserKey(kbd({ key: 'F5' }), false)).toBe(true);
+		expect(isBrowserKey(kbd({ key: 'F7' }), false)).toBe(true);
+		expect(isBrowserKey(kbd({ metaKey: true, key: 'r' }), false)).toBe(false);
+		expect(isBrowserKey(kbd({ ctrlKey: true, key: 'o' }), false)).toBe(false);
+	});
+
+	it('leaves every key to the app menu and text fields on macOS', () => {
+		// Hide (⌘H), Full Screen (⌃⌘F), and Control+H (delete backward).
+		expect(isBrowserKey(kbd({ metaKey: true, key: 'h' }), true)).toBe(false);
+		expect(isBrowserKey(kbd({ metaKey: true, ctrlKey: true, key: 'f' }), true)).toBe(false);
+		expect(isBrowserKey(kbd({ ctrlKey: true, key: 'h' }), true)).toBe(false);
+	});
+});
+
+describe('one key, one action', () => {
+	/** App actions (not the editor's own keys) bound to `keys`. */
+	const holders = (keys: string) =>
+		SHORTCUTS.filter((s) => !s.isMonaco && shortcutStore.get(s.id) === keys).map((s) => s.id);
+
+	it('no default key is on two app actions', () => {
+		const keys = SHORTCUTS.filter((s) => !s.isMonaco && s.defaultKeys).map((s) => s.defaultKeys);
+		expect(new Set(keys).size).toBe(keys.length);
+	});
+
+	it('assign takes the key from the action that had it', () => {
+		const taken = shortcutStore.assign('tools.validate', 'Ctrl+O');
+		expect(taken.map((s) => s.id)).toEqual(['file.open']);
+		expect(shortcutStore.get('tools.validate')).toBe('Ctrl+O');
+		expect(shortcutStore.get('file.open')).toBe('');
+	});
+
+	it('assign with a free key or no key takes nothing', () => {
+		expect(shortcutStore.assign('tools.validate', 'Ctrl+Alt+V')).toEqual([]);
+		// Unbinding must not clear the other unbound actions.
+		shortcutStore.set('file.save', '');
+		expect(shortcutStore.assign('tools.validate', '')).toEqual([]);
+		expect(shortcutStore.get('tools.reparse')).toBe('');
+		expect(shortcutStore.get('file.open')).toBe('Ctrl+O');
+	});
+
+	it('assign leaves the editor keys alone', () => {
+		shortcutStore.assign('tools.validate', 'Ctrl+F');
+		expect(shortcutStore.get('editor.find')).toBe('Ctrl+F');
+		expect(shortcutStore.get('tools.validate')).toBe('Ctrl+F');
+	});
+
+	it('resetting an entry whose default moved elsewhere moves it back', () => {
+		// The sequence: Ctrl+O given to Validate with Reassign, then
+		// the reset next to Open File. The reset finds the holder (to warn)
+		// and, once confirmed, transfers the key instead of copying it.
+		shortcutStore.assign('tools.validate', 'Ctrl+O');
+		expect(shortcutStore.findByKeys('Ctrl+O', 'file.open')?.id).toBe('tools.validate');
+		shortcutStore.assign('file.open', 'Ctrl+O');
+		expect(holders('Ctrl+O')).toEqual(['file.open']);
+		expect(shortcutStore.get('tools.validate')).toBe('');
+	});
+
+	it('a saved duplicate keeps the key on the action it ran, and only there', async () => {
+		vi.mocked(getPreference).mockResolvedValue(JSON.stringify({
+			...Object.fromEntries(SHORTCUTS.map((s) => [s.id, s.defaultKeys])),
+			'tools.validate': 'Ctrl+O',
+		}));
+		await shortcutStore.loadFromPrefs();
+		expect(holders('Ctrl+O')).toEqual(['file.open']);
+		expect(shortcutStore.get('tools.validate')).toBe('');
+	});
+
+	it('a key the user saved wins over a newer default that has it too', async () => {
+		// Settings from before Toggle Interpretation existed, with its
+		// default given to Validate: the user's choice stays.
+		vi.mocked(getPreference).mockResolvedValue(JSON.stringify({
+			'file.open': 'Ctrl+O',
+			'tools.validate': 'Ctrl+Shift+E',
+		}));
+		await shortcutStore.loadFromPrefs();
+		expect(holders('Ctrl+Shift+E')).toEqual(['tools.validate']);
+		expect(shortcutStore.get('view.toggleInterpretation')).toBe('');
+	});
+
+	it('withoutDuplicates keeps unbound and distinct keys as they are', () => {
+		const map = { 'file.open': 'Ctrl+O', 'file.save': '', 'tools.reparse': '', 'tools.validate': 'F6' };
+		expect(withoutDuplicates(map)).toEqual(map);
+		expect(withoutDuplicates({ ...map, 'tools.reparse': 'F6' }, new Set(['tools.reparse'])))
+			.toEqual({ ...map, 'tools.reparse': 'F6', 'tools.validate': '' });
+	});
 });
 
 describe('preference persistence', () => {
@@ -105,8 +250,25 @@ describe('eventToKeys', () => {
 		expect(eventToKeys(kbd({ ctrlKey: true, shiftKey: true, key: 'k' }))).toBe('Ctrl+Shift+K');
 	});
 
-	it('treats meta as Ctrl (macOS)', () => {
-		expect(eventToKeys(kbd({ metaKey: true, key: 'o' }))).toBe('Ctrl+O');
+	it('Command is Ctrl on macOS, and the Control key is Control there', () => {
+		expect(eventToKeys(kbd({ metaKey: true, key: 'o' }), true)).toBe('Ctrl+O');
+		expect(eventToKeys(kbd({ ctrlKey: true, key: 'g' }), true)).toBe('Control+G');
+		expect(eventToKeys(kbd({ ctrlKey: true, metaKey: true, key: 'f' }), true)).toBe('Ctrl+Control+F');
+	});
+
+	it('the Windows/Super key is not Ctrl on Windows and Linux', () => {
+		expect(eventToKeys(kbd({ metaKey: true, key: 'b' }), false)).toBe('Meta+B');
+		expect(eventToKeys(kbd({ ctrlKey: true, key: 'b' }), false)).toBe('Ctrl+B');
+	});
+
+	it('records Option+letter on macOS by the key, not the character it types', () => {
+		expect(eventToKeys(kbd({ altKey: true, key: '†', code: 'KeyT' }), true)).toBe('Alt+T');
+		expect(eventToKeys(kbd({ altKey: true, metaKey: true, key: 'ç', code: 'KeyC' }), true)).toBe('Ctrl+Alt+C');
+		// A dead key (Option+E) on a letter is that letter; elsewhere nothing.
+		expect(eventToKeys(kbd({ altKey: true, key: 'Dead', code: 'KeyE' }), true)).toBe('Alt+E');
+		expect(eventToKeys(kbd({ altKey: true, key: 'Dead', code: 'Backquote' }), true)).toBe('');
+		// A layout that only moves ASCII letters keeps the letter typed.
+		expect(eventToKeys(kbd({ ctrlKey: true, key: 'a', code: 'KeyQ' }), false)).toBe('Ctrl+A');
 	});
 
 	it('handles function keys and space', () => {
@@ -127,8 +289,27 @@ describe('matchesKeys', () => {
 		expect(matchesKeys(kbd({ key: 'o' }), 'Ctrl+O')).toBe(false);
 	});
 
-	it('accepts meta in place of Ctrl', () => {
-		expect(matchesKeys(kbd({ metaKey: true, key: 'o' }), 'Ctrl+O')).toBe(true);
+	it('Ctrl is Command on macOS and the Control key elsewhere, never both', () => {
+		expect(matchesKeys(kbd({ metaKey: true, key: 'o' }), 'Ctrl+O', true)).toBe(true);
+		expect(matchesKeys(kbd({ ctrlKey: true, key: 'o' }), 'Ctrl+O', false)).toBe(true);
+		// The Super key on Linux hid the tree (Ctrl+B)...
+		expect(matchesKeys(kbd({ metaKey: true, key: 'b' }), 'Ctrl+B', false)).toBe(false);
+		// ...and on macOS Control+K, an editor key, opened the Communication panel.
+		expect(matchesKeys(kbd({ ctrlKey: true, key: 'k' }), 'Ctrl+K', true)).toBe(false);
+		// Control+Command+F is the macOS Full Screen, not Ctrl+F.
+		expect(matchesKeys(kbd({ ctrlKey: true, metaKey: true, key: 'f' }), 'Ctrl+F', true)).toBe(false);
+	});
+
+	it('matches the real Control key on macOS and the Super key elsewhere when asked for', () => {
+		expect(matchesKeys(kbd({ ctrlKey: true, key: 'g' }), 'Control+G', true)).toBe(true);
+		expect(matchesKeys(kbd({ metaKey: true, key: 'g' }), 'Control+G', true)).toBe(false);
+		expect(matchesKeys(kbd({ metaKey: true, key: 'b' }), 'Meta+B', false)).toBe(true);
+	});
+
+	it('matches a key by its place when the layout types another character', () => {
+		expect(matchesKeys(kbd({ altKey: true, metaKey: true, key: '†', code: 'KeyT' }), 'Ctrl+Alt+T', true)).toBe(true);
+		expect(matchesKeys(kbd({ ctrlKey: true, key: 'щ', code: 'KeyO' }), 'Ctrl+O', false)).toBe(true);
+		expect(matchesKeys(kbd({ ctrlKey: true, key: 'a', code: 'KeyQ' }), 'Ctrl+Q', false)).toBe(false);
 	});
 
 	it('is case-insensitive on the main key', () => {
@@ -161,9 +342,20 @@ describe('bindingProblem', () => {
 
 	it('accepts modified keys and F2-F12', () => {
 		expect(bindingProblem('Ctrl+Q')).toBeNull();
-		expect(bindingProblem('Alt+Q')).toBeNull();
+		expect(bindingProblem('Alt+Q', false)).toBeNull();
 		expect(bindingProblem('F6')).toBeNull();
 		expect(bindingProblem('Shift+F12')).toBeNull();
+		expect(bindingProblem('Meta+Q', false)).toBeNull();
+		expect(bindingProblem('Control+Q', true)).toBeNull();
+	});
+
+	it('on macOS Option with a key that types is not enough (Option+C types ç)', () => {
+		expect(bindingProblem('Alt+C', true)).toBe('needsModifier');
+		expect(bindingProblem('Shift+Alt+T', true)).toBe('needsModifier');
+		expect(bindingProblem('Alt+Space', true)).toBe('needsModifier');
+		expect(bindingProblem('Alt+F5', true)).toBeNull();
+		expect(bindingProblem('Alt+ArrowUp', true)).toBeNull();
+		expect(bindingProblem('Ctrl+Alt+C', true)).toBeNull();
 	});
 
 	it('drops saved bindings that are not allowed, and editor keys', async () => {
@@ -199,5 +391,19 @@ describe('displayKeys', () => {
 		expect(displayKeys(key('editor.find', true), true)).toBe('⌘F');
 		expect(key('editor.replace', false)).toBe('Ctrl+H');
 		expect(key('editor.goToLine', false)).toBe('Ctrl+G');
+	});
+
+	it('Show Segment in Tree and Copy Segment do not take Option+letter on macOS', () => {
+		const key = (id: string, mac: boolean) => monacoKeys(SHORTCUTS.find((s) => s.id === id)!, mac);
+		expect(displayKeys(key('editor.showInTree', true), true)).toBe('⌘⌥T');
+		expect(displayKeys(key('editor.copySegment', true), true)).toBe('⌘⌥C');
+		expect(key('editor.showInTree', false)).toBe('Alt+T');
+		expect(key('editor.copySegment', false)).toBe('Alt+C');
+		for (const s of SHORTCUTS) expect(bindingProblem(monacoKeys(s, true), true), s.id).toBeNull();
+	});
+
+	it('shows arrow keys as arrows', () => {
+		expect(displayKeys('Alt+ArrowUp', false)).toBe('Alt+↑');
+		expect(displayKeys('Alt+ArrowDown', true)).toBe('⌥↓');
 	});
 });

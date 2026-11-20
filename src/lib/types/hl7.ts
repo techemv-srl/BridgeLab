@@ -41,6 +41,9 @@ export interface ParseResult {
 	/** open_file: the file is not a message BridgeLab can parse, and why.
 	 *  It opens as text; everything else in the result is empty. */
 	parse_error?: string;
+	/** With parse_error: the kind of problem (`missing_m`, `invalid_json`…),
+	 *  which the dialog explains in the user's language with a hint. */
+	parse_error_kind?: string;
 	/** open_file: the file was not decoded as its MSH-18 says. `unsupported`:
 	 *  BridgeLab cannot decode the declared charset (text and fields may be
 	 *  wrong); `not_utf8`: UTF-8 declared, other bytes found. */

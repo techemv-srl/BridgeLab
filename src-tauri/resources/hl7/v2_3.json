@@ -46458,14 +46458,16 @@
         {
           "position": 1,
           "name": "Processing ID",
-          "data_type": "ST",
-          "required": false
+          "data_type": "ID",
+          "required": false,
+          "table": "0103"
         },
         {
           "position": 2,
           "name": "Processing Mode",
-          "data_type": "ST",
-          "required": false
+          "data_type": "ID",
+          "required": false,
+          "table": "0207"
         }
       ]
     },

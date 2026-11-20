@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use bridgelab_lib::parser::fhir::fhirpath;
+use bridgelab_lib::parser::fhir::{self, fhirpath};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use serde_json::Value;
@@ -29,20 +29,23 @@ use serde_json::Value;
 /// Pass rate the engine is known to reach over the runnable cases. Raise it
 /// whenever conformance improves; never lower it to make a change pass.
 ///
-/// The shortfall is concentrated in three places, all of them known:
+/// The shortfall is concentrated in a few places, all of them known:
 ///
-/// - `lowBoundary()` / `highBoundary()` (52 cases) need exact decimal
-///   arithmetic over the literal's written precision; this engine's numbers
-///   are JSON doubles.
 /// - Cases that expect an *unknown element* to be rejected (`name.given1`,
-///   `Observation.valueQuantity`) and the `type()` of a FHIR primitive need
-///   the StructureDefinitions loaded.
+///   `Observation.valueQuantity`), the semantic checks of `is`/`as` and the
+///   `type()` of a FHIR primitive need the StructureDefinitions loaded.
 /// - Compound units (`2 'cm' * 2 'm'`) need a full UCUM engine.
 /// - The declared type of an ordinary primitive (`Patient.gender.is(id)`,
 ///   `ofType(string)` on a `code`), `conformsTo()` and strict-mode
 ///   rejections (`children().skip(1)`) need the definitions as well; choice
 ///   elements are typed from their key.
-const BASELINE_PASS_RATE: f64 = 0.90;
+///
+/// `lowBoundary()` / `highBoundary()` pass, on literals and on the decimals
+/// of `parameters-example-decimals.xml` alike (`9.5e2`: the precision is in
+/// the mantissa). Two cases expect `@2014-01-01T08.highBoundary(17)` to
+/// be `08:00:59.999`; the engine follows the specification's own example
+/// for that expression, `08:59:59.999`.
+const BASELINE_PASS_RATE: f64 = 0.93;
 
 #[derive(Debug, Default, Clone)]
 struct TestCase {
@@ -110,7 +113,7 @@ fn official_fhirpath_suite() {
         }
     }
     if !skipped.is_empty() {
-        eprintln!("\n--- skipped, input resource not available as JSON ---");
+        eprintln!("\n--- skipped, input resource not available ---");
         for (file, n) in &skipped {
             eprintln!("{:<40} {} cases", file, n);
         }
@@ -211,9 +214,33 @@ fn output_matches(actual: &Value, kind: &str, expected: &str) -> bool {
         }
         // The suite writes temporal outputs as literals, `@` and all.
         "date" | "dateTime" | "time" => render(actual) == expected.trim_start_matches('@'),
+        // Newer cases (the boundaries, precision()) give no type: read the
+        // value the way the typed cases above would.
+        "" => untyped_matches(actual, expected),
         // string, code, id — plain text.
         _ => render(actual) == expected,
     }
+}
+
+/// An output without a type attribute: a temporal by its literal, a
+/// quantity as `4 'mg'`, a number by value (`1.58650000` and 1.5865 are the
+/// same number), else plain text.
+fn untyped_matches(actual: &Value, expected: &str) -> bool {
+    if let Some(literal) = expected.strip_prefix('@') {
+        return render(actual) == literal;
+    }
+    if let (Some(obj), Some((value, unit))) = (actual.as_object(), expected.split_once(" '")) {
+        let unit = unit.trim_end_matches('\'');
+        let actual_unit = obj.get("code").or_else(|| obj.get("unit")).and_then(|u| u.as_str());
+        return match (obj.get("value").and_then(|v| v.as_f64()), value.parse::<f64>()) {
+            (Some(a), Ok(b)) => (a - b).abs() < 1e-9 && actual_unit == Some(unit),
+            _ => false,
+        };
+    }
+    if let (Some(a), Ok(b)) = (actual.as_f64(), expected.parse::<f64>()) {
+        return (a - b).abs() < 1e-9;
+    }
+    render(actual) == expected
 }
 
 fn render(v: &Value) -> String {
@@ -226,7 +253,9 @@ fn render(v: &Value) -> String {
 }
 
 /// The suite names inputs by their XML filename; this engine evaluates JSON,
-/// so look for the JSON encoding of the same example.
+/// so look for the JSON encoding of the same example, or else for the XML
+/// file itself, converted the way the app converts an XML resource. Some
+/// inputs exist only as XML (`parameters-example-decimals.xml`).
 fn load_input(dir: &Path, input_file: &str) -> Option<Value> {
     // Many cases are pure literal arithmetic and declare no input at all.
     if input_file.is_empty() {
@@ -234,8 +263,14 @@ fn load_input(dir: &Path, input_file: &str) -> Option<Value> {
     }
     let stem = Path::new(input_file).file_stem()?.to_str()?;
     let path = dir.join("input").join(format!("{}.json", stem));
-    let text = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text).ok()
+    if let Ok(text) = fs::read_to_string(path) {
+        return serde_json::from_str(&text).ok();
+    }
+    if !input_file.ends_with(".xml") {
+        return None;
+    }
+    let text = fs::read_to_string(dir.join("input").join(input_file)).ok()?;
+    fhir::parse_fhir_xml(&text).ok()?.json_value
 }
 
 /// Minimal reader for the suite's XML shape:

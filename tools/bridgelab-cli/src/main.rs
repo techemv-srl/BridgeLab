@@ -16,6 +16,7 @@
 //! read, a path matched no file, a test failed, a send was not
 //! acknowledged with AA/CA), 2 usage error.
 
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -26,24 +27,70 @@ use serde::Serialize;
 
 /// `println!` that does not panic when standard output goes away (a
 /// `| head` that has read enough): the process ends quietly instead, with
-/// the status a shell reports for SIGPIPE.
+/// the status a shell reports for SIGPIPE. While a report goes to
+/// `--output`, the text is collected for that file instead.
 macro_rules! outln {
     ($($arg:tt)*) => {{
-        use std::io::Write as _;
-        if let Err(e) = writeln!(std::io::stdout(), $($arg)*) {
-            stdout_failed(e);
-        }
+        write_out(format_args!($($arg)*), true);
     }};
 }
 
 /// `print!` counterpart of [`outln!`].
 macro_rules! out {
     ($($arg:tt)*) => {{
-        use std::io::Write as _;
-        if let Err(e) = write!(std::io::stdout(), $($arg)*) {
-            stdout_failed(e);
-        }
+        write_out(format_args!($($arg)*), false);
     }};
+}
+
+thread_local! {
+    /// Set while a command's report goes to `--output`: [`out!`] and
+    /// [`outln!`] collect it here instead of writing it to standard output.
+    static CAPTURE: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// What [`out!`] and [`outln!`] do: write to standard output, or to the
+/// report being collected for `--output`.
+fn write_out(args: std::fmt::Arguments, newline: bool) {
+    use std::io::Write as _;
+    let collected = CAPTURE.with(|c| match c.borrow_mut().as_mut() {
+        Some(buf) => {
+            let _ = buf.write_fmt(args);
+            if newline {
+                buf.push(b'\n');
+            }
+            true
+        }
+        None => false,
+    });
+    if collected {
+        return;
+    }
+    let mut stdout = std::io::stdout();
+    let result = if newline { writeln!(stdout, "{}", args) } else { write!(stdout, "{}", args) };
+    if let Err(e) = result {
+        stdout_failed(e);
+    }
+}
+
+/// Collects what a command prints until [`finish`](Self::finish), for
+/// `--output`. Dropped early (a panic), it stops collecting.
+struct Collected;
+
+impl Collected {
+    fn start() -> Self {
+        CAPTURE.with(|c| *c.borrow_mut() = Some(Vec::new()));
+        Collected
+    }
+
+    fn finish(self) -> Vec<u8> {
+        CAPTURE.with(|c| c.borrow_mut().take()).unwrap_or_default()
+    }
+}
+
+impl Drop for Collected {
+    fn drop(&mut self) {
+        CAPTURE.with(|c| *c.borrow_mut() = None);
+    }
 }
 
 /// Text for a terminal: control characters other than tab and newline
@@ -73,18 +120,55 @@ macro_rules! safeln {
     }};
 }
 
-/// `eprintln!` counterpart of [`safeln!`].
+/// [`safeln!`] for standard error, where every line of this tool goes:
+/// warnings and errors quote pack rule ids, file names, command-line
+/// values, a message's MSH-18 and a peer's MSA-1, any of which can hold an
+/// escape sequence. A plain `eprintln!` is refused by clippy.toml and by
+/// the test `stderr_is_written_only_through_esafeln`. A failed write to
+/// standard error is ignored: there is nowhere left to report it.
 macro_rules! esafeln {
     ($($arg:tt)*) => {{
-        eprintln!("{}", terminal_safe(&format!($($arg)*)));
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr(), "{}", terminal_safe(&format!($($arg)*)));
     }};
+}
+
+/// DEL and the C1 controls, U+007F to U+009F: serde_json writes them as
+/// they are, and some terminals act on them (U+009B is CSI to the Linux
+/// console, which then clears the screen or moves the cursor).
+fn is_del_or_c1(c: char) -> bool {
+    ('\u{7F}'..='\u{9F}').contains(&c)
+}
+
+/// JSON text with DEL and the C1 controls as `\u` escapes, which serde_json
+/// leaves raw (it escapes only U+0000 to U+001F). Outside strings JSON has
+/// no such characters, so each is in a string, where the escape reads back
+/// as the same character.
+fn json_controls_escaped(json: String) -> String {
+    if !json.chars().any(is_del_or_c1) {
+        return json;
+    }
+    let mut out = String::with_capacity(json.len() + 16);
+    for c in json.chars() {
+        if is_del_or_c1(c) {
+            out.push_str(&format!("\\u{:04x}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// `--json` / `--format json` output: pretty JSON, controls escaped.
+fn json_text<T: Serialize + ?Sized>(value: &T) -> String {
+    json_controls_escaped(serde_json::to_string_pretty(value).unwrap_or_default())
 }
 
 fn stdout_failed(e: std::io::Error) -> ! {
     if e.kind() == std::io::ErrorKind::BrokenPipe {
         process::exit(141);
     }
-    eprintln!("Error: cannot write to standard output: {}", e);
+    esafeln!("Error: cannot write to standard output: {}", e);
     process::exit(1);
 }
 
@@ -105,18 +189,31 @@ use bridgelab_lib::communication::mllp;
 use bridgelab_lib::parser::hl7::charset::{self, Decoded};
 use bridgelab_lib::parser::hl7::lexer::Hl7Lexer;
 use bridgelab_lib::parser::hl7::message::Hl7Message;
-use bridgelab_lib::plugins::{self, PluginRegistry};
+use bridgelab_lib::plugins::{self, PluginRegistry, RuleKind};
 use bridgelab_lib::utils::atomic_write::write_atomic;
 use bridgelab_lib::validation::{self, Severity};
 
+/// `--version`: the CLI version and the build code of the validators it
+/// was built with, e.g. `2.1.0 (build 20261117.762cc1c)`, so two builds of
+/// the same version can be told apart.
+fn cli_version() -> &'static str {
+    static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    VERSION.get_or_init(|| {
+        format!("{} (build {})", env!("CARGO_PKG_VERSION"), bridgelab_lib::BUILD_ID)
+    })
+}
+
 // Examples printed at the end of `--help`, so the usual invocations are
 // there without opening the README.
+// Reports go to files with --output, not with `>`: Windows PowerShell 5.1
+// writes a redirection as UTF-16, and a JUnit report that declares UTF-8
+// then cannot be read (a test checks that no example redirects).
 const EXAMPLES: &str = "\
 Examples:
   bridgelab-cli validate \"messages/*.hl7\" bundle.json
-  bridgelab-cli validate \"**/*.hl7\" --format junit > results.xml
-  bridgelab-cli test \"packs/*.bltests.json\" --format junit > tests.xml
-  cat message.hl7 | bridgelab-cli anonymize - > message-safe.hl7
+  bridgelab-cli validate \"**/*.hl7\" --format junit --output results.xml
+  bridgelab-cli test \"packs/*.bltests.json\" --format junit --output tests.xml
+  bridgelab-cli anonymize message.hl7 --output message-safe.hl7
 
 Each command has its own examples: bridgelab-cli <command> --help";
 
@@ -125,7 +222,7 @@ Examples:
   bridgelab-cli validate message.hl7
   bridgelab-cli validate \"messages/*.hl7\" bundle.json
   bridgelab-cli validate message.hl7 --format json
-  bridgelab-cli validate \"**/*.hl7\" --format junit > results.xml
+  bridgelab-cli validate \"**/*.hl7\" --format junit --output results.xml
   bridgelab-cli validate \"inbox/*.hl7\" --no-strict";
 
 const EXAMPLES_INFO: &str = "\
@@ -137,7 +234,7 @@ const EXAMPLES_ANONYMIZE: &str = "\
 Examples:
   bridgelab-cli anonymize patient.hl7
   bridgelab-cli anonymize patient.hl7 --output patient-safe.hl7
-  cat patient.hl7 | bridgelab-cli anonymize - > patient-safe.hl7";
+  cat patient.hl7 | bridgelab-cli anonymize - --output patient-safe.hl7";
 
 const EXAMPLES_TO_JSON: &str = "\
 Examples:
@@ -152,8 +249,9 @@ Examples:
 
 const EXAMPLES_XSD: &str = "\
 Examples:
-  bridgelab-cli xsd ADT_A01 > ADT_A01.xsd
-  bridgelab-cli xsd \"ORU^R01\" --hl7-version 2.5 --output ORU_R01.xsd";
+  bridgelab-cli xsd ADT_A01 --output ADT_A01.xsd
+  bridgelab-cli xsd \"ORU^R01\" --hl7-version 2.5 --output ORU_R01.xsd
+  bridgelab-cli xsd \"ADT^A04^ADT_A01\" --output ADT_A01.xsd";
 
 const EXAMPLES_SEND: &str = "\
 Examples:
@@ -164,18 +262,18 @@ Examples:
 const EXAMPLES_TEST: &str = "\
 Examples:
   bridgelab-cli test regression.bltests.json
-  bridgelab-cli test \"packs/*.bltests.json\" --format junit > tests.xml";
+  bridgelab-cli test \"packs/*.bltests.json\" --format junit --output tests.xml";
 
 const EXAMPLES_BATCH: &str = "\
 Examples:
   bridgelab-cli batch ./messages
   bridgelab-cli batch ./messages --extension hl7,txt,dat
-  bridgelab-cli batch ./fhir --extension json --json > batch-report.json";
+  bridgelab-cli batch ./fhir --extension json --json --output batch-report.json";
 
 #[derive(Parser)]
 #[command(
     name = "bridgelab-cli",
-    version,
+    version = cli_version(),
     about = "HL7 v2 and FHIR validation, anonymization and conversion for CI/CD — the BridgeLab validators, headless",
     after_help = EXAMPLES
 )]
@@ -191,7 +289,7 @@ enum Commands {
     Validate {
         /// Files or glob patterns to validate (- for standard input)
         #[arg(required = true)]
-        paths: Vec<String>,
+        paths: Vec<OsString>,
         /// Output format
         #[arg(short, long, value_enum, ignore_case = true, default_value = "text")]
         format: Format,
@@ -218,13 +316,17 @@ enum Commands {
         /// Ignore plugin packs from the app's config directory
         #[arg(long)]
         no_plugins: bool,
+        /// Write the report to this file instead of standard output (UTF-8,
+        /// written atomically)
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
     },
     /// Show info about messages (type, version, segment count)
     #[command(after_help = EXAMPLES_INFO)]
     Info {
         /// Files or glob patterns (- for standard input)
         #[arg(required = true)]
-        paths: Vec<String>,
+        paths: Vec<OsString>,
         /// Output as JSON instead of a table
         #[arg(long)]
         json: bool,
@@ -266,7 +368,8 @@ enum Commands {
     /// ADT_A40, ORM_O01, ORU_R01 in v2.5; the full catalogue is in BridgeLab Pro)
     #[command(after_help = EXAMPLES_XSD)]
     Xsd {
-        /// Message structure, e.g. ADT_A01 (ADT^A01 is accepted too)
+        /// Message structure, e.g. ADT_A01 (ADT^A01 and a whole MSH-9 such
+        /// as ADT^A04^ADT_A01 are accepted too)
         message: String,
         /// HL7 version
         #[arg(long = "hl7-version", default_value = "2.5")]
@@ -306,7 +409,7 @@ enum Commands {
     Test {
         /// Pack files or glob patterns
         #[arg(required = true)]
-        packs: Vec<String>,
+        packs: Vec<OsString>,
         /// Output format
         #[arg(short, long, value_enum, ignore_case = true, default_value = "text")]
         format: Format,
@@ -316,6 +419,10 @@ enum Commands {
         /// Ignore plugin packs from the app's config directory
         #[arg(long)]
         no_plugins: bool,
+        /// Write the report to this file instead of standard output (UTF-8,
+        /// written atomically)
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
     },
     /// Validate every message in a directory and its subdirectories
     #[command(after_help = EXAMPLES_BATCH)]
@@ -335,14 +442,20 @@ enum Commands {
         /// Ignore plugin packs from the app's config directory
         #[arg(long)]
         no_plugins: bool,
+        /// Write the summary to this file instead of standard output
+        /// (UTF-8, written atomically)
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
     },
 }
 
 fn main() {
     let cli = Cli::parse();
     let code = match cli.command {
-        Commands::Validate { paths, format, strict, no_strict, fhir_packages, no_plugins } => {
-            cmd_validate(&paths, format, strict && !no_strict, fhir_packages.as_deref(), no_plugins)
+        Commands::Validate { paths, format, strict, no_strict, fhir_packages, no_plugins, output } => {
+            with_output(output.as_deref(), || {
+                cmd_validate(&paths, format, strict && !no_strict, fhir_packages.as_deref(), no_plugins, output.as_deref())
+            })
         }
         Commands::Info { paths, json } => cmd_info(&paths, json),
         Commands::Anonymize { input, output, no_plugins } => {
@@ -354,11 +467,15 @@ fn main() {
         Commands::Send { input, host, port, timeout, encoding, json } => {
             cmd_send(&input, &host, port, timeout, encoding.as_deref().unwrap_or(""), json)
         }
-        Commands::Test { packs, format, fhir_packages, no_plugins } => {
-            cmd_test(&packs, format, fhir_packages.as_deref(), no_plugins)
+        Commands::Test { packs, format, fhir_packages, no_plugins, output } => {
+            with_output(output.as_deref(), || {
+                cmd_test(&packs, format, fhir_packages.as_deref(), no_plugins, output.as_deref())
+            })
         }
-        Commands::Batch { dir, extension, json, fhir_packages, no_plugins } => {
-            cmd_batch(&dir, &extension, json, fhir_packages.as_deref(), no_plugins)
+        Commands::Batch { dir, extension, json, fhir_packages, no_plugins, output } => {
+            with_output(output.as_deref(), || {
+                cmd_batch(&dir, &extension, json, fhir_packages.as_deref(), no_plugins, output.as_deref())
+            })
         }
     };
     process::exit(code);
@@ -372,6 +489,8 @@ struct Engines {
     /// The note the app adds to an HL7 v2 report when packs are over the
     /// Community cap.
     cap_note: Option<Issue>,
+    /// The same note for a FHIR report, counting the packs with FHIR rules.
+    fhir_cap_note: Option<Issue>,
     profiles: ProfileRegistry,
     /// Set when `--fhir-packages` gave nothing usable: added to every FHIR
     /// report, so a mistyped path never reads as a clean run.
@@ -381,21 +500,26 @@ struct Engines {
 impl Engines {
     fn new(fhir_packages: Option<&Path>, no_plugins: bool) -> Self {
         let plugins = if no_plugins { None } else { Some(load_plugins()) };
-        let cap_note = plugins.as_ref().and_then(|r| r.cap_notice(Self::plugin_limit())).map(|n| Issue {
-            severity: severity_name(&n.severity).into(),
-            message: n.message.replace("(Settings → Plugins)", "(like the Community edition; switch packs off in the app's Settings → Plugins)"),
-            location: "-".into(),
-            rule_id: n.rule_id,
-        });
+        let note = |kind: RuleKind| {
+            plugins.as_ref().and_then(|r| r.cap_message(Self::plugin_limit(), kind)).map(|message| Issue {
+                severity: "info".into(),
+                // The note names the Community edition already: the CLI only
+                // adds that it has the same cap, and where packs are switched off.
+                message: cli_cap_note(&message),
+                location: "-".into(),
+                rule_id: plugins::CAP_RULE_ID.into(),
+            })
+        };
+        let (cap_note, fhir_cap_note) = (note(RuleKind::Hl7), note(RuleKind::Fhir));
         let profiles = ProfileRegistry::new();
         let packages_problem = fhir_packages.and_then(check_packages_dir);
         if let Some(problem) = &packages_problem {
-            eprintln!("warning: {}", problem);
+            esafeln!("warning: {}", problem);
         }
         if let Err(e) = profiles.reload_from(fhir_packages) {
-            eprintln!("warning: FHIR packages not loaded: {}", e);
+            esafeln!("warning: FHIR packages not loaded: {}", e);
         }
-        Self { plugins, cap_note, profiles, packages_problem }
+        Self { plugins, cap_note, fhir_cap_note, profiles, packages_problem }
     }
 
     /// Community edition: the same cap on active plugin packs the app
@@ -403,6 +527,17 @@ impl Engines {
     fn plugin_limit() -> Option<usize> {
         Some(COMMUNITY_MAX_ACTIVE_PLUGINS)
     }
+}
+
+/// The app's note on packs over the cap, as the CLI reports it: "the
+/// Community edition runs 3 packs at a time (Settings → Plugins)" becomes
+/// "the CLI, like the Community edition, runs 3 packs at a time (switch
+/// packs off in the app's Settings → Plugins)". It used to name the
+/// Community edition twice.
+fn cli_cap_note(message: &str) -> String {
+    message
+        .replace("the Community edition runs", "the CLI, like the Community edition, runs")
+        .replace("(Settings → Plugins)", "(switch packs off in the app's Settings → Plugins)")
 }
 
 /// Look at a `--fhir-packages` directory before it is used: each file that
@@ -418,7 +553,7 @@ fn check_packages_dir(dir: &Path) -> Option<String> {
         )),
         Ok(scan) => {
             for (path, why) in &scan.skipped {
-                eprintln!("warning: FHIR package {} not loaded: {}", path.display(), why);
+                esafeln!("warning: FHIR package {} not loaded: {}", path.display(), why);
             }
             scan.packages.is_empty().then(|| {
                 format!(
@@ -438,20 +573,29 @@ fn check_packages_dir(dir: &Path) -> Option<String> {
 fn load_plugins() -> PluginRegistry {
     let registry = PluginRegistry::new();
     if let Err(e) = registry.reload_read_only() {
-        eprintln!("warning: plugin packs not loaded: {}", e);
+        esafeln!("warning: plugin packs not loaded: {}", e);
         return registry;
+    }
+    // Read as empty, an unreadable state file switched back on every pack
+    // the app had switched off, without a word.
+    if let Some(problem) = registry.state_problem() {
+        let file = registry.state_file_path().map(|p| p.display().to_string()).unwrap_or_default();
+        esafeln!(
+            "warning: the plugin on/off choices in {} could not be read ({}): each pack runs as its own \"enabled\" says, so a pack switched off in the app may run",
+            file, problem
+        );
     }
     for p in registry.list(Engines::plugin_limit()) {
         if let Some(e) = &p.error {
-            eprintln!("warning: plugin pack {} not loaded: {}", p.path, e);
+            esafeln!("warning: plugin pack {} not loaded: {}", p.path, e);
         } else if p.gated {
-            eprintln!(
+            esafeln!(
                 "warning: plugin pack {} ({}) inactive: the CLI runs at most {} packs, like the Community edition",
                 p.name, p.path, COMMUNITY_MAX_ACTIVE_PLUGINS
             );
         }
         for w in &p.warnings {
-            eprintln!("warning: plugin pack {}: {}", p.path, w);
+            esafeln!("warning: plugin pack {}: {}", p.path, w);
         }
     }
     registry
@@ -549,7 +693,7 @@ fn validate_fhir(resource: &fhir::FhirResource, engines: &Engines) -> Report {
                 issues.extend(plugins::run_fhir_validations(json, &rules));
             }
         }
-        let (found, applied) = engines.profiles.validate_with_status(json);
+        let (found, applied) = engines.profiles.validate_with_status(json, &resource.format);
         profiles_applied = applied;
         issues.extend(found);
     }
@@ -590,6 +734,7 @@ fn validate_fhir(resource: &fhir::FhirResource, engines: &Engines) -> Report {
             rule_id: RULE_PACKAGES.into(),
         });
     }
+    issues.extend(engines.fhir_cap_note.clone());
     Report::from_issues(
         "fhir",
         resource.resource_type.clone(),
@@ -617,6 +762,28 @@ fn not_checked_notes(report: &Report) -> Vec<&Issue> {
 /// the output is the input itself.
 fn write_output(path: &Path, bytes: &[u8]) -> Result<(), String> {
     write_atomic(path, bytes).map_err(|e| format!("cannot write {}: {}", path.display(), e))
+}
+
+/// Run a command whose report goes to standard output, or to `output`
+/// when one is given. The file is written atomically, like every
+/// `--output`, and holds exactly the bytes the command wrote (UTF-8):
+/// Windows PowerShell 5.1 turns a `>` redirection into UTF-16, so a JUnit
+/// report declaring UTF-8 could not be read. A usage error (exit 2) writes
+/// nothing, so it never replaces an earlier report with an empty one.
+fn with_output(output: Option<&Path>, report: impl FnOnce() -> i32) -> i32 {
+    let Some(path) = output else { return report() };
+    let collected = Collected::start();
+    let code = report();
+    let bytes = collected.finish();
+    if code == 2 {
+        return code;
+    }
+    if let Err(e) = write_output(path, &bytes) {
+        esafeln!("Write error: {}", e);
+        return 1;
+    }
+    esafeln!("Report written to: {}", path.display());
+    code
 }
 
 /// Read a file, or standard input when the path is `-`.
@@ -647,7 +814,7 @@ fn read_message_text(path: &Path) -> Result<Decoded, String> {
     match &decoded.warning {
         Some(w) if w.is_unsupported() => Err(w.to_string()),
         Some(w) => {
-            eprintln!("warning: {}: {}", path.display(), w);
+            esafeln!("warning: {}: {}", path.display(), w);
             Ok(decoded)
         }
         None => Ok(decoded),
@@ -655,24 +822,28 @@ fn read_message_text(path: &Path) -> Result<Decoded, String> {
 }
 
 /// Like `read_input`, refusing anything larger than `max` bytes before
-/// reading it all (standard input is read up to `max` + 1 bytes).
+/// reading it all. Standard input, a named pipe or a process substitution
+/// (`<(zcat pack.json.gz)`), whose size is not known in advance, is read
+/// up to `max` + 1 bytes.
 fn read_input_limited(path: &Path, max: u64) -> Result<Vec<u8>, String> {
     let too_big = || format!("larger than {} MB", max / (1024 * 1024));
+    let mut buf = Vec::new();
     if path.as_os_str() == "-" {
-        let mut buf = Vec::new();
         std::io::Read::read_to_end(&mut std::io::Read::take(std::io::stdin(), max + 1), &mut buf)
             .map_err(|e| format!("read failed (stdin): {}", e))?;
-        if buf.len() as u64 > max {
-            return Err(too_big());
-        }
-        Ok(buf)
     } else {
         let meta = fs::metadata(path).map_err(|e| format!("read failed: {}", e))?;
         if meta.len() > max {
             return Err(too_big());
         }
-        fs::read(path).map_err(|e| format!("read failed: {}", e))
+        let file = fs::File::open(path).map_err(|e| format!("read failed: {}", e))?;
+        std::io::Read::read_to_end(&mut std::io::Read::take(file, max + 1), &mut buf)
+            .map_err(|e| format!("read failed: {}", e))?;
     }
+    if buf.len() as u64 > max {
+        return Err(too_big());
+    }
+    Ok(buf)
 }
 
 /// Parse text that is not FHIR as an HL7 v2 message. Other XML (a CDA
@@ -683,6 +854,16 @@ fn parse_hl7(text: String) -> Result<Hl7Message, String> {
         return Err("an XML document that is not a FHIR resource: BridgeLab reads HL7 v2 (ER7) messages and FHIR resources, not CDA or HL7 v2 XML".into());
     }
     Hl7Lexer::new().parse(text.into_bytes())
+}
+
+/// [`parse_hl7`] for a command that works on HL7 v2 only (`to-json`,
+/// `anonymize`, `send`): a FHIR resource is named as one, where it was
+/// reported as text that "does not start with MSH".
+fn parse_hl7_only(text: String, command: &str) -> Result<Hl7Message, String> {
+    if fhir::detect_fhir(&text).is_some() {
+        return Err(format!("a FHIR resource, not an HL7 v2 message: {} works on HL7 v2 (ER7) messages only", command));
+    }
+    parse_hl7(text)
 }
 
 /// Parse and validate one file (or stdin), whichever family it belongs to.
@@ -724,12 +905,157 @@ const NO_MATCH: &str = "no file matches this path or pattern";
 
 /// Patterns match names in any case, on every OS: `*.hl7` finds `B.HL7`
 /// and `c.Hl7`, as the app and `batch --extension` do (Windows and macOS
-/// file systems ignore case, and a skipped file would go unnoticed).
+/// file systems ignore case, and a skipped file would go unnoticed); see
+/// also [`any_case_pattern`] for the names without wildcards. Hidden names
+/// are left to [`hidden_and_not_asked_for`]: `glob`'s own option for them
+/// drops every hidden name, `.*.hl7` included, and stops at the first
+/// name that is not UTF-8.
 const GLOB_OPTIONS: glob::MatchOptions = glob::MatchOptions {
     case_sensitive: false,
     require_literal_separator: false,
     require_literal_leading_dot: false,
 };
+
+/// A name hidden by the dot convention.
+fn is_hidden(name: &OsStr) -> bool {
+    name.as_encoded_bytes().first() == Some(&b'.')
+}
+
+/// Whether `found`, a match of `pattern`, goes through a hidden file or
+/// folder the pattern does not spell with its dot. Such a name is left
+/// out: `*.hl7` took in the `._adt.hl7` files macOS leaves on shared
+/// drives and USB sticks, which are no messages and failed the run, and
+/// `**` went into `.git`. A hidden name the pattern spells (`.*.hl7`,
+/// `~/.cache/in/*.hl7`) still matches.
+///
+/// The components are lined up by position: a hidden name passes only
+/// where a pattern component starting with a dot matched it. Compared by
+/// name alone, `root/.cache/**/*.hl7` also let `root/.cache/sub/.cache/x.hl7`
+/// through, the second `.cache` being one `**` went into.
+fn hidden_and_not_asked_for(pattern: &OsStr, found: &Path) -> bool {
+    use std::path::Component;
+    let steps: Vec<HiddenStep> = Path::new(pattern)
+        .components()
+        .filter(|c| !matches!(c, Component::CurDir))
+        .map(|c| match c {
+            Component::Normal(n) if n == "**" => HiddenStep::AnyDepth,
+            Component::Normal(n) => {
+                let text = n.to_string_lossy();
+                match glob::Pattern::new(&text) {
+                    Ok(p) => HiddenStep::Name(p, is_hidden(n)),
+                    Err(_) => HiddenStep::Other,
+                }
+            }
+            _ => HiddenStep::Other,
+        })
+        .collect();
+    let names: Vec<Component> = found.components().filter(|c| !matches!(c, Component::CurDir)).collect();
+    if hidden_names_asked_for(&steps, &names, true) {
+        return false;
+    }
+    // `glob` found the path, so the pattern lines up with it once hidden
+    // names are not looked at. If it does not even then (a spelling of
+    // the path this reading does not foresee), each hidden name is judged
+    // by name, as the dotted components of the pattern spell them.
+    if hidden_names_asked_for(&steps, &names, false) {
+        return true;
+    }
+    names.iter().any(|c| match c {
+        Component::Normal(n) if is_hidden(n) => {
+            let name = n.to_string_lossy();
+            !steps.iter().any(|s| matches!(s, HiddenStep::Name(p, true) if p.matches_with(&name, GLOB_OPTIONS)))
+        }
+        _ => false,
+    })
+}
+
+/// One component of a pattern, for [`hidden_and_not_asked_for`].
+enum HiddenStep {
+    /// `**`: any number of folders, none of them hidden.
+    AnyDepth,
+    /// A name or a wildcard, and whether it starts with a dot.
+    Name(glob::Pattern, bool),
+    /// The root, a drive, `..`: taken as it is.
+    Other,
+}
+
+/// Whether `names` line up with `steps` so that every hidden name stands
+/// where a pattern component starting with a dot matched it (with
+/// `strict` false: so that they line up at all).
+fn hidden_names_asked_for(steps: &[HiddenStep], names: &[std::path::Component], strict: bool) -> bool {
+    use std::path::Component;
+    let hidden = |c: &Component| matches!(c, Component::Normal(n) if is_hidden(n));
+    let Some((step, rest)) = steps.split_first() else { return names.is_empty() };
+    match step {
+        HiddenStep::AnyDepth => {
+            hidden_names_asked_for(rest, names, strict)
+                || names.split_first().is_some_and(|(first, more)| {
+                    (!strict || !hidden(first)) && hidden_names_asked_for(steps, more, strict)
+                })
+        }
+        HiddenStep::Name(pattern, dotted) => names.split_first().is_some_and(|(first, more)| {
+            let fits = match first {
+                Component::Normal(n) => pattern.matches_with(&n.to_string_lossy(), GLOB_OPTIONS),
+                _ => false,
+            };
+            fits && (!strict || *dotted || !hidden(first)) && hidden_names_asked_for(rest, more, strict)
+        }),
+        HiddenStep::Other => names
+            .split_first()
+            .is_some_and(|(first, more)| !hidden(first) && hidden_names_asked_for(rest, more, strict)),
+    }
+}
+
+/// `pattern` with its names without wildcards matched in any case too.
+/// `glob` takes such a name as it is and looks it up, so on a file system
+/// that tells case apart (Linux) `g2/sub/*.hl7` missed `G2/Sub/x.HL7`,
+/// although `*.hl7` finds `x.HL7`. A name that exists as spelled stays as
+/// it is (a lookup, nothing to read); any other becomes a pattern that
+/// `glob` matches against the folder's entries, ignoring case. A name
+/// after a wildcard cannot be looked up in advance, so it becomes one too.
+fn any_case_pattern(pattern: &str) -> String {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    // Where the names so far lead, while each is plain and exists as spelled.
+    let mut literal = Some(PathBuf::new());
+    for c in Path::new(pattern).components() {
+        let Component::Normal(name) = c else {
+            out.push(c.as_os_str());
+            if let Some(l) = literal.as_mut() {
+                l.push(c.as_os_str());
+            }
+            continue;
+        };
+        let name = name.to_string_lossy();
+        if name.contains(['*', '?', '[']) {
+            out.push(&*name);
+            literal = None;
+            continue;
+        }
+        match literal.as_ref().map(|l| l.join(&*name)) {
+            Some(next) if fs::symlink_metadata(&next).is_ok() => {
+                out.push(&*name);
+                literal = Some(next);
+            }
+            _ => {
+                out.push(any_case_name(&name));
+                literal = None;
+            }
+        }
+    }
+    out.to_string_lossy().into_owned()
+}
+
+/// `name` as a pattern for exactly that name in any case: its first ASCII
+/// letter in brackets (`G2` → `[G]2`), which `glob` then compares ignoring
+/// case. A leading dot stays outside, so a hidden name still matches. A
+/// name without a letter has no case and stays as it is.
+fn any_case_name(name: &str) -> String {
+    match name.char_indices().find(|(_, c)| c.is_ascii_alphabetic()) {
+        Some((i, c)) => format!("{}[{}]{}", &name[..i], c, &name[i + 1..]),
+        None => name.to_string(),
+    }
+}
 
 /// The command-line paths and patterns, resolved.
 struct Inputs {
@@ -746,89 +1072,274 @@ struct Inputs {
 /// file matched twice (overlapping patterns) is read once. `Err` for a
 /// usage error: `-` given more than once, since standard input can be read
 /// only once.
-fn expand_paths(patterns: &[String]) -> Result<Inputs, String> {
+///
+/// The arguments are taken as the OS gives them, not as UTF-8 text: a file
+/// name in Latin-1 that the shell passes on Linux is read like any other,
+/// where it used to end the whole run with a usage error.
+fn expand_paths<P: AsRef<OsStr>>(patterns: &[P]) -> Result<Inputs, String> {
+    expand_paths_except(patterns, None)
+}
+
+/// What identifies a file whatever path names it: device and inode on
+/// Unix, the canonical path in lower case elsewhere (Windows file systems
+/// ignore case).
+#[cfg(unix)]
+type FileId = (u64, u64);
+#[cfg(not(unix))]
+type FileId = String;
+
+/// The identity of the file at `path`; `None` when there is none yet.
+/// Read from its metadata, without opening it: a named pipe would block.
+fn file_id(path: &Path) -> Option<FileId> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(path).ok().map(|m| (m.dev(), m.ino()))
+    }
+    #[cfg(not(unix))]
+    {
+        fs::canonicalize(path).ok().map(|p| p.to_string_lossy().to_lowercase())
+    }
+}
+
+/// The `--output` file, as input discovery must leave it out: a report
+/// written inside the folder or pattern being checked (`validate "*.json"
+/// --format json --output report.json`) was read as an input by the next
+/// run, which then failed on it. `None` when there is no such file yet.
+fn output_file(output: Option<&Path>) -> Option<FileId> {
+    output.and_then(file_id)
+}
+
+/// [`expand_paths`], leaving out the `--output` file `skip`.
+fn expand_paths_except<P: AsRef<OsStr>>(patterns: &[P], skip: Option<&FileId>) -> Result<Inputs, String> {
     let mut files = Vec::new();
     let mut unmatched = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    let mut add = |files: &mut Vec<PathBuf>, p: PathBuf| {
+    let mut noted = false;
+    // Whether `p` is taken: the --output file is not, nor a file already taken.
+    let mut add = |files: &mut Vec<PathBuf>, p: PathBuf| -> bool {
+        if skip.is_some() && file_id(&p).as_ref() == skip {
+            if !noted {
+                esafeln!("note: {} is the --output file: it is not read as an input", p.display());
+                noted = true;
+            }
+            return false;
+        }
         let key = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
         if seen.insert(key) {
             files.push(p);
         }
+        true
     };
-    if patterns.iter().filter(|p| p.as_str() == "-").count() > 1 {
+    let stdin = OsStr::new("-");
+    if patterns.iter().filter(|p| p.as_ref() == stdin).count() > 1 {
         return Err("standard input (-) can be given only once".into());
     }
-    for p in patterns {
-        if p == "-" {
+    for p in patterns.iter().map(AsRef::as_ref) {
+        if p == stdin {
             files.push(PathBuf::from("-"));
             continue;
         }
+        // As reports show it, with the bytes that are not UTF-8 as U+FFFD.
+        let shown = p.to_string_lossy().into_owned();
         let literal = PathBuf::from(p);
+        let output_named = || (shown.clone(), "the --output file, which is not read as an input".to_string());
         if literal.is_file() {
-            add(&mut files, literal);
+            if !add(&mut files, literal) {
+                unmatched.push(output_named());
+            }
             continue;
         }
         if literal.is_dir() {
-            unmatched.push((p.clone(), format!("a folder, not a file: `bridgelab-cli batch {}` checks every file in it", p)));
+            let why = format!("a folder, not a file: `bridgelab-cli batch {}` checks every file in it", shown);
+            unmatched.push((shown, why));
+            continue;
+        }
+        // Named as it is, a named pipe, a process substitution
+        // (`<(zcat msg.hl7.gz)`, a /dev/fd path) or a device is read like a
+        // file, as the commands that take one message always did. A
+        // pattern never picks one up: a pipe nobody writes to would wait
+        // for ever.
+        if fs::metadata(&literal).is_ok() {
+            if !add(&mut files, literal) {
+                unmatched.push(output_named());
+            }
             continue;
         }
         let mut matched = false;
-        match glob::glob_with(p, GLOB_OPTIONS) {
-            Ok(entries) => {
-                for entry in entries {
-                    match entry {
-                        Ok(e) if e.is_file() => {
-                            matched = true;
-                            add(&mut files, e);
+        // `glob` takes text only; a pattern that is not UTF-8 is matched
+        // by non_utf8_matches alone, which keeps its bytes.
+        let any_case = p.to_str().map(any_case_pattern);
+        let p = any_case.as_deref().map(OsStr::new).unwrap_or(p);
+        if let Some(text) = p.to_str() {
+            match glob::glob_with(text, GLOB_OPTIONS) {
+                Ok(entries) => {
+                    for entry in entries {
+                        match entry {
+                            Ok(e) if hidden_and_not_asked_for(p, &e) => {}
+                            Ok(e) if e.is_file() => {
+                                matched |= add(&mut files, e);
+                            }
+                            Ok(_) => {}
+                            // A folder on the pattern's way that cannot be
+                            // read: its files would be missing without a word.
+                            Err(e) => unmatched.push((e.path().display().to_string(), format!("cannot read: {}", e.error()))),
                         }
-                        Ok(_) => {}
-                        // A folder on the pattern's way that cannot be
-                        // read: its files would be missing without a word.
-                        Err(e) => unmatched.push((e.path().display().to_string(), format!("cannot read: {}", e.error()))),
                     }
                 }
-            }
-            Err(e) => {
-                unmatched.push((p.clone(), format!("not a valid pattern: {}", e)));
-                continue;
+                Err(e) => {
+                    unmatched.push((shown, format!("not a valid pattern: {}", e)));
+                    continue;
+                }
             }
         }
-        for f in non_utf8_matches(p) {
-            matched = true;
-            add(&mut files, f);
+        let (odd, unreadable) = non_utf8_matches(p);
+        for f in odd.into_iter().filter(|f| !hidden_and_not_asked_for(p, f)) {
+            matched |= add(&mut files, f);
+        }
+        // Under `**`, glob reads folders with such names too and has
+        // reported the ones it could not.
+        for (path, why) in unreadable {
+            if !unmatched.iter().any(|(q, _)| *q == path) {
+                unmatched.push((path, why));
+            }
         }
         if !matched {
-            unmatched.push((p.clone(), NO_MATCH.into()));
+            unmatched.push((shown, NO_MATCH.into()));
         }
     }
     Ok(Inputs { files, unmatched })
 }
 
-/// Files the last component of `pattern` matches whose names are not valid
-/// UTF-8 (possible on Linux): `glob` compares names as UTF-8 text and skips
-/// them. Matched on the name with invalid bytes shown as U+FFFD; only for
-/// a pattern whose folder part has no wildcard.
-fn non_utf8_matches(pattern: &str) -> Vec<PathBuf> {
-    let path = Path::new(pattern);
-    let (Some(parent), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str())) else {
-        return vec![];
-    };
-    if parent.to_string_lossy().contains(['*', '?', '[']) {
-        return vec![];
+/// One component of a pattern, for [`non_utf8_matches`].
+enum PatternStep {
+    /// A name without wildcards, taken as it is (as `glob` does), bytes
+    /// that are not UTF-8 included.
+    Name(OsString),
+    Wild(glob::Pattern),
+    /// `**`: any number of folders, none included.
+    AnyDepth,
+}
+
+/// Files `pattern` matches that `glob` passes over. It compares names as
+/// UTF-8 text, so on Linux it never matches a name that is not valid UTF-8:
+/// such a file is skipped in every folder, and so is every file below such
+/// a folder when a wildcard has to match the folder (`*/x.hl7`). A CI run
+/// would pass without checking them. This walks the pattern one component
+/// at a time as `glob` does, matching each name with the invalid bytes
+/// shown as U+FFFD, and keeps the files with such a name in their path:
+/// `glob` found the others. Folders on that way that cannot be read come
+/// back with the reason, as `glob` reports its own.
+///
+/// A pattern that is not UTF-8 itself (`caf\xe9/*.hl7`) never reached
+/// `glob`, so every file it matches is kept: its plain names are looked up
+/// with their bytes, its wildcards matched like the names, with U+FFFD.
+fn non_utf8_matches(pattern: &OsStr) -> (Vec<PathBuf>, Vec<(String, String)>) {
+    use std::path::Component;
+    let mut base = PathBuf::new();
+    let mut steps = Vec::new();
+    for c in Path::new(pattern).components() {
+        match c {
+            Component::Prefix(_) | Component::RootDir => base.push(c.as_os_str()),
+            Component::Normal(name) => {
+                let s = name.to_string_lossy();
+                if s == "**" {
+                    // `**/**` is `**`; walking it twice would read every
+                    // folder once per way of splitting the depth.
+                    if !matches!(steps.last(), Some(PatternStep::AnyDepth)) {
+                        steps.push(PatternStep::AnyDepth);
+                    }
+                } else if s.contains(['*', '?', '[']) {
+                    match glob::Pattern::new(&s) {
+                        Ok(p) => steps.push(PatternStep::Wild(p)),
+                        Err(_) => return (vec![], vec![]),
+                    }
+                } else {
+                    steps.push(PatternStep::Name(name.to_os_string()));
+                }
+            }
+            // `.` and `..`
+            other => steps.push(PatternStep::Name(other.as_os_str().to_os_string())),
+        }
     }
-    let Ok(pat) = glob::Pattern::new(name) else { return vec![] };
-    let dir = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
-    let Ok(entries) = fs::read_dir(dir) else { return vec![] };
-    let mut out: Vec<PathBuf> = entries
-        .flatten()
-        .filter(|e| e.file_name().to_str().is_none())
-        .filter(|e| pat.matches_with(&e.file_name().to_string_lossy(), GLOB_OPTIONS))
-        .map(|e| parent.join(e.file_name()))
-        .filter(|f| f.is_file())
-        .collect();
-    out.sort();
-    out
+    let mut walk = NonUtf8Walk { files: vec![], unreadable: vec![], visited: Default::default() };
+    walk.step(&base, &steps, pattern.to_str().is_none());
+    walk.files.sort();
+    (walk.files, walk.unreadable)
+}
+
+/// What [`non_utf8_matches`] found so far.
+struct NonUtf8Walk {
+    files: Vec<PathBuf>,
+    unreadable: Vec<(String, String)>,
+    /// Folders `**` went through: a symbolic link back up the tree must
+    /// not send it round for ever.
+    visited: std::collections::HashSet<PathBuf>,
+}
+
+impl NonUtf8Walk {
+    /// Match `steps` from `dir`. `odd` is set once a name on the way is not
+    /// valid UTF-8.
+    fn step(&mut self, dir: &Path, steps: &[PatternStep], odd: bool) {
+        let Some((step, rest)) = steps.split_first() else {
+            if odd && dir.is_file() {
+                self.files.push(dir.to_path_buf());
+            }
+            return;
+        };
+        match step {
+            PatternStep::Name(name) => {
+                let next = dir.join(name);
+                if rest.is_empty() || next.is_dir() {
+                    self.step(&next, rest, odd);
+                }
+            }
+            PatternStep::Wild(pattern) => {
+                for (child, utf8, is_dir) in self.children(dir, odd) {
+                    let name = child.file_name().unwrap_or_default().to_string_lossy();
+                    if pattern.matches_with(&name, GLOB_OPTIONS) && (rest.is_empty() || is_dir) {
+                        self.step(&child, rest, odd || !utf8);
+                    }
+                }
+            }
+            PatternStep::AnyDepth => {
+                self.step(dir, rest, odd);
+                if !self.visited.insert(fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf())) {
+                    return;
+                }
+                for (child, utf8, is_dir) in self.children(dir, odd) {
+                    if is_dir {
+                        self.step(&child, steps, odd || !utf8);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The entries of `dir`: path, whether the name is valid UTF-8, whether
+    /// it is a folder (following a symbolic link, as `glob` does). A folder
+    /// that cannot be read is noted when `glob` may not have seen it.
+    fn children(&mut self, dir: &Path, odd: bool) -> Vec<(PathBuf, bool, bool)> {
+        let readable = if dir.as_os_str().is_empty() { Path::new(".") } else { dir };
+        match fs::read_dir(readable) {
+            Ok(entries) => entries
+                .flatten()
+                .map(|e| {
+                    let is_dir = match e.file_type() {
+                        Ok(t) if !t.is_symlink() => t.is_dir(),
+                        _ => e.path().is_dir(),
+                    };
+                    (dir.join(e.file_name()), e.file_name().to_str().is_some(), is_dir)
+                })
+                .collect(),
+            Err(e) => {
+                if odd {
+                    self.unreadable.push((dir.display().to_string(), format!("cannot read: {}", e)));
+                }
+                vec![]
+            }
+        }
+    }
 }
 
 /// One row of a `validate` run: a file (or an argument that matched none)
@@ -840,11 +1351,18 @@ struct ValidateRow {
     missing: bool,
 }
 
-fn cmd_validate(patterns: &[String], format: Format, strict: bool, fhir_packages: Option<&Path>, no_plugins: bool) -> i32 {
-    let inputs = match expand_paths(patterns) {
+fn cmd_validate(
+    patterns: &[OsString],
+    format: Format,
+    strict: bool,
+    fhir_packages: Option<&Path>,
+    no_plugins: bool,
+    output: Option<&Path>,
+) -> i32 {
+    let inputs = match expand_paths_except(patterns, output_file(output).as_ref()) {
         Ok(i) => i,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 2;
         }
     };
@@ -930,7 +1448,7 @@ fn print_validate_json(rows: &[ValidateRow]) {
             parse_error: r.result.as_ref().err(),
         })
         .collect();
-    outln!("{}", serde_json::to_string_pretty(&rows).unwrap_or_default());
+    outln!("{}", json_text(&rows));
 }
 
 /// One testcase per file, named by its path as given. A file with errors
@@ -1036,6 +1554,9 @@ fn xml_escape(s: &str) -> String {
             '\n' => out.push_str("&#10;"),
             '\r' => out.push_str("&#13;"),
             c if (c as u32) < 0x20 || c == '\u{FFFE}' || c == '\u{FFFF}' => out.push('\u{FFFD}'),
+            // XML allows these, but raw they reach a terminal that shows
+            // the report; as references they read back the same.
+            c if is_del_or_c1(c) => out.push_str(&format!("&#{};", c as u32)),
             c => out.push(c),
         }
     }
@@ -1129,11 +1650,11 @@ fn info_for(path: &Path) -> InfoRecord {
     }
 }
 
-fn cmd_info(patterns: &[String], as_json: bool) -> i32 {
+fn cmd_info(patterns: &[OsString], as_json: bool) -> i32 {
     let inputs = match expand_paths(patterns) {
         Ok(i) => i,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 2;
         }
     };
@@ -1144,7 +1665,7 @@ fn cmd_info(patterns: &[String], as_json: bool) -> i32 {
     }
 
     if as_json {
-        outln!("{}", serde_json::to_string_pretty(&records).unwrap_or_default());
+        outln!("{}", json_text(&records));
     } else {
         outln!(
             "{:<50} {:<5} {:<20} {:<8} {:<9} {:<10} {}",
@@ -1203,14 +1724,14 @@ fn cmd_anonymize(input: &Path, output: Option<&Path>, no_plugins: bool) -> i32 {
     let Decoded { text, charset: source_charset, .. } = match read_message_text(input) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Error: not anonymized: {}", e);
+            esafeln!("Error: not anonymized: {}", e);
             return 1;
         }
     };
-    let msg = match Hl7Lexer::new().parse(text.into_bytes()) {
+    let msg = match parse_hl7_only(text, "anonymize") {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("Parse error: {}", e);
+            esafeln!("Parse error: {}", e);
             return 1;
         }
     };
@@ -1233,10 +1754,10 @@ fn cmd_anonymize(input: &Path, output: Option<&Path>, no_plugins: bool) -> i32 {
     match output {
         Some(path) => {
             if let Err(e) = write_output(path, &bytes) {
-                eprintln!("Write error: {}", e);
+                esafeln!("Write error: {}", e);
                 return 1;
             }
-            eprintln!("Anonymized written to: {}", path.display());
+            esafeln!("Anonymized written to: {}", path.display());
         }
         None => {
             use std::io::Write;
@@ -1265,22 +1786,26 @@ fn cmd_to_json(input: &Path, output: Option<&Path>) -> i32 {
     let content = match read_message_text(input) {
         Ok(c) => c.text,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 1;
         }
     };
-    let msg = match Hl7Lexer::new().parse(content.into_bytes()) {
+    let msg = match parse_hl7_only(content, "to-json") {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("Parse error: {}", e);
+            esafeln!("Parse error: {}", e);
             return 1;
         }
     };
+    let messages = bridgelab_lib::parser::hl7::export::message_count(&msg);
+    if messages > 1 {
+        esafeln!("note: the input holds {} messages: the JSON is an array, one document per message", messages);
+    }
 
     let json_str = match bridgelab_lib::parser::hl7::export::to_json(&msg) {
-        Ok(j) => j,
+        Ok(j) => json_controls_escaped(j),
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 1;
         }
     };
@@ -1288,10 +1813,10 @@ fn cmd_to_json(input: &Path, output: Option<&Path>) -> i32 {
     match output {
         Some(path) => {
             if let Err(e) = write_output(path, json_str.as_bytes()) {
-                eprintln!("Write error: {}", e);
+                esafeln!("Write error: {}", e);
                 return 1;
             }
-            eprintln!("JSON written to: {}", path.display());
+            esafeln!("JSON written to: {}", path.display());
         }
         None => outln!("{}", json_str),
     }
@@ -1335,14 +1860,24 @@ fn parse_extensions(list: &str) -> Vec<String> {
         .collect()
 }
 
-fn cmd_batch(dir: &Path, extension: &str, as_json: bool, fhir_packages: Option<&Path>, no_plugins: bool) -> i32 {
+fn cmd_batch(
+    dir: &Path,
+    extension: &str,
+    as_json: bool,
+    fhir_packages: Option<&Path>,
+    no_plugins: bool,
+    output: Option<&Path>,
+) -> i32 {
+    // Taken before the walk: the report of the previous run, written in
+    // the folder, is not one of its messages.
+    let skip = output_file(output);
     if !dir.is_dir() {
-        eprintln!("Error: not a directory: {}", dir.display());
+        esafeln!("Error: not a directory: {}", dir.display());
         return 2;
     }
     let extensions = parse_extensions(extension);
     if extensions.is_empty() {
-        eprintln!("Error: --extension names no extension");
+        esafeln!("Error: --extension names no extension");
         return 2;
     }
     let engines = Engines::new(fhir_packages, no_plugins);
@@ -1354,8 +1889,12 @@ fn cmd_batch(dir: &Path, extension: &str, as_json: bool, fhir_packages: Option<&
 
     // Subdirectories included, symbolic links followed, in name order so
     // two runs list the files alike. A file or folder that cannot be read
-    // is a failed entry, not a silent gap.
-    for entry in walkdir::WalkDir::new(dir).follow_links(true).sort_by_file_name() {
+    // is a failed entry, not a silent gap. Hidden files and folders (the
+    // `._name.hl7` macOS leaves beside each file on other file systems,
+    // `.git`) are not messages, as for patterns: below the folder given,
+    // they are passed over.
+    let walk = walkdir::WalkDir::new(dir).follow_links(true).sort_by_file_name().into_iter();
+    for entry in walk.filter_entry(|e| e.depth() == 0 || !is_hidden(e.file_name())) {
         let entry = match entry {
             Ok(e) => e,
             Err(e) => {
@@ -1377,6 +1916,10 @@ fn cmd_batch(dir: &Path, extension: &str, as_json: bool, fhir_packages: Option<&
         let path = entry.path();
         let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
         if !ext.map(|e| extensions.contains(&e)).unwrap_or(false) {
+            continue;
+        }
+        if skip.is_some() && file_id(path) == skip {
+            esafeln!("note: {} is the --output file: it is not read as an input", path.display());
             continue;
         }
         let mut record =
@@ -1421,7 +1964,7 @@ fn cmd_batch(dir: &Path, extension: &str, as_json: bool, fhir_packages: Option<&
     };
 
     if as_json {
-        outln!("{}", serde_json::to_string_pretty(&summary).unwrap_or_default());
+        outln!("{}", json_text(&summary));
     } else {
         outln!("Batch validation summary:");
         outln!("  Total files:    {}", summary.total_files);
@@ -1445,7 +1988,7 @@ fn cmd_batch(dir: &Path, extension: &str, as_json: bool, fhir_packages: Option<&
     if summary.total_files == 0 {
         // Nothing checked is not a pass: a wrong folder or extension in a
         // CI job must not turn green.
-        eprintln!(
+        esafeln!(
             "Error: no file with the extension {} in {}",
             extensions.iter().map(|e| format!(".{}", e)).collect::<Vec<_>>().join(", "),
             dir.display()
@@ -1466,7 +2009,7 @@ fn cmd_fhirpath(expression: &str, input: &Path, as_json: bool) -> i32 {
     let text = match read_text(input) {
         Ok(d) => d.text,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 1;
         }
     };
@@ -1479,19 +2022,19 @@ fn cmd_fhirpath(expression: &str, input: &Path, as_json: bool) -> i32 {
     let json = match parsed.map(|r| r.json_value) {
         Ok(Some(j)) => j,
         Ok(None) => {
-            eprintln!("Error: the resource could not be read as a JSON tree");
+            esafeln!("Error: the resource could not be read as a JSON tree");
             return 1;
         }
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 1;
         }
     };
     let result = fhir::fhirpath::evaluate(expression, &json);
     if as_json {
-        outln!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
+        outln!("{}", json_text(&result));
     } else if let Some(e) = &result.error {
-        eprintln!("FHIRPath error: {}", e);
+        esafeln!("FHIRPath error: {}", e);
     } else {
         for v in &result.results {
             match v {
@@ -1507,19 +2050,33 @@ fn cmd_fhirpath(expression: &str, input: &Path, as_json: bool) -> i32 {
 // ---------------------------------------------------------------------------
 // xsd
 
+/// The message structure an `xsd` argument names: `ADT_A01` as it is,
+/// `ADT^A01` as `ADT_A01`, and a whole MSH-9 such as `ADT^A04^ADT_A01` by
+/// its third component, the structure (A04 uses the A01 structure); it
+/// used to become `ADT_A04_ADT_A01`, which no catalogue holds.
+fn message_structure(message: &str) -> String {
+    let parts: Vec<&str> = message.trim().split('^').map(str::trim).collect();
+    let code = match parts.as_slice() {
+        [_, _, structure, ..] if !structure.is_empty() => structure.to_string(),
+        [code, event, ..] if !event.is_empty() => format!("{}_{}", code, event),
+        _ => parts[0].to_string(),
+    };
+    code.to_uppercase()
+}
+
 fn cmd_xsd(message: &str, version: &str, output: Option<&Path>) -> i32 {
     let Some(v) = Hl7Version::parse(version) else {
-        eprintln!("Error: unknown HL7 version '{}' (e.g. 2.3, 2.5.1, 2.7)", version);
+        esafeln!("Error: unknown HL7 version '{}' (e.g. 2.3, 2.5.1, 2.7)", version);
         return 2;
     };
-    let code = message.trim().to_uppercase().replace('^', "_");
+    let code = message_structure(message);
     let schema = hl7schema::cached(v);
     if schema.message(&code).is_none() {
-        eprintln!("Error: message '{}' not found in HL7 v{}", code, v.as_str());
+        esafeln!("Error: message '{}' not found in HL7 v{}", code, v.as_str());
         return 2;
     }
     if !hl7schema::xsd_in_community(v, &code) {
-        eprintln!(
+        esafeln!(
             "Error: the CLI exports the Community set ({} in v2.5). {} v{} is part of the full XSD catalogue in BridgeLab Pro.",
             hl7schema::COMMUNITY_XSD_MESSAGES_V2_5.join(", "),
             code,
@@ -1530,17 +2087,17 @@ fn cmd_xsd(message: &str, version: &str, output: Option<&Path>) -> i32 {
     let xsd = match hl7schema::xsd::generate_xsd(schema, &code) {
         Ok(x) => x,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 1;
         }
     };
     match output {
         Some(path) => {
             if let Err(e) = write_output(path, xsd.as_bytes()) {
-                eprintln!("Write error: {}", e);
+                esafeln!("Write error: {}", e);
                 return 1;
             }
-            eprintln!("XSD written to: {}", path.display());
+            esafeln!("XSD written to: {}", path.display());
         }
         None => out!("{}", xsd),
     }
@@ -1565,6 +2122,54 @@ struct SendReport {
     /// fields above are those of the last one, the failing one if any).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     results: Vec<SendReport>,
+    /// Why nothing was sent, when a check of the messages' charsets refused
+    /// the file before anything went out (`control_id` is then the MSH-10
+    /// of the message concerned).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    refused: Option<SendRefusal>,
+}
+
+/// A file refused before sending for the charsets its messages declare.
+#[derive(Serialize, Clone)]
+struct SendRefusal {
+    /// `charset_not_written`: a message's MSH-18 names a charset BridgeLab
+    /// cannot send in. `mixed_charsets`: sent in the file's one charset, a
+    /// message would reach the receiver in other bytes than its MSH-18 says.
+    reason: &'static str,
+    /// The message concerned, from 1.
+    message: usize,
+    /// Its MSH-18, null when empty.
+    declared: Option<String>,
+    /// The charset its MSH-18 means (mixed_charsets only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    charset: Option<String>,
+    /// The charset the file would be sent in (mixed_charsets only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sent_in: Option<String>,
+}
+
+/// A send refused before anything went out: with --json the report on
+/// standard output, as every send gives one; otherwise the reason on
+/// standard error. Returns the exit code.
+fn send_refused(host: &str, port: u16, as_json: bool, error: String, control_id: Option<String>, refused: Option<SendRefusal>) -> i32 {
+    if as_json {
+        let report = SendReport {
+            host: host.into(),
+            port,
+            delivered: false,
+            ack_code: None,
+            response_time_ms: 0,
+            response: String::new(),
+            error: Some(error),
+            control_id: control_id.unwrap_or_default(),
+            results: vec![],
+            refused,
+        };
+        outln!("{}", json_text(&report));
+    } else {
+        esafeln!("Error: {}", error);
+    }
+    1
 }
 
 /// Envelope segments of an HL7 batch file: they frame messages in a file,
@@ -1595,18 +2200,19 @@ fn split_messages(text: &str) -> (Vec<String>, usize) {
 
 fn cmd_send(input: &Path, host: &str, port: u16, timeout: u64, encoding: &str, as_json: bool) -> i32 {
     if !encoding.is_empty() && !charset::is_known_label(encoding) {
-        eprintln!("Error: unknown encoding '{}' (e.g. UTF-8, ISO-8859-1, windows-1252, ASCII)", encoding);
+        esafeln!("Error: unknown encoding '{}' (e.g. UTF-8, ISO-8859-1, windows-1252, ASCII)", encoding);
         return 2;
     }
     let Decoded { text, charset: source_charset, .. } = match read_message_text(input) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Error: not sent: {}", e);
+            esafeln!("Error: not sent: {}", e);
             return 1;
         }
     };
     // Messages on disk often use \n or \r\n between segments; HL7 wants \r.
     let text = text.replace("\r\n", "\r").replace('\n', "\r");
+    let encoding_given = !encoding.trim().is_empty();
     // Without --encoding, a message read in a legacy charset goes out in
     // that same charset: the one its MSH-18 declares to the receiver. A
     // UTF-16 file (Notepad's "Unicode") is converted: to the charset its
@@ -1625,11 +2231,71 @@ fn cmd_send(input: &Path, host: &str, port: u16, timeout: u64, encoding: &str, a
     // one frame each, and each must be acknowledged.
     let (messages, dropped) = split_messages(&text);
     if messages.is_empty() {
-        eprintln!("Error: the input holds no message");
+        esafeln!("Error: the input holds no message");
         return 1;
     }
+    // Without --encoding the wire charset comes from the messages: one
+    // whose MSH-18 names a charset BridgeLab does not write is refused, as
+    // in the app, not sent as UTF-8 under a header that says otherwise.
+    // Every message is checked before any goes out (reading the file looks
+    // at the first header only, and a UTF-16 file not even at that one).
+    if !encoding_given {
+        for (i, message) in messages.iter().enumerate() {
+            if let Some(unwritten) = mllp::msh18_charset_not_written(message) {
+                let which = mllp::UnwrittenCharset { message: i + 1, ..unwritten };
+                let error = format!("not sent: {}; no message of the file was sent; correct MSH-18, or give --encoding", which);
+                let refused = SendRefusal {
+                    reason: "charset_not_written",
+                    message: which.message,
+                    declared: Some(which.charset.clone()),
+                    charset: None,
+                    sent_in: None,
+                };
+                return send_refused(host, port, as_json, error, which.control_id, Some(refused));
+            }
+        }
+        // Every message goes out in the one charset chosen for the file: a
+        // later one declaring another would reach the receiver in the wrong
+        // bytes, unless its text reads the same in both (plain ASCII). An
+        // empty MSH-18 means the file's charset.
+        let wire = if encoding.is_empty() { "UTF-8" } else { encoding };
+        if let Some(mixed) = mllp::mixed_declared_charsets(&messages.concat(), source_charset.as_deref(), wire) {
+            let error = format!(
+                "not sent: {}; the file is sent in one charset, so no message of it was sent; send the messages in separate files, or give --encoding",
+                mixed
+            );
+            let refused = SendRefusal {
+                reason: "mixed_charsets",
+                message: mixed.message,
+                declared: mixed.declared.clone(),
+                charset: Some(mixed.charset.clone()),
+                sent_in: Some(mixed.sent_in.clone()),
+            };
+            return send_refused(host, port, as_json, error, mixed.control_id.clone(), Some(refused));
+        }
+    }
     if dropped > 0 {
-        eprintln!("note: {} batch envelope segment(s) (FHS/BHS/BTS/FTS) not sent: MLLP carries one message per frame", dropped);
+        esafeln!("note: {} batch envelope segment(s) (FHS/BHS/BTS/FTS) not sent: MLLP carries one message per frame", dropped);
+    }
+    // Each message must be HL7 v2 before anything goes out. Text that is
+    // not has no MSH-10, so the ACK check was skipped, and a peer that
+    // acknowledges whatever it gets made "hello world" a delivered,
+    // accepted message (exit 0).
+    let mut control_ids = Vec::with_capacity(messages.len());
+    for (i, message) in messages.iter().enumerate() {
+        match parse_hl7_only(message.clone(), "send") {
+            Ok(m) => control_ids.push(
+                m.segments
+                    .first()
+                    .and_then(|msh| msh.fields.iter().find(|f| f.position == 10))
+                    .map(|f| f.span.as_str(&m.raw).trim().to_string())
+                    .unwrap_or_default(),
+            ),
+            Err(e) if messages.len() > 1 => {
+                return send_refused(host, port, as_json, format!("not sent: message {} of {} is not an HL7 v2 message ({})", i + 1, messages.len(), e), None, None)
+            }
+            Err(e) => return send_refused(host, port, as_json, format!("not sent: the input is not an HL7 v2 message ({})", e), None, None),
+        }
     }
     // Refused before anything goes out, as in the app: a patient's name
     // must not reach the receiver with '?' in it.
@@ -1647,62 +2313,27 @@ fn cmd_send(input: &Path, host: &str, port: u16, timeout: u64, encoding: &str, a
             lost.len(),
             shown
         );
-        if as_json {
-            let report = SendReport {
-                host: host.into(),
-                port,
-                delivered: false,
-                ack_code: None,
-                response_time_ms: 0,
-                response: String::new(),
-                error: Some(error),
-                control_id: String::new(),
-                results: vec![],
-            };
-            outln!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
-        } else {
-            esafeln!("Error: {}", error);
-        }
-        return 1;
+        return send_refused(host, port, as_json, error, None, None);
     }
 
     let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 1;
         }
     };
     let total = messages.len();
     let mut reports: Vec<SendReport> = Vec::new();
     let mut all_accepted = true;
-    for (i, message) in messages.iter().enumerate() {
-        let control_id = Hl7Lexer::new()
-            .parse(message.clone().into_bytes())
-            .ok()
-            .and_then(|m| {
-                m.segments.first().and_then(|msh| msh.fields.iter().find(|f| f.position == 10)).map(|f| f.span.as_str(&m.raw).trim().to_string())
-            })
-            .unwrap_or_default();
+    for (i, (message, control_id)) in messages.iter().zip(control_ids).enumerate() {
         let result = runtime.block_on(mllp::send(host, port, message, timeout, encoding));
-        let ack_code = if result.success { bridgelab_lib::parser::hl7::ack::ack_code_of(&result.response) } else { None };
-        let mut error = result.error.clone();
-        if result.success && ack_code.is_none() && error.is_none() {
-            error = Some("the reply is not an HL7 acknowledgement (no MSA segment with an acknowledgement code)".into());
-        }
-        let mut accepted = matches!(ack_code.as_deref(), Some("AA") | Some("CA"));
-        // An ACK for another message is not an acceptance of this one.
-        if accepted {
-            if let Some(acked) = bridgelab_lib::parser::hl7::ack::acknowledged_control_id(&result.response) {
-                if !control_id.is_empty() && acked != control_id {
-                    accepted = false;
-                    error = Some(format!(
-                        "the ACK acknowledges message control ID {}, not {} (MSA-2 does not match MSH-10)",
-                        acked, control_id
-                    ));
-                }
-            }
-        }
+        let ack_code = if result.success { result.ack_code.clone() } else { None };
+        // A reply that is not HL7, or the ACK of another message, accepts
+        // nothing sent here: the library checks it for the app and the CLI
+        // alike (MSA-1 present, MSA-2 equal to MSH-10).
+        let error = result.error.clone().or_else(|| result.reply_problem.as_ref().map(ToString::to_string));
+        let accepted = result.reply_problem.is_none() && matches!(ack_code.as_deref(), Some("AA") | Some("CA"));
         let report = SendReport {
             host: host.into(),
             port,
@@ -1713,13 +2344,15 @@ fn cmd_send(input: &Path, host: &str, port: u16, timeout: u64, encoding: &str, a
             error,
             control_id: control_id.clone(),
             results: vec![],
+            refused: None,
         };
         if !as_json {
             let which = if total > 1 { format!("message {}/{} ", i + 1, total) } else { String::new() };
             if !result.success {
                 esafeln!("Send {}failed: {}", which, report.error.as_deref().unwrap_or("unknown error"));
             } else {
-                eprintln!(
+                // MSA-1 is the peer's text, as it sent it.
+                esafeln!(
                     "Sent {}to {}:{} in {} ms — ACK {}",
                     which,
                     host,
@@ -1737,7 +2370,7 @@ fn cmd_send(input: &Path, host: &str, port: u16, timeout: u64, encoding: &str, a
         if !accepted {
             all_accepted = false;
             if total > 1 && i + 1 < total {
-                eprintln!("Stopped: {} of {} message(s) not sent", total - i - 1, total);
+                esafeln!("Stopped: {} of {} message(s) not sent", total - i - 1, total);
             }
             break;
         }
@@ -1749,7 +2382,7 @@ fn cmd_send(input: &Path, host: &str, port: u16, timeout: u64, encoding: &str, a
             reports.push(last.clone());
             last.results = reports;
         }
-        outln!("{}", serde_json::to_string_pretty(&last).unwrap_or_default());
+        outln!("{}", json_text(&last));
     }
     if all_accepted { 0 } else { 1 }
 }
@@ -1801,11 +2434,17 @@ fn failure_details(report: &Report) -> Vec<String> {
     details
 }
 
-fn cmd_test(patterns: &[String], format: Format, fhir_packages: Option<&Path>, no_plugins: bool) -> i32 {
-    let inputs = match expand_paths(patterns) {
+fn cmd_test(
+    patterns: &[OsString],
+    format: Format,
+    fhir_packages: Option<&Path>,
+    no_plugins: bool,
+    output: Option<&Path>,
+) -> i32 {
+    let inputs = match expand_paths_except(patterns, output_file(output).as_ref()) {
         Ok(i) => i,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            esafeln!("Error: {}", e);
             return 2;
         }
     };
@@ -1872,7 +2511,7 @@ fn cmd_test(patterns: &[String], format: Format, fhir_packages: Option<&Path>, n
             let errors: Vec<_> = load_errors.iter().map(|(f, e)| serde_json::json!({ "pack": f, "error": e })).collect();
             outln!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
+                json_text(&serde_json::json!({
                     "total": total,
                     "passed": passed,
                     "failed": failed,
@@ -1880,7 +2519,6 @@ fn cmd_test(patterns: &[String], format: Format, fhir_packages: Option<&Path>, n
                     "pack_errors": errors,
                     "results": results,
                 }))
-                .unwrap_or_default()
             );
         }
         Format::Junit => {
@@ -1949,6 +2587,16 @@ fn cmd_test(patterns: &[String], format: Format, fhir_packages: Option<&Path>, n
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_cap_note_names_the_community_edition_once() {
+        let note = cli_cap_note("1 plugin pack not applied: the Community edition runs 3 packs at a time (Settings → Plugins)");
+        assert_eq!(
+            note,
+            "1 plugin pack not applied: the CLI, like the Community edition, runs 3 packs at a time (switch packs off in the app's Settings → Plugins)"
+        );
+        assert_eq!(note.matches("Community edition").count(), 1);
+    }
+
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("bl-cli-{}-{}", name, std::process::id()));
         let _ = fs::remove_dir_all(&d);
@@ -2000,6 +2648,293 @@ mod tests {
         assert!(checked >= 25, "only {checked} examples checked");
     }
 
+    /// Windows PowerShell 5.1 writes a `>` redirection as UTF-16: a JUnit
+    /// report that declares UTF-8 could not be read, so the examples use
+    /// --output, which every command that writes a report or a file has.
+    #[test]
+    fn help_examples_write_files_with_output_not_redirection() {
+        let all = [
+            EXAMPLES, EXAMPLES_VALIDATE, EXAMPLES_INFO, EXAMPLES_ANONYMIZE, EXAMPLES_TO_JSON,
+            EXAMPLES_FHIRPATH, EXAMPLES_XSD, EXAMPLES_SEND, EXAMPLES_TEST, EXAMPLES_BATCH,
+        ];
+        for line in all.iter().flat_map(|t| t.lines()) {
+            assert!(!line.contains(" > "), "redirects: {line}");
+        }
+        for command in ["validate", "test", "batch", "anonymize", "to-json", "xsd"] {
+            let args = ["bridgelab-cli", command, "x", "--output", "out"];
+            let parsed = Cli::try_parse_from(args);
+            assert!(parsed.is_ok(), "{command} has no --output: {:?}", parsed.err().map(|e| e.to_string()));
+        }
+    }
+
+    /// --output for a report: the bytes the command printed, in a file
+    /// written atomically; a usage error writes nothing.
+    #[test]
+    fn a_report_goes_to_its_output_file() {
+        let d = tmp("report-out");
+        let msg = d.join("m.hl7");
+        fs::write(&msg, "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1||1^^^H^MR||Doe^Jo||19800101|F\r").unwrap();
+        let out = d.join("results.xml");
+        let code = with_output(Some(&out), || {
+            cmd_validate(&[msg.clone().into_os_string()], Format::Junit, true, None, true, Some(&out))
+        });
+        assert_eq!(code, 0);
+        let xml = fs::read_to_string(&out).unwrap();
+        assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<testsuites"), "{xml}");
+        assert!(xml.ends_with("</testsuites>\n"), "{xml}");
+        // `-` twice is a usage error: the earlier report stays.
+        let dash = OsString::from("-");
+        let code = with_output(Some(&out), || {
+            cmd_validate(&[dash.clone(), dash.clone()], Format::Junit, true, None, true, Some(&out))
+        });
+        assert_eq!(code, 2);
+        assert_eq!(fs::read_to_string(&out).unwrap(), xml);
+        // Nothing is left collecting: the next report prints again.
+        assert!(CAPTURE.with(|c| c.borrow().is_none()));
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// A report written inside the pattern or folder being checked was
+    /// read as an input by the next run, which failed on it: a green CI
+    /// run turned red the second time. The second run now gives the same
+    /// exit code and the same report, whatever path names the report.
+    #[test]
+    fn a_report_inside_the_inputs_is_not_read_back() {
+        let d = tmp("report-inside");
+        let adt = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rEVN|A01|20240101\rPID|1||1^^^H^MR||Doe^Jo||19800101|F\r";
+        fs::write(d.join("p.json"), "{\"resourceType\": \"Patient\", \"id\": \"p\"}").unwrap();
+        fs::write(d.join("a.hl7"), adt).unwrap();
+        let pack = serde_json::json!({"format": "bridgelab-test-cases", "format_version": 1,
+            "test_cases": [{"name": "admit", "content": adt, "expected_message_type": "ADT^A01"}]});
+        let packs_dir = tmp("report-inside-packs");
+        fs::write(packs_dir.join("cases.json"), pack.to_string()).unwrap();
+
+        let report = d.join("report.json");
+        let twice = |run: &dyn Fn(&Path) -> i32, out: &Path| {
+            let _ = fs::remove_file(out);
+            // The same file under another spelling, for the last run.
+            let folder = out.parent().unwrap();
+            fs::create_dir_all(folder.join("sub")).unwrap();
+            let respelled = folder.join("sub").join("..").join(out.file_name().unwrap());
+            let first = (with_output(Some(out), || run(out)), fs::read(out).unwrap());
+            for again in [out, respelled.as_path()] {
+                let next = (with_output(Some(again), || run(again)), fs::read(out).unwrap());
+                assert_eq!(first, next, "{}", String::from_utf8_lossy(&next.1));
+            }
+            first.0
+        };
+
+        let all_json = OsString::from(format!("{}/*.json", d.display()));
+        let validate = |out: &Path| cmd_validate(std::slice::from_ref(&all_json), Format::Json, true, None, true, Some(out));
+        assert_eq!(twice(&validate, &report), 0);
+
+        let batch = |out: &Path| cmd_batch(&d, "json", true, None, true, Some(out));
+        assert_eq!(twice(&batch, &report), 0);
+
+        let pack_report = packs_dir.join("results.json");
+        let packs = OsString::from(format!("{}/*.json", packs_dir.display()));
+        let test = |out: &Path| cmd_test(std::slice::from_ref(&packs), Format::Json, None, true, Some(out));
+        assert_eq!(twice(&test, &pack_report), 0);
+
+        // Named as it is, the report is not read either: an input error,
+        // as on the first run, when it did not exist yet.
+        let named = [d.join("p.json").into_os_string(), report.clone().into_os_string()];
+        let validate_named = |out: &Path| cmd_validate(&named, Format::Text, true, None, true, Some(out));
+        let _ = fs::remove_file(&report);
+        assert_eq!(with_output(Some(&report), || validate_named(&report)), 1);
+        assert_eq!(with_output(Some(&report), || validate_named(&report)), 1);
+        let text = fs::read_to_string(&report).unwrap();
+        assert!(text.contains("INPUT ERROR: the --output file"), "{text}");
+        fs::remove_dir_all(&d).ok();
+        fs::remove_dir_all(&packs_dir).ok();
+    }
+
+    /// `*.hl7` took in the `._name.hl7` files macOS leaves on shared
+    /// drives, which are no messages and failed the run; `**` went into
+    /// `.git`. A hidden name matches only a pattern that spells the dot.
+    #[test]
+    fn patterns_leave_hidden_files_and_folders_out() {
+        let d = tmp("hidden");
+        fs::create_dir_all(d.join(".git")).unwrap();
+        fs::create_dir_all(d.join("sub")).unwrap();
+        for f in ["a.hl7", "._a.hl7", ".git/b.hl7", "sub/c.hl7", "sub/._c.hl7"] {
+            fs::write(d.join(f), "MSH|^~\\&|").unwrap();
+        }
+        let names = |pattern: &str| {
+            let inputs = expand_paths(&[format!("{}/{}", d.display(), pattern)]).unwrap();
+            let mut n: Vec<String> =
+                inputs.files.iter().map(|f| f.strip_prefix(&d).unwrap().display().to_string()).collect();
+            n.sort();
+            n
+        };
+        assert_eq!(names("*.hl7"), ["a.hl7"]);
+        assert_eq!(names("**/*.hl7"), ["a.hl7", "sub/c.hl7"]);
+        assert_eq!(names(".*.hl7"), ["._a.hl7"]);
+        assert_eq!(names(".git/*.hl7"), [".git/b.hl7"]);
+        // Named as it is, a hidden file is read.
+        assert_eq!(expand_paths(&[d.join("._a.hl7")]).unwrap().files.len(), 1);
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// A hidden folder the pattern names lets in only itself, where it
+    /// stands in the pattern: compared by name alone, the same name further
+    /// down, reached through `**`, passed as well.
+    #[test]
+    fn a_hidden_name_in_a_pattern_counts_only_where_it_stands() {
+        let d = tmp("hidden-pos");
+        fs::create_dir_all(d.join(".cache/sub/.cache")).unwrap();
+        fs::create_dir_all(d.join("sub/.cache")).unwrap();
+        fs::create_dir_all(d.join(".git/.cache")).unwrap();
+        for f in [
+            ".cache/a.hl7",
+            ".cache/sub/a.hl7",
+            ".cache/sub/.cache/bad.hl7",
+            ".cache/sub/._x.hl7",
+            "sub/.cache/in.hl7",
+            ".git/.cache/x.hl7",
+            "sub/.y.hl7",
+        ] {
+            fs::write(d.join(f), "MSH|^~\\&|").unwrap();
+        }
+        let names = |pattern: &str| {
+            let inputs = expand_paths(&[format!("{}/{}", d.display(), pattern)]).unwrap();
+            let mut n: Vec<String> =
+                inputs.files.iter().map(|f| f.strip_prefix(&d).unwrap().display().to_string()).collect();
+            n.sort();
+            n
+        };
+        assert_eq!(names(".cache/**/*.hl7"), [".cache/a.hl7", ".cache/sub/a.hl7"]);
+        // In any case, as folder names are.
+        assert_eq!(names(".CACHE/**/*.hl7"), [".cache/a.hl7", ".cache/sub/a.hl7"]);
+        assert_eq!(names("**/.cache/*.hl7"), [".cache/a.hl7", "sub/.cache/in.hl7"]);
+        // A dot at the file's place matches hidden files there, and only there.
+        assert_eq!(names("*/.*.hl7"), ["sub/.y.hl7"]);
+        assert_eq!(names(".cache/*/.*.hl7"), [".cache/sub/._x.hl7"]);
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// `batch` passes over the same hidden files and folders.
+    #[test]
+    fn batch_leaves_hidden_files_out() {
+        let d = tmp("batch-hidden");
+        fs::create_dir_all(d.join(".cache")).unwrap();
+        fs::write(d.join("a.hl7"), "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rEVN|A01|20240101\rPID|1||1^^^H^MR||Doe^Jo||19800101|F\r").unwrap();
+        fs::write(d.join("._a.hl7"), [0u8, 5, 22, 7, 0, 2]).unwrap();
+        fs::write(d.join(".cache").join("x.hl7"), "not a message").unwrap();
+        assert_eq!(cmd_batch(&d, "hl7", true, None, true, None), 0);
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// Patterns ignore case, folder names included: `glob` looked names
+    /// without wildcards up as spelled, so on Linux `g2/sub/*.hl7` missed
+    /// G2/Sub/x.HL7.
+    #[test]
+    fn folder_names_in_a_pattern_ignore_case() {
+        let d = tmp("case");
+        fs::create_dir_all(d.join("G2").join("Sub")).unwrap();
+        fs::write(d.join("G2").join("Sub").join("x.HL7"), "MSH|^~\\&|").unwrap();
+        for pattern in ["g2/sub/*.hl7", "G2/Sub/*.hl7", "*/sub/*.hl7", "g2/sub/X.hl7", "**/sub/x.hl7"] {
+            let inputs = expand_paths(&[format!("{}/{}", d.display(), pattern)]).unwrap();
+            assert_eq!(inputs.files.len(), 1, "{pattern}: {:?}", inputs.unmatched);
+        }
+        let none = expand_paths(&[format!("{}/g3/sub/*.hl7", d.display())]).unwrap();
+        assert_eq!(none.unmatched.len(), 1);
+        assert_eq!(any_case_name("G2"), "[G]2");
+        assert_eq!(any_case_name(".cache"), ".[c]ache");
+        assert_eq!(any_case_name("2024"), "2024");
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// Process substitution, named pipes and /dev/fd paths were refused
+    /// by validate, info and test as matching no file.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_named_pipe_given_by_name_is_read() {
+        let d = tmp("fifo");
+        let fifo = d.join("msg.hl7");
+        let made = std::process::Command::new("mkfifo").arg(&fifo).status().map(|s| s.success()).unwrap_or(false);
+        if !made {
+            return; // no mkfifo here
+        }
+        let inputs = expand_paths(&[fifo.as_os_str()]).unwrap();
+        assert_eq!(inputs.files, vec![fifo.clone()]);
+        assert!(inputs.unmatched.is_empty());
+        // A pattern does not pick a pipe up: one nobody writes to would wait for ever.
+        let by_pattern = expand_paths(&[format!("{}/*.hl7", d.display())]).unwrap();
+        assert!(by_pattern.files.is_empty());
+        let writer = {
+            let fifo = fifo.clone();
+            std::thread::spawn(move || fs::write(fifo, "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1\r"))
+        };
+        let record = info_for(&fifo);
+        writer.join().unwrap().unwrap();
+        assert!(record.parsed, "{:?}", record.error);
+        assert_eq!(record.message_type, "ADT^A01");
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// The whole MSH-9 names the structure in its third component: it
+    /// became ADT_A01_ADT_A01, "not found", exit 2.
+    #[test]
+    fn xsd_takes_a_whole_msh9() {
+        assert_eq!(message_structure("ADT_A01"), "ADT_A01");
+        assert_eq!(message_structure("adt^a01"), "ADT_A01");
+        assert_eq!(message_structure("ADT^A01^ADT_A01"), "ADT_A01");
+        assert_eq!(message_structure("ADT^A04^ADT_A01"), "ADT_A01");
+        assert_eq!(message_structure("ORU^R01^"), "ORU_R01");
+        let d = tmp("xsd");
+        let out = d.join("adt.xsd");
+        assert_eq!(cmd_xsd("ADT^A04^ADT_A01", "2.5", Some(&out)), 0);
+        assert!(fs::read_to_string(&out).unwrap().contains("ADT_A01"));
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// to-json and anonymize said a FHIR resource "does not start with
+    /// MSH"; they now name it.
+    #[test]
+    fn hl7_only_commands_name_a_fhir_resource() {
+        let e = parse_hl7_only("{\"resourceType\": \"Patient\", \"id\": \"p\"}".into(), "to-json").unwrap_err();
+        assert!(e.starts_with("a FHIR resource") && e.contains("to-json"), "{e}");
+        let e = parse_hl7_only("<Patient xmlns=\"http://hl7.org/fhir\"><id value=\"p\"/></Patient>".into(), "anonymize").unwrap_err();
+        assert!(e.starts_with("a FHIR resource"), "{e}");
+        let d = tmp("fhir-tojson");
+        let p = d.join("p.json");
+        fs::write(&p, "{\"resourceType\": \"Patient\", \"id\": \"p\"}").unwrap();
+        assert_eq!(cmd_to_json(&p, None), 1);
+        assert_eq!(cmd_anonymize(&p, None, true), 1);
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// Text that is not HL7 v2 has no MSH-10 to match the ACK against: it
+    /// was sent, and a peer that acknowledges anything made it exit 0.
+    #[test]
+    fn send_refuses_text_that_is_not_hl7() {
+        let d = tmp("send-text");
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.set_nonblocking(true).unwrap();
+        let port = l.local_addr().unwrap().port();
+        for (name, text) in [
+            ("hello.txt", "hello world\n"),
+            ("p.json", "{\"resourceType\": \"Patient\", \"id\": \"p\"}"),
+            ("second.hl7", "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1\rMSH\r"),
+        ] {
+            let input = d.join(name);
+            fs::write(&input, text).unwrap();
+            assert_eq!(cmd_send(&input, "127.0.0.1", port, 2, "", true), 1, "{name}");
+        }
+        assert!(l.accept().is_err(), "nothing was sent");
+        fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn version_carries_the_build_code() {
+        use clap::CommandFactory;
+        let version = Cli::command().render_version();
+        assert!(version.starts_with(&format!("bridgelab-cli {} (build ", env!("CARGO_PKG_VERSION"))), "{version}");
+        assert!(version.contains(bridgelab_lib::BUILD_ID), "{version}");
+        assert!(!bridgelab_lib::BUILD_ID.is_empty());
+    }
+
     #[test]
     fn patterns_match_extensions_in_any_case() {
         let d = tmp("glob");
@@ -2046,6 +2981,47 @@ mod tests {
         assert_eq!(xml_escape("a\tb\nc\rd<"), "a&#9;b&#10;c&#13;d&lt;");
     }
 
+    /// DEL and the C1 controls (U+009B is CSI) are legal in XML but act on
+    /// some terminals: references instead. Other C0 controls cannot be in
+    /// XML at all, not even as references.
+    #[test]
+    fn junit_writes_del_and_c1_controls_as_references() {
+        assert_eq!(xml_escape("a\u{9b}31mb\u{7f}c\u{80}\u{9f}\u{a0}"), "a&#155;31mb&#127;c&#128;&#159;\u{a0}");
+        assert_eq!(xml_escape("x\u{1b}[2J\u{7}"), "x\u{fffd}[2J\u{fffd}");
+    }
+
+    /// serde_json escapes only U+0000 to U+001F; DEL and C1 went out raw.
+    #[test]
+    fn json_output_escapes_del_and_c1_controls() {
+        let value = serde_json::json!({"PID-5": "X\u{9b}2J\u{9b}31mFAKE OK\u{9d}0;t\u{9c}\u{7f}", "esc": "\u{1b}[2J"});
+        let text = json_text(&value);
+        assert!(!text.chars().any(|c| c.is_control() && c != '\n'), "{text:?}");
+        assert!(text.contains(r"X\u009b2J\u009b31mFAKE OK\u009d0;t\u009c\u007f"), "{text}");
+        assert!(text.contains(r"\u001b[2J"), "{text}");
+        // The same JSON, read back.
+        assert_eq!(serde_json::from_str::<serde_json::Value>(&text).unwrap(), value);
+        // Nothing to escape: the text as serde_json wrote it.
+        assert_eq!(json_controls_escaped("{\"a\": \"é\"}".into()), "{\"a\": \"é\"}");
+    }
+
+    /// Every line on standard error goes through esafeln!, so none can
+    /// pass an escape sequence to the terminal: a plain eprintln! printed
+    /// pack rule ids, file names, arguments, MSH-18 and a peer's MSA-1 raw.
+    /// clippy.toml refuses them too, for whoever runs clippy.
+    #[test]
+    fn stderr_is_written_only_through_esafeln() {
+        let source = include_str!("main.rs");
+        for banned in [concat!("epr", "intln!"), concat!("epr", "int!")] {
+            let hits: Vec<usize> = source
+                .lines()
+                .enumerate()
+                .filter(|(_, l)| l.contains(banned) && !l.trim_start().starts_with("//"))
+                .map(|(i, _)| i + 1)
+                .collect();
+            assert!(hits.is_empty(), "{banned} at main.rs lines {hits:?}: use esafeln!");
+        }
+    }
+
     #[test]
     fn a_long_path_keeps_its_file_name() {
         let p = format!("/very/{}/adt_a01.hl7", "x".repeat(80));
@@ -2075,6 +3051,84 @@ mod tests {
         }
         let inputs = expand_paths(&[format!("{}/*.hl7", d.display())]).unwrap();
         assert_eq!(inputs.files.len(), 2, "{:?}", inputs.files);
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// With a wildcard in the folder part ("**/*.hl7", the
+    /// README's CI example) such a file was left out without a word and the
+    /// run exited 0, a pass for a file never checked.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_file_name_that_is_not_utf8_is_matched_under_folder_wildcards() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let d = tmp("nonutf8-deep");
+        let msg = "MSH|^~\\&|";
+        fs::create_dir_all(d.join("sub")).unwrap();
+        fs::write(d.join("sub").join("ok.hl7"), msg).unwrap();
+        if fs::write(d.join(OsStr::from_bytes(b"bad\xe9.hl7")), msg).is_err() {
+            return; // a file system that refuses such names
+        }
+        fs::write(d.join("sub").join(OsStr::from_bytes(b"bad\xe9.hl7")), msg).unwrap();
+        let odd_dir = d.join(OsStr::from_bytes(b"caf\xe9"));
+        fs::create_dir(&odd_dir).unwrap();
+        fs::write(odd_dir.join("in.hl7"), msg).unwrap();
+
+        let found = |pattern: &str| {
+            let inputs = expand_paths(&[format!("{}/{}", d.display(), pattern)]).unwrap();
+            assert!(inputs.unmatched.is_empty(), "{}: {:?}", pattern, inputs.unmatched);
+            inputs.files.len()
+        };
+        // Every folder, the pattern's own included; café/in.hl7 once,
+        // although glob walks that folder too.
+        assert_eq!(found("**/*.hl7"), 4);
+        assert_eq!(found("**/bad?.hl7"), 2);
+        // A wildcard folder matching a name that is not UTF-8.
+        assert_eq!(found("*/*.hl7"), 3);
+        assert_eq!(found("*/in.hl7"), 1);
+        // Nothing to find is still reported.
+        let none = expand_paths(&[format!("{}/**/*.xml", d.display())]).unwrap();
+        assert!(none.files.is_empty());
+        assert_eq!(none.unmatched.len(), 1);
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// Such a name given as it is (typed, or expanded by the shell) is read
+    /// like any other: the command line used to be refused as a whole
+    /// ("invalid UTF-8 was detected", exit 2).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_file_name_that_is_not_utf8_is_matched_when_given_as_it_is() {
+        use std::os::unix::ffi::OsStrExt;
+        let d = tmp("nonutf8-literal");
+        let msg = "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|X|P|2.5\rPID|1\r";
+        let bad = d.join(OsStr::from_bytes(b"bad\xe9name.hl7"));
+        if fs::write(&bad, msg).is_err() {
+            return; // a file system that refuses such names
+        }
+        let odd_dir = d.join(OsStr::from_bytes(b"caf\xe9"));
+        fs::create_dir(&odd_dir).unwrap();
+        fs::write(odd_dir.join("in.hl7"), msg).unwrap();
+
+        let args = [OsString::from("bridgelab-cli"), OsString::from("info"), bad.clone().into_os_string()];
+        assert!(Cli::try_parse_from(args).is_ok(), "the command line is accepted");
+        assert_eq!(cmd_info(&[bad.clone().into_os_string()], true), 0);
+
+        let inputs = expand_paths(&[bad.as_os_str()]).unwrap();
+        assert_eq!(inputs.files, vec![bad.clone()]);
+        assert!(inputs.unmatched.is_empty());
+
+        // A pattern with such a folder name in it, which glob cannot take.
+        let inputs = expand_paths(&[odd_dir.join("*.hl7")]).unwrap();
+        assert_eq!(inputs.files, vec![odd_dir.join("in.hl7")]);
+        assert!(inputs.unmatched.is_empty(), "{:?}", inputs.unmatched);
+
+        // One that does not exist is reported, shown with U+FFFD.
+        let inputs = expand_paths(&[d.join(OsStr::from_bytes(b"gone\xe9.hl7"))]).unwrap();
+        assert!(inputs.files.is_empty());
+        assert_eq!(inputs.unmatched.len(), 1);
+        assert!(inputs.unmatched[0].0.ends_with("gone\u{FFFD}.hl7"), "{:?}", inputs.unmatched);
+        assert_eq!(inputs.unmatched[0].1, NO_MATCH);
         fs::remove_dir_all(&d).ok();
     }
 
@@ -2173,6 +3227,119 @@ mod tests {
         let got = h.join().unwrap();
         assert!(got.starts_with(b"\x0bMSH|"), "{:?}", &got[..8]);
         assert!(String::from_utf8_lossy(&got).contains("Müller"));
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// A file of several messages whose later one declares a charset
+    /// BridgeLab cannot write is refused whole, before any message goes
+    /// out: only the first header was checked.
+    #[test]
+    fn send_checks_every_message_s_declared_charset_first() {
+        let d = tmp("sendmulti");
+        let input = d.join("multi.hl7");
+        fs::write(
+            &input,
+            "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|M1|P|2.5\rPID|1\rMSH|^~\\&|A|B|C|D|20260101||ADT^A01|M2|P|2.5|||||JPN|ISO IR87\rPID|1\r",
+        )
+        .unwrap();
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.set_nonblocking(true).unwrap();
+        let port = l.local_addr().unwrap().port();
+        assert_eq!(cmd_send(&input, "127.0.0.1", port, 2, "", true), 1);
+        assert!(l.accept().is_err(), "the first message was not sent either");
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// A file whose messages declare different charsets, even ones
+    /// BridgeLab writes, is refused whole without --encoding when the one
+    /// charset the file goes out in changes a later message's bytes. Plain
+    /// ASCII reads the same in both: such a batch is sent as before.
+    #[test]
+    fn send_refuses_messages_that_declare_different_charsets() {
+        use std::io::{Read, Write};
+        let d = tmp("sendmixed");
+        let input = d.join("mixed.hl7");
+        // Latin-1 bytes (ü is 0xFC): the file is read, and sent, in 8859/1.
+        let file = |second: &[u8]| {
+            let mut bytes = b"MSH|^~\\&|A|B|C|D|20260101||ADT^A01|M1|P|2.5|||||ITA|8859/1\rPID|1||1||M\xfcller\r".to_vec();
+            bytes.extend_from_slice(b"MSH|^~\\&|A|B|C|D|20260101||ADT^A01|M2|P|2.5|||||ITA|UNICODE UTF-8\rPID|1||1||");
+            bytes.extend_from_slice(second);
+            bytes.extend_from_slice(b"\r");
+            bytes
+        };
+        fs::write(&input, file(b"M\xfcller")).unwrap();
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.set_nonblocking(true).unwrap();
+        let port = l.local_addr().unwrap().port();
+        assert_eq!(cmd_send(&input, "127.0.0.1", port, 2, "", true), 1);
+        assert!(l.accept().is_err(), "the first message was not sent either");
+        drop(l);
+
+        // The second message is plain ASCII: both go out and are accepted.
+        fs::write(&input, file(b"Rossi")).unwrap();
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        let h = std::thread::spawn(move || {
+            for id in ["M1", "M2"] {
+                let (mut s, _) = l.accept().unwrap();
+                let (mut got, mut buf) = (Vec::new(), [0u8; 4096]);
+                while !got.ends_with(b"\x1c\r") {
+                    let n = s.read(&mut buf).unwrap();
+                    if n == 0 {
+                        break;
+                    }
+                    got.extend_from_slice(&buf[..n]);
+                }
+                s.write_all(format!("\x0bMSH|^~\\&|R||S||20260101||ACK|A|P|2.5\rMSA|AA|{id}\r\x1c\r").as_bytes()).unwrap();
+            }
+        });
+        assert_eq!(cmd_send(&input, "127.0.0.1", port, 5, "", true), 0);
+        h.join().unwrap();
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// A UTF-16 file whose MSH-18 names UTF-16 is not sent as UTF-8 under
+    /// that header: BridgeLab does not send UTF-16 frames.
+    #[test]
+    fn send_refuses_a_declared_charset_it_cannot_send_in() {
+        let d = tmp("send16decl");
+        let input = d.join("u16.hl7");
+        let text = "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|U1|P|2.5|||||ENG|UNICODE UTF-16\rPID|1||1||Müller||19800101|M\r";
+        fs::write(&input, charset::encode_output(text, "UTF-16LE")).unwrap();
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.set_nonblocking(true).unwrap();
+        let port = l.local_addr().unwrap().port();
+        assert_eq!(cmd_send(&input, "127.0.0.1", port, 2, "", true), 1);
+        assert!(l.accept().is_err(), "nothing was sent");
+        fs::remove_dir_all(&d).ok();
+    }
+
+    /// An ACK for another message, or a reply that is not HL7, is not an
+    /// acceptance: the same check as the app's.
+    #[test]
+    fn a_reply_that_does_not_acknowledge_the_message_fails_the_send() {
+        let d = tmp("sendack");
+        let input = d.join("m.hl7");
+        fs::write(&input, "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|U1|P|2.5\rPID|1\r").unwrap();
+        for reply in [
+            &b"\x0bMSH|^~\\&|R||S||20260101||ACK|A1|P|2.5\rMSA|AA|OTHER\r\x1c\r"[..],
+            b"\x0bHTTP/1.1 400 Bad Request\x1c\r",
+            // An AA naming no message (MSA-2 empty) cannot be matched.
+            b"\x0bMSH|^~\\&|R||S||20260101||ACK|A1|P|2.5\rMSA|AA\r\x1c\r",
+        ] {
+            let (port, h) = peer(reply);
+            assert_eq!(cmd_send(&input, "127.0.0.1", port, 5, "", true), 1);
+            h.join().unwrap();
+        }
+        let (port, h) = peer(b"\x0bMSH|^~\\&|R||S||20260101||ACK|A1|P|2.5\rMSA|AA|U1\r\x1c\r");
+        assert_eq!(cmd_send(&input, "127.0.0.1", port, 5, "", true), 0);
+        h.join().unwrap();
+        // Sent without MSH-10, there is nothing to match: an AA naming no
+        // message is taken at its word.
+        fs::write(&input, "MSH|^~\\&|A|B|C|D|20260101||ADT^A01||P|2.5\rPID|1\r").unwrap();
+        let (port, h) = peer(b"\x0bMSH|^~\\&|R||S||20260101||ACK|A1|P|2.5\rMSA|AA\r\x1c\r");
+        assert_eq!(cmd_send(&input, "127.0.0.1", port, 5, "", true), 0);
+        h.join().unwrap();
         fs::remove_dir_all(&d).ok();
     }
 }

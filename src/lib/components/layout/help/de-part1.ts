@@ -47,6 +47,16 @@ ${mockupAppShell}
 		gelesen, wie sie sind. Eine Datei, die BridgeLab nicht analysieren
 		kann, öffnet sich trotzdem als Text zum Korrigieren, mit einem
 		Hinweis auf den Grund.</li>
+	<li><strong>Größe:</strong> Eine Datei bis 16 MB öffnet sich sofort.
+		Zwischen 16 und 64 MB fragt BridgeLab vorher: Die App belegt weit
+		mehr Arbeitsspeicher als die Datei (eine Datei mit vielen kurzen
+		Nachrichten kann sie auf mehrere GB bringen). Eine Datei
+		über 64 MB, ein Gerät oder eine benannte Pipe öffnet sich nicht, und
+		eine Meldung nennt den Grund. Ein Tab der letzten Sitzung, dessen
+		Datei inzwischen eine Grenze überschritten hat, kommt leer zurück,
+		mit dem Grund, statt bei jedem Start gelesen zu werden.
+		Eingefügter Text folgt denselben Grenzen: Über 16 MB fragt
+		BridgeLab zuerst, über 64 MB fügt es ihn nicht ein.</li>
 	<li><strong>Datei → Neue Nachricht aus Vorlage...</strong>
 		(<kbd>Ctrl</kbd>+<kbd>N</kbd>) - vorbefüllte Vorlagen für ADT,
 		ORM, ORU, SIU und mehr. Felder wie MSH-7 und MSH-10 werden mit
@@ -61,6 +71,15 @@ ${mockupAppShell}
 		und in einem neuen Tab öffnen. Jedes Beispiel besteht die
 		Validierung; Patienten und Daten sind fiktiv.</li>
 </ul>
+<p><strong>Speichern.</strong> <strong>Datei → Speichern unter</strong>
+und das erste Speichern eines neuen Tabs bieten den Dateityp an, der zum
+Tab passt — HL7 Messages (<code>*.hl7</code>), FHIR JSON
+(<code>*.json</code>) oder FHIR XML (<code>*.xml</code>) — sowie All
+Files, und ein ohne Dateiendung eingegebener Name erhält die Endung
+dieses Typs (gibt es schon eine Datei mit diesem Namen, fragt BridgeLab
+vorher nach). Gespeichert wird über eine temporäre Kopie, die nur Sie
+lesen können; Berechtigungen, ACL und erweiterte Attribute der Datei
+bleiben erhalten.</p>
 
 <div class="note">Beim ersten Start erhalten Sie eine <strong>14-tägige
 Pro-Testversion</strong> mit allen freigeschalteten Pro-Funktionen (SOAP
@@ -132,22 +151,33 @@ Cursor, anklickbare Links, fixierte Kopfzeile beim Scrollen (Sticky Scroll)
 und die Quelle der Wortvorschläge (diese Nachricht, alle offenen Nachrichten
 oder keine; Vorschläge für HL7-Felder und -Werte funktionieren in jedem
 Modus). Änderungen gelten sofort. Jeder Tab behält beim Wechseln seinen
-eigenen Rückgängig- und Wiederholen-Verlauf (Ctrl+Z, Ctrl+Y).</p>
+eigenen Rückgängig- und Wiederholen-Verlauf (Ctrl+Z, Ctrl+Y).
+Sind anklickbare Links eingeschaltet, öffnet <kbd>Ctrl</kbd>+Klick auf eine
+http-, https- oder mailto-Adresse, oder <em>Follow link</em> in ihrem
+Hover, die Adresse im Browser oder E-Mail-Programm; jede andere Art von
+Link bewirkt nichts. Links an anderen Stellen der App, im Dialog Über
+BridgeLab oder in diesem Handbuch, öffnen sich genauso, mit einem Klick
+oder einem Mittelklick.</p>
 
 <h3>Kontextmenü (rechte Maustaste)</h3>
 ${mockupContextMenu}
 <p>Das Menü gruppiert die Aktionen in drei Abschnitte:</p>
 <ul>
 	<li><strong>Navigation:</strong> Segment im Baum anzeigen
-		(<kbd>Alt</kbd>+<kbd>T</kbd>) - öffnet den Baum und hebt exakt
+		(<kbd>Alt</kbd>+<kbd>T</kbd>; macOS <kbd>⌘⌥T</kbd>) - öffnet den Baum und hebt exakt
 		das Feld unter dem Cursor hervor; Aufklappen / Falten für
 		lange Werte.</li>
 	<li><strong>Zwischenablage:</strong> Segment kopieren
-		(<kbd>Alt</kbd>+<kbd>C</kbd>), Vollständige Nachricht kopieren
+		(<kbd>Alt</kbd>+<kbd>C</kbd>; macOS <kbd>⌘⌥C</kbd>), Vollständige Nachricht kopieren
 		(mit erweiterten Feldern), Gekürzte Nachricht kopieren
 		(lange Felder gekürzt, damit sie in eine E-Mail passt; Patientendaten
 		werden unverändert kopiert: vorher anonymisieren).</li>
 </ul>
+<p>Der Editor, die Tab-Leiste und der Baum haben eigene Menüs. Anderswo
+bewirkt ein Rechtsklick nichts: Das Menü des Browsers öffnet sich nie,
+auch nicht in Textfeldern; dort sind Ausschneiden, Kopieren und Einfügen
+<kbd>Ctrl</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>C</kbd> und
+<kbd>Ctrl</kbd>+<kbd>V</kbd>.</p>
 
 <div class="note">Die nativen Monaco-Tastenkombinationen
 (<kbd>Ctrl</kbd>+<kbd>F</kbd> Suchen, <kbd>Ctrl</kbd>+<kbd>H</kbd>
@@ -202,8 +232,15 @@ anzuzeigen:</p>
 		Pflicht-/Wiederholungskennzeichen, Beschreibung</li>
 	<li>Aktueller Wert und Länge; für lange Felder, die der Editor
 		gefaltet zeigt, eine Schaltfläche <em>Vollständigen Wert
-		anzeigen</em></li>
+		anzeigen</em> (die rote Schaltfläche <code>{...}</code> in der
+		Zeile des Felds im Baum tut dasselbe), ebenso für ein langes
+		Segment, dessen Zeile nur die ersten 80 Zeichen zeigt; die
+		angezeigte Länge ist die des ganzen Werts</li>
 </ul>
+<p>Der vollständige Wert öffnet sich in einem eigenen Fenster. Ein sehr
+großer Wert (etwa ein eingebettetes PDF) zeigt seine ersten 65.536 Zeichen
+und seine Gesamtlänge; <em>In Zwischenablage kopieren</em> kopiert
+trotzdem den ganzen Wert.</p>
 <p>Unbekannte Segmente (Z-Segmente oder benutzerdefinierte Codes
 außerhalb des Standards) zeigen <em>Nicht im HL7-Standard</em>, bleiben
 aber uneingeschränkt bearbeitbar.</p>
@@ -238,6 +275,24 @@ ein anderes Segment aus der Liste (jedes mit seiner Anzahl), tippen Sie
 in <em>Zeilen filtern</em>, um nur Zeilen mit einem Text zu behalten, und
 klicken Sie auf eine Zelle, um das Feld im Editor zu markieren. Das
 Raster ist schreibgeschützt und folgt der Nachricht beim Bearbeiten.</p>
+
+<h3>Eine Nachricht in Worten lesen</h3>
+<p><strong>Ansicht → Interpretation</strong>
+(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>) öffnet unten ein Panel,
+das die HL7-v2-Nachricht als Sätze liest, ein Block pro Segment:
+<em>Patient DOE, JOHN Q, Male, geboren am 1980-01-01, Kennungen 123456
+(Medical record number).</em> — <em>Glucose (GLU): 98 mg/dL, Above high
+normal, Status Final results.</em> Namen, Daten, Orte, Kennungen und
+kodierte Werte werden lesbar geschrieben, Codes mit ihrer Bedeutung aus
+den Wertetabellen. MSH, EVN, PID, NK1, PV1, ORC, OBR, OBX, AL1, DG1 und
+NTE haben eine eigene Formulierung; jedes andere Segment, auch
+Z-Segmente, wird Feld für Feld mit den Feldnamen der HL7-Version der
+Nachricht gelesen. Jeder Wert ist ein Link: Ein Klick markiert das Feld
+(oder die Wiederholung) im Editor, ein Klick auf das Segmentkürzel führt
+zum Segment. Die Sätze folgen der Sprache der Oberfläche und der
+Nachricht beim Bearbeiten; die Bedeutungen stammen aus den HL7-Tabellen
+und bleiben englisch. Lange Werte (ein eingebettetes PDF in OBX-5) werden
+gekürzt; der Editor behält sie vollständig.</p>
 
 <h3>Zwei Nachrichten vergleichen</h3>
 <p><strong>Werkzeuge → Nachrichten vergleichen…</strong> öffnet einen

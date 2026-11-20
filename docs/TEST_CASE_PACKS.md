@@ -42,7 +42,7 @@ interface it tests.
 | `tags` | no | Comma-separated |
 | `expected_message_type` | no | Only the components given are compared, case-insensitively: `ADT` matches any ADT event, `ADT^A01` matches `ADT^A01` and `ADT^A01^ADT_A01` (not `ADT^A04`), `ADT^A01^ADT_A01` needs all three; for FHIR, the `resourceType` |
 | `expected_validation_result` | no | `valid` (default) or `invalid`, any case; any other value is refused when the pack is read |
-| `created_at`, `updated_at` | no | RFC 3339 |
+| `created_at`, `updated_at` | no | RFC 3339; on import a `created_at` that is not RFC 3339 becomes the import time, and `updated_at` is always the import time |
 
 A hand-written pack needs only `format`, `format_version` and, per case,
 `name` and `content`. An `id` may appear only once in a pack; a pack

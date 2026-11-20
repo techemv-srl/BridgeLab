@@ -42,6 +42,15 @@ ${mockupAppShell}
 		"Unicode") and FHS/BHS batch files are read as they are. A file
 		BridgeLab cannot parse still opens, as text you can fix, and a note
 		says why.</li>
+	<li><strong>How large:</strong> a file up to 16 MB opens at once.
+		Between 16 and 64 MB BridgeLab asks first: the app takes far more
+		memory than the file (a file of many short messages can take it to
+		several GB). A file over 64 MB, or a device or named pipe,
+		does not open, and a message says why. A tab of the last session
+		whose file has since grown past a limit comes back empty, with the
+		reason, instead of being read at every start. Pasted text follows
+		the same limits: over 16 MB BridgeLab asks first, over 64 MB it
+		does not paste it.</li>
 	<li><strong>File → New Message from Template...</strong> (<kbd>Ctrl</kbd>+<kbd>N</kbd>) -
 		pre-filled ADT, ORM, ORU, SIU and more. Fields like MSH-7 and
 		MSH-10 are filled with the current timestamp and a unique message
@@ -54,6 +63,14 @@ ${mockupAppShell}
 		version, preview, and open one in a new tab. Every sample validates
 		clean; patients and data are fictional.</li>
 </ul>
+<p><strong>Saving.</strong> <strong>File → Save As</strong>, and the first
+save of a new tab, offer the type that matches the tab — HL7 Messages
+(<code>*.hl7</code>), FHIR JSON (<code>*.json</code>) or FHIR XML
+(<code>*.xml</code>) — plus All Files, and a name typed without an
+extension gets that type's extension (BridgeLab asks first if a file of
+that name already exists). A save goes through a temporary copy only you
+can read, and keeps the file's permissions, ACL and extended
+attributes.</p>
 
 <div class="note">On first launch you get a <strong>14-day Pro trial</strong>
 with every Pro feature enabled (SOAP and priority support are
@@ -117,20 +134,30 @@ other occurrences of the word under the cursor, clickable links, sticky
 scroll, and where word suggestions come from (this message, every open
 message, or none; HL7 field and value suggestions work in every mode).
 Changes apply at once. Each tab keeps its own undo and redo history
-(Ctrl+Z, Ctrl+Y) while you switch between tabs.</p>
+(Ctrl+Z, Ctrl+Y) while you switch between tabs.
+With clickable links on, <kbd>Ctrl</kbd>+click on an http, https or mailto
+address, or <em>Follow link</em> in its hover, opens it in your browser or
+mail client; any other kind of link does nothing. Links elsewhere in the
+app, in About or in this manual, open the same way, with a click or a
+middle click.</p>
 
 <h3>Right-click context menu</h3>
 ${mockupContextMenu}
 <p>The menu groups actions into three sections:</p>
 <ul>
 	<li><strong>Navigation:</strong> Show Segment in Tree
-		(<kbd>Alt</kbd>+<kbd>T</kbd>) - opens the tree and highlights the
+		(<kbd>Alt</kbd>+<kbd>T</kbd>; macOS <kbd>⌘⌥T</kbd>) - opens the tree and highlights the
 		exact field under the cursor; Expand / Fold for long
 		values.</li>
 	<li><strong>Clipboard:</strong> Copy Segment
-		(<kbd>Alt</kbd>+<kbd>C</kbd>), Copy Full Message (with expanded
+		(<kbd>Alt</kbd>+<kbd>C</kbd>; macOS <kbd>⌘⌥C</kbd>), Copy Full Message (with expanded
 		fields), Copy Truncated Message (long fields cut short, to fit in an email; patient data is copied as it is: anonymize first).</li>
 </ul>
+<p>The editor, the tab strip and the tree have menus of their own.
+Elsewhere a right-click does nothing: the browser's own menu never opens,
+text fields included, where Cut, Copy and Paste are
+<kbd>Ctrl</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>C</kbd> and
+<kbd>Ctrl</kbd>+<kbd>V</kbd>.</p>
 
 <div class="note">Monaco's native shortcuts (<kbd>Ctrl</kbd>+<kbd>F</kbd>
 find, <kbd>Ctrl</kbd>+<kbd>H</kbd> replace, <kbd>Ctrl</kbd>+<kbd>Z</kbd>
@@ -177,8 +204,14 @@ for the currently selected node:</p>
 	<li>Data type (XPN, CX, ST, ...), max length, required/repeating
 		flags, description</li>
 	<li>Current value and length; a <em>View full value</em> button for
-		long fields the editor shows folded</li>
+		long fields the editor shows folded (the red <code>{...}</code>
+		button on the field's row in the tree does the same), and for a
+		long segment, whose row shows only its first 80 characters; the
+		length shown is the whole value's</li>
 </ul>
+<p>The full value opens in a window of its own. A very large value (an
+embedded PDF, say) shows its first 65,536 characters and its full
+length; <em>Copy to Clipboard</em> still copies the whole value.</p>
 <p>Unknown segments (Z-segments or custom codes not in the standard)
 display <em>Not in HL7 standard</em> but remain fully editable.</p>
 
@@ -209,6 +242,23 @@ long values are cut with an ellipsis. Pick another segment from the list
 keep only the rows that contain some text, and click a cell to select
 that field in the editor. The grid is read-only and follows the message
 as you edit and re-parse.</p>
+
+<h3>Reading a message in plain words</h3>
+<p><strong>View → Interpretation</strong>
+(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>) opens a bottom panel that
+reads the HL7 v2 message as sentences, one block per segment:
+<em>Patient DOE, JOHN Q, Male, born 1980-01-01, identifiers 123456
+(Medical record number).</em> — <em>Glucose (GLU): 98 mg/dL, Above high
+normal, status Final results.</em> Names, dates, places, identifiers and
+coded values are written the readable way, codes with their meaning from
+the value tables. MSH, EVN, PID, NK1, PV1, ORC, OBR, OBX, AL1, DG1 and NTE
+have their own wording; any other segment, Z-segments included, is read
+field by field with the field names of the message's HL7 version. Every
+value is a link: click it to select that field (or that repetition) in
+the editor, or click the segment badge to go to the segment. The
+sentences follow the interface language and the message as you edit;
+the meanings come from the HL7 tables and stay in English. Long values
+(an embedded PDF in OBX-5) are cut; the editor keeps them whole.</p>
 
 <h3>Comparing two messages</h3>
 <p><strong>Tools → Compare messages…</strong> opens a side-by-side diff

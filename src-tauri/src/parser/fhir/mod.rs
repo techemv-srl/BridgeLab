@@ -33,6 +33,11 @@ pub struct FhirResource {
     pub fhir_version: String,
     /// Parsed JSON value (for JSON resources)
     pub json_value: Option<Value>,
+    /// What was wrong in the text that `json_value` no longer shows: a
+    /// property written twice in one JSON object (only the last value is
+    /// kept), an XML element outside the FHIR namespace. Validation
+    /// reports these first.
+    pub notes: Vec<FhirValidationIssue>,
 }
 
 /// Validation issue for FHIR resources.
@@ -123,13 +128,117 @@ pub fn parse_fhir_json(content: &str) -> Result<FhirResource, String> {
 
     let fhir_version = declared_fhir_version(&value);
 
+    let notes = duplicate_properties(content)
+        .into_iter()
+        .map(|path| {
+            let name = path.rsplit('.').next().unwrap_or(&path).to_string();
+            FhirValidationIssue {
+                severity: "error".into(),
+                message: format!(
+                    "Property '{}' appears more than once in the same object: FHIR JSON allows each property once, and only the last value was read, so an earlier one is not checked",
+                    name
+                ),
+                path,
+                rule_id: None,
+            }
+        })
+        .collect();
+
     Ok(FhirResource {
         raw: content.to_string(),
         format: FhirFormat::Json,
         resource_type,
         fhir_version,
         json_value: Some(value),
+        notes,
     })
+}
+
+/// Where a JSON value sits, built only when a path is reported.
+#[derive(Clone, Copy)]
+enum JsonStep<'a> {
+    Root,
+    Key(&'a JsonStep<'a>, &'a str),
+    Index(&'a JsonStep<'a>, usize),
+}
+
+impl JsonStep<'_> {
+    /// `entry[0].resource.gender`, in the form validation paths take.
+    fn path(&self) -> String {
+        match self {
+            JsonStep::Root => String::new(),
+            JsonStep::Key(parent, key) => {
+                let head = parent.path();
+                if head.is_empty() { key.to_string() } else { format!("{}.{}", head, key) }
+            }
+            JsonStep::Index(parent, i) => format!("{}[{}]", parent.path(), i),
+        }
+    }
+}
+
+/// The paths of the properties written more than once in the same JSON
+/// object. serde_json keeps the last value of a repeated key and says
+/// nothing, so `{"gender":"yes","gender":"male"}` validated clean: the
+/// invalid value was simply gone. A second pass over the text finds them;
+/// it keeps nothing but the keys of the object it is in.
+fn duplicate_properties(content: &str) -> Vec<String> {
+    use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+    use std::cell::RefCell;
+
+    struct Scan<'s, 'p> {
+        at: JsonStep<'p>,
+        found: &'s RefCell<Vec<String>>,
+    }
+
+    impl<'de> DeserializeSeed<'de> for Scan<'_, '_> {
+        type Value = ();
+        fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
+            d.deserialize_any(self)
+        }
+    }
+
+    impl<'de> Visitor<'de> for Scan<'_, '_> {
+        type Value = ();
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a JSON value")
+        }
+        fn visit_bool<E>(self, _: bool) -> Result<(), E> { Ok(()) }
+        fn visit_i64<E>(self, _: i64) -> Result<(), E> { Ok(()) }
+        fn visit_u64<E>(self, _: u64) -> Result<(), E> { Ok(()) }
+        fn visit_f64<E>(self, _: f64) -> Result<(), E> { Ok(()) }
+        fn visit_str<E>(self, _: &str) -> Result<(), E> { Ok(()) }
+        fn visit_unit<E>(self) -> Result<(), E> { Ok(()) }
+        fn visit_none<E>(self) -> Result<(), E> { Ok(()) }
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+            let mut i = 0;
+            loop {
+                let at = JsonStep::Index(&self.at, i);
+                if seq.next_element_seed(Scan { at, found: self.found })?.is_none() {
+                    return Ok(());
+                }
+                i += 1;
+            }
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+            let mut seen: HashSet<String> = HashSet::new();
+            while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
+                let at = JsonStep::Key(&self.at, &key);
+                if seen.contains(key.as_ref()) {
+                    self.found.borrow_mut().push(at.path());
+                }
+                map.next_value_seed(Scan { at, found: self.found })?;
+                seen.insert(key.into_owned());
+            }
+            Ok(())
+        }
+    }
+
+    let found = RefCell::new(Vec::new());
+    let mut de = serde_json::Deserializer::from_str(content);
+    // The text already parsed once: an error here cannot happen, and would
+    // only mean no duplicates are reported.
+    let _ = Scan { at: JsonStep::Root, found: &found }.deserialize(&mut de);
+    found.into_inner()
 }
 
 /// Parse a FHIR XML resource (basic parsing for tree view).
@@ -138,12 +247,39 @@ pub fn parse_fhir_xml(content: &str) -> Result<FhirResource, String> {
 
     // Full XML -> JSON conversion so validation and tree building work on
     // XML resources exactly like on JSON ones.
-    let (resource_type, mut json) = xml::fhir_xml_to_json(trimmed)?;
+    let (resource_type, mut json, outside) = xml::fhir_xml_to_json_checked(trimmed)?;
     // Booleans, numbers and repeating elements as the JSON encoding has
     // them, so XML validates and evaluates like the same resource in JSON.
     xml_types::apply(&mut json);
 
     let fhir_version = declared_fhir_version(&json);
+
+    // An element outside the FHIR namespace is not FHIR, whatever its name:
+    // `<Patient>` with no xmlns, or in another namespace, read as a Patient
+    // with no finding.
+    let notes = outside
+        .map(|o| FhirValidationIssue {
+            severity: "error".into(),
+            message: match &o.namespace {
+                None if o.narrative => "The narrative <div> is in no namespace: it is XHTML, in the namespace http://www.w3.org/1999/xhtml (xmlns=\"http://www.w3.org/1999/xhtml\" on the div)".to_string(),
+                Some(ns) if o.narrative => format!(
+                    "The narrative <div> is in the namespace {}, not in http://www.w3.org/1999/xhtml: it is not an XHTML narrative",
+                    ns
+                ),
+                None => format!(
+                    "<{}> is in no namespace: FHIR XML elements are in the namespace http://hl7.org/fhir (xmlns=\"http://hl7.org/fhir\" on the root element)",
+                    o.element
+                ),
+                Some(ns) => format!(
+                    "<{}> is in the namespace {}, not in http://hl7.org/fhir: it is not a FHIR element",
+                    o.element, ns
+                ),
+            },
+            path: o.path,
+            rule_id: None,
+        })
+        .into_iter()
+        .collect();
 
     Ok(FhirResource {
         raw: content.to_string(),
@@ -151,6 +287,7 @@ pub fn parse_fhir_xml(content: &str) -> Result<FhirResource, String> {
         resource_type,
         fhir_version,
         json_value: Some(json),
+        notes,
     })
 }
 
@@ -322,7 +459,9 @@ fn build_xml_tree_simple(xml: &str, resource_type: &str) -> Vec<TreeNode> {
 /// Observation, and "clean" is exactly the conclusion the person who opened
 /// it draws.
 pub fn validate_fhir_json(resource: &FhirResource) -> Vec<FhirValidationIssue> {
-    let mut issues = Vec::new();
+    // What only the text showed (a repeated JSON property, an XML element
+    // outside the FHIR namespace) comes first.
+    let mut issues = resource.notes.clone();
 
     let json = match &resource.json_value {
         Some(v) => v,
@@ -598,18 +737,26 @@ fn check_bundle_references(
     prefix: &str,
     issues: &mut Vec<FhirValidationIssue>,
 ) {
-    let mut full_urls: HashSet<&str> = HashSet::new();
-    let mut identities: HashSet<String> = HashSet::new();
-    for entry in entries {
+    let mut full_urls: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    // Every entry a `Type/id` names: by its resource's own type and id, and
+    // by a fullUrl ending in them.
+    let mut identities: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
+    for (i, entry) in entries.iter().enumerate() {
         if let Some(url) = entry.get("fullUrl").and_then(|v| v.as_str()) {
-            full_urls.insert(url);
+            full_urls.entry(url).or_insert(i);
+            if !url.starts_with("urn:") {
+                let mut parts = url.rsplit('/');
+                if let (Some(id), Some(rt)) = (parts.next(), parts.next()) {
+                    identities.entry(format!("{}/{}", rt, id)).or_default().push(i);
+                }
+            }
         }
         if let Some(resource) = entry.get("resource") {
             if let (Some(rt), Some(id)) = (
                 resource.get("resourceType").and_then(|v| v.as_str()),
                 resource.get("id").and_then(|v| v.as_str()),
             ) {
-                identities.insert(format!("{}/{}", rt, id));
+                identities.entry(format!("{}/{}", rt, id)).or_default().push(i);
             }
         }
     }
@@ -618,11 +765,30 @@ fn check_bundle_references(
     // entry only by matching its fullUrl exactly: "https://b.example/Patient/1"
     // is not the entry "https://a.example/fhir/Patient/1", even though the
     // two end the same way.
-    let resolves_relative = |target: &str| -> bool {
-        identities.contains(target)
-            || full_urls.iter().any(|u| u.ends_with(&format!("/{}", target)))
+    // Inside an entry with a RESTful fullUrl, only that server's resource
+    // counts, as in the Bundle view and resolve() (bundle::resolve_relative).
+    // With no server to go by, a Type/id that names different resources on
+    // different servers names none of them.
+    let same = |a: &usize, b: &usize| {
+        let url = |i: usize| entries[i].get("fullUrl").and_then(|v| v.as_str());
+        a == b || url(*a).is_some() && url(*a) == url(*b) || entries[*a].get("resource") == entries[*b].get("resource")
     };
-    let resolves_absolute = |target: &str| -> bool { full_urls.contains(target) };
+    let resolves_relative = |target: &str, from: Option<&str>| -> bool {
+        bundle::resolve_relative(
+            target,
+            from,
+            |url| full_urls.get(url).copied(),
+            |id| identities.get(id).cloned().unwrap_or_default(),
+            same,
+        )
+        .is_some()
+    };
+    // Matched by type and id in more than one entry, with no server to
+    // choose one by: different resources, or it would have resolved.
+    let ambiguous = |target: &str, from: Option<&str>| -> bool {
+        from.and_then(bundle::restful_base).is_none() && identities.get(target).is_some_and(|m| m.len() > 1)
+    };
+    let resolves_absolute = |target: &str| -> bool { full_urls.contains_key(target) };
     // Outside the types that carry a related set of resources, an
     // unresolved local reference is a note rather than a defect: a searchset
     // legitimately returns only part of a graph.
@@ -649,18 +815,22 @@ fn check_bundle_references(
             } else if target.starts_with("urn:") {
                 resolves_absolute(&target)
             } else if !target.contains("://") {
-                resolves_relative(&target)
+                resolves_relative(&target, entry.get("fullUrl").and_then(|v| v.as_str()))
             } else {
                 // Absolute: external unless the document must be self-contained.
                 bundle_type != "document" || resolves_absolute(&target)
             };
             if !ok {
-                push(
-                    issues,
-                    severity,
-                    format!("Reference '{}' does not resolve to anything in this Bundle", target),
-                    at(&resource_prefix, &path),
-                );
+                let message = if ambiguous(&target, entry.get("fullUrl").and_then(|v| v.as_str())) {
+                    format!(
+                        "Reference '{}' matches different resources on different servers in this Bundle, \
+                         and the entry it sits in has no RESTful fullUrl to tell which",
+                        target
+                    )
+                } else {
+                    format!("Reference '{}' does not resolve to anything in this Bundle", target)
+                };
+                push(issues, severity, message, at(&resource_prefix, &path));
             }
         }
     }
@@ -695,6 +865,26 @@ fn collect_references(value: &Value, path: &str, out: &mut Vec<(String, String)>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A property written twice is an error, whichever value came first: the
+    /// invalid one used to vanish when it was not the last.
+    #[test]
+    fn duplicate_json_properties_are_reported() {
+        let issues = |json: &str| validate_fhir_json(&parse_fhir_json(json).unwrap());
+        let both = r#"{"resourceType":"Patient","id":"p","gender":"yes","gender":"male"}"#;
+        let found = issues(both);
+        let dup = found.iter().find(|i| i.path == "gender" && i.message.contains("more than once")).expect("duplicate");
+        assert_eq!(dup.severity, "error");
+        // Nested objects and arrays, with the path validation uses.
+        let nested = r#"{"resourceType":"Bundle","type":"collection","entry":[{"resource":{"resourceType":"Patient","id":"a","id":"b"}}]}"#;
+        assert_eq!(duplicate_properties(nested), vec!["entry[0].resource.id".to_string()]);
+        // Numbers (read with arbitrary precision) and escaped keys.
+        assert!(duplicate_properties(r#"{"a":1.50,"b":[1,2],"c":{"d":2}}"#).is_empty());
+        assert_eq!(duplicate_properties(r#"{"a":1,"a":2}"#), vec!["a".to_string()]);
+        assert!(!issues(r#"{"resourceType":"Patient","id":"p","gender":"male"}"#)
+            .iter()
+            .any(|i| i.message.contains("more than once")));
+    }
 
     #[test]
     fn test_detect_fhir_json() {
@@ -970,6 +1160,35 @@ mod tests {
         assert!(!dangling(&doc("https://a.example/fhir/Patient/1")), "the exact fullUrl resolves");
         assert!(!dangling(&doc("Patient/1")), "a relative reference resolves by identity");
         assert!(dangling(&doc("Patient/2")), "a relative reference to nothing does not");
+    }
+
+    /// A relative reference in an entry with a RESTful fullUrl resolves
+    /// only on that server, as in the Bundle view and resolve().
+    #[test]
+    fn a_relative_reference_does_not_reach_another_server() {
+        let doc = |composition_url: &str| issues_for(&format!(
+            r#"{{"resourceType": "Bundle", "type": "document", "entry": [
+                {{"fullUrl": "https://b.example/fhir/Patient/1", "resource": {{"resourceType": "Patient", "id": "1", "name": [{{}}]}}}},
+                {{"fullUrl": "{composition_url}",
+                 "resource": {{"resourceType": "Composition", "id": "c", "subject": {{"reference": "Patient/1"}}}}}}
+            ]}}"#
+        ));
+        let dangling = |issues: &[FhirValidationIssue]| issues.iter().any(|i| i.path == "entry[1].resource.subject.reference");
+        assert!(dangling(&doc("https://a.example/fhir/Composition/c")), "another server's Patient/1");
+        assert!(!dangling(&doc("https://b.example/fhir/Composition/c")), "the same server's");
+        assert!(!dangling(&doc("urn:uuid:3f1c0c1e-0000-4000-8000-000000000001")), "no server: type and id");
+
+        // No server, and type and id name different patients on two servers.
+        let two = issues_for(
+            r#"{"resourceType": "Bundle", "type": "document", "entry": [
+                {"fullUrl": "https://a.example/fhir/Patient/1", "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": "A"}]}},
+                {"fullUrl": "https://b.example/fhir/Patient/1", "resource": {"resourceType": "Patient", "id": "1", "name": [{"family": "B"}]}},
+                {"fullUrl": "urn:uuid:3f1c0c1e-0000-4000-8000-000000000001",
+                 "resource": {"resourceType": "Composition", "id": "c", "subject": {"reference": "Patient/1"}}}
+            ]}"#,
+        );
+        let finding = two.iter().find(|i| i.path == "entry[2].resource.subject.reference").expect("reported");
+        assert!(finding.message.contains("matches different resources on different servers"), "{}", finding.message);
     }
 
     #[test]

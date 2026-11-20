@@ -2,8 +2,12 @@ import { messageStore, type FileStamp, type MessageTab } from './messages.svelte
 import { dialogStore } from './dialog.svelte';
 import { openFile, fileStat, canonicalPath } from '$lib/ipc/parser';
 import { getRecentFiles, addRecentFile, removeRecentFile, clearRecentFiles, type RecentFile } from '$lib/ipc/database';
-import { t } from '$lib/i18n';
+import { t, getLocale } from '$lib/i18n';
+import type { ParseResult } from '$lib/types/hl7';
+import { unparsedMessage } from '$lib/unparsed';
 import { baseName, normalizePath, samePath } from '$lib/paths';
+import { hasExtension, saveAsDialog } from '$lib/save-format';
+import { saveTarget } from '$lib/save-target';
 
 /** Same file version: modification time and size both unchanged. */
 export function sameStamp(a: FileStamp | null | undefined, b: FileStamp | null | undefined): boolean {
@@ -35,6 +39,44 @@ async function realPathOf(path: string): Promise<string | null> {
  *  session tab whose file is gone): Save then asks before recreating it. */
 const EXISTED: FileStamp = { modified_ms: -1, size: -1 };
 
+/** Why open_file would not read a file: `confirm`, larger than what opens
+ *  without asking (it opens once the user agreed); `too_large`, larger
+ *  than anything that opens; `not_regular`, a device, pipe or socket. */
+export interface OpenRefusal {
+	kind: 'confirm' | 'too_large' | 'not_regular';
+	size: number;
+	limit: number;
+}
+
+/** The refusal in open_file's error, or null for any other error. The
+ *  sizes come from its text (`<size> bytes, limit <limit> bytes`), so the
+ *  limits are set in one place, in the backend (fileio.rs). */
+export function openRefusal(e: unknown): OpenRefusal | null {
+	const text = String(e);
+	if (text.includes('not a regular file: ')) return { kind: 'not_regular', size: 0, limit: 0 };
+	const m = /(too large to open|large file, open only if confirmed): (\d+) bytes, limit (\d+) bytes/.exec(text);
+	if (!m) return null;
+	return { kind: m[1] === 'too large to open' ? 'too_large' : 'confirm', size: Number(m[2]), limit: Number(m[3]) };
+}
+
+/** Bytes as megabytes, written the way the user's language writes numbers. */
+function megabytes(bytes: number): string {
+	return new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(bytes / (1024 * 1024));
+}
+
+/** True for a URL given where a file path belongs (a link dropped on the
+ *  window). The scheme has two letters or more: "C:/x" is a Windows path,
+ *  and the paths of dropped files are absolute. */
+export function isWebLink(path: string): boolean {
+	return /^[a-z][a-z0-9+.-]+:\//i.test(path);
+}
+
+/** What to tell the user about a file open_file refused. */
+export function refusalMessage(path: string, r: OpenRefusal): string {
+	if (r.kind === 'not_regular') return t('file.notRegular', { path });
+	return t('file.tooLarge', { name: baseName(path), size: megabytes(r.size), limit: megabytes(r.limit) });
+}
+
 /**
  * File open/save operations plus the recent-files list they maintain.
  * `suppressAutoParse` lets the caller mute the editor's next auto-parse
@@ -57,9 +99,9 @@ class FileOpsStore {
 			const selected = await open({
 				multiple: false,
 				filters: [
-					{ name: 'HL7 Messages', extensions: ['hl7', 'txt', 'msg'] },
-					{ name: 'FHIR Resources', extensions: ['json', 'xml'] },
-					{ name: 'All Files', extensions: ['*'] },
+					{ name: t('filter.hl7'), extensions: ['hl7', 'txt', 'msg'] },
+					{ name: t('filter.fhir'), extensions: ['json', 'xml'] },
+					{ name: t('filter.all'), extensions: ['*'] },
 				],
 			});
 			if (!selected) return;
@@ -75,6 +117,12 @@ class FileOpsStore {
 	}
 
 	async openPath(rawPath: string, suppressAutoParse: () => void): Promise<void> {
+		// A link dragged from a browser arrives as a "path": it was read as
+		// a file name and reported as "File not found: https:/…".
+		if (isWebLink(rawPath)) {
+			await dialogStore.error(t('file.droppedLink', { url: rawPath }));
+			return;
+		}
 		const path = normalizePath(rawPath);
 		// The same file through a symlinked folder is the same tab: two tabs
 		// on one file saved over each other's edits.
@@ -84,20 +132,28 @@ class FileOpsStore {
 		const existing = messageStore.findByPath(path, real);
 		if (existing) {
 			messageStore.setActiveTab(existing.id);
+			// Restored without its text (too large, or not loaded when asked):
+			// opening the file again is how it gets loaded.
+			if (existing.notLoaded) {
+				await this.reload(existing.id);
+				return;
+			}
 			await this.checkTab(existing);
 			return;
 		}
 		try {
-			const result = await openFile(path);
+			const result = await this.readFile(path);
+			if (!result) return;
 			suppressAutoParse();
 			// The tab holds the full text; the editor folds long fields
 			// visually. truncated_text is only a fallback for old backends.
-			const id = messageStore.openMessage(result, path, result.full_text ?? result.truncated_text, real);
+			const text = result.full_text ?? result.truncated_text;
+			const id = messageStore.openMessage(result, path, text, real);
 			messageStore.setDiskStamp(id, (await stampOf(path)) ?? undefined);
 			if (result.parse_error) {
 				// Open anyway, as text to fix: say why there is no tree.
 				await dialogStore.warning(
-					t('file.openedUnparsed', { name: baseName(path), error: result.parse_error }),
+					unparsedMessage(baseName(path), text, result.parse_error, result.parse_error_kind),
 					t('file.notParsedTitle'),
 				);
 			}
@@ -139,8 +195,21 @@ class FileOpsStore {
 			await dialogStore.error(t('file.isFolder', { path }));
 			return;
 		}
+		const refusal = openRefusal(e);
+		if (refusal) {
+			await dialogStore.error(refusalMessage(path, refusal));
+			return;
+		}
 		if ((await stampOf(path)) !== null) {
 			await dialogStore.error(t('dialog.openFailed'), undefined, `${path}\n${String(e)}`);
+			return;
+		}
+		// A name that is not valid UTF-8 (a Latin-1 file name on Linux)
+		// reaches the frontend with U+FFFD for the bytes it could not show,
+		// so no file has that name: the file is there, but cannot be opened
+		// by name. "File not found" would send the user looking for it.
+		if (path.includes('�')) {
+			await dialogStore.error(t('file.nameNotUtf8', { path }));
 			return;
 		}
 		const recent = this.recentFiles.find((f) => samePath(f.path, path));
@@ -190,17 +259,39 @@ class FileOpsStore {
 		}
 	}
 
+	/**
+	 * open_file, asking first when the file is large: such a file takes the
+	 * app to several GB of memory. Null when the user would rather not.
+	 * `restored`: the file was open in the last session, and the question
+	 * says so (it comes at start, unasked for).
+	 */
+	private async readFile(path: string, restored = false): Promise<ParseResult | null> {
+		try {
+			return await openFile(path);
+		} catch (e) {
+			const refusal = openRefusal(e);
+			if (refusal?.kind !== 'confirm') throw e;
+			const sizes = { name: baseName(path), size: megabytes(refusal.size), limit: megabytes(refusal.limit) };
+			const question = t(restored ? 'file.largeRestore' : 'file.largeConfirm', sizes);
+			if (!(await dialogStore.confirm(question, t('file.largeTitle')))) return null;
+			return openFile(path, true);
+		}
+	}
+
 	/** Load the tab's file as it is now on disk. */
 	private async reload(tabId: string): Promise<boolean> {
 		const tab = messageStore.tabs.find((x) => x.id === tabId);
 		if (!tab?.filePath) return false;
 		try {
-			const result = await openFile(tab.filePath);
+			const result = await this.readFile(tab.filePath);
+			if (!result) return false;
 			const stamp = await stampOf(tab.filePath);
 			messageStore.reloadFromDisk(tabId, result.full_text ?? result.truncated_text, result, stamp ?? undefined);
 			return true;
 		} catch (e) {
-			await dialogStore.error(t('dialog.openFailed'), undefined, `${tab.filePath}\n${String(e)}`);
+			const refusal = openRefusal(e);
+			if (refusal) await dialogStore.error(refusalMessage(tab.filePath, refusal));
+			else await dialogStore.error(t('dialog.openFailed'), undefined, `${tab.filePath}\n${String(e)}`);
 			return false;
 		}
 	}
@@ -244,16 +335,30 @@ class FileOpsStore {
 			tab.diskUnverified = true;
 			return false;
 		}
+		const path = tab.filePath;
 		try {
-			const result = await openFile(tab.filePath);
-			const text = result.full_text ?? result.truncated_text;
+			const result = await this.readFile(path, true);
 			const current = messageStore.tabs.find((x) => x.id === tabId);
 			// Edited while the file was being read: keep the edit.
 			if (!current || current.isModified) return false;
-			messageStore.reloadFromDisk(tabId, text, result, (await stampOf(tab.filePath)) ?? undefined);
+			if (!result) {
+				// Not now: the tab stays empty until the file is opened again.
+				messageStore.leaveUnloaded(tabId);
+				return true;
+			}
+			const text = result.full_text ?? result.truncated_text;
+			messageStore.reloadFromDisk(tabId, text, result, (await stampOf(path)) ?? undefined);
 			return true;
-		} catch {
-			return false;
+		} catch (e) {
+			const refusal = openRefusal(e);
+			if (!refusal) return false;
+			// Grown past the limit, or replaced by a device or pipe, since the
+			// last session: restored without its text, so it is not read (and
+			// the app not taken down) at every start, and the old text is not
+			// shown, or saved, as the file's.
+			messageStore.leaveUnloaded(tabId);
+			await dialogStore.warning(t('file.restoredEmpty', { reason: refusalMessage(path, refusal) }));
+			return true;
 		}
 	}
 
@@ -270,8 +375,25 @@ class FileOpsStore {
 		return dialogStore.confirm(t(msg, { name: tab.label }), t('file.changedTitle'));
 	}
 
+	/** The active tab once its text is known: a restored tab whose file is
+	 *  still being read is waited for. Null (after saying why) when the
+	 *  text could not be read, so the empty placeholder is never saved. */
+	private async loadedActiveTab(): Promise<MessageTab | null> {
+		const tab = messageStore.activeTab;
+		if (!tab) return null;
+		if (!tab.contentPending) return tab;
+		await messageStore.whenLoaded(tab.id);
+		const now = messageStore.tabs.find((x) => x.id === tab.id);
+		if (!now) return null;
+		if (now.contentPending) {
+			await dialogStore.warning(t('file.notLoaded', { name: now.label }));
+			return null;
+		}
+		return now;
+	}
+
 	async saveActive(): Promise<void> {
-		const activeTab = messageStore.activeTab;
+		const activeTab = await this.loadedActiveTab();
 		if (!activeTab) return;
 		// If tab has no file path (Untitled / from paste/template), fall back to Save As
 		if (!activeTab.filePath) {
@@ -296,17 +418,30 @@ class FileOpsStore {
 	}
 
 	async saveActiveAs(): Promise<void> {
-		const activeTab = messageStore.activeTab;
+		const activeTab = await this.loadedActiveTab();
 		if (!activeTab) return;
 		try {
 			const { save } = await import('@tauri-apps/plugin-dialog');
-			const path = await save({
-				defaultPath: activeTab.filePath ?? activeTab.label,
-				filters: [
-					{ name: 'HL7 Messages', extensions: ['hl7'] },
-					{ name: 'All Files', extensions: ['*'] },
-				],
-			});
+			// The filter and the default name follow the document: a FHIR
+			// resource offered only "HL7 Messages" became patient.hl7 on
+			// Windows, and a file with no extension on Linux.
+			const { format, defaultPath, filters } = saveAsDialog(activeTab);
+			const picked = await save({ defaultPath, filters });
+			// The Linux (GTK) dialog adds no extension to a name typed
+			// without one. The backend writes the file, so the name with
+			// the extension needs no permission; it only asks before
+			// replacing a file of that name.
+			// A file that is already there under that exact name (the tab's
+			// own extensionless file, or another one picked in the dialog,
+			// which asked before replacing it) is written as it is: adding
+			// the extension would save a different file than the one chosen.
+			const chosenExisting = !!picked && (
+				(!!activeTab.filePath && samePath(picked, activeTab.filePath)) ||
+				!!(await stampOf(picked))
+			);
+			const path = !picked || hasExtension(picked) || chosenExisting
+				? picked
+				: await saveTarget(picked, format.ext, { backendWrites: true });
 			if (path) {
 				const { saveFile } = await import('$lib/ipc/parser');
 				await saveFile({ path, content: activeTab.content, charset: activeTab.charset });

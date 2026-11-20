@@ -111,6 +111,8 @@ impl Hl7Lexer {
             offset = self.skip_line_ending(data, line_end);
         }
 
+        // The index lives as long as the message: no room kept for growth.
+        segments.shrink_to_fit();
         segments
     }
 
@@ -189,7 +191,8 @@ impl Hl7Lexer {
         if is_msh {
             // MSH special handling:
             // MSH-1 is the field separator itself (single char at position 3)
-            // MSH-2 is the encoding characters (positions 4-7)
+            // MSH-2 is the encoding characters (from position 4 to the next
+            // field separator)
             if seg_bytes.len() > 3 {
                 fields.push(FieldIndex {
                     span: Span::new(seg_start + 3, seg_start + 4),
@@ -205,11 +208,12 @@ impl Hl7Lexer {
                 });
             }
             if seg_bytes.len() > 4 {
-                let enc_end = (seg_start + 8).min(seg_end);
-                let next_field = memchr(delimiters.field, &data[seg_start + 4..seg_end])
+                // MSH-2 runs to the next field separator: four characters,
+                // or five from v2.7 on, whose fifth is the truncation
+                // character (`^~\&#`). A cap at four dropped it.
+                let actual_end = memchr(delimiters.field, &data[seg_start + 4..seg_end])
                     .map(|p| seg_start + 4 + p)
-                    .unwrap_or(enc_end);
-                let actual_end = next_field.min(enc_end);
+                    .unwrap_or(seg_end);
                 fields.push(FieldIndex {
                     span: Span::new(seg_start + 4, actual_end),
                     position: 2,
@@ -241,6 +245,7 @@ impl Hl7Lexer {
             self.parse_fields_from(data, field_start, seg_end, delimiters, 1, &mut fields);
         }
 
+        fields.shrink_to_fit();
         fields
     }
 
@@ -287,6 +292,15 @@ impl Hl7Lexer {
         end: usize,
         delimiters: &Delimiters,
     ) -> Vec<RepetitionIndex> {
+        // Most fields have one repetition: one exact allocation, where a
+        // vector grown by push holds room for four. Over the millions of
+        // fields of a large file, that spare room was most of the index.
+        if memchr(delimiters.repetition, &data[start..end]).is_none() {
+            return vec![RepetitionIndex {
+                span: Span::new(start, end),
+                components: self.index_components(data, start, end, delimiters),
+            }];
+        }
         let mut reps = Vec::new();
         let mut offset = start;
 
@@ -307,6 +321,7 @@ impl Hl7Lexer {
             offset = rep_end + 1;
         }
 
+        reps.shrink_to_fit();
         reps
     }
 
@@ -318,6 +333,14 @@ impl Hl7Lexer {
         end: usize,
         delimiters: &Delimiters,
     ) -> Vec<ComponentIndex> {
+        // One component, the common case: one exact allocation (see
+        // index_repetitions).
+        if memchr(delimiters.component, &data[start..end]).is_none() {
+            return vec![ComponentIndex {
+                span: Span::new(start, end),
+                subcomponents: self.index_subcomponents(data, start, end, delimiters),
+            }];
+        }
         let mut comps = Vec::new();
         let mut offset = start;
 
@@ -338,6 +361,7 @@ impl Hl7Lexer {
             offset = comp_end + 1;
         }
 
+        comps.shrink_to_fit();
         comps
     }
 
@@ -349,6 +373,12 @@ impl Hl7Lexer {
         end: usize,
         delimiters: &Delimiters,
     ) -> Vec<SubComponentIndex> {
+        // Only kept when there are several: a component without a
+        // subcomponent separator gets no allocation at all (clearing the
+        // vector kept its room, 64 bytes for each component).
+        if memchr(delimiters.subcomponent, &data[start..end]).is_none() {
+            return Vec::new();
+        }
         let mut subs = Vec::new();
         let mut offset = start;
 
@@ -367,11 +397,7 @@ impl Hl7Lexer {
             offset = sub_end + 1;
         }
 
-        // Only keep subcomponents if there are actually multiple
-        if subs.len() <= 1 {
-            subs.clear();
-        }
-
+        subs.shrink_to_fit();
         subs
     }
 
@@ -422,6 +448,20 @@ mod tests {
         assert_eq!(msg.delimiters.component, b'^');
     }
 
+    /// v2.7 adds a fifth encoding character, the truncation character: it
+    /// stays part of MSH-2, and MSH-3 still starts after it.
+    #[test]
+    fn msh2_keeps_the_truncation_character() {
+        let msg = Hl7Lexer::new().parse(b"MSH|^~\\&#|LAB|HOSP\rPID|1".to_vec()).unwrap();
+        let msh = &msg.segments[0];
+        let field = |n: usize| msh.fields.iter().find(|f| f.position == n).unwrap().span.as_str(&msg.raw);
+        assert_eq!(field(2), "^~\\&#");
+        assert_eq!(field(3), "LAB");
+        assert_eq!(field(4), "HOSP");
+        let plain = Hl7Lexer::new().parse(b"MSH|^~\\&|LAB".to_vec()).unwrap();
+        assert_eq!(plain.segments[0].fields[1].span.as_str(&plain.raw), "^~\\&");
+    }
+
     #[test]
     fn test_version_detection() {
         let lexer = Hl7Lexer::new();
@@ -455,6 +495,45 @@ mod tests {
         assert_eq!(pid5.repetitions[0].components.len(), 3);
         assert_eq!(pid5.repetitions[0].components[0].span.as_str(&msg.raw), "Doe");
         assert_eq!(pid5.repetitions[0].components[1].span.as_str(&msg.raw), "John");
+    }
+
+    /// The index holds no spare room: vectors grown by push kept room for
+    /// four entries where one was used, and an emptied subcomponent list
+    /// kept its allocation. Over the two million fields of a 10 MB file of
+    /// short segments, that was most of the parser's memory.
+    #[test]
+    fn the_index_holds_no_spare_room() {
+        let data = b"MSH|^~\\&|A|B|C|D|20240101||ORU^R01|1|P|2.5\rOBX|1|NM|718-7^Hb^LN||13.5|g/dL|a&b~c^d&e~f\r".to_vec();
+        let msg = Hl7Lexer::new().parse(data).unwrap();
+        assert_eq!(msg.segments.capacity(), msg.segments.len());
+        for seg in &msg.segments {
+            assert_eq!(seg.fields.capacity(), seg.fields.len(), "{}", seg.segment_type);
+            for f in &seg.fields {
+                assert_eq!(f.repetitions.capacity(), f.repetitions.len(), "{}-{}", seg.segment_type, f.position);
+                for r in &f.repetitions {
+                    assert_eq!(r.components.capacity(), r.components.len());
+                    for c in &r.components {
+                        assert_eq!(c.subcomponents.capacity(), c.subcomponents.len());
+                    }
+                }
+            }
+        }
+        // And the structure is as before: one subcomponent is none, two
+        // are two; repetitions and components split as they did.
+        let obx = &msg.segments[1];
+        let value = obx.fields.iter().find(|f| f.position == 5).unwrap();
+        assert_eq!(value.repetitions.len(), 1);
+        assert_eq!(value.repetitions[0].components.len(), 1);
+        assert!(value.repetitions[0].components[0].subcomponents.is_empty());
+        let mixed = obx.fields.iter().find(|f| f.position == 7).unwrap();
+        let text = |s: Span| s.as_str(&msg.raw).to_string();
+        assert_eq!(mixed.repetitions.iter().map(|r| text(r.span)).collect::<Vec<_>>(), ["a&b", "c^d&e", "f"]);
+        let subs = &mixed.repetitions[0].components[0].subcomponents;
+        assert_eq!(subs.iter().map(|s| text(s.span)).collect::<Vec<_>>(), ["a", "b"]);
+        let comps = &mixed.repetitions[1].components;
+        assert_eq!(comps.iter().map(|c| text(c.span)).collect::<Vec<_>>(), ["c", "d&e"]);
+        assert!(comps[0].subcomponents.is_empty());
+        assert_eq!(comps[1].subcomponents.len(), 2);
     }
 
     #[test]

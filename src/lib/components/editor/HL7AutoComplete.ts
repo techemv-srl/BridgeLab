@@ -126,12 +126,43 @@ export function delimitersFromModel(model: MonacoTypes.editor.ITextModel): { fie
 	return std;
 }
 
+/**
+ * The MSH-9 suggestions for the text before the cursor: the common
+ * type^event pairs, written with the message's own component separator,
+ * and the 1-based column they replace from, which is the start of the
+ * field. Typing `ADT^` and picking ADT^A04 used to insert it after the `^`
+ * (ADT^ADT^A04): the suggestion stands for the whole field, so it replaces
+ * what is already typed in it.
+ */
+export function messageTypeCompletion(
+	textBefore: string,
+	delims: { field: string; component: string },
+): { startColumn: number; values: string[] } {
+	const startColumn = textBefore.lastIndexOf(delims.field) + 2;
+	return { startColumn, values: MESSAGE_TYPES.map((mt) => mt.split('^').join(delims.component)) };
+}
+
 /** The code a field value is looked up by: its first component, first repetition. */
 function leadingCode(value: string, d: ReturnType<typeof delimitersFromModel>): string {
 	const cut = [d.component, d.repetition, d.subcomponent]
 		.map((sep) => value.indexOf(sep))
 		.filter((i) => i >= 0);
 	return (cut.length ? value.slice(0, Math.min(...cut)) : value).trim();
+}
+
+/**
+ * `text` as a Markdown code span that shows it exactly as written. The
+ * hover is Markdown, and a value from the message is not ours: a backtick
+ * in it closed a plain `…` span, and what followed was rendered, a link
+ * with any text and target included. The fence is one backtick longer
+ * than any run inside, and a space keeps a backtick at either end from
+ * joining the fence (the renderer drops one space on each side).
+ */
+export function codeSpan(text: string): string {
+	const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+	const fence = '`'.repeat(longest + 1);
+	const pad = text.startsWith('`') || text.endsWith('`') || (text.startsWith(' ') && text.endsWith(' ')) ? ' ' : '';
+	return `${fence}${pad}${text}${pad}${fence}`;
 }
 
 /**
@@ -193,13 +224,15 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 						if (segmentType === 'MSH' && fieldPosition === 9) {
 							// Message Type field: the common type^event pairs, more
 							// useful here than the 128 bare codes of table 0076.
-							for (const mt of MESSAGE_TYPES) {
+							// Each replaces the field typed so far.
+							const { startColumn, values } = messageTypeCompletion(textBefore, delims);
+							for (const mt of values) {
 								suggestions.push({
 									label: mt,
 									kind: monaco.languages.CompletionItemKind.Enum,
 									detail: 'HL7 Message Type',
 									insertText: mt,
-									range,
+									range: { ...range, startColumn },
 								});
 							}
 						} else {
@@ -260,7 +293,7 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 				if (info) {
 					const field = info.fields.find(f => f.position === fieldPosition);
 					if (field) {
-						const contents = [
+						const contents: MonacoTypes.IMarkdownString[] = [
 							{ value: `**${segmentType}-${fieldPosition}**: ${field.name}` },
 							{ value: `Type: \`${field.data_type}\`${field.required ? ' · **required**' : ''}${field.max_length ? ' · max ' + field.max_length : ''}` },
 							{ value: field.description },
@@ -273,10 +306,12 @@ export function registerHL7AutoComplete(monaco: typeof MonacoTypes) {
 							const raw = lineContent.split(delims.field)[isMsh ? fieldPosition - 1 : fieldPosition] ?? '';
 							const code = leadingCode(raw, delims);
 							const hit = code ? table.values.find((tv) => tv.code === code) : undefined;
+							// The code is the message's own text: only ever in a
+							// code span, and never trusted (no commands, no HTML).
 							if (hit) {
-								contents.push({ value: `\`${hit.code}\` — ${hit.description} *(HL7 table ${table.id})*` });
+								contents.push({ value: `${codeSpan(hit.code)} — ${hit.description} *(HL7 table ${table.id})*`, isTrusted: false });
 							} else if (code && table.exhaustive) {
-								contents.push({ value: `\`${code}\` is not in HL7 table ${table.id} (${table.name})` });
+								contents.push({ value: `${codeSpan(code)} is not in HL7 table ${table.id} (${table.name})`, isTrusted: false });
 							}
 						}
 						return { contents };

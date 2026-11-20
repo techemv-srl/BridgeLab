@@ -1,9 +1,11 @@
 <script lang="ts">
 	import type { LicenseStatus } from '$lib/ipc/licensing';
 	import { getHardwareId } from '$lib/ipc/licensing';
+	import { getBuildId } from '$lib/ipc/app';
 	import { getPreference, setPreference } from '$lib/ipc/database';
 	import { t, subscribeLocale } from '$lib/i18n';
 	import { openPricing } from '$lib/licensing/pricing';
+	import { openExternal } from '$lib/page-guard';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -29,6 +31,10 @@
 			.then(({ getVersion }) => getVersion())
 			.then((v) => { appVersion = v; })
 			.catch(() => {});
+	}
+	let buildId = $state('');
+	if (typeof window !== 'undefined') {
+		getBuildId().then((id) => { buildId = id; });
 	}
 
 	// Persist dismissal across restarts, scoped to the current license_type
@@ -88,11 +94,14 @@
 
 	function requestQuote() {
 		const subject = tr('banner.quoteSubject');
-		const body = tr('banner.quoteBody', { hwid: hwid || '-', version: appVersion || '-' });
+		const body = tr('banner.quoteBody', {
+			hwid: hwid || '-',
+			version: appVersion ? (buildId ? `${appVersion} (build ${buildId})` : appVersion) : '-'
+		});
 		const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-		import('@tauri-apps/plugin-opener')
-			.then(({ openUrl }) => openUrl(url))
-			.catch(() => { window.location.href = url; });
+		// Never into the window itself: that replaced the app. Without a
+		// mail program the user gets the address to copy.
+		void openExternal(url);
 	}
 </script>
 

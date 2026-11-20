@@ -48,6 +48,10 @@ Segmenten unterscheiden lassen. Wenn Sie die Nachricht nach einer Prüfung
 bearbeiten, wird der Bericht mit der nächsten Hintergrundanalyse erneuert;
 bei abgeschalteter automatischer Analyse zeigt das Panel an, dass der
 Bericht veraltet ist, bis Sie <kbd>F6</kbd> drücken.</p>
+<p>Ein langer Bericht wird in Schritten von 200 Problemen aufgelistet:
+die nächsten erscheinen, wenn Sie ans Ende der Liste scrollen oder auf
+<em>Mehr anzeigen</em> klicken. Die Badges, der Filter und die Sortierung
+gelten immer für den ganzen Bericht.</p>
 
 <h3>Eigene Regeln aus Plugin-Packs</h3>
 <p>Legen Sie eine JSON-Datei unter
@@ -107,11 +111,14 @@ angibt, und prüft neben HL7 v2 auch FHIR; seine Zahlen können daher von
 nur HL7 v2). Mit <code>--extension hl7,txt,dat</code> liest es dieselben
 Dateien.</p>
 <pre><code>bridgelab-cli validate message.hl7 bundle.json
-bridgelab-cli validate "*.hl7" --format junit &gt; report.xml
+bridgelab-cli validate "*.hl7" --format junit --output report.xml
 bridgelab-cli batch ./inbox --json
-bridgelab-cli test regression.bltests.json --format junit &gt; tests.xml
+bridgelab-cli test regression.bltests.json --format junit --output tests.xml
 bridgelab-cli fhirpath "Patient.name.family" patient.json
 cat message.hl7 | bridgelab-cli send - --host 10.0.0.5 --port 2575</code></pre>
+<p>Schreiben Sie Berichte mit <code>--output</code>, wie oben: In
+Windows PowerShell 5.1 schreibt <code>&gt;</code> UTF-16, das
+CI-Werkzeuge nicht lesen können.</p>
 `,
 };
 
@@ -122,7 +129,13 @@ export const communicationSection: ManualSection = {
 <p>Öffnen Sie das untere Kommunikationspanel mit
 <kbd>Ctrl</kbd>+<kbd>K</kbd> oder über
 <strong>Werkzeuge → Kommunikationspanel</strong>. Vier Tabs: MLLP,
-HTTP, SOAP und Verlauf.</p>
+HTTP, SOAP und Verlauf. Das Panel öffnet sich so hoch, dass alle
+Einstellungen seines Tabs zu sehen sind, bis etwa 70 % des Fensters;
+verkleinern Sie es, erscheint eine Bildlaufleiste, und Ihre Höhe bleibt
+erhalten, bis Sie das Panel schließen. Vor dem Senden einer Nachricht
+über 10 MB, per MLLP, HTTP oder SOAP, fragt BridgeLab nach: Das Senden
+dauert, und viele Empfänger lehnen eine so große Nachricht ab (der
+Listener von BridgeLab selbst nimmt bis zu 10 MB an).</p>
 
 ${mockupCommunication}
 
@@ -137,7 +150,11 @@ ${mockupCommunication}
 	<li>Das ACK erscheint im Ergebnisbereich samt Umlaufzeit.
 		<em>Accept</em> (AA), <em>Error</em> (AE) und <em>Reject</em>
 		(AR) werden alle mit dem originalen
-		<code>MSA|AA|{control-id}</code> angezeigt.</li>
+		<code>MSA|AA|{control-id}</code> angezeigt. Eine Antwort, die kein
+		HL7 ist, ein ACK, dessen MSA-2 eine andere Nachricht nennt, oder
+		ein AA oder CA mit leerem MSA-2 für eine Nachricht mit MSH-10
+		erscheint gelb mit dem Grund: Es nimmt die gesendete Nachricht
+		nicht an.</li>
 </ol>
 
 <h3>ACK-Generator</h3>
@@ -168,9 +185,38 @@ Programme auf diesem Computer erreichen ihn. Um einen Datenstrom von
 einem anderen Rechner zu empfangen, setzen Sie <strong>Lauschen auf</strong> auf
 <code>0.0.0.0</code> (alle Schnittstellen) oder auf die Adresse einer
 Netzwerkkarte und geben den Port in der Firewall nur für die erwarteten
-Systeme frei.</p>
+Systeme frei. Ein leeres <strong>Lauschen auf</strong> bedeutet ebenfalls
+nur diesen Computer. Eine IPv6-Adresse darf mit oder ohne eckige Klammern
+stehen (<code>::1</code> oder <code>[::1]</code>). Mit Port 0 wählt das
+System einen freien Port; der Status zeigt dann, welchen, damit Sie ihn
+dem Sender nennen können.</p>
 <p><strong>Stopp</strong> schließt auch die noch offenen
 Verbindungen: danach wird nichts mehr empfangen oder bestätigt.</p>
+<p>Der Listener arbeitet auch bei geschlossenem Kommunikationspanel
+weiter: empfangene Nachrichten öffnen sich weiterhin in neuen Tabs und
+landen in der Konsole, die sie samt Zählern zeigt, sobald Sie das Panel
+wieder öffnen.</p>
+<p>Ein einzelner Sender kann den Listener weder beenden noch den
+Speicher dieses Computers füllen. Der Listener bedient höchstens 64
+Verbindungen gleichzeitig: Eine weitere wird angenommen und sofort
+geschlossen, und eine rote Zeile in der Konsole nennt den Grund. Eine
+Nachricht darf bis zu 10&nbsp;MB groß sein, und die Nachrichten, die noch
+eintreffen, dürfen über alle Verbindungen zusammen 64&nbsp;MB belegen:
+Eine Nachricht über einer der beiden Grenzen wird mit AR abgelehnt und
+ihre Verbindung geschlossen. Eine Nachricht muss innerhalb von 2 Minuten
+nach ihrem ersten Byte vollständig eintreffen (oder innerhalb des
+Lesezeitlimits pro Verbindung, wenn dieses länger eingestellt ist), sonst
+wird ihre Verbindung getrennt: Das Lesezeitlimit beginnt mit jedem Byte
+neu, ein Sender, der Byte für Byte tröpfelt, hielte seine Verbindung
+sonst für immer. Gewöhnlicher Verkehr kommt diesen Grenzen nie nahe:
+Hunderte Nachrichten nacheinander, einige Sender gleichzeitig,
+Nachrichten von mehreren MB.</p>
+<p>Schlägt das Annehmen einer Verbindung fehl, etwa weil dem System die
+offenen Dateien ausgegangen sind, meldet das eine rote Zeile in der
+Konsole, und der Listener versucht es kurz darauf erneut. Endet er
+trotzdem, zeigt das Panel wieder <strong>Lauschen starten</strong>, mit
+dem Grund in Rot, statt „Lauscht“ auf einem Port, der nicht mehr
+antwortet.</p>
 
 <h3>Listener-Konsole</h3>
 <p>Solange der Listener läuft, erscheint jede empfangene Nachricht als
@@ -180,16 +226,29 @@ tatsächlich zurückgeschriebene ACK-Code (grünes <code>AA</code>, rotes
 verwendete Zeichenkodierung und die erste Zeile der Nachricht.
 <strong>Klicken Sie auf eine Zeile, um diese Nachricht erneut in einem
 Tab zu öffnen.</strong> Listener-Fehler erscheinen inline als rote
-Zeilen.</p>
+Zeilen. Eine Verbindung, die nichts sendet, wird nach dem Lesezeitlimit
+pro Verbindung geschlossen, um ihren Platz freizugeben, mit einer
+gewöhnlichen grauen Zeile, keiner roten: Ein Sender kann sich lange
+verbinden, bevor er eine Nachricht hat.</p>
 <p>Die Chips in der Kopfzeile der Konsole filtern die Zeilen nach
 Ergebnis — <em>AA</em>, <em>AE</em>, <em>AR</em>, <em>Ohne ACK</em>
 (empfangen bei ausgeschaltetem Auto-ACK), <em>Fehler</em> — und jeder
 trägt einen laufenden Zähler, sodass „AE&nbsp;12“ von 300 auffällt,
-bevor jemand scrollt. Dieselben Chips gibt es im Tab Verlauf.</p>
+bevor jemand scrollt. Die Zähler umfassen alle Zeilen seit dem letzten
+Leeren der Konsole, die Konsole selbst behält aber nur die letzten 200
+Zeilen: darüber hinaus weist eine Zeile über der Liste darauf hin, und
+die Chips filtern nur die behaltenen Zeilen. Dieselben Chips gibt es im Tab
+Verlauf.</p>
 <p>Der Schalter <em>„Empfangene Nachrichten in neuem Tab öffnen“</em>
 (standardmäßig aktiv) lässt sich bei Tests mit hohem Volumen
 deaktivieren: Die Nachrichten landen dann nur in der Konsole, und Sie
-öffnen gezielt die, die Sie brauchen.</p>
+öffnen gezielt die, die Sie brauchen. Auch eingeschaltet begräbt ein
+Schwall das Fenster nicht unter Tabs: Nach 20 neuen Tabs oder 16 MB an
+Nachrichten ohne Tastendruck oder Klick im Fenster gehen die folgenden Nachrichten nur
+noch in die Konsole und den Verlauf, und ein einziger Hinweis über dem
+Editor zählt sie, mit einer Schaltfläche, die die Konsole zeigt. Ein
+Tastendruck oder Klick lässt die folgenden Nachrichten wieder in einem
+Tab öffnen; das Schließen des Hinweises ebenso.</p>
 <p class="note">Die für das Öffnen per Klick vorgehaltenen
 vollständigen Nachrichteninhalte sind auf ein rollierendes Budget von
 32&nbsp;MB begrenzt. In langen unbeaufsichtigten Sitzungen verlieren
@@ -212,13 +271,22 @@ annimmt; die Konsole zeigt den gewählten Zeichensatz, und das ACK wird
 darin neu kodiert, damit die Gegenstelle nie verstümmelte Zeichen sieht.
 Beim Senden gilt der Zeichensatz aus MSH-18, sonst der, mit dem die
 Datei des Tabs gelesen wurde, sonst UTF-8, und das Ergebnis nennt den
-gesendeten Zeichensatz. Eine Nachricht mit Zeichen, die der gewählte
+gesendeten Zeichensatz. In Auto wird eine Nachricht, deren MSH-18 einen
+Zeichensatz nennt, den BridgeLab nicht schreiben kann
+(<code>ISO IR87</code>, <code>UNICODE UTF-16</code>…), abgelehnt, statt
+unter diesem Header als UTF-8 zu gehen; ebenso ein Tab, dessen
+Nachrichten verschiedene Zeichensätze angeben, wenn das gemeinsame Senden
+in einem davon ihren Text ändern würde (reines ASCII liest sich in allen
+gleich und wird gesendet). Mit einer in den erweiterten Einstellungen
+gewählten Kodierung gehen sie trotzdem; <code>bridgelab-cli send</code>
+ohne <code>--encoding</code> lehnt dieselben Dateien ab. Eine Nachricht mit Zeichen, die der gewählte
 Zeichensatz nicht darstellen kann, wird nicht gesendet: der Fehler nennt
 sie, damit ein Name nie mit <code>?</code> ankommt. Sende- und
 Empfangskodierung sind unabhängig.</p>
-<p>Segmente gehen mit CR am Ende auf die Leitung, unabhängig von den
-Zeilenenden im Editor: LF und CR LF werden umgewandelt, wie es die CLI
-tut, ebenso bei einem HL7-v2-Body über HTTP oder SOAP.</p>
+<p>Segmente gehen mit CR am Ende auf die Leitung, auch das letzte,
+unabhängig von den Zeilenenden im Editor: LF und CR LF werden
+umgewandelt und Leerzeilen nicht gesendet, wie es die CLI tut, ebenso
+bei einem HL7-v2-Body über HTTP oder SOAP.</p>
 <p>Für <strong>Dateien</strong> gelten dieselben Regeln. Eine Datei, die
 nicht UTF-8 ist, öffnet sich in der Kodierung aus MSH-18
 (<code>8859/1</code>, <code>8859/2</code>, <code>8859/15</code>…, sowie
@@ -243,10 +311,12 @@ und jede Form der Authentifizierung erfordern Pro: ein Authorization-
 oder Proxy-Authorization-Header, ein Cookie, jeder Header, dessen Name
 auf einen Schlüssel, ein Token, ein Geheimnis, eine Signatur oder eine
 Sitzung hindeutet (etwa <code>X-API-Key</code> oder
-<code>Ocp-Apim-Subscription-Key</code>), Benutzer:Passwort in der URL
-oder ein Schlüssel oder Token im Query-String
+<code>Ocp-Apim-Subscription-Key</code>), Benutzer:Passwort in der URL,
+ein Schlüssel oder Token im Query-String
 (<code>access_token</code>, <code>api_key</code>, <code>key</code>,
-<code>token</code>, <code>sig</code>, <code>client_secret</code>…).
+<code>token</code>, <code>sig</code>, <code>client_secret</code>…)
+oder eine Sitzungs-ID im URL-Pfad (<code>;jsessionid=…</code>) oder in
+einem <code>PHPSESSID</code>-Parameter.
 FHIR-Suchparameter wie <code>code</code> sind keine Zugangsdaten.
 Weiterleitungen werden in jeder Edition verfolgt, aber nur auf demselben
 Server (oder von http zu https auf ihm): eine Weiterleitung zu einem anderen
@@ -272,7 +342,10 @@ Versionen.</p>
 CR am Segmentende werden zu <code>&amp;#13;</code>, damit das XML-Parsing
 sie nicht in LF verwandelt) und in ein
 <code>&lt;payload&gt;</code>-Element gepackt; Inhalt, der bereits XML
-ist, wird unverändert eingefügt. Die erweiterten Einstellungen ergänzen
+ist, wird unverändert eingefügt, nur ohne seine eigene
+<code>&lt;?xml …?&gt;</code>-Deklaration und Byte-Order-Mark (die
+Envelope hat ihre eigene Deklaration, und eine zweite im Body ist kein
+gültiges XML). Die erweiterten Einstellungen ergänzen
 <strong>WS-Security-UsernameToken</strong>-Zugangsdaten,
 <strong>WS-Addressing</strong>-Header (To / Action / MessageID) und eine
 <strong>eigene Envelope-Vorlage</strong>, in der der wörtliche
@@ -284,10 +357,46 @@ eingefügt); eine Vorlage ohne SOAP-Envelope und -Body kann sie nicht
 tragen, und das Senden wird abgelehnt statt ohne sie zu erfolgen. Der
 WSDL-Import ist als nächster Schritt geplant.</p>
 
+<h3>Proxy und Zertifikate</h3>
+<p>HTTP- und SOAP-Anfragen, die Online-Aktivierung, die
+Lizenzverlängerung und die Nutzungsstatistik laufen über den Proxy aus
+der Umgebungsvariablen <code>HTTPS_PROXY</code> oder
+<code>HTTP_PROXY</code>; <code>NO_PROXY</code> nennt die Hosts, die
+direkt erreicht werden (<code>NO_PROXY=10.0.0.0/8,.klinik.local</code>).
+Ist keine der beiden gesetzt, gilt der manuelle Proxy des
+Betriebssystems: unter Windows <em>Einstellungen → Netzwerk und
+Internet → Proxy → Manuelle Proxyeinrichtung</em>, unter macOS
+<em>Web-Proxy (HTTP)</em> und <em>Sicherer Web-Proxy (HTTPS)</em> in den
+Proxy-Einstellungen des Netzwerks. Die automatische Proxykonfiguration
+wird nicht gelesen: weder ein Setupskript (PAC) noch die automatische
+Erkennung (WPAD). In einem solchen Netz fragen Sie Ihre IT nach der
+Adresse des Proxys und tragen sie in <code>HTTPS_PROXY</code> oder als
+manuellen Proxy ein. MLLP läuft nie über einen Proxy.</p>
+<p><code>localhost</code>, <code>127.0.0.1</code> und <code>::1</code>
+werden immer direkt erreicht. Von den Ausnahmen der
+Windows-Proxy-Einstellungen gelten nur Host- und Domänennamen
+(<code>fhir.example.org</code>, <code>*.example.org</code>): „Proxyserver
+nicht für lokale (Intranet-)Adressen verwenden“ und Adressmuster wie
+<code>10.*</code> nicht, und die Ausnahmeliste von macOS wird nicht
+gelesen; tragen Sie diese Hosts in <code>NO_PROXY</code> ein. Auch ein
+eigener Proxy je Protokoll (Internetoptionen → LAN-Einstellungen →
+Erweitert) wird nicht gelesen. Aktivierung und Verlängerung lesen die
+Proxy-Einstellungen einmal pro Start: Starten Sie BridgeLab nach einer
+Änderung neu.</p>
+<p>HTTPS-Zertifikate werden gegen den Zertifikatspeicher des
+Betriebssystems und die in BridgeLab enthaltenen Mozilla-Stammzertifikate
+geprüft; ein Zertifikat, das die Prüfung nicht besteht, lässt sich auch
+nicht trotzdem annehmen. Hinter einem Proxy, der den TLS-Verkehr prüft,
+muss dessen Stammzertifikat im Speicher des Betriebssystems liegen, wo
+die IT es meist installiert. Ein abgelehntes Zertifikat wird als solches
+gemeldet, mit dem Grund (nicht vertrauenswürdig, abgelaufen, für einen
+anderen Namen ausgestellt), nicht als Netzwerkfehler.</p>
+
 <h3>Verlauf</h3>
 <p>Jedes Senden und jede vom Listener empfangene Nachricht wird
 protokolliert: Ziel (Host und Port, oder die URL mit Passwörtern oder
-Schlüsseln durch <code>***</code> ersetzt), Größe, Antwortcode und
+Schlüsseln durch <code>***</code> ersetzt, auch im Fragment und in einer
+URL, die nicht gesendet werden konnte), Größe, Antwortcode und
 Round-Trip-Zeit. Die letzten 100 Einträge bleiben über Neustarts
 erhalten, ältere werden gelöscht; ein Klick auf eine Zeile zeigt die
 vollständige Anfrage und Antwort — die Nachricht und ihr ACK, oder den
@@ -298,7 +407,11 @@ aufbewahrt. Ein MLLP-Senden speichert außerdem den
 (MSA-1), als grünes oder rotes Badge in der Zeile: ein Senden, das die
 Gegenstelle erreicht und ein <code>AE</code> zurückbekommt, ist auf
 Transportebene "OK" und auf Anwendungsebene eine Ablehnung, und das
-Badge unterscheidet beides. Filter-Chips über der Liste — <em>AA</em>,
+Badge unterscheidet beides. Ein ACK, dessen MSA-2 eine andere Nachricht
+nennt, oder ein AA oder CA mit leerem MSA-2 (es nennt keine
+Nachricht), quittiert nichts Gesendetes: Es bekommt kein Badge und erscheint
+unter <em>Ohne ACK</em>, wie eine Antwort, die kein HL7 ist.
+Filter-Chips über der Liste — <em>AA</em>,
 <em>AE</em>, <em>AR</em>, <em>Ohne ACK</em>, <em>Fehlgeschlagen</em> —
 tragen Zähler und schränken die Liste auf ein Ergebnis ein; die
 Commit-Mode-Codes CA, CE und CR zählen unter AA, AE und AR.
@@ -316,11 +429,13 @@ Auswahl eines Profils übernimmt es ins Formular; Speichern unter einem
 vorhandenen Namen überschreibt es; <em>Löschen</em> entfernt das
 ausgewählte Profil. Profile liegen in der lokalen Datenbank und
 überstehen Neustarts.</p>
-<p class="note">HTTP-Profile speichern das Feld Header so, wie es
-eingegeben ist, einschließlich eines <code>Authorization</code>-Headers,
-in der lokalen Datenbank. Um ein Passwort oder Token dort nicht zu
-speichern, geben Sie es unter <em>Authentifizierung</em> in den
-erweiterten HTTP-Einstellungen ein; diese werden nie gespeichert.</p>
+<p class="note">HTTP-Profile speichern die URL und das Feld Header
+so, wie sie eingegeben sind, einschließlich user:password oder
+Schlüsseln in der URL und eines <code>Authorization</code>-Headers, in
+der lokalen Datenbank; SOAP-Profile speichern ihren Endpunkt ebenso. Um
+ein Passwort oder Token dort nicht zu speichern, geben Sie es unter
+<em>Authentifizierung</em> in den erweiterten HTTP-Einstellungen ein;
+diese werden nie gespeichert.</p>
 `,
 };
 
@@ -439,8 +554,14 @@ Snippet ein Test.</p>
 tatsächlich — HL7 v2 oder FHIR, automatisch erkannt — und vergleicht
 das Ergebnis mit seinen Erwartungen. <strong>Alle ausführen</strong>
 tut dasselbe für jeden Fall, der zur aktuellen Suche passt, mit einem
-Bestanden/Fehlgeschlagen-Badge pro Zeile und einer
-Bestanden/Gesamt-Zusammenfassung in der Werkzeugleiste. Nach einer
+Badge pro Zeile (✓ bestanden, ✖ fehlgeschlagen, ~ nicht geprüft) und
+einer Bestanden/Gesamt-Zusammenfassung in der Werkzeugleiste. Eine
+FHIR-Ressource, die ihre Erwartungen erfüllt, aber nicht vollständig
+geprüft wurde — ein deklariertes Profil ist nicht installiert, oder
+kein installiertes Paket definiert ihren Ressourcentyp —, ist
+<em>nicht geprüft</em>, mit Begründung, und wird getrennt gezählt
+(„4/8 bestanden, 1 nicht geprüft“), wie <code>bridgelab-cli test</code>
+sie meldet: nie als bestanden. Nach einer
 Schnittstellenänderung sagt Ihnen ein Klick, welche Ihrer
 Referenznachrichten nicht mehr bestehen. Das Bearbeiten eines Falls
 setzt sein gespeichertes Ergebnis bis zum nächsten Lauf zurück.</p>
@@ -475,6 +596,36 @@ beim Start wiederherstellen</em> um, oder löschen Sie mit
 deaktiviert auch die Wiederherstellung, sodass der nächste Start auf
 dem Willkommensbildschirm beginnt). Das Abschalten der Wiederherstellung
 löscht auch die gespeicherten Tabs, die Patientendaten enthalten können.</p>
+<p>Bei abgeschalteter Wiederherstellung fragt das Schließen des Fensters,
+bevor ungespeicherte Tabs verloren gehen. Beendet stattdessen das System
+BridgeLab (Abmelden, Herunterfahren oder Neustart, <em>Beenden</em> im
+Dock unter macOS), kann nichts mehr fragen: Die ungespeicherten Tabs
+werden dann einmal als Wiederherstellungskopie in derselben Datenbank
+aufbewahrt, und der nächste Start bietet sie mit
+<em>Wiederherstellen</em> und <em>Verwerfen</em> an; in beiden Fällen
+wird die Kopie danach gelöscht. Bei eingeschalteter Wiederherstellung
+werden die neuesten Tabs in diesem Moment als Sitzung geschrieben und
+kommen wie gewohnt zurück. Unter Windows, und unter macOS beim Beenden
+über das Dock oder beim Abmelden, kann BridgeLab das Fenster in diesem
+Moment nicht mehr fragen und behält die Tabs so, wie das Fenster sie
+zuletzt übergeben hat (eine Drittelsekunde nach jeder Änderung und
+jedes Mal, wenn Sie das Fenster verlassen): Änderungen aus dem letzten
+Bruchteil einer Sekunde können verloren gehen. Nichts bleibt erhalten,
+wenn BridgeLab hart beendet wird oder die
+Desktop-Sitzung den Bildschirm schließt, bevor sie die App zum Beenden
+auffordert.</p>
+<p>Ein großer wiederhergestellter Tab wird erst aus seiner Datei gelesen,
+wenn Sie ihn zum ersten Mal anzeigen; bis der Text da ist, ist der Editor
+schreibgeschützt und <strong>Speichern</strong> wartet, sodass die Datei
+nie leer geschrieben wird. Lässt sich die Sitzungsdatenbank
+(<code>bridgelab.db</code>) nicht öffnen — beschädigt, von einem anderen
+Programm gesperrt, auf einem vollen oder schreibgeschützten Datenträger —,
+startet BridgeLab trotzdem, mit einer Datenbank im Arbeitsspeicher, und
+eine Warnung nennt die Datei und den Grund. Bis das behoben ist, bleiben
+offene Tabs, zuletzt geöffnete Dateien, der Kommunikationsverlauf,
+Verbindungsprofile, Testfälle und Einstellungen nach dem Schließen von
+BridgeLab nicht erhalten. Die Datei selbst wird nie gelöscht oder
+überschrieben.</p>
 
 <h3>Von anderen Programmen geänderte Dateien</h3>
 <p>BridgeLab bemerkt, wenn ein anderes Programm eine geöffnete Datei

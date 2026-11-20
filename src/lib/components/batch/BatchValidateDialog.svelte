@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { saveTarget } from '$lib/save-target';
 	import { batchValidate, type BatchFileResult } from '$lib/ipc/batch';
+	import { pluginsNotApplied } from '$lib/ipc/plugins';
 	import { parseUpgradeError } from '$lib/ipc/licensing';
 	import { t, subscribeLocale } from '$lib/i18n';
 	let localeVersion = $state(0);
@@ -17,6 +18,8 @@
 
 	let results = $state<BatchFileResult[]>([]);
 	let skipped = $state(0);
+	/** Packs with HL7 v2 rules the Community cap left out of this run. */
+	let capped = $state(0);
 	let running = $state(false);
 	let errorMsg = $state('');
 	let onlyFailures = $state(false);
@@ -37,6 +40,7 @@
 			const report = await batchValidate(paths);
 			results = report.results;
 			skipped = report.skipped;
+			capped = await pluginsNotApplied('hl7').catch(() => 0);
 			ranOnce = true;
 		} catch (e) {
 			const up = parseUpgradeError(e);
@@ -133,6 +137,9 @@
 			{/if}
 			{#if skipped > 0}
 				<div class="batch-warn">{tr('batch.skipped', { count: skipped })}</div>
+			{/if}
+			{#if ranOnce && capped > 0}
+				<div class="batch-warn">{tr('plugins.notApplied', { count: capped })}</div>
 			{/if}
 
 			<div class="batch-table-wrap">

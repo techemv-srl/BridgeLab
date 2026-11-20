@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_SEPARATORS as SEPS,
+	expectedSegmentsKey,
 	fieldAtColumn,
 	fieldRange,
 	insertionLine,
@@ -115,5 +116,29 @@ describe('inserting a segment', () => {
 		expect(p2.find((p) => p.code === 'TQ1')?.before).toBe(3); // between OBR and OBX
 		expect(p2.find((p) => p.code === 'SFT')?.before).toBe(1);
 		expect(p2.filter((p) => p.code === 'NTE')).toEqual([]);
+	});
+});
+
+describe('expectedSegmentsKey', () => {
+	const msh = (enc: string, rest = 'LAB|HOSP') => `MSH|${enc}|${rest}`;
+
+	it('changes with the declared delimiters, which MSH-9 is split with', () => {
+		const std = expectedSegmentsKey('ADT@A01', '2.5', msh('^~\\&'));
+		const at = expectedSegmentsKey('ADT@A01', '2.5', msh('@~\\&'));
+		expect(at).not.toBe(std);
+		expect(expectedSegmentsKey('ADT@A01', '2.5', 'MSH#@~\\&#LAB')).not.toBe(at);
+	});
+
+	it('stays the same through ordinary edits, so they do not ask again', () => {
+		expect(expectedSegmentsKey('ADT^A01', '2.5', msh('^~\\&', 'LAB|HOSP|EHR'))).toBe(
+			expectedSegmentsKey('ADT^A01', '2.5', msh('^~\\&', 'LAB2|CLINIC')),
+		);
+		expect(expectedSegmentsKey('ADT^A01', '2.5', msh('^~\\&'))).not.toBe(expectedSegmentsKey('ADT^A04', '2.5', msh('^~\\&')));
+	});
+
+	it('is empty when there is nothing to look up', () => {
+		expect(expectedSegmentsKey('', '2.5', msh('^~\\&'))).toBe('');
+		expect(expectedSegmentsKey('ADT^A01', '', msh('^~\\&'))).toBe('');
+		expect(expectedSegmentsKey('ADT^A01', '2.5', undefined)).toBe('ADT^A01|2.5|');
 	});
 });

@@ -73,7 +73,7 @@
 				</svg>
 				<span>BridgeLab</span>
 			</div>
-			<span class="eyebrow"><span id="version-badge">v2.0.0</span> &middot; Open Core &middot; MIT</span>
+			<span class="eyebrow"><span id="version-badge">v2.1.0</span> &middot; Open Core &middot; MIT</span>
 			<h1>HL7/FHIR <span class="grad">made simple.</span></h1>
 			<p class="lede">
 				A modern message editor for healthcare integration. Handles
@@ -88,7 +88,7 @@
 			</div>
 			<ul class="kpi">
 				<li><strong>&lt; 2s</strong><span>open a 10 MB message</span></li>
-				<li><strong>&lt; 300 MB</strong><span>parser RAM on a 10 MB message</span></li>
+				<li><strong>&lt; 100 MB</strong><span>parser RAM on a 10 MB base64 message</span></li>
 				<li><strong>5</strong><span>UI languages (EN/IT/FR/ES/DE)</span></li>
 			</ul>
 		</div>
@@ -167,7 +167,7 @@
 					FHIR package you install on top &mdash; cardinality,
 					element types, choice elements, unknown elements,
 					Bundle references. A FHIRPath&nbsp;2.0 evaluator that
-					passes 91% of the official HL7 test suite. Your own
+					passes 93% of the official HL7 test suite. Your own
 					rules drop in as declarative JSON plugin packs &mdash;
 					no recompile, no code execution.
 				</p>
@@ -222,6 +222,19 @@
 					other versions come with Pro.
 				</p>
 			</article>
+			<article class="feat">
+				<span class="feat-num" aria-hidden="true">08</span>
+				<h3>Messages in plain words</h3>
+				<p>
+					The interpretation panel reads an HL7 v2 message as
+					sentences in your language &mdash; <em>Patient Bianchi,
+					Laura Maria, Female, born 1974-03-22</em>; <em>Hemoglobin:
+					11.9 g/dL, reference range 12.0-16.0, Below low
+					normal</em> &mdash; one block per segment, codes explained
+					from the HL7 tables. Click any value to select its field
+					in the editor.
+				</p>
+			</article>
 		</div>
 	</div>
 </section>
@@ -255,11 +268,11 @@
 						<td>Windows, macOS, Linux</td>
 						<td>Yes</td>
 						<td>Free core &middot; Pro &euro;249 / seat / year</td>
-						<td>2.0.0 &mdash; Sep 2026</td>
+						<td>2.1.0 &mdash; Nov 2026</td>
 					</tr>
 					<tr>
 						<td>HL7 Soup</td>
-						<td>Yes</td>
+						<td>Not advertised</td>
 						<td>Windows (web edition: macOS, Linux)</td>
 						<td>Not advertised</td>
 						<td>From $40 / user / month</td>
@@ -278,8 +291,8 @@
 						<td>Viewer</td>
 						<td>Windows</td>
 						<td>Not advertised</td>
-						<td>Quote on request</td>
-						<td>v26.2</td>
+						<td>$425 Professional, per user &middot; Enterprise $179 / user / year (10+)</td>
+						<td>v26.2.552 &mdash; Oct 2026</td>
 					</tr>
 					<tr>
 						<td>HL7 Inspector</td>
@@ -302,9 +315,10 @@
 		</div>
 		<p class="sub tiny">
 			Figures taken from the vendors&rsquo; public websites on
-			30 September 2026 (<a href="https://www.integrationsoup.com/purchase.html">HL7 Soup</a>,
+			17&ndash;18 November 2026 (<a href="https://www.integrationsoup.com/purchase.html">HL7 Soup</a>,
 			<a href="https://7edit.com/order/">7Edit</a>,
-			<a href="https://hl7spy.ca/hl7spy-v26-2-113-released/">HL7Spy</a>,
+			<a href="https://hl7spy.ca/purchase/">HL7Spy</a> and
+			<a href="https://hl7spy.ca/hl7spy-v26-2-552-released/">its release notes</a>,
 			<a href="https://sourceforge.net/projects/hl7inspector/">HL7 Inspector</a>
 			and <a href="https://bitbucket.org/crambow/hl7inspector">its source repository</a>,
 			<a href="https://repo1.maven.org/maven2/ca/uhn/hapi/hapi-base/">HAPI</a>);
@@ -360,10 +374,11 @@
 	<div class="wrap">
 		<h2>Download</h2>
 		<p class="sub">
-			Pick your platform. Installers show the license (MIT, and the
-			BUSL&nbsp;1.1 of the <code>pro/</code> directories) and, on
-			Windows, a language selector. Starts with a 14-day Pro trial; the free
-			tier stays usable for real work forever.
+			Pick your platform. The Windows installers (.exe and .msi) show the
+			license (MIT, and the BUSL&nbsp;1.1 of the <code>pro/</code>
+			directories), and the .exe a language selector; every package also
+			installs the license texts next to the app. Starts with a 14-day Pro
+			trial; the free tier stays usable for real work forever.
 		</p>
 		<div class="dlgrid">
 			<a class="dl" href="https://github.com/techemv-srl/BridgeLab/releases/latest">
@@ -431,6 +446,8 @@
 					<li>Everything in Community</li>
 					<li>MLLP listener &amp; batch validation</li>
 					<li>PHI masking, FHIRPath, bundle visualizer</li>
+					<li>JSON &amp; CSV export</li>
+					<li>FHIR package (IG) install &amp; FHIR rules editor</li>
 					<li>Full XSD catalogue &amp; export</li>
 					<li>HTTP auth &amp; mutations</li>
 					<li>Unlimited plugins &amp; test cases</li>
@@ -486,7 +503,8 @@
 					Yes. The core is MIT-licensed and stays fully usable
 					for production integration work. Pro unlocks advanced
 					features &mdash; MLLP listener, PHI masking and batch
-					tools, FHIRPath, the full XSD catalogue, unlimited saved
+					tools, FHIRPath, JSON and CSV export, installing FHIR
+					packages, the full XSD catalogue, unlimited saved
 					test cases &mdash; and Enterprise adds the SOAP 1.1/1.2
 					client with WS-Security and priority support, but
 					nothing that blocks day-to-day HL7 work. The test case
@@ -566,10 +584,13 @@
 					Fully. Parsing, validation, MLLP and HTTP targeting
 					local hosts, anonymization, export, CLI &mdash; none
 					require network access. Activating with an online
-					activation code needs a single HTTPS call; afterwards
-					the license is verified locally via Ed25519 signatures
-					with no license server involved. Fully offline signed
-					keys are available on request for air-gapped sites.
+					activation code needs one HTTPS call; afterwards every
+					feature check is local, via Ed25519 signatures. A license
+					activated online also re-checks with the license server in
+					the background once a week (daily close to expiry) to pick
+					up a renewal or a revoked code; when that call fails, the
+					license keeps working. Fully offline signed keys, which never connect,
+					are available on request for air-gapped sites.
 				</p>
 			</details>
 			<details>
@@ -600,8 +621,10 @@
 						(used to flag revoked licenses) go to
 						<code>license-api.techemv.it</code>; the app shows the
 						exact JSON before you opt in. IT can force it off for
-						every user with <code>BRIDGELAB_DISABLE_TELEMETRY=1</code>
-						or the same <code>policy.json</code>.
+						every user with the same <code>policy.json</code>, or
+						with <code>BRIDGELAB_DISABLE_TELEMETRY=1</code> in the
+						environment the app starts with (the manual says where
+						to set it on each system).
 					</li>
 					<li>
 						<strong>New-version check.</strong> Once a day at
@@ -610,9 +633,10 @@
 						number &mdash; nothing is downloaded or installed.
 						The installer (or the app, at first start) asks
 						before it ever runs; switch it off in Settings
-						&rarr; Privacy, or for every user of a machine with
-						<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code> or a
-						<code>policy.json</code>.
+						&rarr; Privacy, or for every user of a machine with a
+						<code>policy.json</code> (or
+						<code>BRIDGELAB_DISABLE_UPDATE_CHECK=1</code> in the
+						environment the app starts with).
 					</li>
 				</ul>
 				<p>
@@ -689,7 +713,10 @@
 					and <code>xsd</code>. Free, no licence; reads files or
 					standard input and outputs JSON or JUnit XML so you can
 					wire it into CI. The Linux binary needs glibc 2.34 or
-					newer (Ubuntu 22.04, Debian 12, RHEL 9).
+					newer (Ubuntu 22.04, Debian 12, RHEL 9). For containers
+					and CI runners there is also an image,
+					<code>ghcr.io/techemv-srl/bridgelab-cli</code>, tagged
+					with each version and <code>latest</code>.
 				</p>
 			</details>
 		</div>

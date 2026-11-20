@@ -1,6 +1,6 @@
 [package]
 name = "bridgelab-cli"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 description = "BridgeLab CLI - the desktop app's HL7 v2 and FHIR validators, headless, for CI/CD"
 license = "MIT"

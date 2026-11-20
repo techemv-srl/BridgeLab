@@ -1,14 +1,17 @@
 <script lang="ts">
 	import {
-		activateLicense, activateLicenseOnline, deactivateLicense, getHardwareId,
-		isActivationCode, looksLikeActivationCode, type LicenseStatus,
+		activateLicense, activateLicenseOnline, deactivateLicense, getHardwareIdInfo,
+		isActivationCode, looksLikeActivationCode, type LicenseStatus, type HardwareIdInfo,
 	} from '$lib/ipc/licensing';
 	import { t, subscribeLocale, getLocale } from '$lib/i18n';
 	import { openPricing } from '$lib/licensing/pricing';
+	import { featureName } from '$lib/licensing/feature-names';
+	import { activationNetworkError } from '$lib/licensing/activation-errors';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
 	function tr(key: string, params?: Record<string, string | number>): string { void localeVersion; return t(key, params); }
+	function feature(tag: string): string { void localeVersion; return featureName(tag); }
 
 	interface Props {
 		currentStatus: LicenseStatus;
@@ -29,6 +32,8 @@
 
 	let licenseKey = $state('');
 	let hardwareId = $state('');
+	/** Set when the ID is the host-and-user fallback, which may change. */
+	let hardwareIdInfo = $state<HardwareIdInfo | null>(null);
 	let error = $state('');
 	let activating = $state(false);
 	let activatingOnline = $state(false);
@@ -64,7 +69,7 @@
 	$effect(() => {
 		if (loaded || typeof window === 'undefined') return;
 		loaded = true;
-		getHardwareId().then(id => { hardwareId = id; }).catch(() => {});
+		getHardwareIdInfo().then(info => { hardwareId = info.id; hardwareIdInfo = info; }).catch(() => {});
 	});
 
 	// Steal focus from Monaco when the dialog mounts. Without this the
@@ -130,11 +135,13 @@
 			}
 		} catch (e) {
 			const msg = String(e);
-			if (msg.includes('ERR_SERVER_UNREACHABLE')) {
-				// Isolated / air-gapped site: no technical noise — one clear,
-				// localized message pointing at the offline-key flow, with the
-				// disclosure opened so the Hardware ID is immediately visible.
-				error = tr('act.serverUnreachable');
+			const network = activationNetworkError(msg, tr);
+			if (network) {
+				// No answer from the license server (unreachable, or its
+				// certificate refused): a localized message pointing at the
+				// offline-key flow, with the disclosure opened so the
+				// Hardware ID is immediately visible.
+				error = network;
 				if (offlineDetails) offlineDetails.open = true;
 			} else {
 				error = msg;
@@ -156,7 +163,7 @@
 			onStatusChange(status);
 		} catch (e) {
 			const msg = String(e);
-			error = msg.includes('ERR_SERVER_UNREACHABLE') ? tr('act.serverUnreachable') : msg;
+			error = activationNetworkError(msg, tr) ?? msg;
 		}
 		refreshing = false;
 	}
@@ -216,8 +223,8 @@
 			<div class="active-section">
 				<div class="feature-list">
 					<div class="status-label">{tr('act.features')}</div>
-					{#each currentStatus.features as feature}
-						<span class="feature-tag">{feature}</span>
+					{#each currentStatus.features as tag}
+						<span class="feature-tag" title={tag}>{feature(tag)}</span>
 					{/each}
 				</div>
 				{#if error}
@@ -238,6 +245,9 @@
 			<div class="hw-section">
 				<div class="status-label">{tr('act.hardwareId')}</div>
 				<div class="hw-id">{hardwareId || '...'}</div>
+				{#if hardwareIdInfo?.fallback}
+					<div class="hw-hint hw-fallback">{tr('act.hwFallback', { sources: hardwareIdInfo.sources.join(', ') })}</div>
+				{/if}
 			</div>
 		{:else}
 			{#if currentStatus.activation_code}
@@ -311,6 +321,9 @@
 					<div class="status-label">{tr('act.hardwareId')}</div>
 					<div class="hw-id">{hardwareId || '...'}</div>
 					<div class="hw-hint">{tr('act.hwHint')}</div>
+					{#if hardwareIdInfo?.fallback}
+						<div class="hw-hint hw-fallback">{tr('act.hwFallback', { sources: hardwareIdInfo.sources.join(', ') })}</div>
+					{/if}
 				</div>
 			</details>
 
@@ -357,6 +370,7 @@
 
 	.hw-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--color-text-secondary); background: var(--color-bg-tertiary); padding: 6px 10px; border-radius: 3px; user-select: all; }
 	.hw-hint { font-size: 10px; color: var(--color-text-secondary); margin-top: 4px; font-style: italic; }
+	.hw-fallback { color: var(--color-warning); font-style: normal; }
 
 	.feature-list { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
 	.feature-tag { padding: 2px 8px; background: var(--color-accent); color: var(--color-bg-primary); border-radius: 10px; font-size: 10px; font-weight: 600; }

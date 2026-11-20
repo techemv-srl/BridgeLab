@@ -43,7 +43,11 @@ every version — the dictionary does not version them) as
 table they draw from (`"table": "0001"`) and their maximum length; with
 `--tables` the importer reports how many referenced tables have standard
 values and lists the ones that do not (user-defined tables such as 0072
-Insurance Plan ID, legitimately empty).
+Insurance Plan ID, legitimately empty). Where the dictionary's tables are
+wrong, the converter writes the standard's values instead
+(`TABLE_CORRECTIONS` in the script), so a regeneration keeps the fix: table
+0104 (Version ID) stops at 2.6 in the dictionary and misreads 2.5.1 as
+"Release 1.5.1"; the shipped table lists every release up to 2.7.1.
 
 ## Shipped versions
 

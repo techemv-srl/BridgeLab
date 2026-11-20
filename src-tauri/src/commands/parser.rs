@@ -36,6 +36,11 @@ pub struct ParseResult {
     /// parse: why not. The file still opens, as text the user can fix.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parse_error: Option<String>,
+    /// With `parse_error`: what kind of problem it is (`missing_m`,
+    /// `invalid_json`, …; see `fileio::unparsed_kind`), so the frontend can
+    /// explain it in the user's language and suggest a fix.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parse_error_kind: Option<String>,
     /// Set by open_file only, when the file could not be decoded the way
     /// its MSH-18 says (a charset BridgeLab cannot decode, or UTF-8
     /// declared for bytes that are not): the frontend warns.
@@ -97,6 +102,7 @@ pub fn parse_message(
         source_charset: None,
         full_text: None,
         parse_error: None,
+        parse_error_kind: None,
         charset_warning: None,
     })
 }
@@ -125,6 +131,19 @@ pub fn get_segment_grid(
         .get(&message_id)
         .ok_or_else(|| BridgeLabError::MessageNotFound(message_id.clone()))?;
     Ok(crate::parser::hl7::grid::segment_grid(&msg, &segment_type))
+}
+
+/// The message read field by field, with code meanings, for the
+/// interpretation panel. Every edition.
+#[tauri::command]
+pub fn interpret_message(
+    message_id: String,
+    store: State<'_, MessageStore>,
+) -> Result<crate::parser::hl7::interpret::Reading, BridgeLabError> {
+    let msg = store
+        .get(&message_id)
+        .ok_or_else(|| BridgeLabError::MessageNotFound(message_id.clone()))?;
+    Ok(crate::parser::hl7::interpret::interpret(&msg))
 }
 
 /// Get child tree nodes for a given parent node.
@@ -513,7 +532,23 @@ fn search_in_message(
     hits
 }
 
-/// Get full content of a specific field (for expanding truncated fields).
+/// The length in characters of a field (field 0: the whole segment), for
+/// the Field Inspector to show next to a value the tree shows cut, without
+/// sending the value itself.
+#[tauri::command]
+pub fn get_field_length(
+    message_id: String,
+    segment_idx: usize,
+    field_idx: usize,
+    store: State<'_, MessageStore>,
+) -> Result<usize, BridgeLabError> {
+    store
+        .get_field_length(&message_id, segment_idx, field_idx)
+        .ok_or(BridgeLabError::MessageNotFound(message_id))
+}
+
+/// Get full content of a specific field (for expanding truncated fields);
+/// field 0 is the whole segment.
 #[tauri::command]
 pub fn get_field_content(
     message_id: String,
@@ -740,6 +775,7 @@ pub fn parse_fhir_message(
         source_charset: None,
         full_text: None,
         parse_error: None,
+        parse_error_kind: None,
         charset_warning: None,
     })
 }

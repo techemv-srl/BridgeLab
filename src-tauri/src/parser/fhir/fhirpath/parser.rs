@@ -18,6 +18,8 @@
 //!   implies                    (lowest, right associative)
 //! ```
 
+use serde_json::Number;
+
 use super::ast::*;
 use super::lexer::{keyword_as_ident, tokenize, Keyword, Symbol, Token};
 
@@ -49,11 +51,26 @@ const BP_MULTIPLICATIVE: u8 = 10;
 /// How deep an expression may nest: parentheses, operators, path steps and
 /// function arguments together. Evaluating (and even dropping) a deeper
 /// tree recurses once per level and could overflow the stack, which aborts
-/// the whole app; real expressions stay far below this.
+/// the whole app; real expressions stay far below this. A chain of binary
+/// operators (`'a' | 'b' | …`, `x or y or …`) is one level however long it
+/// is, since it is kept as a list and evaluated in a loop.
 pub const MAX_DEPTH: usize = 64;
+
+/// How many terms one chain of binary operators may join. Long lists do
+/// not touch the stack, but a union compares every item with the ones
+/// before it; a list of codes runs to hundreds, and a chain past this is a
+/// generated or runaway expression rather than one anyone wrote.
+pub const MAX_TERMS: usize = 4096;
 
 fn too_deep() -> String {
     format!("Expression is nested more than {} levels deep", MAX_DEPTH)
+}
+
+fn too_many_terms() -> String {
+    format!(
+        "Expression joins more than {} terms with operators; split it into smaller expressions",
+        MAX_TERMS
+    )
 }
 
 /// Depth of `e`, or `None` once it passes [`MAX_DEPTH`] (the walk stops
@@ -80,7 +97,9 @@ fn depth_within_limit(e: &Expr) -> Option<usize> {
             Expr::Index { base, index } => deepest(&mut [base.as_ref(), index.as_ref()].into_iter()),
             Expr::Unary { operand, .. } => deepest(&mut std::iter::once(operand.as_ref())),
             Expr::TypeOp { operand, .. } => deepest(&mut std::iter::once(operand.as_ref())),
-            Expr::Binary { left, right, .. } => deepest(&mut [left.as_ref(), right.as_ref()].into_iter()),
+            Expr::Binary { first, rest } => {
+                deepest(&mut std::iter::once(first.as_ref()).chain(rest.iter().map(|(_, e)| e)))
+            }
         }
     }
     walk(e, 1)
@@ -112,7 +131,10 @@ fn dismantle(e: Expr) {
             }
             Expr::Index { base, index } => stack.extend([*base, *index]),
             Expr::Unary { operand, .. } | Expr::TypeOp { operand, .. } => stack.push(*operand),
-            Expr::Binary { left, right, .. } => stack.extend([*left, *right]),
+            Expr::Binary { first, rest } => {
+                stack.push(*first);
+                stack.extend(rest.into_iter().map(|(_, e)| e));
+            }
         }
     }
 }
@@ -168,7 +190,11 @@ impl Parser {
     }
 
     fn parse_expr_inner(&mut self, min_bp: u8) -> Result<Expr, String> {
-        let mut left = self.parse_unary()?;
+        // Every operator folded in this loop applies to everything to its
+        // left, so `a op b op c` is `(a op b) op c`: collected as one chain
+        // rather than nested a level deeper per operator.
+        let mut first = self.parse_unary()?;
+        let mut rest: Vec<(BinOp, Expr)> = Vec::new();
 
         while let Some(token) = self.peek() {
 
@@ -183,7 +209,7 @@ impl Parser {
                 let type_name = self.parse_type_name()?;
                 let typed = Expr::TypeOp {
                     op,
-                    operand: Box::new(left),
+                    operand: Box::new(chain(first, std::mem::take(&mut rest))?),
                     type_name,
                 };
                 // Deliberate deviation from the letter of the grammar: there,
@@ -194,7 +220,7 @@ impl Parser {
                 // which is what anyone writing it means. Real namespaces
                 // (`System.`, `FHIR.`) are still folded into the type name by
                 // parse_type_name, so nothing legitimate is lost.
-                left = self.parse_suffixes(guard(typed)?)?;
+                first = self.parse_suffixes(guard(typed)?)?;
                 continue;
             }
 
@@ -206,14 +232,13 @@ impl Parser {
             // `implies` is right-associative; everything else is left.
             let next_min = if op == BinOp::Implies { bp } else { bp + 1 };
             let right = self.parse_expr(next_min)?;
-            left = guard(Expr::Binary {
-                op,
-                left: Box::new(left),
-                right: Box::new(right),
-            })?;
+            if rest.len() + 1 >= MAX_TERMS {
+                return Err(too_many_terms());
+            }
+            rest.push((op, right));
         }
 
-        Ok(left)
+        chain(first, rest)
     }
 
     fn parse_unary(&mut self) -> Result<Expr, String> {
@@ -323,11 +348,12 @@ impl Parser {
             }
             Some(Token::Integer(n)) => {
                 self.bump();
-                Ok(self.maybe_quantity(n as f64, Literal::Integer(n)))
+                Ok(self.maybe_quantity(Number::from(n), Literal::Integer(n)))
             }
-            Some(Token::Decimal(n)) => {
+            Some(Token::Decimal(text)) => {
                 self.bump();
-                Ok(self.maybe_quantity(n, Literal::Decimal(n)))
+                let n: Number = text.parse().map_err(|_| format!("Invalid decimal: {}", text))?;
+                Ok(self.maybe_quantity(n.clone(), Literal::Decimal(n)))
             }
             Some(Token::Str(s)) => {
                 self.bump();
@@ -364,7 +390,7 @@ impl Parser {
 
     /// A number immediately followed by a unit is a Quantity: `4 'mg'`,
     /// `1 year`, `3 months`.
-    fn maybe_quantity(&mut self, value: f64, plain: Literal) -> Expr {
+    fn maybe_quantity(&mut self, value: Number, plain: Literal) -> Expr {
         match self.peek().cloned() {
             Some(Token::Str(unit)) => {
                 self.bump();
@@ -446,15 +472,28 @@ fn variable_expr(name: &str) -> Result<Expr, String> {
     }
 }
 
+/// `first` with the operators that follow it, or `first` alone when none do.
+fn chain(first: Expr, rest: Vec<(BinOp, Expr)>) -> Result<Expr, String> {
+    if rest.is_empty() {
+        return Ok(first);
+    }
+    guard(Expr::Binary {
+        first: Box::new(first),
+        rest,
+    })
+}
+
 /// Fold a sign directly into a numeric literal so `-1` is a literal rather
 /// than a negation of one — it keeps integer/decimal typing intact.
 fn fold_unary(op: UnaryOp, operand: Expr) -> Expr {
     match (op, &operand) {
         (UnaryOp::Pos, _) => operand,
         (UnaryOp::Neg, Expr::Literal(Literal::Integer(n))) => Expr::Literal(Literal::Integer(-n)),
-        (UnaryOp::Neg, Expr::Literal(Literal::Decimal(n))) => Expr::Literal(Literal::Decimal(-n)),
+        (UnaryOp::Neg, Expr::Literal(Literal::Decimal(n))) => {
+            Expr::Literal(Literal::Decimal(super::types::negated(n)))
+        }
         (UnaryOp::Neg, Expr::Literal(Literal::Quantity(v, u))) => {
-            Expr::Literal(Literal::Quantity(-v, u.clone()))
+            Expr::Literal(Literal::Quantity(super::types::negated(v), u.clone()))
         }
         _ => Expr::Unary {
             op,
@@ -538,9 +577,10 @@ mod tests {
                 let o = if *op == UnaryOp::Neg { "-" } else { "+" };
                 format!("({} {})", o, sexpr(operand))
             }
-            Expr::Binary { op, left, right } => {
-                format!("({:?} {} {})", op, sexpr(left), sexpr(right))
-            }
+            // A chain prints as the nested pairs it stands for.
+            Expr::Binary { first, rest } => rest.iter().fold(sexpr(first), |left, (op, right)| {
+                format!("({:?} {} {})", op, left, sexpr(right))
+            }),
             Expr::TypeOp { op, operand, type_name } => {
                 format!("({:?} {} {})", op, sexpr(operand), type_name)
             }
@@ -585,6 +625,19 @@ mod tests {
     #[test]
     fn arithmetic_is_left_associative() {
         assert_eq!(sexpr(&p("1 - 2 - 3")), "(Sub (Sub 1 2) 3)");
+    }
+
+    #[test]
+    fn a_chain_of_operators_is_one_level_however_long() {
+        let list = ["'x'"; 1000].join(" | ");
+        let e = p(&list);
+        assert_eq!(depth_within_limit(&e), Some(2));
+        let Expr::Binary { rest, .. } = &e else { panic!("expected a chain, got {e:?}") };
+        assert_eq!(rest.len(), 999);
+        // Operators of different precedence share a chain only where the
+        // grammar folds them left anyway.
+        assert_eq!(sexpr(&p("a + b = c - d")), "(Eq (Add a b) (Sub c d))");
+        assert_eq!(sexpr(&p("a | b in c | d")), "(In (Union a b) (Union c d))");
     }
 
     #[test]

@@ -44,6 +44,16 @@ ${mockupAppShell}
 		« Unicode » du Bloc-notes) et fichiers de lot FHS/BHS sont lus tels
 		quels. Un fichier que BridgeLab ne sait pas analyser s'ouvre quand
 		même, en texte à corriger, avec une note qui explique pourquoi.</li>
+	<li><strong>Taille :</strong> un fichier jusqu'à 16 Mo s'ouvre
+		aussitôt. Entre 16 et 64 Mo, BridgeLab demande d'abord : l'application
+		occupe bien plus de mémoire que le fichier (un fichier de nombreux
+		messages courts peut la porter à plusieurs Go). Un fichier de
+		plus de 64 Mo, ou un périphérique ou un tube nommé, ne s'ouvre pas,
+		et un message explique pourquoi. Un onglet de la dernière session
+		dont le fichier a dépassé une limite entre-temps revient vide, avec
+		la raison, au lieu d'être lu à chaque démarrage. Le texte collé
+		suit les mêmes limites : au-delà de 16 Mo BridgeLab demande
+		d'abord, au-delà de 64 Mo il ne le colle pas.</li>
 	<li><strong>Fichier → Nouveau Message à partir d'un Modèle...</strong> (<kbd>Ctrl</kbd>+<kbd>N</kbd>) -
 		modèles préremplis ADT, ORM, ORU, SIU et plus encore. Les champs
 		comme MSH-7 et MSH-10 sont renseignés avec l'horodatage courant et
@@ -57,6 +67,15 @@ ${mockupAppShell}
 		ouvrez-en un dans un nouvel onglet. Chaque exemple passe la
 		validation ; patients et données sont fictifs.</li>
 </ul>
+<p><strong>Enregistrement.</strong> <strong>Fichier → Enregistrer
+sous</strong>, ainsi que le premier enregistrement d'un nouvel onglet,
+proposent le type qui correspond à l'onglet — HL7 Messages
+(<code>*.hl7</code>), FHIR JSON (<code>*.json</code>) ou FHIR XML
+(<code>*.xml</code>) — en plus de All Files, et un nom saisi sans
+extension reçoit l'extension de ce type (si un fichier de ce nom existe
+déjà, BridgeLab demande d'abord confirmation). Un enregistrement passe
+par une copie temporaire que vous seul pouvez lire, et conserve les
+droits, les ACL et les attributs étendus du fichier.</p>
 
 <div class="note">Au premier lancement vous bénéficiez d'un <strong>essai
 Pro de 14 jours</strong> avec toutes les fonctionnalités Pro activées (SOAP
@@ -128,22 +147,33 @@ source des suggestions de mots (ce message, tous les messages ouverts ou
 aucune ; les suggestions de champs et de valeurs HL7 fonctionnent dans tous
 les modes). Les changements s'appliquent immédiatement. Chaque onglet garde
 son propre historique d'annulation et de rétablissement (Ctrl+Z, Ctrl+Y)
-quand vous passez d'un onglet à l'autre.</p>
+quand vous passez d'un onglet à l'autre.
+Avec les liens cliquables activés, <kbd>Ctrl</kbd>+clic sur une adresse
+http, https ou mailto, ou <em>Follow link</em> dans son survol, l'ouvre
+dans votre navigateur ou votre client de messagerie ; tout autre type de
+lien ne fait rien. Ailleurs dans l'application, dans À propos ou dans ce
+manuel, les liens s'ouvrent de la même façon, d'un clic ou d'un clic du
+milieu.</p>
 
 <h3>Menu contextuel (clic droit)</h3>
 ${mockupContextMenu}
 <p>Le menu regroupe les actions en trois sections :</p>
 <ul>
 	<li><strong>Navigation :</strong> Afficher le segment dans l'arbre
-		(<kbd>Alt</kbd>+<kbd>T</kbd>) - ouvre l'arbre et met en évidence
+		(<kbd>Alt</kbd>+<kbd>T</kbd>; macOS <kbd>⌘⌥T</kbd>) - ouvre l'arbre et met en évidence
 		le champ exact sous le curseur ; Développer / Replier pour les
 		valeurs longues.</li>
 	<li><strong>Presse-papiers :</strong> Copier le segment
-		(<kbd>Alt</kbd>+<kbd>C</kbd>), Copier le message complet (avec les
+		(<kbd>Alt</kbd>+<kbd>C</kbd>; macOS <kbd>⌘⌥C</kbd>), Copier le message complet (avec les
 		champs développés), Copier le message tronqué (champs longs
 		raccourcis, pour tenir dans un email ; les données du patient sont
 		copiées telles quelles : anonymisez d'abord).</li>
 </ul>
+<p>L'éditeur, la barre d'onglets et l'arbre ont leurs propres menus.
+Ailleurs, un clic droit ne fait rien : le menu du navigateur ne s'ouvre
+jamais, pas même dans les champs de saisie, où Couper, Copier et Coller
+se font avec <kbd>Ctrl</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>C</kbd> et
+<kbd>Ctrl</kbd>+<kbd>V</kbd>.</p>
 
 <div class="note">Les raccourcis natifs de Monaco (<kbd>Ctrl</kbd>+<kbd>F</kbd>
 rechercher, <kbd>Ctrl</kbd>+<kbd>H</kbd> remplacer, <kbd>Ctrl</kbd>+<kbd>Z</kbd>
@@ -192,8 +222,16 @@ afficher les métadonnées issues du schéma pour le nœud sélectionné :</p>
 	<li>Type de données (XPN, CX, ST, ...), longueur max., indicateurs
 		obligatoire/répétable, description</li>
 	<li>Valeur actuelle et longueur ; un bouton <em>Voir la valeur
-		complète</em> pour les champs longs que l'éditeur affiche repliés</li>
+		complète</em> pour les champs longs que l'éditeur affiche repliés
+		(le bouton rouge <code>{...}</code> sur la ligne du champ dans
+		l'arbre fait de même) et pour un segment long, dont la ligne ne
+		montre que les 80 premiers caractères ; la longueur indiquée est
+		celle de la valeur entière</li>
 </ul>
+<p>La valeur complète s'ouvre dans une fenêtre à part. Une très grande
+valeur (un PDF intégré, par exemple) affiche ses 65 536 premiers
+caractères et sa longueur totale ; <em>Copier dans le presse-papiers</em>
+copie tout de même la valeur entière.</p>
 <p>Les segments inconnus (Z-segments ou codes personnalisés hors
 standard) affichent <em>Non standard HL7</em> mais restent entièrement
 modifiables.</p>
@@ -229,6 +267,24 @@ des points de suspension. Choisissez un autre segment dans la liste
 lignes</em> pour ne garder que les lignes contenant un texte, et cliquez
 sur une cellule pour sélectionner ce champ dans l'éditeur. La grille est
 en lecture seule et suit le message au fil des modifications.</p>
+
+<h3>Lire un message en clair</h3>
+<p><strong>Affichage → Interprétation</strong>
+(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>) ouvre un panneau en bas qui
+lit le message HL7 v2 sous forme de phrases, un bloc par segment :
+<em>Patient DOE, JOHN Q, Male, date de naissance 1980-01-01, identifiants
+123456 (Medical record number).</em> — <em>Glucose (GLU) : 98 mg/dL, Above
+high normal, statut Final results.</em> Noms, dates, lieux, identifiants
+et valeurs codées sont écrits de façon lisible, les codes avec leur
+signification tirée des tables de valeurs. MSH, EVN, PID, NK1, PV1, ORC,
+OBR, OBX, AL1, DG1 et NTE ont leur propre formulation ; tout autre
+segment, Z-segments compris, est lu champ par champ avec les noms de
+champs de la version HL7 du message. Chaque valeur est un lien : un clic
+sélectionne ce champ (ou cette répétition) dans l'éditeur, un clic sur
+l'étiquette du segment mène au segment. Les phrases suivent la langue de
+l'interface et le message au fil des modifications ; les significations
+viennent des tables HL7 et restent en anglais. Les valeurs longues (un PDF
+intégré dans OBX-5) sont coupées ; l'éditeur les garde entières.</p>
 
 <h3>Comparer deux messages</h3>
 <p><strong>Outils → Comparer les messages…</strong> ouvre un diff côte à

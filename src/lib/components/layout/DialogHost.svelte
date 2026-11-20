@@ -23,7 +23,9 @@
 	import type { LicenseStatus } from '$lib/ipc/licensing';
 	import type { MessageTemplate } from '$lib/ipc/templates';
 	import pkg from '../../../../package.json';
+	import { getBuildId } from '$lib/ipc/app';
 	import { dialogStore } from '$lib/stores/dialog.svelte';
+	import { previewText } from '$lib/text-preview';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -38,6 +40,12 @@
 			.then(({ getVersion }) => getVersion())
 			.then((v) => { appVersion = v; })
 			.catch(() => { /* web mode: keep the package version */ });
+	}
+	// Build code next to the version (commit date and short hash), so two
+	// builds of the same version can be told apart. Empty in web mode.
+	let buildId = $state('');
+	if (typeof window !== 'undefined') {
+		getBuildId().then((id) => { buildId = id; });
 	}
 
 	interface Props {
@@ -123,6 +131,9 @@
 
 <!-- Expanded field modal -->
 {#if expandedFieldContent !== null}
+	<!-- A huge value (an embedded PDF) shows only its start: drawn whole it
+	     froze the window for seconds (see previewText). -->
+	{@const preview = previewText(expandedFieldContent)}
 	<div class="modal-overlay" onclick={closeExpandedField} role="presentation">
 		<!-- svelte-ignore a11y_interactive_supports_focus -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -132,13 +143,21 @@
 				<button class="modal-close" onclick={closeExpandedField}>&times;</button>
 			</div>
 			<div class="modal-body">
-				<pre>{expandedFieldContent}</pre>
+				<pre>{preview.text}{#if preview.cut}<span class="cut-mark">…</span>{/if}</pre>
 			</div>
 			<div class="modal-footer">
+				<!-- Always the whole value, also when only its start is shown. -->
 				<button class="btn" onclick={() => { navigator.clipboard.writeText(expandedFieldContent!); }}>
 					{tr('modal.copy')}
 				</button>
-				<span class="modal-info">{tr('modal.characters', { count: expandedFieldContent.length.toLocaleString() })}</span>
+				{#if preview.cut}
+					<span class="modal-info cut">{tr('modal.preview', {
+						shown: preview.text.length.toLocaleString(),
+						count: expandedFieldContent.length.toLocaleString(),
+					})}</span>
+				{:else}
+					<span class="modal-info">{tr('modal.characters', { count: expandedFieldContent.length.toLocaleString() })}</span>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -190,7 +209,11 @@
 
 				<div class="about-title">{tr('app.title')}</div>
 				<div class="about-subtitle">{tr('app.subtitle')}</div>
-				<div class="about-version">{tr('about.version', { version: appVersion })}</div>
+				<div class="about-version">
+					<!-- The separator's spaces as an expression: Svelte trims the
+					     leading space of an element's text ("2.1.0· Build"). -->
+					{tr('about.version', { version: appVersion })}{#if buildId}<span class="about-build">{` · ${tr('about.build', { build: buildId })}`}</span>{/if}
+				</div>
 				<p class="about-desc">{tr('about.description')}</p>
 				<p class="about-license">{tr('about.license')}</p>
 
@@ -455,6 +478,15 @@
 		color: var(--color-text-secondary);
 	}
 
+	/* Says the value is longer than what is shown: not to be missed. */
+	.modal-info.cut {
+		color: var(--color-warning);
+	}
+
+	.cut-mark {
+		color: var(--color-text-secondary);
+	}
+
 	/* About dialog */
 	.about-body {
 		text-align: center;
@@ -485,6 +517,8 @@
 		font-size: 12px;
 		color: var(--color-text-secondary);
 		margin-bottom: 16px;
+		/* Copyable for support requests. */
+		user-select: text;
 	}
 
 	.about-desc {

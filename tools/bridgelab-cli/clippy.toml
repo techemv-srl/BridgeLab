@@ -1,0 +1,10 @@
+# Every line on standard error goes through esafeln! (src/main.rs), which
+# shows control characters as \x1B-style escapes: warnings and errors quote
+# plugin-pack rule ids, file names, command-line values, a message's MSH-18
+# and a peer's ACK, and a plain eprintln! passed their escape sequences to
+# the terminal. The test stderr_is_written_only_through_esafeln checks the
+# same without clippy.
+disallowed-macros = [
+    { path = "std::eprintln", reason = "use esafeln!, which escapes control characters for the terminal" },
+    { path = "std::eprint", reason = "use esafeln!, which escapes control characters for the terminal" },
+]

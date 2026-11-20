@@ -7,7 +7,8 @@
 ![Platforms](https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 Free and open-source core (MIT), free for commercial use. **Pro** adds the MLLP
-listener, batch validation, PHI masking and the full XSD catalogue - EUR 249 per
+listener, batch validation, PHI masking, FHIRPath, JSON/CSV export, FHIR package
+installation and the full XSD catalogue - EUR 249 per
 seat per year, EUR 199 for the first year on licenses bought by 31 December 2026.
 [Download or buy](https://techemv-srl.github.io/BridgeLab/)
 
@@ -30,22 +31,24 @@ seat per year, EUR 199 for the first year on licenses bought by 31 December 2026
   data types and lengths come from the catalogue the message itself declares; v2.7.1 is a technical correction
   of v2.7 and shares its definitions, so it is offered as an alias. HL7 v2.8+ is not covered:
   [hl7-dictionary](https://github.com/Ensighten/hl7-dictionary), the MIT-licensed source behind these, stops at v2.7
-- **FHIR support** - Parse and validate JSON/XML FHIR resources (Patient, Observation, Bundle, ...), with profile validation against the built-in FHIR R4 core and any installed FHIR NPM package (cardinality, element types, choice elements, fixed values, unknown elements, primitive formats, Bundle references) — offline, nothing to download
-- **FHIRPath 2.0** - Full operator set and ~70 functions, checked against the official HL7 FHIRPath test suite (838 of 922 cases pass; the gaps are listed in [ROADMAP.md](ROADMAP.md))
+- **FHIR support** - Parse and validate JSON/XML FHIR resources (Patient, Observation, Bundle, ...), with profile validation against the built-in FHIR R4 core and any installed FHIR NPM package (cardinality, element types, choice elements, fixed values, unknown elements, primitive formats, Bundle references) — offline, nothing to download. Installing a package is Pro; packages already installed keep validating in every tier
+- **FHIRPath 2.0** - Full operator set and ~70 functions, checked against the official HL7 FHIRPath test suite (984 of 1,053 runnable cases pass, `lowBoundary()`/`highBoundary()` included; the gaps are listed in [ROADMAP.md](ROADMAP.md))
 - **Folded long fields** - Large fields show as a chip such as `⟨Base64 · 4.7 MB⟩`, expandable inline or all at once; the file keeps the full text
 - **Validation** - Structural, field-level, data-type validation with 5 rule categories
 - **MLLP transport** - Client & server with custom framing, auto-ACK, encoding selection
 - **HTTP client** - GET/POST/PUT/DELETE/PATCH with Basic/Bearer auth, headers, timeout
 - **Anonymization** - 89 built-in PHI fields across PID/PV1/MRG/NK1/GT1/IN1/IN2, plus NTE comments and free-text OBX results. Masking is an aid, not a guarantee of anonymity: review the result before sharing a message.
-- **Export** - JSON, CSV, structured representations
+- **Export** - JSON, CSV, structured representations (Pro)
 - **XSD schema export** - Generate XSD files that follow the HL7 v2.xml element layout, without the v2.xml namespace (no `targetNamespace`, as Astraia expects), for any supported message type (4 common messages in v2.5 free, full catalogue in Pro). Useful for integration engines that accept hand-authored schemas (Astraia, BizTalk, XMLSpy…).
 - **5 Languages** - English, Italian, French, Spanish, German
 - **Licensing** - Ed25519-signed offline license verification, hardware binding, 14-day trial
 - **Field Inspector** - Side panel showing HL7 standard metadata (name, type, required, max length, description) for the selected tree node
 - **HL7 value tables** - All 394 HL7 tables (about 5,000 codes) ship with the app, mapped per version to every coded field and component: the tree shows what a code means next to the value (`M — Male`), the editor explains it on hover and completes it, the inspector lists the whole table and tells an HL7-defined table (a value outside it is non-standard) from a user-defined one (suggestions)
+- **Interpretation panel** - View → Interpretation reads an HL7 v2 message as sentences in your language ("Patient DOE, JOHN Q, Male, born 1980-01-01, identifiers 123456 (Medical record number)."), one block per segment, codes explained from the value tables; every value selects its field in the editor
 - **ACK filters** - The listener console and the send history filter by outcome (AA / AE / AR / no ACK / failed) with live counts; MLLP sends record the ACK code they got back
 - **Schema-aware Tree** - Optional view that injects placeholder rows for every field defined by the standard so you see what _could_ be populated
 - **Precise Editor ↔ Tree navigation** - Right-click a field in the editor to highlight it in the tree, or right-click a tree node to select the matching range in Monaco
+- **Command line** - `bridgelab-cli` validates, anonymizes, converts, tests and sends from a terminal or a CI pipeline, with JUnit output: a binary for each platform in every release, and the container image `ghcr.io/techemv-srl/bridgelab-cli` (tagged with the version and `latest`). See [tools/bridgelab-cli/README.md](tools/bridgelab-cli/README.md)
 
 ## Stack
 
@@ -60,7 +63,7 @@ seat per year, EUR 199 for the first year on licenses bought by 31 December 2026
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (stable)
-- [Node.js](https://nodejs.org/) 20+
+- [Node.js](https://nodejs.org/) 22.17 or later (SvelteKit 3 needs it)
 - [pnpm](https://pnpm.io/) 10+
 - Platform-specific Tauri dependencies ([setup guide](https://tauri.app/start/prerequisites/))
 
@@ -122,7 +125,7 @@ against the **installed** application:
 
 ```bash
 pnpm tauri build --target x86_64-unknown-linux-gnu
-sudo dpkg -i src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/BridgeLab_<version>_amd64.deb
+sudo dpkg -i src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/bridgelab_<version>_amd64.deb
 
 # so profile conformance is exercised rather than skipped
 ./scripts/fetch-fhir-core-package.sh
@@ -161,8 +164,11 @@ More checks belong to every release, none of them automatable:
   removed, not guessed.
 - **Dependency advisories**: `cargo audit` on `src-tauri/`,
   `tools/bridgelab-cli/` and `tools/hl7-schema-importer/`, `pnpm audit`
-  at the root. Fix what has a fix; note in the CHANGELOG what does not
-  (today `glib` 0.18 and `rand` 0.7, transitive through Tauri).
+  at the root on every dependency (not `--prod`: build and test tooling
+  count too). Fix what has a fix; note in the CHANGELOG what does not
+  (today `glib` 0.18, transitive through Tauri, and crates marked
+  unmaintained with no successor release). Updates that are not security fixes go in a
+  planned round at the start of the next release, not just before one.
 - **The release note ends with the company footer**, after a horizontal
   rule, exactly as below. The release workflow's placeholder body already
   carries it; keep it when you paste the real note over the draft.
@@ -209,12 +215,22 @@ of this declarative baseline.
 
 ## Resource usage
 
-BridgeLab does **not** require memory tuning - the Rust backend uses zero-copy
-parsing, and its peak RAM stays below ~300 MB
-even on 10 MB messages. The system web view that draws the window needs more:
-on Linux the whole app uses about 1.2 GB while a 10 MB message is open. Long fields (base64 payloads) are shown folded in the
+BridgeLab does **not** require memory tuning. The Rust backend indexes a
+message without copying its text, so what it takes grows with the number of
+fields more than with the size of the file. Measured on Linux with
+`bridgelab-cli info` (the app's parser and validator, without the window) on
+10 MB files: a message whose bulk is a base64 attachment peaks at about
+55 MB, a log of 17,000 ADT^A01 messages at about 360 MB, and one ORU^R01 of
+186,000 short OBX segments at about 430 MB. The system web view that draws
+the window needs more: on Linux the whole app uses about 1.2 GB while a
+10 MB base64 message is open, and more for a file of many short segments.
+Long fields (base64 payloads) are shown folded in the
 editor; set the length under **Settings → Parser → Fold fields longer than**
 (folding is on screen only: the file keeps the full text).
+
+What a file can take is bounded: a file up to 16 MB opens at once, one up
+to 64 MB after a question, and a larger one, or a device or named pipe,
+does not open (the batch tools take files up to 10 MB).
 
 ## Installer options
 
@@ -226,10 +242,11 @@ Per-platform installer configuration lives in [`src-tauri/tauri.conf.json`](src-
   install). The installer language only affects the installer's own dialogs — the app is
   multilingual either way — so the per-language MSIs were dropped
 - **macOS DMG**: presents a drag-to-Applications layout with the app + Applications icons
-- **Linux .deb**: declares `libwebkit2gtk-4.1-0` + `libgtk-3-0` dependencies, `utils` section
+- **Linux .deb**: declares `libwebkit2gtk-4.1-0` + `libgtk-3-0` dependencies, and `xdg-utils`
+  (*Open plugins folder* and the app's links run `xdg-open`), `utils` section
 - **Linux AppImage**: distro-agnostic; does not bundle GStreamer (BridgeLab plays no media).
   Most of its ~78 MB is the WebKitGTK and GTK stack it has to carry to run anywhere
-- **Linux .rpm**: declares `webkit2gtk4.1` + `gtk3` dependencies
+- **Linux .rpm**: declares `webkit2gtk4.1` + `gtk3` + `xdg-utils` dependencies
 - **File association**: `.hl7` is registered so double-clicking a file opens BridgeLab.
   On Linux the `.deb`/`.rpm` also ship a shared-mime-info definition
   ([`src-tauri/linux/bridgelab-hl7.xml`](src-tauri/linux/bridgelab-hl7.xml)) declaring
@@ -246,7 +263,7 @@ publication). The packages carry both texts:
 [`src-tauri/LICENSE-bundle.txt`](src-tauri/LICENSE-bundle.txt) is the root
 `LICENSE` followed by the two `pro/` licences, a bundle resource installed
 as `LICENSE.txt` next to the app (the install folder on
-Windows, `Contents/Resources` on macOS, `/usr/lib/BridgeLab` in the
+Windows, `Contents/Resources` on macOS, `/usr/lib/bridgelab` in the
 `.deb`/`.rpm` and inside the AppImage). The NSIS and MSI licence page
 (`licenseFile`) shows [`src-tauri/LICENSE-installer.txt`](src-tauri/LICENSE-installer.txt):
 the same words with one line per paragraph, since that page wraps lines
@@ -275,8 +292,9 @@ code to Community; an unreachable server changes nothing), when you free a
 seat with *Deactivate*, and by the opt-in usage statistics.
 
 **Online activation (default)** — buy a license and receive an activation
-code (`BL-PRO-XXXX-XXXX-XXXX`) by e-mail. Paste it in *Settings → License →
-Activate*: the app exchanges it once over HTTPS for a signed key bound to
+code (`BL-PRO-XXXX-XXXX-XXXX`) by e-mail. Paste it in the activation dialog
+(*Help → Activate License*, or *Settings → License Activation*, or *Activate*
+on the trial banner): the app exchanges it once over HTTPS for a signed key bound to
 this machine, then everything works offline. Each seat allows a limited
 number of activations; use *Deactivate* to free the seat before moving to
 another machine.

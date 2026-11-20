@@ -64,3 +64,17 @@ export function withExtension(path: string, ext: string, alsoAccept: string[] = 
 	if (endings.some((e) => name.endsWith(e) && name.length > e.length)) return path;
 	return `${path}.${ext.replace(/^\./, '')}`;
 }
+
+/**
+ * The name an export proposes for a tab, without an extension: the file's
+ * name less its extension for a tab opened from a file, the label as it is
+ * otherwise. A sample or template tab is labelled "ORU^R01 v2.5.1": cut at
+ * its last dot, it became "ORU^R01 v2.5". Characters Windows refuses in a
+ * file name become "_".
+ */
+export function exportBaseName(label: string | undefined, filePath: string | null | undefined): string {
+	const name = filePath ? baseName(filePath).replace(/(.)\.[^.]*$/, '$1') : (label ?? '');
+	// eslint-disable-next-line no-control-regex
+	const safe = name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/, '').trim();
+	return safe || 'message';
+}

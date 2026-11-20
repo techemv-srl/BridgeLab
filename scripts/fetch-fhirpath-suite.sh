@@ -14,13 +14,15 @@
 #
 # Sources:
 #   tests    https://github.com/FHIR/fhir-test-cases (r4/fhirpath)
-#   examples https://hl7.org/fhir/R4/ — the FHIR specification examples
+#   examples https://hl7.org/fhir/R4/ — the FHIR specification examples,
+#            and fhir-test-cases (r5) for inputs published only there
 #
 set -euo pipefail
 
 DEST="${1:-.fhirpath-suite}"
 TESTS_URL="https://raw.githubusercontent.com/FHIR/fhir-test-cases/master/r4/fhirpath/tests-fhir-r4.xml"
 SPEC_BASE="https://hl7.org/fhir/R4"
+TEST_CASES_BASE="https://raw.githubusercontent.com/FHIR/fhir-test-cases/master/r5"
 
 # Input resources the suite references, in the JSON encoding this engine
 # evaluates. Ones the specification does not publish as JSON are skipped;
@@ -31,6 +33,12 @@ EXAMPLES=(
     questionnaire-example
     valueset-example-expansion
     explanationofbenefit-example
+)
+
+# Inputs that exist only in the test-case repository, as XML; the harness
+# converts them the way the app converts an XML resource.
+XML_INPUTS=(
+    parameters-example-decimals
 )
 
 mkdir -p "$DEST/input"
@@ -45,6 +53,16 @@ for name in "${EXAMPLES[@]}"; do
     else
         echo "unavailable (tests using it will be skipped)"
         rm -f "$DEST/input/$name.json"
+    fi
+done
+
+for name in "${XML_INPUTS[@]}"; do
+    printf 'Fetching %s… ' "$name"
+    if curl -fsSL "$TEST_CASES_BASE/$name.xml" -o "$DEST/input/$name.xml"; then
+        echo "ok"
+    else
+        echo "unavailable (tests using it will be skipped)"
+        rm -f "$DEST/input/$name.xml"
     fi
 done
 

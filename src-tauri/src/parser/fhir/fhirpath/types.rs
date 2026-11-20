@@ -10,7 +10,7 @@
 
 use std::cmp::Ordering;
 
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
 
 /// Name reported by `type()` and used in error messages.
 pub fn type_name(v: &Value) -> &'static str {
@@ -98,7 +98,7 @@ pub fn is_type(value: &Value, type_name: &str) -> bool {
         "Integer" | "integer" | "positiveInt" | "unsignedInt" => value.is_i64() || value.is_u64(),
         // Integer and Decimal are distinct types even though an Integer
         // converts implicitly to one, so `1 is Decimal` is false.
-        "Decimal" | "decimal" => value.is_f64(),
+        "Decimal" | "decimal" => value.is_number() && !(value.is_i64() || value.is_u64()),
         "Quantity" | "Age" | "Duration" | "Count" | "Distance" | "Money" | "SimpleQuantity" => {
             is_quantity(value)
         }
@@ -195,7 +195,10 @@ pub fn is_quantity(v: &Value) -> bool {
 }
 
 fn is_quantity_map(o: &Map<String, Value>) -> bool {
-    o.get("value").is_some_and(|v| v.is_number())
+    // A value no double holds (`1e2147483647`, readable now that numbers
+    // keep their text) cannot be measured or converted: such an object is
+    // not taken for a quantity, so `quantity_parts` always has a number.
+    o.get("value").is_some_and(|v| v.as_f64().is_some())
         && (o.contains_key("unit") || o.contains_key("code") || o.contains_key("system"))
 }
 
@@ -241,18 +244,14 @@ pub fn make_quantity(value: f64, unit: &str) -> Value {
 }
 
 /// `4 'mg'` — the rendering `toString()` produces for a quantity. Calendar
-/// units keep their word and their lack of quotes: `1 week`.
+/// units keep their word and their lack of quotes: `1 week`. The value is
+/// written as it was given, `6.30 'mmol/L'` keeping its trailing zero.
 pub fn quantity_to_string(v: &Value) -> Option<String> {
     if !is_quantity(v) {
         return None;
     }
-    let value = v.get("value")?.as_f64()?;
+    let magnitude = v.get("value")?.as_number()?.to_string();
     let unit = quantity_raw_unit(v)?;
-    let magnitude = if value.fract() == 0.0 {
-        format!("{}", value as i64)
-    } else {
-        format!("{}", value)
-    };
     Some(if ucum_for_time_unit(&unit).is_some() {
         format!("{} {}", magnitude, unit)
     } else {
@@ -260,53 +259,96 @@ pub fn quantity_to_string(v: &Value) -> Option<String> {
     })
 }
 
-/// Factor and base unit for the UCUM units BridgeLab converts between.
-///
-/// This is a deliberately small table — metric mass, length and volume plus
-/// the time units — not a UCUM engine. Anything outside it keeps its own
-/// unit, so comparing it against a different one stays indeterminate rather
-/// than silently wrong.
-pub fn ucum_scale(unit: &str) -> Option<(f64, &'static str)> {
-    // Time first: the calendar words normalise into it.
-    let unit = ucum_for_time_unit(unit).unwrap_or(unit);
+/// A UCUM unit as a multiple of its base: `mantissa × 10^exp base`. The
+/// power of ten is kept apart so that metric prefixes convert exactly:
+/// 1000 'umol/L' is 1 'mmol/L', where 1e-6 / 1e-3 in floating point is
+/// not 0.001.
+struct Scale {
+    mantissa: f64,
+    exp: i32,
+    base: String,
+}
+
+/// Units that are not a metric prefix on a base unit.
+fn special_atom(unit: &str) -> Option<(f64, &'static str)> {
     Some(match unit {
-        "ms" => (0.001, "s"),
-        "s" => (1.0, "s"),
         "min" => (60.0, "s"),
         "h" => (3600.0, "s"),
         "d" => (86_400.0, "s"),
         "wk" => (604_800.0, "s"),
-        // Calendar months and years are not fixed multiples of a second, so
-        // they only compare against themselves.
-        "mo" | "a" => return None,
-
-        "ng" => (1e-9, "g"),
-        "ug" => (1e-6, "g"),
-        "mg" => (0.001, "g"),
-        "cg" => (0.01, "g"),
-        "g" => (1.0, "g"),
-        "kg" => (1000.0, "g"),
-
-        "nm" => (1e-9, "m"),
-        "um" => (1e-6, "m"),
-        "mm" => (0.001, "m"),
-        "cm" => (0.01, "m"),
-        "dm" => (0.1, "m"),
-        "m" => (1.0, "m"),
-        "km" => (1000.0, "m"),
         "[in_i]" => (0.0254, "m"),
         "[ft_i]" => (0.3048, "m"),
-
         "[lb_av]" => (453.592_37, "g"),
         "[oz_av]" => (28.349_523_125, "g"),
-
-        "uL" | "ul" => (1e-6, "L"),
-        "mL" | "ml" => (0.001, "L"),
-        "dL" | "dl" => (0.1, "L"),
-        "L" | "l" => (1.0, "L"),
-
         _ => return None,
     })
+}
+
+/// The UCUM metric units that take a prefix, with the base each counts in
+/// (`l` and `L` are both the litre).
+const METRIC: &[(&str, &str)] = &[
+    ("g", "g"),
+    ("m", "m"),
+    ("L", "L"),
+    ("l", "L"),
+    ("s", "s"),
+    ("mol", "mol"),
+    ("eq", "eq"),
+    ("Pa", "Pa"),
+    ("U", "U"),
+    ("kat", "kat"),
+    ("[IU]", "[IU]"),
+];
+
+/// UCUM's decimal prefixes; `da` before `d`, which it starts with.
+const PREFIXES: &[(&str, i32)] = &[
+    ("da", 1), ("Y", 24), ("Z", 21), ("E", 18), ("P", 15), ("T", 12), ("G", 9), ("M", 6),
+    ("k", 3), ("h", 2), ("d", -1), ("c", -2), ("m", -3), ("u", -6), ("n", -9), ("p", -12),
+    ("f", -15), ("a", -18), ("z", -21), ("y", -24),
+];
+
+/// One unit with no `/`: a special unit, a metric one, or a prefixed one.
+fn atom_scale(unit: &str) -> Option<Scale> {
+    // Calendar months and years are not fixed multiples of a second, so
+    // they only compare against themselves.
+    if matches!(unit, "mo" | "a") {
+        return None;
+    }
+    if let Some((mantissa, base)) = special_atom(unit) {
+        return Some(Scale { mantissa, exp: 0, base: base.into() });
+    }
+    let metric = |u: &str| METRIC.iter().find(|(m, _)| *m == u).map(|(_, base)| base.to_string());
+    if let Some(base) = metric(unit) {
+        return Some(Scale { mantissa: 1.0, exp: 0, base });
+    }
+    PREFIXES.iter().find_map(|(prefix, exp)| {
+        let base = metric(unit.strip_prefix(prefix)?)?;
+        Some(Scale { mantissa: 1.0, exp: *exp, base })
+    })
+}
+
+/// The scale of a UCUM unit BridgeLab converts: the time units, inches,
+/// feet, pounds and ounces, any metric prefix on g, m, L, s, mol, eq, Pa,
+/// U, kat and [IU], and one of those over another (`mmol/L`, `mg/dL`,
+/// `ng/mL`). Not a UCUM engine: anything else (exponents, `10*3/uL`,
+/// temperatures) keeps its own unit, so comparing it against a different
+/// one stays indeterminate rather than silently wrong.
+fn scale_of(unit: &str) -> Option<Scale> {
+    // The calendar words normalise into the time units.
+    let unit = ucum_for_time_unit(unit).unwrap_or(unit);
+    match unit.split_once('/') {
+        None => atom_scale(unit),
+        Some((num, den)) => {
+            let (n, d) = (atom_scale(num)?, atom_scale(den)?);
+            Some(Scale { mantissa: n.mantissa / d.mantissa, exp: n.exp - d.exp, base: format!("{}/{}", n.base, d.base) })
+        }
+    }
+}
+
+/// Factor and base unit for the UCUM units BridgeLab converts between
+/// (see [`scale_of`]).
+pub fn ucum_scale(unit: &str) -> Option<(f64, String)> {
+    scale_of(unit).map(|s| (s.mantissa * 10f64.powi(s.exp), s.base))
 }
 
 /// The magnitude of `value` expressed in `to`, when both units share a base.
@@ -314,9 +356,18 @@ pub fn convert_quantity(value: f64, from: &str, to: &str) -> Option<f64> {
     if from == to {
         return Some(value);
     }
-    let (from_factor, from_base) = ucum_scale(from)?;
-    let (to_factor, to_base) = ucum_scale(to)?;
-    (from_base == to_base).then(|| value * from_factor / to_factor)
+    let (from, to) = (scale_of(from)?, scale_of(to)?);
+    if from.base != to.base {
+        return None;
+    }
+    let v = if from.mantissa == to.mantissa { value } else { value * from.mantissa / to.mantissa };
+    // Multiplying or dividing by an exact power of ten rounds once.
+    let k = from.exp - to.exp;
+    Some(match k {
+        0 => v,
+        k if k > 0 => v * 10f64.powi(k),
+        k => v / 10f64.powi(-k),
+    })
 }
 
 /// Calendar durations have UCUM equivalents; FHIRPath treats `1 day` and
@@ -333,6 +384,44 @@ pub fn ucum_for_time_unit(word: &str) -> Option<&'static str> {
         "millisecond" => "ms",
         _ => return None,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Decimals
+// ---------------------------------------------------------------------------
+
+/// The digits after the point a number was written with: `6.30` has 2,
+/// trailing zero included. An exponent moves the point (`1.5e-3` has 4),
+/// and can leave the last digit written left of it (`9.5e2` has -1: its
+/// last digit is the tens). A JSON number keeps the digits it was read with,
+/// from a resource or a literal alike, so this is the precision the author
+/// wrote; a number computed here carries the shortest text that reads back
+/// as its double.
+pub fn written_scale(n: &Number) -> i32 {
+    let text = n.to_string();
+    let (mantissa, exponent) = match text.find(['e', 'E']) {
+        Some(i) => (&text[..i], text[i + 1..].parse::<i32>().unwrap_or(0)),
+        None => (text.as_str(), 0),
+    };
+    let fraction = mantissa.split_once('.').map_or(0, |(_, f)| f.len() as i32);
+    fraction.saturating_sub(exponent)
+}
+
+/// `-n`, keeping the digits `n` was written with (`-6.30`, not `-6.3`).
+pub fn negated(n: &Number) -> Number {
+    if let Some(i) = n.as_i64().and_then(i64::checked_neg) {
+        return Number::from(i);
+    }
+    let text = n.to_string();
+    let flipped = match text.strip_prefix('-') {
+        Some(positive) => positive.to_string(),
+        None => format!("-{}", text),
+    };
+    flipped
+        .parse()
+        .ok()
+        .or_else(|| n.as_f64().and_then(|f| Number::from_f64(-f)))
+        .unwrap_or_else(|| n.clone())
 }
 
 // ---------------------------------------------------------------------------
@@ -551,7 +640,9 @@ impl Temporal {
         else {
             return self.parts.clone();
         };
-        let utc = naive - chrono::Duration::minutes(offset as i64);
+        let Some(utc) = naive.checked_sub_signed(chrono::Duration::minutes(offset as i64)) else {
+            return self.parts.clone();
+        };
         let mut out = vec![
             utc.format("%Y").to_string(),
             utc.format("%m").to_string(),
@@ -597,6 +688,71 @@ impl Temporal {
         s
     }
 
+    /// `lowBoundary()` / `highBoundary()`: the earliest (`high` false) or
+    /// latest value this one can stand for, to `precision` digits as
+    /// [`Temporal::precision`] counts them (4 year, 6 month, 8 day, 10 hour,
+    /// 12 minute, 14 second, 15 to 17 for one to three digits of a second;
+    /// a time counts from its hour: 2, 4, 6, 7 to 9). Components it lacks
+    /// take their lowest or highest value (`@2014-01-01T08.highBoundary(17)`
+    /// is `08:59:59.999`, as the specification's example has it), ones
+    /// beyond the precision are dropped, and a dateTime cut to its date
+    /// becomes a date. A dateTime with a time part and no zone takes the
+    /// extreme zones, +14:00 for the low boundary and -12:00 for the high
+    /// one. `None` for a precision the kind does not have.
+    pub fn boundary(&self, precision: i64, high: bool) -> Option<Temporal> {
+        use TemporalKind::*;
+        let (count, fraction) = match (self.kind, precision) {
+            (Time, 2) | (Date | DateTime, 4) => (1, 0),
+            (Time, 4) | (Date | DateTime, 6) => (2, 0),
+            (Time, 6) | (Date | DateTime, 8) => (3, 0),
+            (Time, 7..=9) => (3, (precision - 6) as usize),
+            (DateTime, 10) => (4, 0),
+            (DateTime, 12) => (5, 0),
+            (DateTime, 14) => (6, 0),
+            (DateTime, 15..=17) => (6, (precision - 14) as usize),
+            _ => return None,
+        };
+        // Position of each component in year, month, day, hour, minute,
+        // second order; a time starts at the hour.
+        let first = if self.kind == Time { 3 } else { 0 };
+        let mut parts: Vec<String> = Vec::with_capacity(count);
+        for i in 0..count {
+            let part = match self.parts.get(i) {
+                Some(p) => p.clone(),
+                None => match (first + i, high) {
+                    (1 | 2, false) => "01".into(),
+                    (1, true) => "12".into(),
+                    (2, true) => {
+                        let year: i32 = parts[0].parse().ok()?;
+                        let month: u32 = parts[1].parse().ok()?;
+                        format!("{:02}", days_in_month(year, month)?)
+                    }
+                    (3, true) => "23".into(),
+                    (4 | 5, true) => "59".into(),
+                    _ => "00".into(),
+                },
+            };
+            parts.push(part);
+        }
+        if first + count == 6 {
+            let seconds = parts.pop()?;
+            let (whole, frac) = seconds.split_once('.').unwrap_or((&seconds, ""));
+            parts.push(if fraction > 0 {
+                let fill = if high { '9' } else { '0' };
+                let frac: String = frac.chars().chain(std::iter::repeat(fill)).take(fraction).collect();
+                format!("{}.{}", whole, frac)
+            } else {
+                whole.to_string()
+            });
+        }
+        let (kind, offset) = match self.kind {
+            DateTime if count <= 3 => (Date, None),
+            DateTime => (DateTime, Some(self.offset.unwrap_or(if high { -12 * 60 } else { 14 * 60 }))),
+            other => (other, self.offset),
+        };
+        Some(Temporal { kind, parts, offset })
+    }
+
     /// Number of significant digits, as `precision()` reports it: 4 for a
     /// year, 6 for a month, 8 for a day, then two per time component and
     /// three for milliseconds. A time starts from its hour instead.
@@ -622,39 +778,46 @@ impl Temporal {
     /// Add a duration expressed in `unit`, keeping the original precision.
     ///
     /// Calendar units (year, month) move the corresponding component;
-    /// everything else is added as elapsed time.
-    pub fn add_duration(&self, amount: f64, unit: &str) -> Option<Temporal> {
+    /// everything else is added as elapsed time. `Ok(None)` is a result
+    /// outside the years 1 to 9999 a FHIRPath date can hold: empty, as for
+    /// an integer that overflows. `Err` is a quantity that is not a
+    /// duration this value can take.
+    pub fn add_duration(&self, amount: f64, unit: &str) -> Result<Option<Temporal>, NotADuration> {
         let canonical = ucum_for_time_unit(unit).unwrap_or(unit);
         // A duration counts whole units of its own unit: `+ 7.7 days` moves
         // seven days, `+ 0.1 's'` moves nothing.
-        let amount = amount.trunc();
+        let amount = whole_units(amount.trunc());
 
         if matches!(canonical, "a" | "mo") {
-            return self.add_calendar(amount as i64, canonical);
+            if self.kind == TemporalKind::Time {
+                return Err(NotADuration);
+            }
+            return Ok(amount.and_then(|n| self.add_calendar(n, canonical)));
         }
 
-        let (factor, base) = ucum_scale(canonical)?;
+        let (factor, base) = ucum_scale(canonical).ok_or(NotADuration)?;
         if base != "s" {
-            return None;
+            return Err(NotADuration);
         }
-        let seconds = amount * factor;
-        self.add_seconds(seconds)
+        // Whole nanoseconds, in a type wide enough for any amount a double
+        // holds exactly times a week: no step can wrap or saturate.
+        let per_unit = (factor * 1e9).round() as i128;
+        Ok(amount
+            .and_then(|n| n.checked_mul(per_unit))
+            .and_then(|nanos| self.add_nanos(nanos)))
     }
 
-    fn add_calendar(&self, amount: i64, unit: &str) -> Option<Temporal> {
+    fn add_calendar(&self, amount: i128, unit: &str) -> Option<Temporal> {
         let mut parts = self.parts.clone();
-        if self.kind == TemporalKind::Time {
-            return None;
-        }
-        let years: i64 = parts.first()?.parse().ok()?;
+        let years: i128 = parts.first()?.parse().ok()?;
         if unit == "a" {
-            let year = years + amount;
+            let year = in_year_range(years.checked_add(amount)?)?;
             parts[0] = format!("{:04}", year);
             // 29 February + 1 year is 28 February, as for months.
             if parts.len() >= 3 {
                 let month: u32 = parts[1].parse().ok()?;
                 let day: u32 = parts[2].parse().ok()?;
-                parts[2] = format!("{:02}", day.min(days_in_month(year as i32, month)?));
+                parts[2] = format!("{:02}", day.min(days_in_month(year, month)?));
             }
             return Some(Temporal { parts, ..self.clone() });
         }
@@ -662,36 +825,37 @@ impl Temporal {
         if parts.len() < 2 {
             return None;
         }
-        let months: i64 = parts[1].parse().ok()?;
-        let total = years * 12 + (months - 1) + amount;
-        parts[0] = format!("{:04}", total.div_euclid(12));
-        parts[1] = format!("{:02}", total.rem_euclid(12) + 1);
+        let months: i128 = parts[1].parse().ok()?;
+        let total = (years * 12 + (months - 1)).checked_add(amount)?;
+        let year = in_year_range(total.div_euclid(12))?;
+        let month = total.rem_euclid(12) as u32 + 1;
+        parts[0] = format!("{:04}", year);
+        parts[1] = format!("{:02}", month);
         // Clamp the day to the new month's length (31 January + 1 month).
         if parts.len() >= 3 {
             let day: u32 = parts[2].parse().ok()?;
-            let last = days_in_month(total.div_euclid(12) as i32, total.rem_euclid(12) as u32 + 1)?;
-            parts[2] = format!("{:02}", day.min(last));
+            parts[2] = format!("{:02}", day.min(days_in_month(year, month)?));
         }
         Some(Temporal { parts, ..self.clone() })
     }
 
-    fn add_seconds(&self, seconds: f64) -> Option<Temporal> {
+    /// Move the value by `nanos` nanoseconds of elapsed time.
+    fn add_nanos(&self, nanos: i128) -> Option<Temporal> {
         use chrono::{Datelike, Duration, NaiveDate};
 
         // Below day precision the arithmetic is on whole days, so the value
         // keeps its shape instead of gaining components it never had.
         if self.kind != TemporalKind::Time && self.parts.len() <= 3 {
-            let days = (seconds / 86_400.0).trunc() as i64;
-            return self.add_days(days);
+            return self.add_days(nanos / NANOS_PER_DAY);
         }
 
-        let nanos = (seconds * 1e9).round() as i64;
-        let delta = Duration::nanoseconds(nanos);
-
         if self.kind == TemporalKind::Time {
+            // A time of day goes round the clock: only the part of the
+            // duration under a day moves it.
             let (h, m, s, frac_len) = self.time_components()?;
             let base = NaiveDate::from_ymd_opt(2000, 1, 1)?.and_hms_nano_opt(h, m, s.0, s.1)?;
-            let moved = base + delta;
+            let within_day = Duration::nanoseconds(nanos.rem_euclid(NANOS_PER_DAY) as i64);
+            let moved = base.checked_add_signed(within_day)?;
             return Some(Temporal {
                 parts: render_time(&moved, self.parts.len(), frac_len),
                 ..self.clone()
@@ -705,7 +869,13 @@ impl Temporal {
         );
         let (h, m, s, frac_len) = self.time_components()?;
         let base = NaiveDate::from_ymd_opt(y, mo, d)?.and_hms_nano_opt(h, m, s.0, s.1)?;
-        let moved = base + delta;
+        // Seconds plus the nanoseconds left over: a count of nanoseconds
+        // alone tops out at 292 years, short of the dates FHIRPath holds.
+        let seconds = i64::try_from(nanos.div_euclid(1_000_000_000)).ok()?;
+        let rest = Duration::nanoseconds(nanos.rem_euclid(1_000_000_000) as i64);
+        let delta = Duration::try_seconds(seconds)?.checked_add(&rest)?;
+        let moved = base.checked_add_signed(delta)?;
+        in_year_range(moved.year() as i128)?;
         let mut parts = vec![
             format!("{:04}", moved.year()),
             format!("{:02}", moved.month()),
@@ -715,13 +885,15 @@ impl Temporal {
         Some(Temporal { parts, ..self.clone() })
     }
 
-    fn add_days(&self, days: i64) -> Option<Temporal> {
+    fn add_days(&self, days: i128) -> Option<Temporal> {
         use chrono::{Datelike, Duration, NaiveDate};
         let mut parts = self.parts.clone();
         let y: i32 = parts.first()?.parse().ok()?;
         let mo: u32 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(1);
         let d: u32 = parts.get(2).and_then(|p| p.parse().ok()).unwrap_or(1);
-        let moved = NaiveDate::from_ymd_opt(y, mo, d)? + Duration::days(days);
+        let delta = Duration::try_days(i64::try_from(days).ok()?)?;
+        let moved = NaiveDate::from_ymd_opt(y, mo, d)?.checked_add_signed(delta)?;
+        in_year_range(moved.year() as i128)?;
         parts[0] = format!("{:04}", moved.year());
         if parts.len() > 1 {
             parts[1] = format!("{:02}", moved.month());
@@ -771,6 +943,27 @@ fn render_time(dt: &chrono::NaiveDateTime, components: usize, frac_len: usize) -
         }
     }
     out
+}
+
+/// A quantity that cannot be added to the date or time it was given:
+/// not a unit of time (`'cm'`), or a calendar unit on a time of day.
+#[derive(Debug, PartialEq)]
+pub struct NotADuration;
+
+const NANOS_PER_DAY: i128 = 86_400 * 1_000_000_000;
+
+/// The whole number `amount` stands for, while a double still holds it
+/// exactly (up to 2^53): beyond that it is no longer the number written,
+/// and no date that far away exists anyway.
+fn whole_units(amount: f64) -> Option<i128> {
+    const EXACT: f64 = 9_007_199_254_740_992.0;
+    (amount.is_finite() && amount.abs() <= EXACT).then_some(amount as i128)
+}
+
+/// `year` when a FHIRPath date can hold it (0001 to 9999): a moved date
+/// with a five-digit or negative year is not a date.
+fn in_year_range(year: i128) -> Option<i32> {
+    (1..=9999).contains(&year).then_some(year as i32)
 }
 
 fn days_in_month(year: i32, month: u32) -> Option<u32> {
@@ -894,6 +1087,27 @@ mod tests {
         assert_eq!(quantity_parts(&q), Some((6.0, "mg".into())));
         // An Identifier has a value but no numeric one.
         assert!(!is_quantity(&json!({"system": "urn:oid:1.2", "value": "12345"})));
+    }
+
+    /// Metric prefixes on any base unit, and concentrations, convert
+    /// exactly; units outside what is understood stay apart.
+    #[test]
+    fn units_convert_by_prefix_and_per_unit() {
+        assert_eq!(convert_quantity(1000.0, "umol/L", "mmol/L"), Some(1.0));
+        assert_eq!(convert_quantity(1.0, "mmol/L", "umol/L"), Some(1000.0));
+        assert_eq!(convert_quantity(100.0, "mg/dL", "g/L"), Some(1.0));
+        assert_eq!(convert_quantity(1.0, "ng/mL", "ug/L"), Some(1.0));
+        assert_eq!(convert_quantity(4000.0, "mg", "g"), Some(4.0));
+        assert_eq!(convert_quantity(1.0, "kPa", "Pa"), Some(1000.0));
+        assert_eq!(convert_quantity(250.0, "mL", "L"), Some(0.25));
+        assert_eq!(convert_quantity(1.0, "wk", "d"), Some(7.0));
+        assert_eq!(convert_quantity(1.0, "dam", "m"), Some(10.0));
+        assert_eq!(convert_quantity(1.0, "[lb_av]", "g"), Some(453.592_37));
+        assert_eq!(convert_quantity(1.0, "mmol/L", "mg/dL"), None, "another dimension");
+        assert_eq!(convert_quantity(1.0, "mo", "d"), None);
+        assert_eq!(convert_quantity(1.0, "10*3/uL", "10*9/L"), None, "not understood");
+        assert_eq!(convert_quantity(1.0, "mg/kg/d", "mg/kg/h"), None);
+        assert_eq!(ucum_scale("ms").map(|(f, b)| (f, b)), Some((0.001, "s".to_string())));
     }
 
     #[test]

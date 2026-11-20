@@ -122,20 +122,24 @@
 	<!-- Label -->
 	<span class="label">{node.label}</span>
 
-	<!-- Value preview -->
+	<!-- Value preview. The {...} button of a cut value comes after the text,
+	     outside it: the text shrinks to an ellipsis, the button does not.
+	     Inside the clipped text, a cut value's preview (55 characters, 200
+	     for a repetition) pushed it past the edge of the default-width tree,
+	     where it could be neither seen nor clicked. -->
 	{#if node.value_preview}
-		<span class="value">
-			{#if node.is_truncated}
+		<span class="value-cell">
+			<span class="value">
 				<span class="value-text">{node.value_preview}</span>
+				{#if node.code_desc}
+					<!-- What the code means, from its HL7 value table -->
+					<span class="code-desc" title={node.code_desc}>— {node.code_desc}</span>
+				{/if}
+			</span>
+			{#if node.is_truncated}
 				<button class="truncated-btn" onclick={handleTruncatedClick} title={tr('inspector.viewFull')}>
 					{'{...}'}
 				</button>
-			{:else}
-				<span class="value-text">{node.value_preview}</span>
-			{/if}
-			{#if node.code_desc}
-				<!-- What the code means, from its HL7 value table -->
-				<span class="code-desc" title={node.code_desc}>— {node.code_desc}</span>
 			{/if}
 		</span>
 	{/if}
@@ -236,33 +240,49 @@
 		color: var(--color-component);
 	}
 
+	/* Dimmed text: var(--text-dim) is 1 in the light theme, where the
+	   secondary colour is already as light as readable text can be. */
 	.tree-node.placeholder {
-		opacity: 0.5;
+		opacity: var(--text-dim, 0.5);
 		font-style: italic;
+	}
+
+	/* Light theme: the ghost rows keep full opacity, so they are told
+	   from real rows by their grey labels (and the italics) instead. */
+	:global([data-theme='light']) .tree-node.placeholder .label {
+		color: var(--color-text-secondary);
 	}
 
 	.tree-node.placeholder .label::after {
 		content: ' ·';
-		opacity: 0.5;
+		opacity: var(--text-dim, 0.5);
+	}
+
+	/* Takes the rest of the row (the child-count badge stays at its end). */
+	.value-cell {
+		display: flex;
+		align-items: center;
+		margin-left: 8px;
+		flex: 1;
+		min-width: 0;
 	}
 
 	.value {
 		color: var(--color-text-secondary);
 		overflow: hidden;
 		text-overflow: ellipsis;
-		margin-left: 8px;
-		flex: 1;
+		flex: 0 1 auto;
 		min-width: 0;
 	}
 
 	.value-text {
-		opacity: 0.8;
+		opacity: var(--text-dim, 0.8);
 	}
 
 	.code-desc {
 		margin-left: 6px;
 		font-style: italic;
-		opacity: 0.6;
+		opacity: var(--text-dim, 0.6);
 	}
 
 	.truncated-btn {
@@ -275,6 +295,7 @@
 		font-family: inherit;
 		font-size: 11px;
 		margin-left: 4px;
+		flex-shrink: 0;
 	}
 
 	.truncated-btn:hover {

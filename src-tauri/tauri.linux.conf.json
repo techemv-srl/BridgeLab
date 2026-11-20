@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "bridgelab",
+  "bundle": {
+    "linux": {
+      "deb": {
+        "provides": ["bridge-lab"],
+        "conflicts": ["bridge-lab"],
+        "replaces": ["bridge-lab"],
+        "desktopTemplate": "linux/bridgelab.desktop"
+      },
+      "rpm": {
+        "provides": ["bridge-lab"],
+        "conflicts": ["bridge-lab"],
+        "obsoletes": ["bridge-lab"],
+        "desktopTemplate": "linux/bridgelab.desktop"
+      }
+    }
+  }
+}

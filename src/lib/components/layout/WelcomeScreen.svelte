@@ -2,6 +2,9 @@
 	import { t, subscribeLocale } from '$lib/i18n';
 	import { shortcutStore, displayKeys } from '$lib/stores/shortcuts.svelte';
 	import { fileOpsStore } from '$lib/stores/file-ops.svelte';
+	// A backslash separates folders only in a Windows path: on Linux and
+	// macOS it is part of the name, which the list used to cut there.
+	import { baseName } from '$lib/paths';
 
 	let localeVersion = $state(0);
 	if (typeof window !== 'undefined') { subscribeLocale(() => { localeVersion++; }); }
@@ -45,20 +48,22 @@
 		<div class="welcome-title">{tr('welcome.title')}</div>
 		<div class="welcome-subtitle">{tr('welcome.subtitle')}</div>
 		<div class="welcome-actions">
+			<!-- The key each action has now: none for an action the user
+			     left without one (the default would do nothing). -->
 			<button class="welcome-action" onclick={onOpenFile}>
 				<span class="wa-label">{tr('welcome.open')}</span>
-				<kbd>{displayKeys(shortcutStore.get('file.open') || 'Ctrl+O')}</kbd>
+				{#if shortcutStore.get('file.open')}<kbd>{displayKeys(shortcutStore.get('file.open'))}</kbd>{/if}
 			</button>
 			<button class="welcome-action" onclick={onNewFromTemplate}>
 				<span class="wa-label">{tr('welcome.template')}</span>
-				<kbd>{displayKeys(shortcutStore.get('file.newFromTemplate') || 'Ctrl+N')}</kbd>
+				{#if shortcutStore.get('file.newFromTemplate')}<kbd>{displayKeys(shortcutStore.get('file.newFromTemplate'))}</kbd>{/if}
 			</button>
 			<button class="welcome-action" onclick={onShowSamples}>
 				<span class="wa-label">{tr('welcome.samples')}</span>
 			</button>
 			<button class="welcome-action" onclick={onShowTestCases}>
 				<span class="wa-label">{tr('welcome.testCases')}</span>
-				<kbd>{displayKeys(shortcutStore.get('file.testCases') || 'Ctrl+L')}</kbd>
+				{#if shortcutStore.get('file.testCases')}<kbd>{displayKeys(shortcutStore.get('file.testCases'))}</kbd>{/if}
 			</button>
 			<button class="welcome-action" onclick={onShowHelp}>
 				<span class="wa-label">{tr('welcome.manual')}</span>
@@ -68,7 +73,7 @@
 				<span class="wa-label">{tr('welcome.blank')}</span>
 			</button>
 		</div>
-		<div class="welcome-paste-hint">{tr('welcome.pasteHint')}</div>
+		<div class="welcome-paste-hint">{tr('welcome.pasteHint', { keys: displayKeys('Ctrl+V') })}</div>
 
 		<div class="welcome-discover">
 			<div class="welcome-recent-title">{tr('welcome.discover')}</div>
@@ -90,7 +95,7 @@
 				<div class="welcome-recent-title">{tr('menu.file.recent')}</div>
 				{#each fileOpsStore.recentFiles.slice(0, 6) as rf (rf.path)}
 					<button class="welcome-recent-item" onclick={() => onOpenRecentFile(rf.path)} title={rf.path}>
-						{rf.path.split(/[\\/]/).pop()}
+						{baseName(rf.path)}
 						<span class="wr-path">{rf.path}</span>
 					</button>
 				{/each}

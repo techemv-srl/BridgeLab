@@ -86,6 +86,13 @@ pub struct ProfileElement {
     /// True when the element is a slice of another (`Patient.identifier:mrn`).
     #[serde(default)]
     pub slice_name: Option<String>,
+    /// The maximum the element has in the definition it comes from
+    /// (`base.max`: `*`, `1`…). Whether it repeats there decides how JSON
+    /// writes it, as an array or a single value, whatever a profile narrows
+    /// it to. `None` when the definition does not say, and in packages
+    /// installed before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_max: Option<String>,
 }
 
 impl ProfileElement {
@@ -108,6 +115,23 @@ impl ProfileElement {
         match head {
             Some(h) => format!("{}{}{}", self.base_name(), h, chars.as_str()),
             None => self.base_name().to_string(),
+        }
+    }
+
+    /// Whether FHIR's JSON writes this element as an array: when its
+    /// maximum in the base definition is above one. A profile can narrow
+    /// `Patient.name` to `1..1`, and the name is still `[{…}]`. `None` when
+    /// the definition kept no base and its own maximum is one: a narrowed
+    /// maximum and a single-valued element look the same then.
+    pub fn repeats_in_base(&self) -> Option<bool> {
+        if let Some(base) = &self.base_max {
+            return Some(base != "0" && base != "1");
+        }
+        // A profile can lower a maximum but never raise it.
+        match self.max {
+            None => Some(true),
+            Some(max) if max > 1 => Some(true),
+            _ => None,
         }
     }
 
@@ -260,6 +284,24 @@ impl ProfileIndex {
             .and_then(|versions| self.preferred(versions))
     }
 
+    /// The base definition of `type_name` in FHIR release `fhir_version`
+    /// (by its major number: R4 and R4B are both 4), when one is installed;
+    /// any installed one when `fhir_version` is empty. A definition whose
+    /// release is unknown is not ruled out.
+    pub fn base_for_type_in(&self, type_name: &str, fhir_version: &str) -> Option<&Profile> {
+        let url = self.base_by_type.get(type_name)?;
+        self.get_in_release(url, fhir_version)
+    }
+
+    /// The definition at `canonical` in FHIR release `fhir_version`, as
+    /// [`ProfileIndex::base_for_type_in`] picks it.
+    pub fn get_in_release(&self, canonical: &str, fhir_version: &str) -> Option<&Profile> {
+        let major = |v: &str| v.split('.').next().and_then(|m| m.parse::<u32>().ok());
+        let Some(wanted) = major(fhir_version) else { return self.get(canonical) };
+        let versions = self.by_url.get(canonical.split('|').next().unwrap_or(canonical))?;
+        versions.iter().find(|p| major(&p.fhir_version) == Some(wanted) || p.fhir_version.is_empty())
+    }
+
     /// The version an unpinned reference gets: the newest one targeting the
     /// FHIR release the built-in core belongs to (R4 and R4B are both 4.x), so
     /// installing an R5 package does not swap the definitions R4 resources
@@ -393,6 +435,11 @@ fn element_from_json(e: &Value) -> Option<ProfileElement> {
             .get("sliceName")
             .and_then(|v| v.as_str())
             .map(str::to_string),
+        base_max: e
+            .get("base")
+            .and_then(|b| b.get("max"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
     })
 }
 
@@ -463,6 +510,29 @@ mod tests {
         let gender = p.elements.iter().find(|e| e.path == "Patient.gender").unwrap();
         assert_eq!(gender.max, Some(1));
         assert_eq!(gender.cardinality(), "0..1");
+    }
+
+    #[test]
+    fn keeps_the_base_maximum_that_decides_the_json_shape() {
+        let sd = json!({
+            "url": "u", "name": "n", "kind": "resource", "type": "Patient",
+            "derivation": "constraint",
+            "snapshot": { "element": [
+                {"path": "Patient"},
+                {"path": "Patient.name", "min": 1, "max": "1",
+                 "base": {"path": "Patient.name", "min": 0, "max": "*"}},
+                {"path": "Patient.gender", "min": 1, "max": "1",
+                 "base": {"path": "Patient.gender", "min": 0, "max": "1"}},
+                {"path": "Patient.identifier", "min": 0, "max": "1"},
+                {"path": "Patient.link", "min": 0, "max": "*"}
+            ]}
+        });
+        let p = from_structure_definition(&sd).unwrap();
+        let repeats = |path: &str| p.elements.iter().find(|e| e.path == path).unwrap().repeats_in_base();
+        assert_eq!(repeats("Patient.name"), Some(true), "narrowed to 1..1, still an array");
+        assert_eq!(repeats("Patient.gender"), Some(false));
+        assert_eq!(repeats("Patient.identifier"), None, "no base and a maximum of one: unknown");
+        assert_eq!(repeats("Patient.link"), Some(true));
     }
 
     #[test]

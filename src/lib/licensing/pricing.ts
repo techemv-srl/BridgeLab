@@ -8,6 +8,8 @@
  * tell the trial banner from an upgrade prompt.
  */
 
+import { openExternal } from '$lib/page-guard';
+
 const LANDING = 'https://techemv-srl.github.io/BridgeLab/';
 
 export type PricingEntry = 'menu' | 'activation' | 'trial_banner' | 'upgrade_prompt';
@@ -16,13 +18,8 @@ export function pricingUrl(entry: PricingEntry): string {
 	return `${LANDING}?utm_source=app&utm_medium=${entry}#pricing`;
 }
 
-/** Open the pricing page in the OS browser (window.open is a no-op in the webview). */
+/** Open the pricing page in the OS browser; without one, the user is
+ *  told and given the address (see openExternal). */
 export async function openPricing(entry: PricingEntry): Promise<void> {
-	const url = pricingUrl(entry);
-	try {
-		const { openUrl } = await import('@tauri-apps/plugin-opener');
-		await openUrl(url);
-	} catch {
-		window.open(url, '_blank'); // web mode
-	}
+	await openExternal(pricingUrl(entry));
 }
